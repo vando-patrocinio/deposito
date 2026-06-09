@@ -1070,6 +1070,47 @@ async def create_clock_record(payload: ClockRecordIn, request: Request):
         face_validation={"detect": face_check, "compare": face_match},
         public_ip=payload.public_ip, audit=audit, company_id=coll.get("company_id"),
     )
+    # iter215an — Regra global de atendimento por ponto: ao bater "Início
+    # intervalo" ou "Saída", se o colaborador tem usuário com role
+    # afetada (gestor/administrador/vendedor) e conversas humanas abertas,
+    # bloqueamos OU transferimos pra outro humano online.
+    if not is_admin_test and payload.type in ("Início intervalo", "Saída"):
+        try:
+            from services.atendente_duty import enforce_offduty_clock_event
+            allowed, duty_msg, target_user, n_moved = (
+                await enforce_offduty_clock_event(
+                    company_id=coll.get("company_id") or DEMO_COMPANY_ID,
+                    collaborator=coll,
+                    event_type=payload.type,
+                )
+            )
+            if not allowed:
+                raise HTTPException(409, {
+                    "code": "NO_ATTENDANT_AVAILABLE",
+                    "message": duty_msg,
+                    "event_type": payload.type,
+                })
+            if n_moved > 0:
+                audit.append({
+                    "at": now_iso(), "actor": "sistema",
+                    "action": (
+                        f"atendimento: {duty_msg} "
+                        f"(destino={target_user.get('name') or target_user.get('id')})"
+                        if target_user else duty_msg
+                    ),
+                })
+                rec["audit"] = audit
+                rec["duty_handover"] = {
+                    "transferred": n_moved,
+                    "to_user_id": target_user["id"] if target_user else None,
+                    "to_user_name": (target_user.get("name")
+                                       if target_user else None),
+                    "reason": duty_msg,
+                }
+        except HTTPException:
+            raise
+        except Exception as _de:
+            logger.warning("[clock] duty enforcement falhou: %s", _de)
     if is_admin_test:
         rec["admin_test_mode"] = True
         rec["test_actor"] = admin_actor

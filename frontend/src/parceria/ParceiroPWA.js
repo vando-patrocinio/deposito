@@ -910,14 +910,23 @@ function ScanScreen({ token, me, onBack, onSuccess }) {
           extra = obj;
         } catch { /* não é JSON */ }
       }
-      // Se vier como URL, pega o último segmento (?qr=xxx ou /q/xxx)
+      // Se vier como URL, extrai o token preservando V1/V2 (iter215bm).
+      //   /q/<token>   → token simples
+      //   /q2/<token>  → LIGO2:<token> (Fernet, opaco)
       if (qr_token.startsWith("http")) {
         try {
           const u = new URL(qr_token);
-          qr_token = u.searchParams.get("qr")
-            || u.searchParams.get("token")
-            || u.pathname.split("/").filter(Boolean).pop()
-            || qr_token;
+          const path = u.pathname || "";
+          if (path.startsWith("/q2/")) {
+            qr_token = `LIGO2:${path.slice(4)}`;
+          } else if (path.startsWith("/q/")) {
+            qr_token = path.slice(3);
+          } else {
+            qr_token = u.searchParams.get("qr")
+              || u.searchParams.get("token")
+              || path.split("/").filter(Boolean).pop()
+              || qr_token;
+          }
         } catch { /* */ }
       }
       const r = await axios.post(`${API}/scan`,

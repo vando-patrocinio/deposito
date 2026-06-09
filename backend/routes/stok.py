@@ -70,6 +70,10 @@ class OntBulkIn(BaseModel):
     # mas o caminho recomendado é `items: [{sn, mac?}]`.
     macs: Optional[List[str]] = None
     items: Optional[List[OntBulkItem]] = None
+    # iter215bc — destino opcional. Quando informado, a ONT é cadastrada
+    # JÁ no estoque do técnico (location_type=tecnico), economizando o
+    # passo de transferência. Default = estoque da empresa.
+    technician_id: Optional[str] = None
 
 
 class OntEditIn(BaseModel):
@@ -84,6 +88,9 @@ class OntTransferIn(BaseModel):
 class ConsumablePurchaseIn(BaseModel):
     consumable_id: str
     pack_qty: int
+    # iter215bd — destino opcional. Quando informado, o insumo é
+    # registrado direto no estoque do técnico. Default = empresa.
+    technician_id: Optional[str] = None
 
 
 class ConsumableTransferIn(BaseModel):
@@ -609,26 +616,60 @@ async def create_onts_bulk(payload: OntBulkIn, user: dict = Depends(require_role
         raise HTTPException(400, f"SN já cadastrado: {existing[0]['scan_sn']}")
 
     docs = []
+    # iter215bc — destino opcional: técnico direto OU estoque empresa
+    tech_target = None
+    if payload.technician_id:
+        tech_target = await db.collaborators.find_one(
+            {"id": payload.technician_id, "company_id": cid},
+            {"_id": 0, "id": 1, "name": 1},
+        )
+        if not tech_target:
+            raise HTTPException(404,
+                "Técnico de destino não encontrado.")
+
     for it in dedup:
         # Quando não tem MAC ainda, usa placeholder `SN-{sn}` pra manter a
         # constraint de unicidade (legado) sem bloquear o cadastro.
         mac_final = it["mac"] or f"SN-{it['sn']}"
+        if tech_target:
+            location_type = "tecnico"
+            location_id = tech_target["id"]
+            status = "com_tecnico"
+        else:
+            location_type = "empresa"
+            location_id = "empresa"
+            status = "disponivel"
         docs.append({
             "company_id": cid,
             "scan_sn": it["sn"],
             "mac": mac_final,
             "model": model,
-            "location_type": "empresa", "location_id": "empresa",
-            "client_name": None, "status": "disponivel",
+            "location_type": location_type, "location_id": location_id,
+            "client_name": None, "status": status,
             "created_by": user.get("email", "?"), "created_at": now_iso(),
         })
     await db.stok_onts.insert_many([dict(d) for d in docs])
-    await _add_history("entrada_ont",
-                        f"Entrada de {len(docs)} ONT(s) modelo {model} no estoque empresa",
-                        user.get("name", "?"), "compra", cid)
-    return {"inserted": len(docs),
-             "sns": sns,
-             "macs": [d["mac"] for d in docs]}
+    if tech_target:
+        await _add_history(
+            "entrada_ont",
+            f"Entrada de {len(docs)} ONT(s) modelo {model} "
+            f"DIRETO no estoque de {tech_target['name']}",
+            user.get("name", "?"), "compra", cid)
+    else:
+        await _add_history(
+            "entrada_ont",
+            f"Entrada de {len(docs)} ONT(s) modelo {model} "
+            f"no estoque empresa",
+            user.get("name", "?"), "compra", cid)
+    return {
+        "inserted": len(docs),
+        "sns": sns,
+        "macs": [d["mac"] for d in docs],
+        "destination": ("tecnico:" + tech_target["id"]) if tech_target
+            else "empresa",
+        "destination_name": tech_target["name"] if tech_target
+            else "Estoque da empresa",
+    }
 
 
 @router.patch("/onts/{mac}")
@@ -935,15 +976,38 @@ async def purchase_consumable(payload: ConsumablePurchaseIn, user: dict = Depend
     if payload.pack_qty <= 0:
         raise HTTPException(400, "Quantidade inválida.")
     total = payload.pack_qty * item["pack_qty"]
+
+    # iter215bd — destino opcional: técnico OU empresa
+    tech_target = None
+    if payload.technician_id:
+        tech_target = await db.collaborators.find_one(
+            {"id": payload.technician_id, "company_id": cid},
+            {"_id": 0, "id": 1, "name": 1},
+        )
+        if not tech_target:
+            raise HTTPException(404, "Técnico de destino não encontrado.")
+
+    location = tech_target["id"] if tech_target else "empresa"
+    dest_label = (f"estoque de {tech_target['name']}" if tech_target
+                   else "estoque da empresa")
+
     await db.stok_stock.update_one(
-        {"company_id": cid, "location": "empresa"},
-        {"$inc": {item["id"]: total}, "$setOnInsert": {"company_id": cid, "location": "empresa"}},
+        {"company_id": cid, "location": location},
+        {"$inc": {item["id"]: total},
+         "$setOnInsert": {"company_id": cid, "location": location}},
         upsert=True,
     )
     await _add_history("entrada_insumo",
-                       f"Entrada de {payload.pack_qty} {item['pack_label']}(s) de {item['name']}: {total} {item['unit']}",
+                       f"Entrada de {payload.pack_qty} {item['pack_label']}(s) "
+                       f"de {item['name']}: {total} {item['unit']} no {dest_label}",
                        user.get("name", "?"), "compra", cid)
-    return {"ok": True, "added": total}
+    return {
+        "ok": True, "added": total,
+        "destination": ("tecnico:" + tech_target["id"]) if tech_target
+            else "empresa",
+        "destination_name": tech_target["name"] if tech_target
+            else "Estoque da empresa",
+    }
 
 
 @router.post("/consumables/transfer")
@@ -1173,7 +1237,31 @@ async def _move_ont_for_install(company_id: str, service: dict, mac_input: Optio
     if not mac_n:
         mac_n = ont.get("mac")
     if ont["location_type"] != "tecnico" or ont["location_id"] != service["technician_id"]:
-        raise HTTPException(400, "A ONT precisa estar no estoque do técnico responsável.")
+        # iter215bc — mensagem detalhada com diagnóstico para correção rápida
+        # do bug "ONT cadastrada mas não aparece no estoque do técnico".
+        if ont["location_type"] == "empresa":
+            raise HTTPException(400,
+                "A ONT está no estoque da EMPRESA (não no técnico). "
+                "Vá em Estoque › Equipamentos e use '↗ Transferir' para "
+                "enviar a ONT ao técnico antes de fechar a OS.")
+        elif ont["location_type"] == "tecnico":
+            other_tech = await db.collaborators.find_one(
+                {"id": ont["location_id"]}, {"_id": 0, "name": 1})
+            raise HTTPException(400,
+                f"A ONT está no estoque de OUTRO técnico "
+                f"({other_tech['name'] if other_tech else ont['location_id']}). "
+                f"Ela precisa estar no estoque do técnico responsável "
+                f"pela OS para ser usada.")
+        elif ont["location_type"] == "cliente":
+            raise HTTPException(400,
+                f"A ONT já está instalada no cliente "
+                f"'{ont.get('client_name') or ont.get('location_id')}'. "
+                f"Faça uma retirada primeiro.")
+        else:
+            raise HTTPException(400,
+                f"A ONT está em local inesperado "
+                f"({ont['location_type']}). Verifique em Estoque › "
+                f"Equipamentos › Rastreabilidade.")
 
     # Consulta SmartOLT (cache local) pelo MAC ATIVO do cliente
     sm_doc = await db.smartolt_onus.find_one(
@@ -1619,7 +1707,8 @@ async def _handle_cto_port_on_close(company_id: str, service: dict,
                     f"liberada — cliente retirado")
         return None
 
-    if stype in ("instalacao", "reparo", "troca", "ponto_adicional"):
+    if stype in ("instalacao", "reparo", "troca", "troca_endereco",
+                   "ponto_adicional"):
         if current and payload.port_swap:
             new_port = payload.new_port_number
             if not new_port:
@@ -3783,3 +3872,126 @@ async def stok_clear_shrinkage(payload: StokClearShrinkageIn,
         "onts_compensated": ont_shrink_compensated,
         "log_id": log_entry["id"],
     }
+
+
+# ===========================================================================
+# iter215am — Painel de Revisão IA de ONTs retiradas por foto
+# ---------------------------------------------------------------------------
+# Lista equipamentos retirados via OS de retirada/troca sem SN no SmartOLT
+# (entrada criada no `lousa.public_finalize_ticket`). Gestor revisa a foto
+# + análise da IA e decide: aprovar pra reaproveitar com o técnico, devolver
+# ao estoque da empresa, ou descartar como defeito.
+# ===========================================================================
+class AiReviewApproveIn(BaseModel):
+    decision: str  # "approve_reuse" | "return_to_company" | "scrap_defect"
+    note: Optional[str] = None
+    final_sn: Optional[str] = None
+    final_mac: Optional[str] = None
+    final_model: Optional[str] = None
+
+
+@router.get("/ai-review/pending")
+async def list_ai_review_pending(
+    user: dict = Depends(require_role("gestor")),
+):
+    """Lista entradas pendentes (ou já analisadas pela IA mas ainda sem
+    decisão do gestor)."""
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+    docs = await db.stok_onts.find(
+        {"company_id": cid, "via_photo_ai": True,
+         "status": {"$in": ["pending_ai_review",
+                              "pending_human_review",
+                              "bloqueado_defeito"]}},
+        {"_id": 0},
+    ).sort("created_at", -1).to_list(200)
+    techs = {}
+    for d in docs:
+        tid = d.get("location_id")
+        if tid and tid not in techs:
+            t = await db.collaborators.find_one(
+                {"id": tid}, {"_id": 0, "name": 1})
+            techs[tid] = (t or {}).get("name") or tid
+        d["technician_name"] = techs.get(tid)
+    return {"items": docs, "count": len(docs)}
+
+
+@router.post("/ai-review/{ont_id}/decision")
+async def decide_ai_review(
+    ont_id: str,
+    payload: AiReviewApproveIn,
+    user: dict = Depends(require_role("gestor")),
+):
+    """Aplica a decisão do gestor a uma entrada pendente."""
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+    doc = await db.stok_onts.find_one(
+        {"id": ont_id, "company_id": cid, "via_photo_ai": True},
+        {"_id": 0},
+    )
+    if not doc:
+        raise HTTPException(404, "Entrada não encontrada")
+    decision = (payload.decision or "").strip()
+    if decision not in ("approve_reuse", "return_to_company",
+                          "scrap_defect"):
+        raise HTTPException(400, "decision inválido")
+
+    update_set: Dict[str, Any] = {
+        "ai_review_decision": decision,
+        "ai_review_decided_at": now_iso(),
+        "ai_review_decided_by_email": user.get("email"),
+        "ai_review_decided_by_name": user.get("name") or user.get("email"),
+        "via_photo_ai_resolved": True,
+    }
+    if payload.note:
+        update_set["ai_review_note"] = payload.note[:500]
+    # Permite o gestor ajustar SN/MAC/modelo manualmente
+    if payload.final_sn:
+        update_set["sn"] = payload.final_sn.strip().upper()
+    if payload.final_mac:
+        update_set["mac"] = payload.final_mac.strip().upper()
+    if payload.final_model:
+        update_set["model"] = payload.final_model.strip()
+
+    if decision == "approve_reuse":
+        # Reaproveitar: fica com o técnico como "retirada_com_tecnico"
+        update_set["status"] = "retirada_com_tecnico"
+        update_set["is_defective"] = False
+        update_set["defective_reason"] = None
+    elif decision == "return_to_company":
+        # Devolver à empresa: status `retornada_empresa`
+        update_set["status"] = "retornada_empresa"
+        update_set["location_type"] = "empresa"
+        update_set["location_id"] = "empresa"
+        update_set["location"] = "empresa"
+    elif decision == "scrap_defect":
+        # Descarte definitivo (sucateada). Continua no técnico até
+        # devolução física, mas indisponível pra reinstalar.
+        update_set["status"] = "sucateada"
+        update_set["is_defective"] = True
+        if payload.note and not doc.get("defective_reason"):
+            update_set["defective_reason"] = payload.note[:300]
+
+    await db.stok_onts.update_one(
+        {"id": ont_id, "company_id": cid},
+        {"$set": update_set},
+    )
+    # Histórico
+    try:
+        await db.stok_history.insert_one({
+            "id": str(uuid.uuid4()),
+            "company_id": cid,
+            "date": now_iso(),
+            "type": "ai_review_decision",
+            "description": (
+                f"ONT {ont_id} — gestor decidiu {decision}"
+                + (f" (nota: {payload.note[:120]})" if payload.note else "")
+                + f". Novo status: {update_set['status']}."
+            ),
+            "user": user.get("email"),
+            "tag": "stok_ai_review",
+            "ticket_id": doc.get("ticket_id"),
+        })
+    except Exception as e:
+        logger.warning("[stok] history ai-review falhou: %s", e)
+    return {"ok": True, "id": ont_id,
+            "status": update_set["status"],
+            "decision": decision}

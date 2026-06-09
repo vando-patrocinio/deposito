@@ -257,7 +257,7 @@ export default function ReadjustmentTab() {
                            alignItems: "center", width: "100%" }}>
               <span>
                 <TrendingDown size={14} style={{
-                  display: "inline", marginRight: 6, color: "#0ea5e9" }} />
+                  display: "inline", marginRight: 6, color: "#f28c28" }} />
                 Curva de Retenção · base {retention.base_year_0} cliente(s)
               </span>
               {churnPeak && churnPeak.churn_pct_from_prev > 0 && (
@@ -276,8 +276,8 @@ export default function ReadjustmentTab() {
                   margin={{ top: 10, right: 30, left: 0, bottom: 10 }}>
                   <defs>
                     <linearGradient id="retentionFill" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor="#0ea5e9" stopOpacity={0.3} />
-                      <stop offset="100%" stopColor="#0ea5e9" stopOpacity={0.03} />
+                      <stop offset="0%" stopColor="#f28c28" stopOpacity={0.3} />
+                      <stop offset="100%" stopColor="#f28c28" stopOpacity={0.03} />
                     </linearGradient>
                   </defs>
                   <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
@@ -300,7 +300,7 @@ export default function ReadjustmentTab() {
                   <ReferenceLine y={80} stroke="#16a34a" strokeDasharray="3 3"
                     label={{ value: "Meta 80%", fontSize: 10, fill: "#16a34a" }} />
                   <Area type="monotone" dataKey="retention_pct" name="Retenção"
-                    stroke="#0ea5e9" strokeWidth={2.5}
+                    stroke="#f28c28" strokeWidth={2.5}
                     fill="url(#retentionFill)" />
                   <Line type="monotone" dataKey="churn_pct_from_prev"
                     name="Churn" stroke="#dc2626" strokeWidth={1.5}
@@ -359,7 +359,7 @@ export default function ReadjustmentTab() {
                        alignItems: "center", gap: 12, flexWrap: "wrap" }}>
           <span>
             <Calendar size={14} style={{
-              display: "inline", marginRight: 6, color: "#2563eb" }} />
+              display: "inline", marginRight: 6, color: "#4b1d7a" }} />
             Próximos {horizon} dias — {dueData.upcoming.length} cliente(s)
           </span>
           <select value={horizon} onChange={(e) => setHorizon(+e.target.value)}

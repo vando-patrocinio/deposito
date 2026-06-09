@@ -34,6 +34,11 @@ DEFAULTS = {
     # (regra global pedida pelo user 2026-06). Bloqueia finalização se
     # cto_id ou cto_port_number ausentes. Default LIGADO.
     "cto_port_required": True,
+    # iter215am — Em OS de retirada/troca, se o SN da ONT NÃO existe no
+    # SmartOLT (equipamento não cadastrado), técnico DEVE fotografar o
+    # equipamento e a IA (Claude 4.6) analisa a foto antes de finalizar.
+    # Sempre registra movimento no estoque do colaborador. Default LIGADO.
+    "sn_smartolt_or_photo_required": True,
 }
 
 
@@ -42,6 +47,7 @@ class OsValidationTogglesIn(BaseModel):
     cto_photo_required: bool | None = None
     mac_validation_required: bool | None = None
     cto_port_required: bool | None = None
+    sn_smartolt_or_photo_required: bool | None = None
 
 
 def _can_edit(user: Dict[str, Any]) -> bool:

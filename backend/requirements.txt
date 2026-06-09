@@ -160,3 +160,7 @@ websockets==16.0
 wrapt==2.1.2
 yarl==1.23.0
 zipp==3.23.1
+joblib==1.5.3
+narwhals==2.22.1
+scikit-learn==1.9.0
+threadpoolctl==3.6.0

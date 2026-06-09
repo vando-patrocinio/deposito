@@ -1,0 +1,32 @@
+{
+  "summary": "iter218 — Presidente IA V2.0 backend and frontend fully validated. All 18 pytest cases pass (auth, agents catalog of 14, dashboard shape, health thresholds, scan, events filter, predictions sort, insights open-only, decisions, actions, conselho 6 papeis com Claude, cache 60min, force=true regen, 404 papel desconhecido). Frontend smoke E2E confirmed: sidebar label changed to 'Presidente IA' (no more 'Conselho IA'), panel renders with orbital-map + 14 agent-orbit-* nodes, Health gauge 85/100 SAUDAVEL, Risks/Oportunidades (R$ 6.866,30) cards, Conselho Executivo with 6 council-card-* (CEO parecer 1567 chars from Claude), pres-scan-btn dispara POST /scan 200, council-regenerate visível.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Painel global (não Presidente IA)", "issues": ["Recharts ResponsiveContainer warnings sobre width(-1)/height(-1) na tela Painel inicial — não bloqueante mas polui console"]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter218_presidente_ia.py",
+    "/app/test_reports/pytest/iter218_presidente_ia.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "presidente_ia.py tem 639 linhas — próximo do limite de 700, considerar split (memory recorders / engines / queries) na próxima iter",
+    "PresidenteIaPanel.js tem 794 linhas — recomendar split em sub-componentes (OrbitalMap, ConselhoCards, HealthCard) para manutenibilidade",
+    "Em routes/presidente_ia.py o /conselho roda asyncio.gather mas chama _build_snapshot 1x antes — OK; porém no caminho de cache hit ainda paga o snapshot DB. Considerar lazy snapshot só quando há cache miss",
+    "Service _now_iso/_now são privados (underscore) mas usados externamente em routes (svc._now_iso). Mover para helper público (now_iso) ou expor explicitamente"
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter218_presidente_ia.py"
+  ],
+  "success_rate": {"backend": "100% (18/18)", "frontend": "100% (todos os data-testid presentes e funcionais)"},
+  "test_credentials": "admin@empresa.com / 123456",
+  "seed_data_creation": "Nenhuma — scan endpoint criou eventos/predições normais durante teste; cache Conselho permanece em motor_ia_memory (60min)",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "iter218 entregue. Endpoints /api/presidente-ia/* todos verdes. Frontend PresidenteIaPanel renderiza completo (orbital 14 + conselho 6 + cards Saúde/Riscos/Oportunidades/Universo Ligo). Cache do Conselho persiste 60min em motor_ia_memory por (cid, role). Para regerar: GET /conselho?force=true ou POST /conselho/{role}?force=true. Login admin/123456 já entra em modo demo automaticamente. Não há mais 'Conselho IA' na sidebar — substituído por 'Presidente IA'.",
+  "rca of the issue": "N/A — sem bugs encontrados nesta iteração."
+}

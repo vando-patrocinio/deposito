@@ -26,7 +26,26 @@ export default function GlobalToast() {
   useEffect(() => {
     const h = (e) => push(e?.detail || {});
     window.addEventListener("smartprov:toast", h);
-    return () => window.removeEventListener("smartprov:toast", h);
+    // Sprint 3 — bridge interceptor http-error → toast
+    const h2 = (e) => {
+      const d = e?.detail || {};
+      const titleMap = {
+        forbidden: "Acesso negado",
+        "rate-limited": "Limite atingido",
+        unavailable: "Indisponível",
+      };
+      push({
+        kind: d.status === 503 ? "warn" : "error",
+        title: titleMap[d.kind] || `Erro ${d.status}`,
+        message: d.message,
+        durationMs: 5000,
+      });
+    };
+    window.addEventListener("smartprov-http-error", h2);
+    return () => {
+      window.removeEventListener("smartprov:toast", h);
+      window.removeEventListener("smartprov-http-error", h2);
+    };
   }, [push]);
 
   return (

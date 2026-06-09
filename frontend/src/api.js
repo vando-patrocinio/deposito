@@ -29,32 +29,51 @@ client.interceptors.request.use((cfg) => {
 client.interceptors.response.use(
   (r) => r,
   (err) => {
-    if (err?.response?.status === 401 && typeof window !== "undefined") {
-      const url = err?.config?.url || "";
+    if (typeof window === "undefined") return Promise.reject(err);
+    const status = err?.response?.status;
+    const url = err?.config?.url || "";
+    const detail = err?.response?.data?.detail;
+
+    // 401 — sessão expirada (mantém comportamento original)
+    if (status === 401) {
       const isAuthEndpoint = url.includes("/auth/login")
         || url.includes("/auth/logout")
         || url.includes("/auth/google-login")
         || url.includes("/auth/me");
       if (!isAuthEndpoint) {
-        // Limpa SOMENTE credenciais — preserva preferências de UI
-        // (ponto_active_tab, theme, etc.) para que, após re-login, o
-        // usuário volte exatamente onde estava.
         ["ponto_token", "ponto_active_company",
          "ponto_onboarding_done", "collab_token", "collab_id"].forEach((k) => {
           try { window.localStorage.removeItem(k); } catch { /* ignore */ }
         });
-        // Em vez de hard redirect (que destrói TODO o estado e força
-        // o usuário a recarregar a página inteira), apenas dispara
-        // um evento. O AppContent escuta e renderiza a tela de login
-        // dentro do mesmo componente, preservando aba atual, scroll,
-        // dados em memória, etc. UX muito mais suave.
         try {
           window.dispatchEvent(new CustomEvent("smartprov-session-expired", {
-            detail: { url, reason: err?.response?.data?.detail || "Sessão expirada" },
+            detail: { url, reason: detail || "Sessão expirada" },
           }));
         } catch { /* ignore */ }
       }
     }
+
+    // Sprint 3 — interceptor global 403 / 429 / 503
+    // Dispara evento p/ AppContent renderizar toast amigável.
+    if (status === 403 || status === 429 || status === 503) {
+      const kind = status === 403 ? "forbidden"
+        : status === 429 ? "rate-limited"
+        : "unavailable";
+      const defaults = {
+        forbidden: "Seu perfil não tem permissão para essa ação.",
+        "rate-limited": "Limite de uso atingido. Tente novamente em alguns instantes.",
+        unavailable: "Serviço temporariamente indisponível.",
+      };
+      try {
+        window.dispatchEvent(new CustomEvent("smartprov-http-error", {
+          detail: {
+            status, kind, url,
+            message: detail || defaults[kind],
+          },
+        }));
+      } catch { /* ignore */ }
+    }
+
     return Promise.reject(err);
   }
 );
@@ -66,6 +85,21 @@ export const api = {
     client.get(`/r/${code}/info`).then((r) => r.data),
   publicReferralSubmit: (code, form) =>
     client.post(`/r/${code}/submit`, form).then((r) => r.data),
+  // AI Center — RevenueOps IA (Fase 1 da Constituição V3.0)
+  revenueSummary: (period = "MTD") =>
+    client.get(`/ai-center/revenue/summary`, { params: { period } }).then((r) => r.data),
+  revenueByTemplate: (period = "MTD", limit = 20) =>
+    client.get(`/ai-center/revenue/by-template`, { params: { period, limit } }).then((r) => r.data),
+  revenueByChannel: (period = "MTD") =>
+    client.get(`/ai-center/revenue/by-channel`, { params: { period } }).then((r) => r.data),
+  revenueByActionType: (period = "MTD") =>
+    client.get(`/ai-center/revenue/by-action-type`, { params: { period } }).then((r) => r.data),
+  revenueTimeline: (period = "30d", granularity = "day") =>
+    client.get(`/ai-center/revenue/timeline`, { params: { period, granularity } }).then((r) => r.data),
+  revenueTopActions: (period = "MTD", limit = 10) =>
+    client.get(`/ai-center/revenue/top-actions`, { params: { period, limit } }).then((r) => r.data),
+
+
   // Colaboradores
   listCollaborators: () => client.get("/collaborators").then((r) => r.data),
   getCollaborator: (id) => client.get(`/collaborators/${id}`).then((r) => r.data),
@@ -445,7 +479,9 @@ export const api = {
   stokOnts: () => client.get(`/stok/onts`).then((r) => r.data),
   // iter211h — Aceita SN obrigatório. Forma preferida: items=[{sn, mac?}].
   // Compat: aceita também `macs: [str]` (cada string tratada como SN no backend).
-  stokOntsBulk: (model, snsOrItems) => {
+  // iter215bc — `technician_id` opcional. Quando fornecido, a ONT entra
+  // direto no estoque do técnico (sem precisar de transferência).
+  stokOntsBulk: (model, snsOrItems, technician_id) => {
     const body = { model };
     if (Array.isArray(snsOrItems)
           && snsOrItems.length
@@ -455,6 +491,7 @@ export const api = {
       // legado: passa como `macs` mas o backend interpreta cada string como SN
       body.macs = snsOrItems;
     }
+    if (technician_id) body.technician_id = technician_id;
     return client.post(`/stok/onts/bulk`, body).then((r) => r.data);
   },
   // iter211m — Define/corrige o SN de uma ONT (legada ou nova)
@@ -468,7 +505,12 @@ export const api = {
   stokOntTransfer: (mac, technician_id) => client.post(`/stok/onts/transfer-to-tech`, { mac, technician_id }).then((r) => r.data),
   stokOntReturn: (mac) => client.post(`/stok/onts/${mac}/return-to-company`).then((r) => r.data),
   stokStock: () => client.get(`/stok/stock`).then((r) => r.data),
-  stokConsumablePurchase: (consumable_id, pack_qty) => client.post(`/stok/consumables/purchase`, { consumable_id, pack_qty }).then((r) => r.data),
+  // iter215bd — destino opcional: empresa (default) ou técnico
+  stokConsumablePurchase: (consumable_id, pack_qty, technician_id) => {
+    const body = { consumable_id, pack_qty };
+    if (technician_id) body.technician_id = technician_id;
+    return client.post(`/stok/consumables/purchase`, body).then((r) => r.data);
+  },
   stokConsumableTransfer: (consumable_id, quantity, technician_id) => client.post(`/stok/consumables/transfer`, { consumable_id, quantity, technician_id }).then((r) => r.data),
   stokServices: () => client.get(`/stok/services`).then((r) => r.data),
   stokServiceCreate: (data) => client.post(`/stok/services`, data).then((r) => r.data),
@@ -717,6 +759,12 @@ export const api = {
   churnScheduleRunNow: (days = 30) =>
     client.post(`/churn/briefing-schedule/run-now`, null, { params: { days } }).then((r) => r.data),
   smartoltOnuReboot: (extId) => client.post(`/smartolt/onu/${extId}/reboot`).then((r) => r.data),
+  smartoltReconcileOnus: () => client.post(`/smartolt/onus/reconcile`).then((r) => r.data),
+  smartoltHistoryKpis: () => client.get(`/smartolt/history/kpis`).then((r) => r.data),
+  smartoltHistorySwaps: (days = 30, limit = 200) =>
+    client.get(`/smartolt/history/swaps?days=${days}&limit=${limit}`).then((r) => r.data),
+  smartoltHistoryTimeseries: (days = 30) =>
+    client.get(`/smartolt/history/timeseries?days=${days}`).then((r) => r.data),
 
   // ========= SmartOLT AI — monitoramento autônomo =========
   smartoltAiSummary: () => client.get(`/smartolt-ai/summary`).then((r) => r.data),
@@ -1180,6 +1228,11 @@ export const api = {
   // ===== Assinantes (Subscribers) =====
   subscribersList: (params = {}) => client.get(`/subscribers`, { params }).then((r) => r.data),
   subscribersGet: (id) => client.get(`/subscribers/${id}`).then((r) => r.data),
+  subscribersNetworkInfo: (id) =>
+    client.get(`/subscribers/${id}/network-info`).then((r) => r.data),
+  subscribersBackfillCtoPorts: (dryRun = false) =>
+    client.post(`/subscribers/backfill-cto-ports?dry_run=${dryRun ? "true" : "false"}`)
+      .then((r) => r.data),
   subscribersCreate: (d) => client.post(`/subscribers`, d).then((r) => r.data),
   subscribersUpdate: (id, d) => client.patch(`/subscribers/${id}`, d).then((r) => r.data),
   subscribersDelete: (id) => client.delete(`/subscribers/${id}`).then((r) => r.data),

@@ -22,10 +22,12 @@ import {
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import "leaflet.heat";
-import { api } from "@/api";
+import { api, client } from "@/api";
 import { fmtAddress } from "@/utils/format";
 import { Card } from "@/ui";
 import CTOInteractionModal from "@/CTOInteractionModal";
+import LigoTrashModal from "@/components/LigoTrashModal";
+import { Trash2 } from "lucide-react";
 
 // Fix dos ícones default do Leaflet
 delete L.Icon.Default.prototype._getIconUrl;
@@ -377,6 +379,9 @@ export default function RedeIaMap() {
   const [activeCableDetail, setActiveCableDetail] = useState(null);
   const [vlanStats, setVlanStats] = useState(null);
   const [photoLightbox, setPhotoLightbox] = useState(null); // {url, ctoName, uploadedByName}
+  // iter215bk — Lixeira (Undo) para Ativos/Cabos apagados do mapa Ligo
+  // data: { assets: [...], cables: [...] }
+  const [trashData, setTrashData] = useState(null);
   const [cableDraft, setCableDraft] = useState({
     from: null,           // { id, type, lat, lng, name }
     waypoints: [],        // [{lat,lng}] intermediários do draw-cable
@@ -1233,6 +1238,29 @@ export default function RedeIaMap() {
             </span>
           )}
         </span>
+
+        {/* iter215bk — Botão Lixeira sempre visível na toolbar do
+            Mapa Interativo (compartilha o endpoint de soft-delete do
+            módulo Ligo Maps). */}
+        <button data-testid="map-trash-btn"
+          onClick={async () => {
+            try {
+              const r = await client.get("/ligo-maps/trash");
+              setTrashData(r.data || { assets: [], cables: [] });
+            } catch (e) {
+              alert("Não foi possível abrir a lixeira.");
+            }
+          }}
+          style={{
+            marginLeft: "auto", padding: "6px 12px",
+            background: "#fff", color: "#4b1d7a",
+            border: "1px solid #4b1d7a",
+            borderRadius: 6, fontSize: 12, fontWeight: 700,
+            cursor: "pointer", display: "inline-flex",
+            alignItems: "center", gap: 6,
+          }}>
+          <Trash2 size={14} /> Lixeira
+        </button>
       </div>
 
       {/* VLAN strip */}
@@ -2194,6 +2222,25 @@ export default function RedeIaMap() {
           await finalizeDrawCable(serialModal?.endEntity || null, extras);
         }}
       />
+
+      {/* iter215bk — Modal de Lixeira (soft-delete restore) acessível
+          a partir do Mapa Interativo. Lê de /api/ligo-maps/trash. */}
+      {trashData && (
+        <LigoTrashModal
+          data={trashData}
+          onRestore={async (kind, id) => {
+            try {
+              await client.post(`/ligo-maps/restore/${kind}/${id}`, {});
+              const r = await client.get("/ligo-maps/trash");
+              setTrashData(r.data || { assets: [], cables: [] });
+              load();
+            } catch (e) {
+              alert(`Não foi possível restaurar: ${e?.message || e}`);
+            }
+          }}
+          onClose={() => setTrashData(null)}
+        />
+      )}
     </Card>
   );
 }

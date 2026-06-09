@@ -47,6 +47,22 @@ export default function ParceriaAdminPage() {
     refresh();
   };
 
+  // iter215bp — Estorna uma redenção com justificativa obrigatória
+  const reverseRedemption = async (red) => {
+    const reason = window.prompt(
+      `Estornar redenção do cliente "${red.client_name}" `
+        + `(${red.voucher_code})?\n\nMotivo (mín. 3 caracteres):`);
+    if (!reason || reason.trim().length < 3) return;
+    try {
+      await api._client.post(
+        `/parcerias/redemptions/${red.id}/reverse`,
+        { reason: reason.trim() });
+      refresh();
+    } catch (e) {
+      alert(`Erro ao estornar: ${e?.response?.data?.detail || e.message}`);
+    }
+  };
+
   const delPartner = async (pid, name) => {
     if (!window.confirm(`Remover parceiro "${name}"?`)) return;
     await api._client.delete(`/parcerias/partners/${pid}`);
@@ -134,6 +150,7 @@ export default function ParceriaAdminPage() {
           ["redemptions", `Redenções${
             reds.filter((r) => !r.paid).length
               ? ` (${reds.filter((r) => !r.paid).length})` : ""}`],
+          ["history", "Histórico"],
         ].map(([k, v]) => (
           <button key={k} onClick={() => setTab(k)}
                    style={tab === k ? tabActive : tabIdle}
@@ -320,15 +337,29 @@ export default function ParceriaAdminPage() {
                       {new Date(r.redeemed_at).toLocaleString("pt-BR")}
                     </td>
                     <td style={td}>
-                      {r.paid ? (
-                        <span style={{ color: "#16a34a", fontWeight: 700,
-                                         fontSize: 12 }}>✓ Paga</span>
+                      {r.reversed ? (
+                        <span style={{ color: "#b42318", fontWeight: 700,
+                                         fontSize: 11 }}
+                              title={r.reverse_reason}>
+                          ESTORNADA
+                        </span>
+                      ) : r.paid ? (
+                        <span style={{ color: "#237a4b", fontWeight: 700,
+                                         fontSize: 12 }}>Paga</span>
                       ) : (
-                        <button style={miniBtn("#10b981")}
-                                 onClick={() => markPaid(r.id)}
-                                 data-testid={`pa-mark-paid-${r.id}`}>
-                          Marcar pago
-                        </button>
+                        <div style={{ display: "flex", gap: 4,
+                                         flexWrap: "wrap" }}>
+                          <button style={miniBtn("#237a4b")}
+                                   onClick={() => markPaid(r.id)}
+                                   data-testid={`pa-mark-paid-${r.id}`}>
+                            Marcar pago
+                          </button>
+                          <button style={miniBtn("#b42318")}
+                                   onClick={() => reverseRedemption(r)}
+                                   data-testid={`pa-reverse-${r.id}`}>
+                            Estornar
+                          </button>
+                        </div>
                       )}
                     </td>
                   </tr>
@@ -337,6 +368,10 @@ export default function ParceriaAdminPage() {
             </table>
           )}
         </div>
+      )}
+
+      {tab === "history" && (
+        <HistoryTab partners={partners} onChanged={refresh} />
       )}
 
       {showPartnerForm && (
@@ -742,3 +777,222 @@ const miniBtn = (bg) => ({ padding: "4px 8px", background: bg,
 const inp = { width: "100%", padding: "7px 10px", borderRadius: 6,
                 border: `1px solid #cbd5e1`, fontSize: 13,
                 boxSizing: "border-box", marginTop: 4 };
+
+// iter215bp — Histórico completo de scans (sucesso + recusas + estornos)
+const OUTCOME_LABEL = {
+  success: "Sucesso", duplicate_30s: "Duplicado <30s",
+  limit_reached: "Limite atingido", inactive_client: "Cliente inativo",
+  delinquent: "Inadimplente", too_new: "Contrato recente",
+  promo_inactive: "Promo inativa", wrong_tenant: "Outra operadora",
+  qr_invalid: "QR inválido", qr_expired: "QR expirado",
+  ineligible: "Não elegível", reversed: "Estornado",
+};
+const OUTCOME_COLOR = {
+  success: "#237a4b", reversed: "#b42318",
+  duplicate_30s: "#f28c28", limit_reached: "#f28c28",
+  inactive_client: "#64748b", delinquent: "#b42318",
+  too_new: "#64748b", promo_inactive: "#64748b",
+  wrong_tenant: "#b42318", qr_invalid: "#b42318",
+  qr_expired: "#94a3b8", ineligible: "#64748b",
+};
+
+function HistoryTab({ partners, onChanged }) {
+  const [items, setItems] = React.useState([]);
+  const [loading, setLoading] = React.useState(true);
+  const [fPartner, setFPartner] = React.useState("");
+  const [fOutcome, setFOutcome] = React.useState("");
+
+  const load = React.useCallback(async () => {
+    setLoading(true);
+    try {
+      const params = new URLSearchParams({ limit: "500" });
+      if (fPartner) params.set("partner_id", fPartner);
+      if (fOutcome) params.set("outcome", fOutcome);
+      const r = await api._client.get(
+        `/parcerias/scan-history?${params.toString()}`);
+      setItems(r.data?.items || []);
+    } catch (e) {
+      setItems([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [fPartner, fOutcome]);
+
+  React.useEffect(() => { load(); }, [load]);
+
+  const reverseFromHistory = async (it) => {
+    if (!it.redemption_id) return;
+    const reason = window.prompt(
+      `Estornar redenção "${it.voucher_code}" do cliente `
+        + `${it.client_name}?\n\nMotivo (mín. 3 caracteres):`);
+    if (!reason || reason.trim().length < 3) return;
+    try {
+      await api._client.post(
+        `/parcerias/redemptions/${it.redemption_id}/reverse`,
+        { reason: reason.trim() });
+      load();
+      if (typeof onChanged === "function") onChanged();
+    } catch (e) {
+      alert(`Erro: ${e?.response?.data?.detail || e.message}`);
+    }
+  };
+
+  return (
+    <div data-testid="pa-history-tab" style={{ display: "flex",
+        flexDirection: "column", gap: 12 }}>
+      <div style={{ background: "white", border: `1px solid ${T.border}`,
+                     borderRadius: 10, padding: 12, display: "flex",
+                     gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+        <div style={{ fontSize: 11, fontWeight: 700, color: "#475569",
+                       textTransform: "uppercase", letterSpacing: .4 }}>
+          Filtros:
+        </div>
+        <select value={fPartner} onChange={(e) => setFPartner(e.target.value)}
+                 data-testid="pa-history-filter-partner"
+                 style={{ padding: "6px 10px", fontSize: 12,
+                           border: `1px solid ${T.border}`, borderRadius: 6,
+                           minWidth: 180 }}>
+          <option value="">Todos os parceiros</option>
+          {partners.map((p) => (
+            <option key={p.id} value={p.id}>{p.name}</option>
+          ))}
+        </select>
+        <select value={fOutcome} onChange={(e) => setFOutcome(e.target.value)}
+                 data-testid="pa-history-filter-outcome"
+                 style={{ padding: "6px 10px", fontSize: 12,
+                           border: `1px solid ${T.border}`, borderRadius: 6,
+                           minWidth: 180 }}>
+          <option value="">Todos os resultados</option>
+          {Object.entries(OUTCOME_LABEL).map(([k, v]) => (
+            <option key={k} value={k}>{v}</option>
+          ))}
+        </select>
+        <button onClick={load} data-testid="pa-history-reload"
+                 style={{ padding: "6px 12px", fontSize: 12, fontWeight: 700,
+                           border: "none", borderRadius: 6, cursor: "pointer",
+                           background: "#4b1d7a", color: "white" }}>
+          Atualizar
+        </button>
+        <div style={{ marginLeft: "auto", fontSize: 11, color: "#64748b" }}>
+          {items.length} evento{items.length === 1 ? "" : "s"}
+        </div>
+      </div>
+
+      <div style={card}>
+        {loading ? (
+          <Empty>Carregando histórico…</Empty>
+        ) : !items.length ? (
+          <Empty>Nenhum evento registrado com esses filtros.</Empty>
+        ) : (
+          <table style={tbl}>
+            <thead>
+              <tr>
+                <th style={th}>Quando</th>
+                <th style={th}>Resultado</th>
+                <th style={th}>Cliente</th>
+                <th style={th}>Parceiro</th>
+                <th style={th}>Promoção</th>
+                <th style={th}>Voucher</th>
+                <th style={th}>Evidência</th>
+                <th style={th}></th>
+              </tr>
+            </thead>
+            <tbody>
+              {items.map((it) => {
+                const c = OUTCOME_COLOR[it.outcome] || "#64748b";
+                const label = OUTCOME_LABEL[it.outcome] || it.outcome;
+                const isReversed = it.reversed === true
+                  || it.outcome === "reversed";
+                return (
+                  <tr key={it.id}
+                       data-testid={`pa-history-row-${it.id}`}
+                       style={isReversed ? { opacity: .55 } : null}>
+                    <td style={{ ...td, fontSize: 11, color: "#475569",
+                                  whiteSpace: "nowrap" }}>
+                      {new Date(it.attempted_at).toLocaleString("pt-BR")}
+                    </td>
+                    <td style={td}>
+                      <span style={{
+                        background: c, color: "white",
+                        padding: "2px 8px", borderRadius: 12,
+                        fontSize: 10, fontWeight: 700,
+                        textTransform: "uppercase", letterSpacing: .3,
+                      }}>
+                        {isReversed && it.outcome === "success"
+                          ? "Estornado" : label}
+                      </span>
+                      {it.reason && (
+                        <div style={{ fontSize: 10, color: "#64748b",
+                                       marginTop: 2 }}>
+                          {it.reason}
+                        </div>
+                      )}
+                    </td>
+                    <td style={td}>
+                      {it.client_name ? (
+                        <>
+                          <b style={{ fontSize: 12 }}>{it.client_name}</b>
+                          <div style={{ fontSize: 10, color: "#64748b" }}>
+                            CPF {it.client_document
+                              ? `${it.client_document.slice(0, 3)}.***.***-`
+                                + `${it.client_document.slice(-2)}`
+                              : "—"}
+                          </div>
+                        </>
+                      ) : (
+                        <span style={{ color: "#94a3b8" }}>—</span>
+                      )}
+                    </td>
+                    <td style={{ ...td, fontSize: 12 }}>
+                      {it.partner_name}
+                      <div style={{ fontSize: 10, color: "#64748b" }}>
+                        {it.partner_user_email}
+                      </div>
+                    </td>
+                    <td style={{ ...td, fontSize: 12 }}>
+                      {it.promotion_title || "—"}
+                    </td>
+                    <td style={td}>
+                      {it.voucher_code ? (
+                        <code style={{ fontSize: 11, fontWeight: 700,
+                                         color: "#4b1d7a" }}>
+                          {it.voucher_code}
+                        </code>
+                      ) : <span style={{ color: "#94a3b8" }}>—</span>}
+                    </td>
+                    <td style={{ ...td, fontSize: 10, color: "#64748b",
+                                  fontFamily: "monospace" }}>
+                      {it.qr_kind && (
+                        <div>{it.qr_kind}: {it.qr_prefix || "—"}…</div>
+                      )}
+                      {it.reimbursement_value != null && (
+                        <div style={{ fontWeight: 700, color: "#237a4b" }}>
+                          R$ {Number(it.reimbursement_value).toFixed(2)}
+                        </div>
+                      )}
+                    </td>
+                    <td style={{ ...td, textAlign: "right" }}>
+                      {it.outcome === "success" && !isReversed && (
+                        <button
+                          onClick={() => reverseFromHistory(it)}
+                          data-testid={`pa-history-reverse-${it.id}`}
+                          style={{
+                            padding: "4px 10px", fontSize: 10, fontWeight: 700,
+                            border: "1px solid #b42318", color: "#b42318",
+                            background: "white", borderRadius: 5,
+                            cursor: "pointer",
+                          }}>
+                          Estornar
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        )}
+      </div>
+    </div>
+  );
+}

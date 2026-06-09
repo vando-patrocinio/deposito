@@ -355,6 +355,13 @@ class CompletionData(BaseModel):
     # do user 28/05/2026.
     is_defective: Optional[bool] = False
     defective_reason: Optional[str] = None  # opcional, texto livre do técnico
+    # === V9 P2 — Smart Field derived fields ============================
+    # Backward-compatible: todos opcionais. Técnico preenche quando faz
+    # sentido pelo tipo de OS; sistema usa em company_v6 para calcular
+    # truck_roll_avoidance, asset_recovery, reopened_within_7d.
+    resolution_kind: Optional[Literal["remote", "onsite"]] = None  # REPAIR
+    asset_recovered: Optional[bool] = None                          # WITHDRAW
+    signed_receipt: Optional[bool] = None                           # WITHDRAW
 
 
 class TicketIn(BaseModel):
@@ -2854,7 +2861,25 @@ async def reopen_ticket(ticket_id: str, payload: ReopenIn,
         "reopened_at": now_iso(),
         "reopened_by": user.get("email") or user.get("name") or "?",
         "reopen_count": int(t.get("reopen_count") or 0) + 1,
+        # V9 P2 — flag derivado de retrabalho (lido por company_v6
+        # via _ensure_smart_record para penalizar quality score)
+        "reopened": True,
     }
+    # V9 P2 — calcula reopened_within_7d
+    try:
+        from datetime import datetime, timezone
+        closed_at = t.get("closed_at")
+        if closed_at:
+            ca = closed_at
+            if isinstance(ca, str):
+                ca = datetime.fromisoformat(ca.replace("Z", "+00:00"))
+            if ca.tzinfo is None:
+                ca = ca.replace(tzinfo=timezone.utc)
+            delta = (datetime.now(timezone.utc) - ca).days
+            set_fields["reopened_within_7d"] = delta <= 7
+            set_fields["reopened_within_days"] = delta
+    except Exception as e:
+        logger.warning("[reopen] reopened_within_7d calc fail: %s", e)
     if not payload.keep_technician:
         unset_fields["assigned_collaborator_id"] = ""
 
@@ -3555,7 +3580,7 @@ async def public_finalize_ticket(ticket_id: str, payload: PublicFinalizeIn,
     except Exception:
         cto_port_required = True
     if (cto_port_required
-            and t["type"] in ("instalacao", "reparo")
+            and t["type"] in ("instalacao", "reparo", "troca_endereco")
             and not is_admin_test):
         if not cd.cto_id or not cd.cto_port_number:
             raise HTTPException(400, {
@@ -3570,6 +3595,144 @@ async def public_finalize_ticket(ticket_id: str, payload: PublicFinalizeIn,
                 "missing_cto_id": not cd.cto_id,
                 "missing_cto_port_number": not cd.cto_port_number,
             })
+
+    # iter215am — Em OS de retirada/troca: se o SN da ONT NÃO existe no
+    # SmartOLT, técnico DEVE fotografar o equipamento (Claude Sonnet 4.6
+    # analisa depois). Sempre registra movimentação no estoque do
+    # colaborador (via stok.py — fluxo já existente).
+    sn_required = bool((_toggles or {}).get("sn_smartolt_or_photo_required",
+                                              True))
+    # iter215ar — Regra global: se o CLIENTE não está cadastrado no
+    # SmartOLT (sem match de PPPoE nem nome), pula TODAS as validações
+    # relacionadas a SmartOLT. Faz sentido pra ISPs com clientes em
+    # OLTs diferentes (FIBRA CITY etc.) ou ONTs em bridge.
+    client_in_smartolt = False
+    if sn_required and t["type"] in ("retirada", "troca") and not is_admin_test:
+        try:
+            from routes.smartolt import resolve_signal_for_ticket
+            _match = await resolve_signal_for_ticket(t)
+            client_in_smartolt = bool(_match)
+        except Exception as _re:
+            logger.warning(
+                "[lousa] resolve_signal pra checagem SmartOLT falhou "
+                "ticket=%s: %s", ticket_id, _re)
+            client_in_smartolt = False
+    if (sn_required
+            and client_in_smartolt
+            and t["type"] in ("retirada", "troca")
+            and not is_admin_test):
+        ont_sn = (cd.ont or "").strip().upper()
+        sn_in_smartolt = False
+        if ont_sn:
+            onu = await db.smartolt_onus.find_one(
+                {"company_id": company_id_for_toggles,
+                 "sn": {"$regex": f"^{ont_sn}$", "$options": "i"}},
+                {"_id": 0, "sn": 1},
+            )
+            sn_in_smartolt = bool(onu)
+        if not sn_in_smartolt and len(cd.fotos or []) < 1:
+            raise HTTPException(400, {
+                "code": "SN_PHOTO_REQUIRED",
+                "message": (
+                    f"OS de {t['type']} sem SN cadastrado no SmartOLT "
+                    "exige FOTO do equipamento (regra global). Volte e "
+                    "anexe pelo menos 1 foto do equipamento retirado. "
+                    "A IA vai analisar e o item será registrado no seu "
+                    "estoque automaticamente."
+                ),
+                "sn_provided": ont_sn or None,
+                "sn_in_smartolt": False,
+            })
+        # Marca para análise IA assíncrona (Claude Sonnet 4.6) se não tem
+        # SN no SmartOLT mas tem foto. O worker pega depois e atualiza
+        # o registro de estoque com SN/MAC/modelo extraídos da etiqueta.
+        if not sn_in_smartolt and (cd.fotos or []):
+            await db.tickets.update_one(
+                {"id": ticket_id},
+                {"$set": {
+                    "ai_sn_photo_review_pending": True,
+                    "ai_sn_photo_model": "claude-sonnet-4-6",
+                    "ai_sn_photo_queued_at": now_iso(),
+                }},
+            )
+            # Cria entrada pendente no estoque do técnico — fica como
+            # `pending_ai_review` (ou `bloqueado_defeito` quando o técnico
+            # marcou defeito). O worker assíncrono preenche SN/MAC depois.
+            try:
+                snap_ce = t.get("client_snapshot") or {}
+                is_def = bool(cd.is_defective)
+                pending_status = ("bloqueado_defeito" if is_def
+                                   else "pending_ai_review")
+                pending_id = f"ont-pending-{uuid.uuid4().hex[:10]}"
+                # captura a 1ª foto pra rastreabilidade (data URL)
+                first_photo = None
+                for _f in (cd.fotos or []):
+                    if isinstance(_f, str) and _f.startswith("data:image"):
+                        first_photo = _f
+                        break
+                    if isinstance(_f, dict):
+                        _u = _f.get("dataUrl") or _f.get("url") or _f.get("data")
+                        if isinstance(_u, str) and _u.startswith("data:image"):
+                            first_photo = _u
+                            break
+                await db.stok_onts.insert_one({
+                    "id": pending_id,
+                    "company_id": company_id_for_toggles,
+                    "sn": None,
+                    "mac": None,
+                    "model": None,
+                    "location_type": "tecnico",
+                    "location_id": cid,
+                    "location": cid,
+                    "status": pending_status,
+                    "is_defective": is_def,
+                    "defective_reason": (cd.defective_reason or None)
+                                           if is_def else None,
+                    "source": "lousa_retirada_troca_photo",
+                    "via_photo_ai": True,
+                    "ai_review_pending": True,
+                    "ticket_id": ticket_id,
+                    "withdrawn_via_ticket": ticket_id,
+                    "withdrawn_from_client_id": snap_ce.get("id"),
+                    "withdrawn_from_client_name": snap_ce.get("name"),
+                    "withdrawn_by_name": t.get("assigned_collaborator_name"),
+                    "withdrawn_at": now_iso(),
+                    "photo_sample": first_photo,
+                    "created_at": now_iso(),
+                })
+                # Histórico (visível em /estoque/historico)
+                try:
+                    await db.stok_history.insert_one({
+                        "id": str(uuid.uuid4()),
+                        "company_id": company_id_for_toggles,
+                        "date": now_iso(),
+                        "type": "retirada" if t["type"] == "retirada"
+                                  else "instalacao",
+                        "description": (
+                            f"Equipamento retirado SEM SN no SmartOLT "
+                            f"(ticket {ticket_id}). Foto enviada — "
+                            f"análise IA pendente. Status: {pending_status}."
+                            + (" DEFEITUOSO — bloqueado." if is_def else "")
+                        ),
+                        "user": (t.get("assigned_collaborator_name")
+                                  or "Técnico"),
+                        "tag": "lousa_photo_ai_pending",
+                        "ticket_id": ticket_id,
+                        "pending_ont_id": pending_id,
+                    })
+                except Exception as _he:
+                    logger.warning(
+                        "[lousa] stok_history pending falhou: %s", _he)
+                logger.info(
+                    "[lousa] ticket=%s ONT pendente criada (id=%s, "
+                    "tech=%s, defeito=%s) — aguarda IA.",
+                    ticket_id, pending_id, cid, is_def,
+                )
+            except Exception as _pe:
+                logger.warning(
+                    "[lousa] criação ONT pendente falhou ticket=%s: %s",
+                    ticket_id, _pe,
+                )
 
     company_id = t.get("company_id") or DEMO_COMPANY_ID
 
@@ -3850,6 +4013,10 @@ async def public_finalize_ticket(ticket_id: str, payload: PublicFinalizeIn,
             "completion_data": cd_dump,
             "smartolt_managed": is_smartolt_client,
             "equipment_swap": equipment_swap,  # null quando não houve troca
+            # V9 P2 — propaga campos derivados para raiz do ticket
+            "resolution_kind": cd_dump.get("resolution_kind"),
+            "asset_recovered": cd_dump.get("asset_recovered"),
+            "signed_receipt": cd_dump.get("signed_receipt"),
             # iter211bj — flags geofence
             "geofence_distance_m": (int(geofence_distance_m)
                                        if geofence_distance_m is not None else None),
@@ -4229,6 +4396,11 @@ async def finalize_ticket(ticket_id: str, payload: FinalizeIn, user: dict = Depe
             "completion_data": cd_dump,
             "smartolt_managed": is_smartolt_client,
             "equipment_swap": equipment_swap,
+            # V9 P2 — propaga campos derivados para raiz do ticket
+            # (lidos por company_v6._ensure_smart_record)
+            "resolution_kind": cd_dump.get("resolution_kind"),
+            "asset_recovered": cd_dump.get("asset_recovered"),
+            "signed_receipt": cd_dump.get("signed_receipt"),
         }},
     )
     # Quality notes — snapshot do sinal NO FECHAMENTO (apenas SmartOLT-mapped)

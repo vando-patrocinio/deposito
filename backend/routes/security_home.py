@@ -73,7 +73,13 @@ from core import DEMO_COMPANY_ID, get_current_user, is_super_admin
 from database import db
 
 logger = logging.getLogger("ponto.security_home")
-router = APIRouter(prefix="/api/security-home", tags=["security-home"])
+from rbac import mock_guard as _mock_guard
+
+router = APIRouter(
+    prefix="/api/security-home",
+    tags=["security-home"],
+    dependencies=[Depends(_mock_guard("security_home"))],
+)
 portal_router = APIRouter(prefix="/api/security-portal",
                             tags=["security-portal"])
 

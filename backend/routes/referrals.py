@@ -33,6 +33,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 
 from core import DEMO_COMPANY_ID, now_iso, require_role
+from services.rate_limit import limiter, get_limit
 from database import db
 
 logger = logging.getLogger("ponto.referrals")
@@ -870,12 +871,135 @@ async def customer_me(customer=Depends(_require_customer)):
     return _customer_profile_dict(customer, code)
 
 
+# iter215be — QR Code SEGURO: token efêmero (60s), sem dados pessoais.
+# Bug crítico anterior: o fallback do PWA gerava JSON com nome+CPF em
+# texto puro, legível por qualquer câmera. Agora o QR só contém um
+# token opaco; quem escanear sem ser o app parceiro autenticado não
+# consegue ver nada além de uma string aleatória que expira em 60s.
+@router.get("/qr-token")
+@limiter.limit(get_limit("qr_issue"))
+async def issue_qr_token(request: Request,
+                          customer=Depends(_require_customer)):
+    """Emite um token efêmero (60s) para o QR Code do cliente.
+
+    Rate-limited a 20 req/min por IP (iter215be) — evita um cliente
+    travado num loop ficar gerando milhares de tokens.
+
+    O conteúdo do QR é APENAS este token aleatório. Os dados
+    pessoais ficam guardados no backend e são entregues somente ao
+    parceiro autenticado via `/customer/qr-resolve/{token}`.
+    """
+    from datetime import datetime, timedelta, timezone
+    import os as _os
+    token = secrets.token_urlsafe(24)
+    now = datetime.now(timezone.utc)
+    expires_at = now + timedelta(seconds=60)
+    await db.customer_qr_ephemeral.insert_one({
+        "token": token,
+        "subscriber_id": customer["id"],
+        "company_id": customer.get("company_id"),
+        "created_at": now,
+        "expires_at": expires_at,
+    })
+    # iter215bm — QR vira URL pra que câmera comum abra o site Ligo.
+    # App parceiro extrai o token via /q/<token>.
+    base = _os.environ.get(
+        "LIGO_QR_BASE_URL", "https://ligofibra.com.br").rstrip("/")
+    return {
+        "qr_payload": f"{base}/q/{token}",
+        "expires_in": 60,
+        "expires_at": expires_at.isoformat(),
+    }
+
+
+@router.get("/customer/qr-resolve/{token}")
+@limiter.limit(get_limit("qr_resolve"))
+async def resolve_qr_token(
+    request: Request,
+    token: str,
+    user: dict = Depends(require_role("gestor", "parceiro", "administrador")),
+):
+    """Resolve um token de QR Code escaneado por um parceiro autenticado.
+
+    Rate-limited a 30 req/min por IP (iter215be) — defesa em camadas
+    contra brute-force de tokens (embora 2^192 combinações tornem isso
+    impraticável).
+
+    Retorna dados do cliente APENAS se o token estiver válido (não
+    expirado). Tokens são single-use (apagados após resolução).
+    """
+    from datetime import datetime, timezone
+    # iter215bm — Suporta múltiplos formatos:
+    #   "https://ligofibra.com.br/q/<token>"  (novo)
+    #   "LIGO:<token>"                          (legado)
+    #   "<token>"                               (puro)
+    clean = (token or "").strip()
+    if clean.startswith("http://") or clean.startswith("https://"):
+        try:
+            from urllib.parse import urlparse
+            p = urlparse(clean).path or ""
+            if p.startswith("/q/"):
+                clean = p[3:]
+            elif p.startswith("/q2/"):
+                # V2 (Fernet) — não cai nesse endpoint, redireciona pro scan
+                # parceiro autenticado. Aqui só rejeitamos.
+                raise HTTPException(400,
+                    "QR criptografado: use /api/parceiro-portal/scan.")
+        except HTTPException:
+            raise
+        except Exception:
+            raise HTTPException(400, "QR inválido.") from None
+    elif clean.startswith("LIGO:"):
+        clean = clean[5:]
+    rec = await db.customer_qr_ephemeral.find_one({"token": clean})
+    if not rec:
+        raise HTTPException(404, "QR Code inválido ou já consumido.")
+    expires_at = rec.get("expires_at")
+    if isinstance(expires_at, str):
+        expires_at = datetime.fromisoformat(
+            expires_at.replace("Z", "+00:00"))
+    if expires_at and expires_at.tzinfo is None:
+        # Mongo retorna datetime naive — assume UTC
+        expires_at = expires_at.replace(tzinfo=timezone.utc)
+    now = datetime.now(timezone.utc)
+    if expires_at and expires_at < now:
+        await db.customer_qr_ephemeral.delete_one({"token": clean})
+        raise HTTPException(410, "QR Code expirado. Peça ao cliente "
+                                 "para reabrir o QR.")
+    # Busca subscriber
+    sub = await db.subscribers.find_one(
+        {"id": rec["subscriber_id"]}, {"_id": 0},
+    )
+    if not sub:
+        raise HTTPException(404, "Assinante não encontrado.")
+    # Single-use: invalida o token após uso (defesa contra screenshot)
+    await db.customer_qr_ephemeral.delete_one({"token": clean})
+    return {
+        "name": sub.get("name"),
+        "document": sub.get("document") or sub.get("cpf"),
+        "plan_name": sub.get("plan_name"),
+        "status": sub.get("status"),
+        "filial": sub.get("branch") or sub.get("filial_name"),
+        "installation_date": sub.get("installation_date"),
+    }
+
+
 def _customer_profile_dict(sub: Dict[str, Any], code: str) -> Dict[str, Any]:
     """Snapshot canônico do perfil exibido no app `/cliente`.
 
     Inclui status, documento e filial pra renderizar a tela Minha Ligo
     sem precisar de chamadas extras.
     """
+    # iter215bd — "Tempo de cliente" NUNCA pode cair em `created_at` porque
+    # esse é o timestamp de importação do Atlaz (cria registros recentes
+    # em massa). Prioridade real: installation_date → activation_date →
+    # subscriber_since. Se nenhum existir, retorna None e o cliente fica
+    # exibido como "Cliente Ligo" sem o contador.
+    tenure_date = (
+        sub.get("installation_date")
+        or sub.get("activation_date")
+        or sub.get("subscriber_since")
+    )
     return {
         "id": sub["id"],
         "name": sub.get("name"),
@@ -892,8 +1016,7 @@ def _customer_profile_dict(sub: Dict[str, Any], code: str) -> Dict[str, Any]:
         "filial_name": sub.get("filial_name") or sub.get("branch_name")
             or sub.get("filial"),
         # iter215 — pra exibir "tempo de cliente" no ClientQRModal
-        "installation_date": sub.get("installation_date")
-            or sub.get("activation_date") or sub.get("created_at"),
+        "installation_date": tenure_date,
     }
 
 
@@ -1202,6 +1325,18 @@ async def admin_approve_payout(
     await _notify_referrer(cid, p["owner_subscriber_id"], msg,
                             meta={"event": "payout_paid",
                                   "payout_id": payout_id})
+    # Sprint 19 — emit referral.converted
+    try:
+        from services.event_emitters import emit_business
+        await emit_business(
+            kind="referral.converted", actor=user,
+            payload={"payout_id": payout_id,
+                       "owner_subscriber_id": p.get("owner_subscriber_id"),
+                       "amount": float(p.get("amount", 0)),
+                       "method": p.get("method")},
+            severity="media", source="referrals.approve_payout")
+    except Exception:
+        pass
     return {"ok": True}
 
 

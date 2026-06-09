@@ -130,6 +130,95 @@ async def history(
     return {"items": items}
 
 
+# ---------------------------------------------------------------------------
+# Configuração do scheduler diário (auto-apply / notificações)
+# ---------------------------------------------------------------------------
+@router.get("/schedule/config")
+async def get_schedule_config(user: dict = Depends(require_role("gestor"))):
+    """Lê config do scheduler de reajuste pra empresa do usuário."""
+    cid = user.get("company_id") or "co-demo"
+    cfg = await db.readjustment_schedule_config.find_one(
+        {"company_id": cid}, {"_id": 0},
+    ) or {}
+    # Merge com defaults para garantir todos os campos
+    defaults = {
+        "company_id": cid, "enabled": True, "auto_apply": False,
+        "notify_days_before": [30, 7, 1], "check_hour_utc": 3,
+        "whatsapp_notify": True, "whatsapp_days_ahead": 30,
+    }
+    return {**defaults, **cfg}
+
+
+@router.post("/schedule/config")
+async def set_schedule_config(
+    payload: dict,
+    user: dict = Depends(require_role("administrador")),
+):
+    """Atualiza config do scheduler. Campos aceitos:
+    enabled (bool), auto_apply (bool), notify_days_before (list[int]),
+    check_hour_utc (int 0-23), whatsapp_notify (bool),
+    whatsapp_days_ahead (int).
+    """
+    cid = user.get("company_id") or "co-demo"
+    allowed = {"enabled", "auto_apply", "notify_days_before",
+               "check_hour_utc", "whatsapp_notify", "whatsapp_days_ahead"}
+    update = {k: v for k, v in payload.items() if k in allowed}
+    update["company_id"] = cid
+    await db.readjustment_schedule_config.update_one(
+        {"company_id": cid}, {"$set": update}, upsert=True,
+    )
+    saved = await db.readjustment_schedule_config.find_one(
+        {"company_id": cid}, {"_id": 0},
+    )
+    return saved or update
+
+
+@router.get("/notifications")
+async def list_notifications(
+    only_unread: bool = False,
+    user: dict = Depends(require_role("gestor")),
+):
+    """Lista notificações de reajustes próximos para o gestor."""
+    cid = user.get("company_id") or "co-demo"
+    q = {"company_id": cid}
+    if only_unread:
+        q["read"] = False
+    items = await db.readjustment_notifications.find(q, {"_id": 0})\
+        .sort("created_at", -1).limit(200).to_list(200)
+    return {"items": items, "total": len(items)}
+
+
+@router.post("/notifications/{notif_id}/read")
+async def mark_notification_read(
+    notif_id: str,
+    user: dict = Depends(require_role("gestor")),
+):
+    """Marca uma notificação como lida."""
+    cid = user.get("company_id") or "co-demo"
+    await db.readjustment_notifications.update_one(
+        {"id": notif_id, "company_id": cid}, {"$set": {"read": True}},
+    )
+    return {"ok": True}
+
+
+@router.post("/notify-whatsapp")
+async def trigger_whatsapp_notifications(
+    days_ahead: int = Query(30, ge=1, le=120),
+    user: dict = Depends(require_role("administrador")),
+):
+    """Dispara MANUALMENTE notificações WhatsApp para clientes com
+    reajuste nos próximos N dias. Idempotente (não envia 2x ao mesmo
+    cliente para a mesma virada). Útil para regularizar avisos prévios
+    da Anatel sem esperar o cron diário.
+    """
+    from services.readjustment_notifications import (
+        notify_upcoming_readjustments,
+    )
+    cid = user.get("company_id") or "co-demo"
+    result = await notify_upcoming_readjustments(cid, days_ahead=days_ahead)
+    return {"ok": True, **result}
+
+
 @router.get("/cohort")
 async def tenure_cohort(
     user: dict = Depends(require_role("gestor")),

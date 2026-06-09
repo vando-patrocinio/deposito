@@ -17,7 +17,7 @@ import {
   Building2, Eye, EyeOff, Sun, Moon, Bot, UserCircle, MessageCircle, Cpu,
   Receipt, CalendarDays, Wand2, DollarSign, Megaphone, Calculator,
   ShoppingCart, Trello, FileText, CreditCard, Globe, Car, Database,
-  Wifi,
+  Wifi, BrainCircuit,
 } from "lucide-react";
 import CollaboratorApp from "@/CollaboratorApp";
 import VersionBadge from "@/VersionBadge";
@@ -33,6 +33,7 @@ import HoleritePanel from "@/HoleritePanel";
 import HoleriteViewer from "@/HoleriteViewer";
 import FeriadosPanel from "@/FeriadosPanel";
 import SettingsPanel from "@/SettingsPanel";
+import IntegrationCredsCard from "@/IntegrationCredsCard";
 import FinanceiroPanel from "@/FinanceiroPanel";
 import BudgetPanel from "@/BudgetPanel";
 import BillingPanel from "@/BillingPanel";
@@ -52,9 +53,26 @@ import ClientsSegmentPanel from "@/ClientsSegmentPanel";
 import RadiusAuthAttemptsPanel from "@/RadiusAuthAttemptsPanel";
 import { DEFAULT_TAB_PERMISSIONS as _DEFAULT_TAB_PERMS } from "@/TabPermissionsCard";
 import AlvaroPanel from "@/AlvaroPanel";
+import AlvaroCommandCenter from "@/AlvaroCommandCenter";
+import ObservabilityTwin from "@/ObservabilityTwin";
+import HomologationBadge from "@/HomologationBadge";
 import MassMessagingPanel from "@/MassMessagingPanel";
 import SalesFunnelPanel from "@/SalesFunnelPanel";
 import MotorIaCard from "@/MotorIaCard";
+import PresidenteIaPanel from "@/PresidenteIaPanel";
+import AuditTrailPanel from "@/AuditTrailPanel";
+import LgpdPortalPanel from "@/LgpdPortalPanel";
+import BackendHealthPanel from "@/BackendHealthPanel";
+import WarRoomPanel from "@/WarRoomPanel";
+import CtoCommandCenter from "@/CtoCommandCenter";
+import RevenueOpsPanel from "@/RevenueOpsPanel";
+import DataQualityPanel from "@/DataQualityPanel";
+import NervousSystemPanel from "@/NervousSystemPanel";
+import SmartOLTTwinPanel from "@/SmartOLTTwinPanel";
+import AICenterOS from "@/AICenterOS";
+import SmartProvLanding from "@/SmartProvLanding";
+import PreAttendancePromosPanel from "@/PreAttendancePromosPanel";
+import WhatsAppCampaignsPanel from "@/WhatsAppCampaignsPanel";
 import MotorIaUsageCard from "@/MotorIaUsageCard";
 import MotorIaBudgetCard from "@/MotorIaBudgetCard";
 import BudgetAlertBadge from "@/BudgetAlertBadge";
@@ -238,7 +256,11 @@ const NAV_GROUPS = [
       { id: "smartolt-push", icon: Brain, label: "Fila SmartOLT", roles: ["gestor", "administrador", "gestor_rede"] },
       { id: "atendimento", icon: MessageCircle, label: "Atendimento IA", roles: ["gestor", "auditor", "administrador", "colaborador"], requires: "can_attend_whatsapp" },
       { id: "alvaro-ia", icon: Brain, label: "Alvaro IA", roles: ["gestor", "auditor", "administrador"] },
+      { id: "alvaro-command-center", icon: Brain, label: "Alvaro Command Center", roles: ["gestor", "auditor", "administrador"] },
+      { id: "observability-twin", icon: Brain, label: "Observability Twin", roles: ["gestor", "auditor", "administrador"] },
       { id: "mass-messaging", icon: Megaphone, label: "Disparo em Massa", roles: ["gestor", "auditor", "administrador"] },
+      { id: "wa-campaigns", icon: Megaphone, label: "Campanhas WhatsApp", roles: ["gestor", "auditor", "administrador"] },
+      { id: "pre-attendance", icon: Megaphone, label: "Propaganda Pré-Atend.", roles: ["gestor", "auditor", "administrador"] },
       { id: "sales-funnel", icon: Megaphone, label: "Funil de Vendas", roles: ["gestor", "auditor", "administrador"] },
     ],
   },
@@ -328,7 +350,19 @@ const NAV_GROUPS = [
     items: [
       { id: "users", icon: ShieldCheck, label: "Usuários", roles: ["auditor", "administrador"] },
       { id: "motor-ia", icon: Cpu, label: "Motor IA", roles: ["administrador"] },
+      { id: "conselho-ia", icon: BrainCircuit, label: "Presidente IA", roles: ["administrador"] },
+      { id: "warroom", icon: BrainCircuit, label: "Sala de Guerra", roles: ["administrador", "auditor"] },
+      { id: "ai-center", icon: BrainCircuit, label: "AI Center · OS", roles: ["administrador", "auditor", "gestor"] },
+      { id: "cto-command", icon: BrainCircuit, label: "Centro de Comando IA", roles: ["administrador", "auditor"] },
+      { id: "revenue-ops", icon: BrainCircuit, label: "RevenueOps IA · R$", roles: ["administrador", "auditor", "gestor"] },
+      { id: "data-quality", icon: BrainCircuit, label: "Data Quality IA", roles: ["administrador", "auditor", "gestor"] },
+      { id: "nervous-system", icon: BrainCircuit, label: "Sistema Nervoso IA", roles: ["administrador", "auditor", "gestor"] },
+      { id: "smartolt-twin", icon: BrainCircuit, label: "SmartOLT Digital Twin", roles: ["administrador", "auditor", "gestor"] },
+      { id: "audit-trail", icon: ShieldCheck, label: "Audit Trail", roles: ["administrador", "auditor"] },
+      { id: "lgpd-portal", icon: ShieldCheck, label: "LGPD Portal", roles: ["administrador", "auditor"] },
+      { id: "backend-health", icon: ShieldCheck, label: "Saúde Técnica", roles: ["administrador", "auditor"] },
       { id: "settings", icon: SettingsIcon, label: "Configurações", roles: ["auditor", "administrador"] },
+      { id: "integrations", icon: SettingsIcon, label: "Credenciais Integração", roles: ["administrador"] },
       { id: "platform", icon: Building2, label: "Plataforma", roles: ["auditor", "administrador"] },
       { id: "backup", icon: Database, label: "Backup DB", roles: ["auditor", "administrador"], superAdminOnly: true },
     ],
@@ -1085,6 +1119,9 @@ function AppContent() {
       const p = window.location.pathname;
       if (p === "/mural" || p === "/leaderboard") return <LeaderboardMural />;
       if (p === "/tv" || p === "/quadro" || p.startsWith("/tv/")) return <TvHub />;
+      if (p === "/smartprov-ai-center") {
+        return <SmartProvLanding />;
+      }
       if (p.startsWith("/onboarding/")) {
         const token = p.replace("/onboarding/", "");
         const OnboardingPage = require("@/OnboardingPage").default;
@@ -1101,6 +1138,10 @@ function AppContent() {
   // Mural público — TV no escritório (sem auth)
   if (route.path === "/mural" || route.path === "/leaderboard") {
     return <LeaderboardMural />;
+  }
+  // Landing pública SmartProv AI Center — FASE 9 V5.0 (sem auth)
+  if (route.path === "/smartprov-ai-center") {
+    return <SmartProvLanding />;
   }
   // Onboarding público — cliente captura documentos pós-venda (sem auth)
   if ((route.path || "").startsWith("/onboarding/")) {
@@ -1179,6 +1220,7 @@ function AppContent() {
 
   return (
     <AppShell view={view} setView={setView}>
+      <HomologationBadge />
       <OfflineTimeBanner onStatusChange={setSystemStatus} />
       <PublicAccessBanner />
       <BillingBanner />
@@ -1241,11 +1283,14 @@ function AppContent() {
           {view === "clients-no-contract" &&
             <ClientsSegmentPanel segment="no_contract" />}
           {view === "alvaro-ia" && <AlvaroPanel />}
+          {view === "alvaro-command-center" && <AlvaroCommandCenter />}
+          {view === "observability-twin" && <ObservabilityTwin />}
           {view === "mass-messaging" && <MassMessagingPanel />}
           {view === "sales-funnel" && <SalesFunnelPanel />}
           {view === "logs" && <LogsPanel />}
           {view === "client-errors" && <ClientErrorsPanel />}
           {view === "settings" && <SettingsPanel />}
+          {view === "integrations" && <IntegrationCredsCard />}
           {view === "motor-ia" && (
             <div style={{ padding: "0 4px", display: "grid", gap: 16 }}>
               <h1 style={{ fontSize: 24, fontWeight: 700,
@@ -1259,6 +1304,19 @@ function AppContent() {
               <MotorIaCard />
             </div>
           )}
+          {view === "conselho-ia" && <PresidenteIaPanel />}
+          {view === "warroom" && <WarRoomPanel />}
+          {view === "cto-command" && <CtoCommandCenter />}
+          {view === "revenue-ops" && <RevenueOpsPanel />}
+          {view === "data-quality" && <DataQualityPanel />}
+          {view === "nervous-system" && <NervousSystemPanel />}
+          {view === "smartolt-twin" && <SmartOLTTwinPanel />}
+          {view === "ai-center" && <AICenterOS />}
+          {view === "audit-trail" && <AuditTrailPanel />}
+          {view === "lgpd-portal" && <LgpdPortalPanel />}
+          {view === "backend-health" && <BackendHealthPanel />}
+          {view === "pre-attendance" && <PreAttendancePromosPanel />}
+          {view === "wa-campaigns" && <WhatsAppCampaignsPanel />}
           {view === "platform" && <PlatformAdminPanel />}
           {view === "backup" && <BackupPanel />}
           </>

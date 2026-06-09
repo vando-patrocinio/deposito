@@ -19,7 +19,7 @@ from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
-from core import DEMO_COMPANY_ID, now_iso, require_role
+from core import DEMO_COMPANY_ID, now_iso
 from database import db
 from routes.financeiro import require_finance
 
@@ -334,6 +334,17 @@ async def pay_bill(bill_id: str, payload: PayBillPayload,
         }},
     )
     mov.pop("_id", None)
+    # Sprint 19 — emit event (pagamento recebido/efetuado)
+    try:
+        from services.event_emitters import emit_business
+        await emit_business(
+            kind="payment.received", actor=user,
+            payload={"bill_id": bill_id,
+                       "subscriber_id": bill.get("supplier_id"),
+                       "amount": float(paid_amount)},
+            severity="baixa", source="financeiro_ops.pay_bill")
+    except Exception:
+        pass
     return {"ok": True, "movement": mov}
 
 

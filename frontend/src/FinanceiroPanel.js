@@ -458,7 +458,7 @@ function CategoriesTab() {
             { value: "income", label: "Receita" },
             { value: "both", label: "Ambos" },
           ] },
-        { key: "color", label: "Cor (hex)", placeholder: "#3b82f6" },
+        { key: "color", label: "Cor (hex)", placeholder: "#4b1d7a" },
         { key: "active", label: "Ativa", type: "boolean", default: true },
       ]}
       listApi={() => api.finCategoriesList()}

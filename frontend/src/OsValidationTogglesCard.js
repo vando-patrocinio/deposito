@@ -41,6 +41,14 @@ const labels = {
         + "ambientes com SmartOLT 100% sincronizado. Desligado por padrão.",
     icon: "",
   },
+  sn_smartolt_or_photo_required: {
+    title: "Foto + IA quando SN não está no SmartOLT (retirada/troca)",
+    desc: "REGRA GLOBAL: em OS de retirada ou troca, se o SN da ONT NÃO "
+        + "está cadastrado no SmartOLT, o técnico DEVE fotografar o "
+        + "equipamento. A IA (Claude Sonnet 4.6) analisa a foto e registra "
+        + "o item no estoque do colaborador automaticamente. LIGADO por padrão.",
+    icon: "",
+  },
 };
 
 const TOGGLE_KEYS = Object.keys(labels);

@@ -160,6 +160,8 @@ function Login({ onLogged }) {
 function Dashboard({ token, me, reload, onLogout }) {
   const [promos, setPromos] = useState([]);
   const [reds, setReds] = useState([]);
+  const [history, setHistory] = useState([]);  // iter215bp
+  const [historyOpen, setHistoryOpen] = useState(false);  // iter215bp
   const [showScanner, setShowScanner] = useState(false);
   const [selPromo, setSelPromo] = useState("");
   const [result, setResult] = useState(null);
@@ -172,6 +174,12 @@ function Dashboard({ token, me, reload, onLogout }) {
     ]);
     setPromos(pr.data); setReds(rd.data);
     if (pr.data?.length && !selPromo) setSelPromo(pr.data[0].id);
+  };
+  const loadHistory = async () => {
+    try {
+      const r = await axios.get(`${API}/history?limit=200`, h);
+      setHistory(r.data?.items || []);
+    } catch { setHistory([]); }
   };
   useEffect(() => { loadAll(); reload();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -189,6 +197,7 @@ function Dashboard({ token, me, reload, onLogout }) {
     }
     setShowScanner(false);
     loadAll(); reload();
+    if (historyOpen) loadHistory();
   };
 
   return (
@@ -284,6 +293,117 @@ function Dashboard({ token, me, reload, onLogout }) {
               <div className="val">R$ {r.reimbursement_value?.toFixed(2)}</div>
             </div>
           ))}
+        </div>
+
+        {/* iter215bp — Histórico completo (sucessos + recusas + estornos) */}
+        <div className="pa-p-list" data-testid="partner-history-section"
+              style={{ marginTop: 18 }}>
+          <div style={{ display: "flex", alignItems: "center",
+                          gap: 10, marginBottom: 8 }}>
+            <h4 style={{ margin: 0 }}>Histórico completo</h4>
+            <button onClick={() => {
+              const next = !historyOpen;
+              setHistoryOpen(next);
+              if (next && !history.length) loadHistory();
+            }} data-testid="partner-history-toggle"
+              style={{
+                background: "transparent",
+                border: "1px solid rgba(255,255,255,.25)",
+                color: "rgba(255,255,255,.85)",
+                padding: "4px 12px", borderRadius: 14, fontSize: 11,
+                fontWeight: 700, cursor: "pointer",
+              }}>
+              {historyOpen ? "Ocultar" : "Mostrar"}
+            </button>
+            {historyOpen && (
+              <button onClick={loadHistory}
+                data-testid="partner-history-reload"
+                style={{
+                  background: "transparent",
+                  border: "1px solid rgba(255,255,255,.15)",
+                  color: "rgba(255,255,255,.6)",
+                  padding: "4px 10px", borderRadius: 14, fontSize: 10,
+                  cursor: "pointer", marginLeft: "auto",
+                }}>
+                Atualizar
+              </button>
+            )}
+          </div>
+          {historyOpen && (
+            !history.length ? (
+              <div style={{ color: "rgba(255,255,255,.4)",
+                              fontSize: 12, padding: 14,
+                              textAlign: "center" }}>
+                Sem eventos registrados.
+              </div>
+            ) : (
+              history.map((it) => {
+                const isOk = it.outcome === "success" && !it.reversed;
+                const isReversed = it.reversed || it.outcome === "reversed";
+                const color = isReversed ? "#b42318"
+                  : (isOk ? "#10b981"
+                    : (it.outcome === "duplicate_30s"
+                      || it.outcome === "limit_reached" ? "#f28c28"
+                      : "#94a3b8"));
+                const labels = {
+                  success: "Sucesso",
+                  duplicate_30s: "Duplicado <30s",
+                  limit_reached: "Limite",
+                  inactive_client: "Inativo",
+                  delinquent: "Inadimplente",
+                  too_new: "Contrato novo",
+                  promo_inactive: "Promo off",
+                  wrong_tenant: "Outra op.",
+                  qr_invalid: "QR inválido",
+                  qr_expired: "QR expirado",
+                  ineligible: "Inelegível",
+                  reversed: "Estornado",
+                };
+                return (
+                  <div key={it.id} className="pa-p-row"
+                        data-testid={`partner-history-row-${it.id}`}
+                        style={isReversed ? { opacity: .55 } : null}>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ display: "flex", alignItems: "center",
+                                      gap: 8, marginBottom: 2 }}>
+                        <span style={{
+                          background: color, color: "white",
+                          padding: "2px 8px", borderRadius: 10,
+                          fontSize: 9, fontWeight: 800,
+                          textTransform: "uppercase", letterSpacing: .4,
+                        }}>
+                          {isReversed && isOk
+                            ? "Estornado"
+                            : (labels[it.outcome] || it.outcome)}
+                        </span>
+                        <b style={{ fontSize: 13 }}>
+                          {it.client_name || "—"}
+                        </b>
+                      </div>
+                      <div className="meta">
+                        {it.promotion_title || "—"}
+                        {it.voucher_code && ` · ${it.voucher_code}`}
+                        {" · "}
+                        {new Date(it.attempted_at).toLocaleString("pt-BR")}
+                      </div>
+                      {it.reason && (
+                        <div style={{ fontSize: 10,
+                                        color: "rgba(255,255,255,.45)",
+                                        marginTop: 2 }}>
+                          {it.reason}
+                        </div>
+                      )}
+                    </div>
+                    {isOk && it.reimbursement_value != null && (
+                      <div className="val">
+                        R$ {Number(it.reimbursement_value).toFixed(2)}
+                      </div>
+                    )}
+                  </div>
+                );
+              })
+            )
+          )}
         </div>
       </main>
 

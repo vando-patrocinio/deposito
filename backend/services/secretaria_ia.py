@@ -26,16 +26,24 @@ logger = logging.getLogger("secretaria_ia")
 
 AGENT_ID = "secretaria_ia"
 
-SYSTEM_PROMPT = """Você é a Ligo, secretária executiva de IA do gestor de um provedor de internet (ISP).
+SYSTEM_PROMPT = """Você é a Ligo, secretária executiva de IA do gestor de um provedor de internet (ISP). Você também atua como assistente do Presidente IA e responde também pelo nome "Leo" (mesma pessoa, mesmo papel).
 
-Sua função: responder perguntas do gestor sobre dados operacionais do sistema (clientes, técnicos, lousa de serviços, rede óptica/OLT, churn, financeiro) de forma direta, curta e clara em português brasileiro.
+Sua função: responder perguntas e EXECUTAR AÇÕES do gestor sobre dados operacionais e estratégicos do sistema (clientes, técnicos, lousa de serviços, rede óptica/OLT, churn, financeiro, saúde corporativa, riscos, oportunidades) de forma direta, curta e clara em português brasileiro.
 
 REGRAS:
 - Use ferramentas (tools) para buscar dados reais. NUNCA invente números.
-- Quando o gestor te cumprimentar pelo nome (ex: "oi minha Ligo"), responda no mesmo tom amigável.
+- Para perguntas sobre saúde/riscos/oportunidades/churn, use: corporate_health, top_risks, top_opportunities, clients_at_risk ou presidente_scan.
+
+⚠ AÇÕES DESTRUTIVAS (modificam dados): exec_pause_promo, exec_escalate_dunning, exec_assign_technician, exec_flag_dunning, exec_create_inspection_ticket.
+- ANTES de executar QUALQUER ação destrutiva, descreva em 1 frase exatamente o que vai fazer e termine com "Confirma? (responda sim ou não)".
+- SÓ chame a tool de execução QUANDO o gestor responder "sim", "confirmo", "ok", "pode", "executa" ou similar.
+- Se ele disser "não", "cancela", "espera", apenas confirme que cancelou.
+- Se ele pedir uma ação SEM dar parâmetros suficientes (ex: "pause uma promo" sem ID), pergunte qual promo.
+
+REGRAS GERAIS:
+- Quando o gestor te cumprimentar pelo nome (ex: "oi minha Ligo", "oi Leo"), responda no mesmo tom amigável.
 - Seja concisa: 1-3 frases. O gestor lê no WhatsApp/celular.
 - Se a pergunta for ambígua, pergunte de volta antes de chutar.
-- Se NENHUMA ferramenta serve, diga educadamente que você ainda não tem acesso a essa informação.
 - Formate números em pt-BR (47, R$ 1.234, 3 OLTs).
 - Não use markdown pesado — texto plano serve no WhatsApp.
 - Trate o gestor por "você" ou pelo primeiro nome quando souber.
@@ -496,8 +504,23 @@ async def ask(company_id: str, question: str,
     cid = company_id or DEMO_COMPANY_ID
     started = datetime.now(timezone.utc)
 
+    # iter219c — memória de conversa por (cid, who). Mantém últimas 6
+    # mensagens (3 turnos user+assistant) para permitir confirmações
+    # naturais ("sim", "confirmo") sobre ações destrutivas.
+    history: List[Dict[str, Any]] = []
+    if who:
+        try:
+            state = await db.secretaria_conversation_state.find_one(
+                {"company_id": cid, "who": who},
+                {"_id": 0, "messages": 1})
+            if state and state.get("messages"):
+                history = state["messages"][-6:]
+        except Exception:
+            pass
+
     messages: List[Dict[str, Any]] = [
         {"role": "system", "content": SYSTEM_PROMPT},
+        *history,
         {"role": "user", "content": question or ""},
     ]
     tools_used: List[Dict[str, Any]] = []
@@ -558,6 +581,23 @@ async def ask(company_id: str, question: str,
 
     if not answer:
         answer = "Não consegui chegar a uma resposta em tempo hábil. Tenta refrasear?"
+
+    # iter219c — persiste últimas 6 trocas (user+assistant) por (cid,who)
+    if who:
+        try:
+            new_history = (history or []) + [
+                {"role": "user", "content": (question or "")[:1000]},
+                {"role": "assistant", "content": (answer or "")[:1500]},
+            ]
+            new_history = new_history[-6:]
+            await db.secretaria_conversation_state.update_one(
+                {"company_id": cid, "who": who},
+                {"$set": {"company_id": cid, "who": who,
+                            "messages": new_history,
+                            "updated_at": now_iso()}},
+                upsert=True)
+        except Exception:
+            pass
 
     # Audit log (best-effort)
     try:

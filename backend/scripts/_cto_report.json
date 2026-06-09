@@ -1,0 +1,790 @@
+{
+  "report_id": "cto-audit-15a8333d91",
+  "generated_at": "2026-06-08T01:56:57.831245+00:00",
+  "mongo_db": "test_database",
+  "seed": {
+    "seeded": true,
+    "company_id": "demo-cto-audit"
+  },
+  "q1_event_bus_real": {
+    "total_events": 98,
+    "last_24h": 34,
+    "last_7d": 34,
+    "consumed": 88,
+    "pending": 0,
+    "indexes": [
+      {
+        "name": "_id_",
+        "key": [
+          [
+            "_id",
+            1
+          ]
+        ],
+        "unique": false
+      },
+      {
+        "name": "timestamp_-1",
+        "key": [
+          [
+            "timestamp",
+            -1
+          ]
+        ],
+        "unique": false
+      },
+      {
+        "name": "event_type_1_timestamp_-1",
+        "key": [
+          [
+            "event_type",
+            1
+          ],
+          [
+            "timestamp",
+            -1
+          ]
+        ],
+        "unique": false
+      },
+      {
+        "name": "company_id_1_timestamp_-1",
+        "key": [
+          [
+            "company_id",
+            1
+          ],
+          [
+            "timestamp",
+            -1
+          ]
+        ],
+        "unique": false
+      },
+      {
+        "name": "consumed_1",
+        "key": [
+          [
+            "consumed",
+            1
+          ]
+        ],
+        "unique": false
+      }
+    ],
+    "indexes_count": 5,
+    "sample_recent": [
+      {
+        "id": "evt-cfcdaed372154a",
+        "timestamp": "2026-06-08T01:56:57.817887+00:00",
+        "company_id": "demo-cto-audit",
+        "user_id": null,
+        "source": "financeiro",
+        "event_type": "PAYMENT_OVERDUE",
+        "severity": "media",
+        "payload": {
+          "subscriber_id": "demo-pay-1"
+        },
+        "correlation_id": null,
+        "consumed": true,
+        "consumed_at": "2026-06-08T01:56:57.819812+00:00"
+      },
+      {
+        "id": "evt-30af15faf9ea40",
+        "timestamp": "2026-06-08T01:56:57.817708+00:00",
+        "company_id": "demo-cto-audit",
+        "user_id": null,
+        "source": "financeiro",
+        "event_type": "PAYMENT_OVERDUE",
+        "severity": "media",
+        "payload": {
+          "subscriber_id": "demo-pay-0"
+        },
+        "correlation_id": null,
+        "consumed": true,
+        "consumed_at": "2026-06-08T01:56:57.819812+00:00"
+      },
+      {
+        "id": "evt-6f223bacff5a4d",
+        "timestamp": "2026-06-08T01:56:57.817519+00:00",
+        "company_id": "demo-cto-audit",
+        "user_id": "demo-user-attack",
+        "source": "rbac",
+        "event_type": "RBAC_DENIED",
+        "severity": "alta",
+        "payload": {
+          "endpoint": "/api/admin/users"
+        },
+        "correlation_id": null,
+        "consumed": true,
+        "consumed_at": "2026-06-08T01:56:57.819812+00:00"
+      }
+    ]
+  },
+  "q2_event_types_distribution": {
+    "by_event_type": [
+      {
+        "event_type": "<null>",
+        "count": 54,
+        "last_seen": null
+      },
+      {
+        "event_type": "DATA_QUALITY_DROP",
+        "count": 13,
+        "last_seen": "2026-06-08T01:56:51.610049+00:00"
+      },
+      {
+        "event_type": "CLIENT_OFFLINE",
+        "count": 12,
+        "last_seen": "2026-06-08T01:56:57.815955+00:00"
+      },
+      {
+        "event_type": "presidente_scan",
+        "count": 10,
+        "last_seen": null
+      },
+      {
+        "event_type": "CLIENT_CHURN_RISK",
+        "count": 4,
+        "last_seen": "2026-06-08T01:56:57.816926+00:00"
+      },
+      {
+        "event_type": "RBAC_DENIED",
+        "count": 3,
+        "last_seen": "2026-06-08T01:56:57.817519+00:00"
+      },
+      {
+        "event_type": "PAYMENT_OVERDUE",
+        "count": 2,
+        "last_seen": "2026-06-08T01:56:57.817887+00:00"
+      }
+    ],
+    "by_severity": [
+      {
+        "severity": "alta",
+        "count": 47
+      },
+      {
+        "severity": "media",
+        "count": 41
+      },
+      {
+        "severity": "info",
+        "count": 10
+      }
+    ],
+    "by_source": [
+      {
+        "source": "<null>",
+        "count": 54
+      },
+      {
+        "source": "data_quality_ia",
+        "count": 13
+      },
+      {
+        "source": "smartolt",
+        "count": 12
+      },
+      {
+        "source": "presidente_ia",
+        "count": 10
+      },
+      {
+        "source": "churn_scheduler",
+        "count": 4
+      },
+      {
+        "source": "rbac",
+        "count": 3
+      },
+      {
+        "source": "financeiro",
+        "count": 2
+      }
+    ],
+    "distinct_types": 7
+  },
+  "q3_memoria_collections": {
+    "collections": [
+      {
+        "name": "motor_ia_events",
+        "exists": true,
+        "count": 98,
+        "recent_count_24h": 98,
+        "indexes": [
+          "_id_",
+          "timestamp_-1",
+          "event_type_1_timestamp_-1",
+          "company_id_1_timestamp_-1",
+          "consumed_1"
+        ]
+      },
+      {
+        "name": "motor_ia_memory",
+        "exists": true,
+        "count": 14,
+        "recent_count_24h": 14,
+        "indexes": [
+          "_id_",
+          "created_at_-1",
+          "company_id_1_created_at_-1"
+        ]
+      },
+      {
+        "name": "motor_ia_insights",
+        "exists": true,
+        "count": 21,
+        "recent_count_24h": 21,
+        "indexes": [
+          "_id_",
+          "created_at_-1",
+          "company_id_1_created_at_-1"
+        ]
+      },
+      {
+        "name": "motor_ia_predictions",
+        "exists": true,
+        "count": 0,
+        "recent_count_24h": 0,
+        "indexes": [
+          "_id_",
+          "created_at_-1",
+          "company_id_1_created_at_-1"
+        ]
+      },
+      {
+        "name": "motor_ia_decisions",
+        "exists": true,
+        "count": 11,
+        "recent_count_24h": 11,
+        "indexes": [
+          "_id_",
+          "created_at_-1",
+          "company_id_1_created_at_-1"
+        ]
+      },
+      {
+        "name": "motor_ia_actions",
+        "exists": true,
+        "count": 17,
+        "recent_count_24h": 17,
+        "indexes": [
+          "_id_",
+          "created_at_-1",
+          "company_id_1_created_at_-1"
+        ]
+      },
+      {
+        "name": "motor_ia_outcomes",
+        "exists": true,
+        "count": 22,
+        "recent_count_24h": 22,
+        "indexes": [
+          "_id_",
+          "created_at_-1",
+          "company_id_1_created_at_-1"
+        ]
+      },
+      {
+        "name": "motor_ia_learnings",
+        "exists": true,
+        "count": 0,
+        "recent_count_24h": 0,
+        "indexes": [
+          "_id_",
+          "created_at_-1",
+          "company_id_1_created_at_-1"
+        ]
+      }
+    ],
+    "total_collections_in_db": 308
+  },
+  "q4_data_quality_evidence": {
+    "recent_scans": [
+      {
+        "id": "dq-2f067d2ff988",
+        "score": 32.7,
+        "status": "critico",
+        "generated_at": "2026-06-08T01:56:51.609386+00:00",
+        "issues_count": 9,
+        "worst_issues": [
+          {
+            "key": "clients_no_cto",
+            "label": "Clientes sem CTO",
+            "collection": "subscribers",
+            "bad_count": 2788,
+            "total_count": 2788,
+            "pct_clean": 0.0
+          },
+          {
+            "key": "clients_no_address",
+            "label": "Clientes sem endereço",
+            "collection": "subscribers",
+            "bad_count": 2788,
+            "total_count": 2788,
+            "pct_clean": 0.0
+          },
+          {
+            "key": "contracts_incomplete",
+            "label": "Contratos incompletos",
+            "collection": "contracts",
+            "bad_count": 1,
+            "total_count": 1,
+            "pct_clean": 0.0
+          },
+          {
+            "key": "clients_no_plan",
+            "label": "Clientes sem plano",
+            "collection": "subscribers",
+            "bad_count": 2786,
+            "total_count": 2788,
+            "pct_clean": 0.1
+          },
+          {
+            "key": "clients_no_price",
+            "label": "Clientes sem preço",
+            "collection": "subscribers",
+            "bad_count": 2784,
+            "total_count": 2788,
+            "pct_clean": 0.1
+          }
+        ]
+      },
+      {
+        "id": "dq-2ac0f4b6e9af",
+        "score": 32.7,
+        "status": "critico",
+        "generated_at": "2026-06-08T01:32:14.070321+00:00",
+        "issues_count": 9,
+        "worst_issues": [
+          {
+            "key": "clients_no_cto",
+            "label": "Clientes sem CTO",
+            "collection": "subscribers",
+            "bad_count": 2788,
+            "total_count": 2788,
+            "pct_clean": 0.0
+          },
+          {
+            "key": "clients_no_address",
+            "label": "Clientes sem endereço",
+            "collection": "subscribers",
+            "bad_count": 2788,
+            "total_count": 2788,
+            "pct_clean": 0.0
+          },
+          {
+            "key": "contracts_incomplete",
+            "label": "Contratos incompletos",
+            "collection": "contracts",
+            "bad_count": 1,
+            "total_count": 1,
+            "pct_clean": 0.0
+          },
+          {
+            "key": "clients_no_plan",
+            "label": "Clientes sem plano",
+            "collection": "subscribers",
+            "bad_count": 2786,
+            "total_count": 2788,
+            "pct_clean": 0.1
+          },
+          {
+            "key": "clients_no_price",
+            "label": "Clientes sem preço",
+            "collection": "subscribers",
+            "bad_count": 2784,
+            "total_count": 2788,
+            "pct_clean": 0.1
+          }
+        ]
+      },
+      {
+        "id": "dq-fff81773e7bf",
+        "score": 32.7,
+        "status": "critico",
+        "generated_at": "2026-06-08T01:32:14.048746+00:00",
+        "issues_count": 9,
+        "worst_issues": [
+          {
+            "key": "clients_no_cto",
+            "label": "Clientes sem CTO",
+            "collection": "subscribers",
+            "bad_count": 2788,
+            "total_count": 2788,
+            "pct_clean": 0.0
+          },
+          {
+            "key": "clients_no_address",
+            "label": "Clientes sem endereço",
+            "collection": "subscribers",
+            "bad_count": 2788,
+            "total_count": 2788,
+            "pct_clean": 0.0
+          },
+          {
+            "key": "contracts_incomplete",
+            "label": "Contratos incompletos",
+            "collection": "contracts",
+            "bad_count": 1,
+            "total_count": 1,
+            "pct_clean": 0.0
+          },
+          {
+            "key": "clients_no_plan",
+            "label": "Clientes sem plano",
+            "collection": "subscribers",
+            "bad_count": 2786,
+            "total_count": 2788,
+            "pct_clean": 0.1
+          },
+          {
+            "key": "clients_no_price",
+            "label": "Clientes sem preço",
+            "collection": "subscribers",
+            "bad_count": 2784,
+            "total_count": 2788,
+            "pct_clean": 0.1
+          }
+        ]
+      }
+    ],
+    "live_run_now": {
+      "score": 32.7,
+      "status": "critico",
+      "issues_count": 9,
+      "worst_issues": [
+        {
+          "key": "clients_no_cto",
+          "label": "Clientes sem CTO",
+          "collection": "subscribers",
+          "bad_count": 2788,
+          "total_count": 2788,
+          "pct_clean": 0.0
+        },
+        {
+          "key": "clients_no_address",
+          "label": "Clientes sem endereço",
+          "collection": "subscribers",
+          "bad_count": 2788,
+          "total_count": 2788,
+          "pct_clean": 0.0
+        },
+        {
+          "key": "contracts_incomplete",
+          "label": "Contratos incompletos",
+          "collection": "contracts",
+          "bad_count": 1,
+          "total_count": 1,
+          "pct_clean": 0.0
+        },
+        {
+          "key": "clients_no_plan",
+          "label": "Clientes sem plano",
+          "collection": "subscribers",
+          "bad_count": 2786,
+          "total_count": 2788,
+          "pct_clean": 0.1
+        },
+        {
+          "key": "clients_no_price",
+          "label": "Clientes sem preço",
+          "collection": "subscribers",
+          "bad_count": 2784,
+          "total_count": 2788,
+          "pct_clean": 0.1
+        }
+      ],
+      "elapsed_ms": 17
+    }
+  },
+  "q5_security_detectors": {
+    "live_alerts_count": 1,
+    "live_alerts_sample": [
+      {
+        "type": "mass_export",
+        "severity": "media",
+        "title": "Exportação em massa detectada",
+        "message": "admin@empresa.com exportou 5 relatórios nas últimas 1h. Verifique se é legítimo.",
+        "evidence": {
+          "count": 5,
+          "endpoints": [
+            "/api/audit-log/export.csv",
+            "/api/audit-log/lgpd/subject-report",
+            "/api/audit-log/lgpd/subject-report.pdf"
+          ]
+        },
+        "scope": "usr-2100548587"
+      }
+    ],
+    "audit_log_last_24h_by_category": {
+      "export": 11,
+      "destructive": 9,
+      "rbac_blocked": 58,
+      "impersonate": 0
+    },
+    "audit_log_last_7d_by_category": {
+      "export": 11,
+      "destructive": 9,
+      "rbac_blocked": 58,
+      "impersonate": 0
+    }
+  },
+  "q6_decision_engine": {
+    "total_decisions": 11,
+    "last_24h": 11,
+    "executed": 11,
+    "pending": 0,
+    "by_action_type": [
+      {
+        "action_type": "create_retention_opportunity",
+        "count": 4,
+        "avg_confidence": 0.78
+      },
+      {
+        "action_type": "escalate_dunning",
+        "count": 4,
+        "avg_confidence": 0.95
+      },
+      {
+        "action_type": "open_incident",
+        "count": 2,
+        "avg_confidence": 0.92
+      },
+      {
+        "action_type": "notify_manager",
+        "count": 1,
+        "avg_confidence": 0.85
+      }
+    ],
+    "sample_recent": [
+      {
+        "id": "dec-66709400263446",
+        "title": "Inadimplência detectada — demo-pay-1",
+        "action_type": "escalate_dunning",
+        "confidence": 0.95,
+        "executed": true,
+        "reasoning": "Pagamento em atraso. Acionar régua de cobrança automática via WhatsApp antes da suspensão.",
+        "trigger_event_id": "evt-cfcdaed372154a"
+      },
+      {
+        "id": "dec-9b4c75b5ca7944",
+        "title": "Inadimplência detectada — demo-pay-0",
+        "action_type": "escalate_dunning",
+        "confidence": 0.95,
+        "executed": true,
+        "reasoning": "Pagamento em atraso. Acionar régua de cobrança automática via WhatsApp antes da suspensão.",
+        "trigger_event_id": "evt-30af15faf9ea40"
+      },
+      {
+        "id": "dec-027a33d502084f",
+        "title": "Possível tentativa de escalação de privilégio — user demo-user-attack",
+        "action_type": "notify_manager",
+        "confidence": 0.85,
+        "executed": true,
+        "reasoning": "3 tentativas de acesso negadas em sequência. Pode indicar conta comprometida ou bug em integração.",
+        "trigger_event_id": "evt-f8d0d5f6a6074a"
+      }
+    ],
+    "live_cycle_now": {
+      "events_processed": 2,
+      "decisions_created": 0,
+      "decisions_by_type": {},
+      "generated_at": "2026-06-08T01:56:57.869311+00:00",
+      "elapsed_ms": 1
+    }
+  },
+  "q7_action_engine": {
+    "total_actions": 17,
+    "by_status": {
+      "done": 17,
+      "failed": 0,
+      "running": 0
+    },
+    "by_action_type": [
+      {
+        "action_type": "create_retention_opportunity",
+        "count": 6
+      },
+      {
+        "action_type": "open_incident",
+        "count": 4
+      },
+      {
+        "action_type": "escalate_dunning",
+        "count": 4
+      },
+      {
+        "action_type": "notify_manager",
+        "count": 3
+      }
+    ],
+    "dry_run_count": 17,
+    "live_count": 0,
+    "live_mode_env": "0",
+    "outcomes_total": 22,
+    "outcomes_ok": 22,
+    "outcomes_fail": 0,
+    "success_rate_pct": 100.0,
+    "sample_outcomes": [
+      {
+        "id": "out-45a3d52d429e44",
+        "decision_id": "dec-66709400263446",
+        "ok": true,
+        "error": null
+      },
+      {
+        "id": "out-ca47a1608cde49",
+        "decision_id": "dec-9b4c75b5ca7944",
+        "ok": true,
+        "error": null
+      },
+      {
+        "id": "out-e20eb3100c9f4f",
+        "decision_id": "dec-027a33d502084f",
+        "ok": true,
+        "error": null
+      }
+    ],
+    "live_execute_now": {
+      "decisions_processed": 0,
+      "executed": 0,
+      "skipped": 0,
+      "failures": 0,
+      "live_mode": false,
+      "generated_at": "2026-06-08T01:56:57.872986+00:00",
+      "elapsed_ms": 0
+    }
+  },
+  "q8_scheduler_evidence": {
+    "scheduler_instance_present": false,
+    "scheduler_running": false,
+    "jobs": [],
+    "last_executive_health_insight": {
+      "score": 46.5,
+      "status": "critico",
+      "generated_at": "2026-06-08T01:32:14.052869+00:00"
+    },
+    "last_data_quality_insight": {
+      "score": 32.7,
+      "status": "critico",
+      "generated_at": "2026-06-08T01:56:57.860335+00:00"
+    },
+    "process": {
+      "pid": 37916,
+      "process_started_at": "2026-06-08T01:56:57.666843+00:00"
+    },
+    "note": "Esse script roda fora do worker FastAPI, portanto o scheduler reportado aqui é uma NOVA instância — a evidência forte de execução real está nos insights periódicos persistidos."
+  },
+  "q9_estrategista_ia": {
+    "recent_reports": [
+      {
+        "id": "rpt-aae51d7e82fc",
+        "period": "weekly",
+        "title": "Análise Semanal",
+        "llm_used": true,
+        "error": null,
+        "created_at": "2026-06-08T01:42:59.690982+00:00",
+        "text_preview": "# Análise Estratégica Semanal — SmartProv\n**Período: 01-07 Jun 2026 | Status Geral: CRÍTICO**\n\n---\n\n## 1️⃣ TENDÊNCIAS DA SEMANA\n\nA semana registrou **18 eventos** com predominância absoluta de **DATA_QUALITY_DROP** (12 ocorrências, 67% do total), sinalizando degradação sistêmica na integridade dos dados. Seis clientes apresentaram status **CLIENT_OFFLINE**, indicando interrupções no serviço ou falhas de conexão. A boa notícia: **100% de taxa de sucesso nas ações executadas** (9/9), demonstrando que nossa camada de resposta automatizada está funcionando perfeitamente. Contudo, os *insights* de ",
+        "metrics": {
+          "events_total": 18,
+          "decisions_total": 3,
+          "actions_total": 9,
+          "outcomes_ok": 9,
+          "outcomes_fail": 0
+        }
+      },
+      {
+        "id": "rpt-5e8a0545b1c1",
+        "period": "daily",
+        "title": "Briefing Diário",
+        "llm_used": true,
+        "error": null,
+        "created_at": "2026-06-08T01:42:29.656016+00:00",
+        "text_preview": "# BRIEFING DIÁRIO — SmartProv ERP-ISP\n**7 de junho de 2026**\n\n---\n\n## O QUE ACONTECEU (últimas 24h)\n\n**Deterioração crítica da qualidade de dados** dominou o período: 12 eventos de DATA_QUALITY_DROP resultaram em **score de 32,7% (status crítico)**. Paralelamente, 6 clientes ficaram offline, sinalizando instabilidade operacional. O índice de saúde executiva despencou para **46,5% (crítico)**, reflexo direto da degradação técnica.\n\nIncidente coletivo detectado na **CTO-PROD-DEMO** acionou abertura automática de ticket (confiança 92%). Sistema de cobrança identificou inadimplência em 2 assinatur",
+        "metrics": {
+          "events_total": 18,
+          "decisions_total": 3,
+          "actions_total": 9,
+          "outcomes_ok": 9,
+          "outcomes_fail": 0
+        }
+      }
+    ],
+    "live_generate_now": {
+      "period": "daily",
+      "llm_used": true,
+      "error": null,
+      "cached": true,
+      "text_preview": "# BRIEFING DIÁRIO — SmartProv ERP-ISP\n**7 de junho de 2026**\n\n---\n\n## O QUE ACONTECEU (últimas 24h)\n\n**Deterioração crítica da qualidade de dados** dominou o período: 12 eventos de DATA_QUALITY_DROP resultaram em **score de 32,7% (status crítico)**. Paralelamente, 6 clientes ficaram offline, sinalizando instabilidade operacional. O índice de saúde executiva despencou para **46,5% (crítico)**, reflexo direto da degradação técnica.\n\nIncidente coletivo detectado na **CTO-PROD-DEMO** acionou abertura automática de ticket (confiança 92%). Sistema de cobrança identificou inadimplência em 2 assinatur",
+      "elapsed_ms": 0
+    },
+    "emergent_key_present": true
+  },
+  "q10_performance_metrics": {
+    "emit_count": 200,
+    "emit_elapsed_ms": 50,
+    "emit_throughput_per_sec": 3927.6,
+    "decision_cycle_elapsed_ms": 5,
+    "decision_cycle_result": {
+      "events_processed": 200,
+      "decisions_created": 5,
+      "decisions_by_type": {
+        "open_incident": 5
+      },
+      "generated_at": "2026-06-08T01:56:57.931748+00:00"
+    },
+    "action_engine_elapsed_ms": 6,
+    "action_engine_result": {
+      "decisions_processed": 5,
+      "executed": 5,
+      "skipped": 0,
+      "failures": 0,
+      "live_mode": false,
+      "generated_at": "2026-06-08T01:56:57.938484+00:00"
+    }
+  },
+  "q11_tenant_isolation": {
+    "events_with_company_id": 31,
+    "events_without_company_id": 69,
+    "distinct_company_ids": [
+      "co-demo",
+      "co-prod",
+      "demo-cto-audit"
+    ],
+    "distinct_company_count": 3,
+    "decisions_with_company_id": 11,
+    "decisions_without_company_id": 0,
+    "actions_with_company_id": 17,
+    "actions_without_company_id": 0,
+    "coverage_pct_events": 31.0
+  },
+  "q12_audit_chain_integrity": {
+    "audit_log_total": 88,
+    "with_hash": 11,
+    "with_prev_hash": 10,
+    "hash_coverage_pct": 12.5,
+    "last_50_chain_check": {
+      "checked": 50,
+      "ok": 36,
+      "broken": 13,
+      "first_break": {
+        "index": 29,
+        "expected_prev_hash": null,
+        "actual_prev_hash": "",
+        "id": "aud-20969b7e4dc64d",
+        "created_at": "2026-06-08T00:56:49.813848+00:00"
+      }
+    }
+  },
+  "q13_observability": {
+    "events_correlation_id_pct": 0.0,
+    "decisions_with_trigger_event_pct": 100.0,
+    "decisions_with_reasoning_pct": 100.0,
+    "outcomes_total": 27,
+    "outcomes_failures": 0,
+    "outcomes_failures_with_error_msg": 0,
+    "outcomes_error_traceability_pct": null
+  }
+}

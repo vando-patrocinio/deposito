@@ -356,13 +356,13 @@ function LatencyCard({ latency }) {
       <div style={{
         display: "flex", alignItems: "center", gap: 8, marginBottom: 8,
       }}>
-        <Clock size={16} color="#3b82f6" />
+        <Clock size={16} color="#4b1d7a" />
         <div style={{ fontSize: 11, fontWeight: 700, color: "var(--text-muted)",
                        textTransform: "uppercase", letterSpacing: 0.5 }}>
           Latência da Isabella
         </div>
       </div>
-      <div style={{ fontSize: 26, fontWeight: 800, color: "#3b82f6",
+      <div style={{ fontSize: 26, fontWeight: 800, color: "#4b1d7a",
                      fontFamily: "var(--font-mono, ui-monospace)" }}
         data-testid="wa-health-latency-p50">
         {latency.p50_s ?? 0}s
@@ -487,7 +487,7 @@ function LatencySeriesChart({ series }) {
         marginBottom: 8, flexWrap: "wrap", gap: 8,
       }}>
         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-          <TrendingUp size={14} color="#3b82f6" />
+          <TrendingUp size={14} color="#4b1d7a" />
           <div style={{ fontWeight: 700, fontSize: 13 }}>
             Latência da Isabella ao longo do tempo
           </div>

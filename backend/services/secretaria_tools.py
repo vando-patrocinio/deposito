@@ -763,3 +763,349 @@ TOOL_FUNCS_EXTRA = {
     "notifications_unread": _tool_notifications_unread,
     "ask_neo": _tool_ask_neo,
 }
+
+
+# ─────────────────────────────────────────────────────────────────
+# iter219 — Tools do Presidente IA (saúde corporativa, riscos,
+# oportunidades). Permite que Leo/Ligo responda perguntas tipo:
+# "como está a saúde da empresa?", "quais riscos hoje?",
+# "qual oportunidade está sobrando?", "roda uma varredura agora".
+# ─────────────────────────────────────────────────────────────────
+async def _tool_corporate_health(company_id: str,
+                                    args: Dict[str, Any]) -> Dict[str, Any]:
+    from services.presidente_ia import compute_corporate_health
+    return await compute_corporate_health(company_id)
+
+
+async def _tool_top_risks(company_id: str,
+                             args: Dict[str, Any]) -> Dict[str, Any]:
+    from services.presidente_ia import (
+        compute_corporate_health, compute_risks)
+    h = await compute_corporate_health(company_id)
+    r = await compute_risks(company_id, h)
+    limit = int(args.get("limit") or 5)
+    flat = (r.get("criticos") or []) + (r.get("altos") or []) \
+        + (r.get("medios") or [])
+    return {"total": r.get("total", 0),
+             "criticos": len(r.get("criticos") or []),
+             "altos": len(r.get("altos") or []),
+             "medios": len(r.get("medios") or []),
+             "top": flat[:limit]}
+
+
+async def _tool_top_opportunities(company_id: str,
+                                      args: Dict[str, Any]) -> Dict[str, Any]:
+    from services.presidente_ia import compute_opportunities
+    o = await compute_opportunities(company_id)
+    limit = int(args.get("limit") or 5)
+    return {"total": o.get("total", 0),
+             "receita_potencial_brl": o.get("receita_potencial_brl", 0),
+             "top": (o.get("items") or [])[:limit]}
+
+
+async def _tool_presidente_scan(company_id: str,
+                                   args: Dict[str, Any]) -> Dict[str, Any]:
+    from services.presidente_ia import proactive_scan
+    res = await proactive_scan(company_id)
+    # devolve só o essencial pro LLM (sem evidências pesadas)
+    return {
+        "ok": res.get("ok"),
+        "elapsed_ms": res.get("elapsed_ms"),
+        "health_score": res.get("health", {}).get("score"),
+        "health_status": res.get("health", {}).get("status"),
+        "risks_total": res.get("risks", {}).get("total"),
+        "opportunities_total": res.get("opportunities", {}).get("total"),
+        "receita_potencial_brl": res.get("opportunities", {})
+            .get("receita_potencial_brl"),
+        "predictions_made": res.get("predictions", {}).get("predicted"),
+        "correlations_found": len(res.get("correlations") or []),
+    }
+
+
+async def _tool_clients_at_risk(company_id: str,
+                                    args: Dict[str, Any]) -> Dict[str, Any]:
+    from services.presidente_ia import compute_clients_at_risk
+    limit = int(args.get("limit") or 10)
+    items = await compute_clients_at_risk(company_id, limit=limit)
+    return {"total": len(items), "items": items}
+
+
+# Adiciona specs + funcs ao registro
+TOOLS_SPEC_EXTRA.extend([
+    {
+        "type": "function",
+        "function": {
+            "name": "corporate_health",
+            "description": (
+                "Saúde corporativa atual da empresa (score 0-100, "
+                "status saudavel/atencao/alerta/critico) e indicadores "
+                "principais (churn, inadimplência, ONUs offline). "
+                "Use quando o gestor perguntar 'como está a saúde da "
+                "empresa', 'tudo bem?', 'situação geral'."
+            ),
+            "parameters": {"type": "object", "properties": {}},
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "top_risks",
+            "description": (
+                "Top riscos corporativos atuais (críticos/altos/médios). "
+                "Use quando perguntarem 'qual risco temos hoje', 'o que "
+                "está em risco', 'onde devo focar', 'algum problema "
+                "grave'."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "limit": {"type": "integer", "minimum": 1,
+                                "maximum": 20, "default": 5},
+                },
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "top_opportunities",
+            "description": (
+                "Top oportunidades de receita identificadas (upsell, "
+                "cross-sell SecurityHome, leads parados, etc.). "
+                "Use quando perguntarem 'onde tem dinheiro pra ganhar', "
+                "'oportunidades', 'o que estamos perdendo', 'onde "
+                "investir'."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "limit": {"type": "integer", "minimum": 1,
+                                "maximum": 20, "default": 5},
+                },
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "clients_at_risk",
+            "description": (
+                "Clientes ativos com maior risco de churn (score 0-100 "
+                "baseado em inadimplência, sinal baixo, etc.). "
+                "Use quando perguntarem 'quem está pra cancelar', "
+                "'churn alto', 'clientes em risco', 'quem perdeu sinal'."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "limit": {"type": "integer", "minimum": 1,
+                                "maximum": 30, "default": 10},
+                },
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "presidente_scan",
+            "description": (
+                "Executa uma varredura completa AGORA pelo Presidente "
+                "IA (health + riscos + oportunidades + predições + "
+                "correlações) e devolve o resumo. Use só quando o "
+                "gestor pedir explicitamente 'roda uma varredura', "
+                "'atualiza tudo', 'me dá um status agora'."
+            ),
+            "parameters": {"type": "object", "properties": {}},
+        },
+    },
+])
+
+TOOL_FUNCS_EXTRA.update({
+    "corporate_health": _tool_corporate_health,
+    "top_risks": _tool_top_risks,
+    "top_opportunities": _tool_top_opportunities,
+    "clients_at_risk": _tool_clients_at_risk,
+    "presidente_scan": _tool_presidente_scan,
+})
+
+
+# ─────────────────────────────────────────────────────────────────
+# iter219c — Tools de EXECUÇÃO (chefe de gabinete digital).
+# Ações destrutivas: o LLM já foi instruído via SYSTEM_PROMPT a pedir
+# confirmação ANTES de chamar essas tools. Cada tool delega para
+# services/agent_tools.py (que já tem audit log em
+# conselho_ia_agent_actions).
+# ─────────────────────────────────────────────────────────────────
+async def _exec_via_agent_tools(company_id: str, tool_name: str,
+                                    args: Dict[str, Any]) -> Dict[str, Any]:
+    """Wrapper único: chama services.agent_tools.execute_tool_call."""
+    from services.agent_tools import execute_tool_call
+    payload = {
+        "tool": tool_name,
+        "args": args,
+        "justification": args.pop("_justification", None)
+            or "Solicitado pelo gestor via Leo (WhatsApp)",
+    }
+    res = await execute_tool_call(company_id, payload)
+    return {
+        "status": res.get("status"),
+        "tool": tool_name,
+        "result": res.get("result"),
+        "error": res.get("error"),
+        "action_id": res.get("action_id"),
+    }
+
+
+async def _tool_exec_pause_promo(company_id: str,
+                                    args: Dict[str, Any]) -> Dict[str, Any]:
+    return await _exec_via_agent_tools(
+        company_id, "pause_promo_inactive",
+        {"promotion_id": args.get("promotion_id"),
+         "reason": args.get("reason") or "solicitação do gestor via Leo"})
+
+
+async def _tool_exec_escalate_dunning(company_id: str,
+                                          args: Dict[str, Any]) -> Dict[str, Any]:
+    return await _exec_via_agent_tools(
+        company_id, "escalate_dunning",
+        {"subscriber_ids": args.get("subscriber_ids") or [],
+         "to_stage": int(args.get("to_stage") or 2),
+         "reason": args.get("reason") or "escalada solicitada via Leo"})
+
+
+async def _tool_exec_assign_technician(company_id: str,
+                                           args: Dict[str, Any]) -> Dict[str, Any]:
+    return await _exec_via_agent_tools(
+        company_id, "assign_technician",
+        {"ticket_id": args.get("ticket_id"),
+         "technician_id": args.get("technician_id"),
+         "reason": args.get("reason") or "atribuição via Leo"})
+
+
+async def _tool_exec_flag_dunning(company_id: str,
+                                      args: Dict[str, Any]) -> Dict[str, Any]:
+    return await _exec_via_agent_tools(
+        company_id, "flag_dunning",
+        {"subscriber_ids": args.get("subscriber_ids") or [],
+         "reason": args.get("reason") or "marcar pra cobrança via Leo"})
+
+
+async def _tool_exec_create_inspection_ticket(company_id: str,
+                                                  args: Dict[str, Any]
+                                                  ) -> Dict[str, Any]:
+    return await _exec_via_agent_tools(
+        company_id, "create_inspection_ticket",
+        {"cto_id": args.get("cto_id"),
+         "neighborhood": args.get("neighborhood"),
+         "reason": args.get("reason") or "inspeção solicitada via Leo"})
+
+
+TOOLS_SPEC_EXTRA.extend([
+    {
+        "type": "function",
+        "function": {
+            "name": "exec_pause_promo",
+            "description": (
+                "EXECUTA: pausa (active=False) uma promoção de parceria. "
+                "AÇÃO DESTRUTIVA — só chame depois que o gestor "
+                "responder 'sim' ou 'confirmo'."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "promotion_id": {"type": "string"},
+                    "reason": {"type": "string"},
+                },
+                "required": ["promotion_id"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "exec_escalate_dunning",
+            "description": (
+                "EXECUTA: eleva o dunning_stage (2..5) de assinantes "
+                "que já estão na régua de cobrança. AÇÃO DESTRUTIVA — "
+                "só chame depois que o gestor confirmar."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "subscriber_ids": {"type": "array",
+                                          "items": {"type": "string"}},
+                    "to_stage": {"type": "integer", "minimum": 2,
+                                    "maximum": 5},
+                    "reason": {"type": "string"},
+                },
+                "required": ["subscriber_ids", "to_stage"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "exec_assign_technician",
+            "description": (
+                "EXECUTA: atribui um técnico (collaborator) a um ticket "
+                "aberto. AÇÃO DESTRUTIVA — confirmação obrigatória."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "ticket_id": {"type": "string"},
+                    "technician_id": {"type": "string"},
+                    "reason": {"type": "string"},
+                },
+                "required": ["ticket_id", "technician_id"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "exec_flag_dunning",
+            "description": (
+                "EXECUTA: marca assinantes para entrar na régua de "
+                "cobrança (dunning_queue=True). AÇÃO DESTRUTIVA — "
+                "confirmação obrigatória."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "subscriber_ids": {"type": "array",
+                                          "items": {"type": "string"}},
+                    "reason": {"type": "string"},
+                },
+                "required": ["subscriber_ids"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "exec_create_inspection_ticket",
+            "description": (
+                "EXECUTA: cria um ticket de inspeção/preventiva para "
+                "uma CTO ou bairro. AÇÃO que cria registro — pedir "
+                "confirmação."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "cto_id": {"type": "string"},
+                    "neighborhood": {"type": "string"},
+                    "reason": {"type": "string"},
+                },
+            },
+        },
+    },
+])
+
+TOOL_FUNCS_EXTRA.update({
+    "exec_pause_promo": _tool_exec_pause_promo,
+    "exec_escalate_dunning": _tool_exec_escalate_dunning,
+    "exec_assign_technician": _tool_exec_assign_technician,
+    "exec_flag_dunning": _tool_exec_flag_dunning,
+    "exec_create_inspection_ticket": _tool_exec_create_inspection_ticket,
+})

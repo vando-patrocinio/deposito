@@ -1324,26 +1324,360 @@ async def get_onu_signal_live(external_id: str,
         await db.smartolt_config.update_one(
             {"company_id": cid}, {"$unset": {"rate_limited_until": 1}},
         )
+        # iter215ap — Botão Live agora ZERA o cache da OLT/ONU antes de
+        # buscar de novo. Se a SmartOLT responder com sinal válido, os
+        # campos voltam preenchidos. Se vier LOS/400, ficam None pra UI
+        # mostrar "sem leitura" honesto (sem valor velho enganoso).
+        await db.smartolt_onus.update_one(
+            {"company_id": cid, "unique_external_id": external_id},
+            {"$set": {
+                "signal_text": None,
+                "signal_1310": None,
+                "signal_1490": None,
+                "status": None,
+                "last_status_change": None,
+                "signal_synced_at": None,
+                "live_cleared_at": now_iso(),
+            }},
+        )
+        # Atualiza o dict local também pra resposta refletir o estado limpo
+        for k in ("signal_text", "signal_1310", "signal_1490", "status",
+                   "last_status_change", "signal_synced_at"):
+            onu[k] = None
+    recovered = False
     try:
         sig = await _http_get(cfg, f"/onu/get_onu_signal/{external_id}")
         st = await _http_get(cfg, f"/onu/get_onu_status/{external_id}")
     except Exception as e:
-        return {"cached": True, "onu": onu, "warning": f"live_fetch_failed: {e}"}
+        emsg = str(e)
+        is_400 = ("400" in emsg) or ("Bad Request" in emsg)
+        # iter215as — Cache pode estar com external_id/SN ANTIGOS (cliente
+        # trocou de ONU fisicamente). Em 400 + force, fazemos bulk lookup
+        # pelo `name` (PPPoE) e atualizamos o cache local com o ONU atual.
+        if is_400 and force and onu.get("name"):
+            try:
+                bulk = await _http_get(cfg, "/onu/get_all_onus_details")
+                items = (bulk or {}).get("response") or []
+                target_name_norm = _norm(onu.get("name"))
+                new = None
+                for it in items:
+                    if _norm(it.get("name")) == target_name_norm:
+                        new = it
+                        break
+                if new and new.get("unique_external_id") != external_id:
+                    new_ext = str(new.get("unique_external_id") or "")
+                    new_sn = str(new.get("sn") or "")
+                    logger.info(
+                        "[smartolt] cache stale: name=%s old_ext=%s "
+                        "new_ext=%s old_sn=%s new_sn=%s — atualizando",
+                        onu.get("name"), external_id, new_ext,
+                        onu.get("sn"), new_sn,
+                    )
+                    await db.smartolt_onus.update_one(
+                        {"company_id": cid,
+                         "unique_external_id": external_id},
+                        {"$set": {
+                            "unique_external_id": new_ext,
+                            "sn": new_sn,
+                            "olt_id": new.get("olt_id"),
+                            "olt_name": new.get("olt_name"),
+                            "board": new.get("board"),
+                            "port": new.get("port"),
+                            "onu": new.get("onu"),
+                            "onu_type": new.get("onu_type"),
+                            "status": new.get("status"),
+                            "cache_recovered_at": now_iso(),
+                            "previous_external_id": external_id,
+                            "previous_sn": onu.get("sn"),
+                        }},
+                    )
+                    try:
+                        sig = await _http_get(
+                            cfg, f"/onu/get_onu_signal/{new_ext}")
+                        st = await _http_get(
+                            cfg, f"/onu/get_onu_status/{new_ext}")
+                        onu["unique_external_id"] = new_ext
+                        onu["sn"] = new_sn
+                        external_id = new_ext
+                        recovered = True
+                    except Exception as _re:
+                        logger.warning(
+                            "[smartolt] retry após recovery falhou: %s",
+                            _re)
+            except Exception as _be:
+                logger.warning(
+                    "[smartolt] bulk recovery falhou: %s", _be)
+        if not recovered:
+            current_status = (onu.get("status") or "").upper()
+            is_los = ("LOS" in current_status
+                       or "OFFLINE" in current_status
+                       or "DYINGGASP" in current_status)
+            if is_400 and force:
+                friendly = (
+                    "Sem leitura: SmartOLT recusou o request. Cache foi "
+                    "limpo e tentamos resolver pelo nome — mas não "
+                    "encontramos esse ONU no SmartOLT agora. Pode ser "
+                    "LOS/offline ou foi removido da OLT."
+                )
+            elif is_400 and is_los:
+                friendly = (
+                    "ONU em LOS/offline — SmartOLT não consegue ler "
+                    "sinal ao vivo. Sem leitura disponível."
+                )
+            elif is_400:
+                friendly = (
+                    "SmartOLT recusou o request (400). Provavelmente a "
+                    "ONU está em LOS ou ainda não foi ativada."
+                )
+            else:
+                friendly = f"live_fetch_failed: {emsg.splitlines()[0][:160]}"
+            return {"cached": True, "onu": onu, "warning": friendly,
+                    "live_error": {"is_los": is_los, "is_400": is_400,
+                                      "cleared": bool(force),
+                                      "recovered": False,
+                                      "message": emsg[:300]}}
     sig_resp = sig.get("response") or {}
     st_resp = st.get("response") or {}
     update = {
-        "signal_text": sig_resp.get("signal") or onu.get("signal_text"),
-        "signal_1310": sig_resp.get("signal_1310", onu.get("signal_1310")),
-        "signal_1490": sig_resp.get("signal_1490", onu.get("signal_1490")),
-        "status": st_resp.get("status") or onu.get("status"),
-        "last_status_change": st_resp.get("last_status_change") or onu.get("last_status_change"),
+        "signal_text": sig_resp.get("signal"),
+        "signal_1310": sig_resp.get("signal_1310"),
+        "signal_1490": sig_resp.get("signal_1490"),
+        "status": st_resp.get("status"),
+        "last_status_change": st_resp.get("last_status_change"),
         "signal_synced_at": now_iso(),
     }
     await db.smartolt_onus.update_one(
         {"company_id": cid, "unique_external_id": external_id}, {"$set": update},
     )
     onu.update(update)
-    return {"cached": False, "onu": onu}
+    resp = {"cached": False, "onu": onu}
+    # iter215as — sinaliza pro frontend se o cache foi recuperado (SN/ext
+    # mudaram porque a ONU foi trocada fisicamente).
+    if recovered:
+        resp["cache_recovered"] = True
+        resp["recovery_note"] = (
+            f"ONU foi trocada — cache atualizado para SN {onu.get('sn')}"
+        )
+    return resp
+
+
+@router.get("/history/kpis")
+async def smartolt_history_kpis(
+    user: dict = Depends(get_current_user),
+):
+    """iter215au — KPIs profissionais do histórico SmartOLT.
+
+    Segue boas práticas FTTH/GPON (TM Forum + FTTH Council):
+      • Inventário (total, online, LOS, power-off)
+      • Crescimento líquido (criadas - removidas) últimos 30d
+      • Trocas detectadas no mês (via swap_detected_at)
+      • MTBF estimado (dias entre authorization_date e swap_detected_at)
+      • Sinal médio downstream (1490nm) — saúde da rede
+      • % em LOS — indicador de degradação
+      • Top fornecedores por SN prefix (reliability ranking)
+    """
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+    from datetime import datetime, timedelta, timezone
+    now = datetime.now(timezone.utc)
+    cutoff_30d = (now - timedelta(days=30)).isoformat()
+    # Inventário básico
+    total = await db.smartolt_onus.count_documents({"company_id": cid})
+    online = await db.smartolt_onus.count_documents(
+        {"company_id": cid, "status": {"$regex": "online", "$options": "i"}})
+    los_count = await db.smartolt_onus.count_documents(
+        {"company_id": cid,
+         "status": {"$regex": "LOS|DyingGasp|offline", "$options": "i"}})
+    poweroff = await db.smartolt_onus.count_documents(
+        {"company_id": cid,
+         "status": {"$regex": "power", "$options": "i"}})
+    # Trocas (swap_detected_at presente)
+    swaps_total = await db.smartolt_onus.count_documents(
+        {"company_id": cid, "swap_detected_at": {"$exists": True}})
+    swaps_30d = await db.smartolt_onus.count_documents(
+        {"company_id": cid, "swap_detected_at": {"$gte": cutoff_30d}})
+    # Novos cadastros via reconcile últimos 30d
+    new_30d = await db.smartolt_onus.count_documents(
+        {"company_id": cid, "created_via_reconcile_at": {"$gte": cutoff_30d}})
+    # Sinal médio (downstream 1490nm) — só ONUs online com sinal numérico
+    pipeline = [
+        {"$match": {"company_id": cid, "signal_1490": {"$ne": None}}},
+        {"$project": {"signal_num": {
+            "$convert": {"input": "$signal_1490", "to": "double",
+                          "onError": None, "onNull": None}}}},
+        {"$match": {"signal_num": {"$ne": None}}},
+        {"$group": {"_id": None,
+                    "avg": {"$avg": "$signal_num"},
+                    "min": {"$min": "$signal_num"},
+                    "max": {"$max": "$signal_num"}}},
+    ]
+    agg = await db.smartolt_onus.aggregate(pipeline).to_list(1)
+    signal_stats = agg[0] if agg else {"avg": None, "min": None, "max": None}
+    # MTBF — avg dias entre authorization_date e swap_detected_at
+    swaps_with_dates = await db.smartolt_onus.find(
+        {"company_id": cid,
+         "swap_detected_at": {"$exists": True},
+         "authorization_date": {"$exists": True, "$ne": None}},
+        {"_id": 0, "authorization_date": 1, "swap_detected_at": 1},
+    ).to_list(2000)
+    mtbf_days = None
+    if swaps_with_dates:
+        deltas: List[float] = []
+        for s in swaps_with_dates:
+            try:
+                auth_str = s["authorization_date"]
+                # Pode vir "06-Jun-2026 11:56:22" do SmartOLT — tentamos
+                # vários formatos
+                ad: Optional[datetime] = None
+                for fmt in ("%d-%b-%Y %H:%M:%S", "%Y-%m-%d %H:%M:%S",
+                             "%Y-%m-%dT%H:%M:%S"):
+                    try:
+                        ad = datetime.strptime(str(auth_str)[:25], fmt)
+                        break
+                    except Exception:
+                        continue
+                if not ad:
+                    continue
+                sd_str = s["swap_detected_at"]
+                sd = datetime.fromisoformat(
+                    sd_str.replace("Z", "+00:00"))
+                if sd.tzinfo is None:
+                    sd = sd.replace(tzinfo=timezone.utc)
+                if ad.tzinfo is None:
+                    ad = ad.replace(tzinfo=timezone.utc)
+                deltas.append((sd - ad).total_seconds() / 86400.0)
+            except Exception:
+                continue
+        if deltas:
+            mtbf_days = round(sum(deltas) / len(deltas), 1)
+    # Top fornecedores (prefixo do SN — 4 chars)
+    vendor_map = {
+        "ALCL": "Nokia/Alcatel",
+        "HWTC": "Huawei",
+        "ZTEG": "ZTE",
+        "CMSZ": "ZTE (rebrand)",
+        "FHTT": "Fiberhome",
+        "ITBS": "Intelbras",
+        "GPON": "Genérico",
+    }
+    pipeline_v = [
+        {"$match": {"company_id": cid, "sn": {"$ne": None,
+                                                "$type": "string"}}},
+        {"$project": {"prefix": {"$toUpper": {"$substr": ["$sn", 0, 4]}},
+                       "status": 1}},
+        {"$group": {"_id": "$prefix", "count": {"$sum": 1},
+                    "los": {"$sum": {"$cond": [
+                        {"$regexMatch": {"input": {"$ifNull": ["$status", ""]},
+                                            "regex": "LOS|offline|DyingGasp",
+                                            "options": "i"}},
+                        1, 0]}}}},
+        {"$sort": {"count": -1}},
+        {"$limit": 10},
+    ]
+    vendors_raw = await db.smartolt_onus.aggregate(pipeline_v).to_list(10)
+    vendors = []
+    for v in vendors_raw:
+        c = v.get("count") or 0
+        los = v.get("los") or 0
+        vendors.append({
+            "prefix": v["_id"],
+            "vendor": vendor_map.get((v["_id"] or "").upper(),
+                                       "Desconhecido"),
+            "count": c,
+            "los": los,
+            "los_pct": round((los / c) * 100, 1) if c else 0,
+        })
+    # Saúde geral (health score 0-100)
+    health_score = 100
+    if total > 0:
+        los_pct = (los_count / total) * 100
+        health_score = max(0, round(100 - los_pct * 1.5, 0))
+    return {
+        "inventory": {
+            "total": total,
+            "online": online,
+            "los": los_count,
+            "poweroff": poweroff,
+            "online_pct": round((online / total) * 100, 1) if total else 0,
+            "los_pct": round((los_count / total) * 100, 1) if total else 0,
+        },
+        "lifecycle": {
+            "swaps_total": swaps_total,
+            "swaps_30d": swaps_30d,
+            "new_30d": new_30d,
+            "net_growth_30d": new_30d - swaps_30d,
+            "mtbf_days": mtbf_days,
+            "swap_rate_monthly_pct": (
+                round((swaps_30d / total) * 100, 2) if total else 0),
+        },
+        "signal": {
+            "avg_1490_dbm": (round(signal_stats["avg"], 2)
+                              if signal_stats.get("avg") else None),
+            "min_1490_dbm": (round(signal_stats["min"], 2)
+                              if signal_stats.get("min") else None),
+            "max_1490_dbm": (round(signal_stats["max"], 2)
+                              if signal_stats.get("max") else None),
+        },
+        "vendors": vendors,
+        "health_score": health_score,
+        "as_of": now.isoformat(),
+    }
+
+
+@router.get("/history/swaps")
+async def smartolt_history_swaps(
+    days: int = 30, limit: int = 200,
+    user: dict = Depends(get_current_user),
+):
+    """iter215au — Lista de trocas detectadas (swap_detected_at) com
+    cliente, ONU antiga e nova, fornecedor inferido."""
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+    from datetime import datetime, timedelta, timezone
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+    items = await db.smartolt_onus.find(
+        {"company_id": cid,
+         "swap_detected_at": {"$gte": cutoff}},
+        {"_id": 0, "name": 1, "sn": 1, "previous_sn": 1,
+         "unique_external_id": 1, "previous_external_id": 1,
+         "olt_name": 1, "board": 1, "port": 1, "onu": 1,
+         "swap_detected_at": 1, "status": 1, "authorization_date": 1,
+         "onu_type": 1, "zone_name": 1},
+    ).sort("swap_detected_at", -1).limit(limit).to_list(limit)
+
+    def _vendor(sn: str | None) -> str:
+        if not sn or len(sn) < 4:
+            return "?"
+        p = sn[:4].upper()
+        return {"ALCL": "Nokia/Alcatel", "HWTC": "Huawei",
+                 "ZTEG": "ZTE", "CMSZ": "ZTE", "FHTT": "Fiberhome",
+                 "ITBS": "Intelbras"}.get(p, p)
+
+    for it in items:
+        it["vendor_new"] = _vendor(it.get("sn"))
+        it["vendor_old"] = _vendor(it.get("previous_sn"))
+        it["vendor_changed"] = it["vendor_new"] != it["vendor_old"]
+    return {"items": items, "count": len(items), "days": days}
+
+
+@router.get("/history/timeseries")
+async def smartolt_history_timeseries(
+    days: int = 30,
+    user: dict = Depends(get_current_user),
+):
+    """iter215au — Série temporal de trocas detectadas/dia (chart)."""
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+    from datetime import datetime, timedelta, timezone
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+    pipeline = [
+        {"$match": {"company_id": cid,
+                     "swap_detected_at": {"$gte": cutoff}}},
+        {"$project": {"day": {"$substr": ["$swap_detected_at", 0, 10]}}},
+        {"$group": {"_id": "$day", "count": {"$sum": 1}}},
+        {"$sort": {"_id": 1}},
+    ]
+    docs = await db.smartolt_onus.aggregate(pipeline).to_list(days + 5)
+    return {"items": [{"date": d["_id"], "swaps": d["count"]}
+                       for d in docs],
+            "days": days}
 
 
 @router.get("/onu/{external_id}/actions")
@@ -1359,6 +1693,140 @@ async def get_onu_actions_history(external_id: str, limit: int = 20,
         {"_id": 0, "result_raw": 0},
     ).sort("created_at", -1).limit(max(1, min(limit, 100))).to_list(limit)
     return {"count": len(items), "items": items}
+
+
+@router.post("/onus/reconcile")
+async def reconcile_onus_swap(
+    user: dict = Depends(require_role("gestor")),
+):
+    """iter215at — Reconciliação de cache pós-troca de ONT.
+
+    Faz bulk `/onu/get_all_onus_details` no SmartOLT, compara com
+    `smartolt_onus` local pelo `name` (PPPoE) e detecta ONUs trocadas
+    (mesmo nome, SN ou external_id diferente). Atualiza o cache local
+    em batch e retorna o resumo: quantas trocadas, novas, removidas.
+    """
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+    cfg = await _get_config(cid)
+    if not cfg.enabled or not cfg.subdomain or not cfg.api_key:
+        raise HTTPException(400, "SmartOLT não configurado para a empresa.")
+    try:
+        bulk = await _http_get(cfg, "/onu/get_all_onus_details")
+    except Exception as e:
+        raise HTTPException(502, f"Falha ao consultar SmartOLT: {e}")
+    items = (bulk or {}).get("response") or []
+    if not isinstance(items, list):
+        raise HTTPException(502, "Resposta SmartOLT inesperada.")
+    # Indexa locais por name_norm
+    local = await db.smartolt_onus.find(
+        {"company_id": cid}, {"_id": 0},
+    ).to_list(20000)
+    by_name: Dict[str, Dict[str, Any]] = {}
+    for lo in local:
+        n = lo.get("name_norm") or _norm(lo.get("name"))
+        if n:
+            by_name[n] = lo
+    swapped: List[Dict[str, Any]] = []
+    created = 0
+    updated_meta = 0
+    seen_ext: set = set()
+    for it in items:
+        nm = it.get("name")
+        nn = _norm(nm)
+        new_ext = str(it.get("unique_external_id") or "")
+        new_sn = str(it.get("sn") or "")
+        seen_ext.add(new_ext)
+        loc = by_name.get(nn) if nn else None
+        if not loc:
+            # ONU nova no SmartOLT — insere
+            await db.smartolt_onus.update_one(
+                {"company_id": cid, "unique_external_id": new_ext},
+                {"$set": {
+                    "company_id": cid,
+                    "unique_external_id": new_ext,
+                    "name": nm, "name_norm": nn,
+                    "sn": new_sn,
+                    "olt_id": it.get("olt_id"),
+                    "olt_name": it.get("olt_name"),
+                    "board": it.get("board"),
+                    "port": it.get("port"),
+                    "onu": it.get("onu"),
+                    "onu_type": it.get("onu_type"),
+                    "status": it.get("status"),
+                    "synced_at": now_iso(),
+                    "created_via_reconcile_at": now_iso(),
+                }},
+                upsert=True,
+            )
+            created += 1
+            continue
+        old_ext = str(loc.get("unique_external_id") or "")
+        old_sn = str(loc.get("sn") or "")
+        if new_ext != old_ext or new_sn != old_sn:
+            # ONU TROCADA — atualiza
+            await db.smartolt_onus.update_one(
+                {"company_id": cid, "unique_external_id": old_ext},
+                {"$set": {
+                    "unique_external_id": new_ext,
+                    "sn": new_sn,
+                    "olt_id": it.get("olt_id"),
+                    "olt_name": it.get("olt_name"),
+                    "board": it.get("board"),
+                    "port": it.get("port"),
+                    "onu": it.get("onu"),
+                    "onu_type": it.get("onu_type"),
+                    "status": it.get("status"),
+                    "synced_at": now_iso(),
+                    "swap_detected_at": now_iso(),
+                    "previous_external_id": old_ext,
+                    "previous_sn": old_sn,
+                    # Zera sinal — força nova leitura na próxima
+                    "signal_text": None,
+                    "signal_1310": None,
+                    "signal_1490": None,
+                    "signal_synced_at": None,
+                }},
+            )
+            swapped.append({
+                "name": nm,
+                "old_external_id": old_ext,
+                "new_external_id": new_ext,
+                "old_sn": old_sn,
+                "new_sn": new_sn,
+            })
+        else:
+            # Mesmo ext_id e SN — só atualiza metadados/status
+            await db.smartolt_onus.update_one(
+                {"company_id": cid, "unique_external_id": new_ext},
+                {"$set": {
+                    "olt_id": it.get("olt_id"),
+                    "olt_name": it.get("olt_name"),
+                    "board": it.get("board"),
+                    "port": it.get("port"),
+                    "onu": it.get("onu"),
+                    "onu_type": it.get("onu_type"),
+                    "status": it.get("status"),
+                    "synced_at": now_iso(),
+                }},
+            )
+            updated_meta += 1
+    # Detecta removidas (existem local, não vieram no bulk)
+    local_exts = {str(lo.get("unique_external_id") or "") for lo in local}
+    removed_exts = local_exts - seen_ext
+    return {
+        "ok": True,
+        "summary": {
+            "swapped": len(swapped),
+            "created": created,
+            "metadata_updated": updated_meta,
+            "removed_count": len(removed_exts),
+            "total_remote": len(items),
+            "total_local_before": len(local),
+        },
+        "swapped_details": swapped[:50],
+        "removed_external_ids": sorted(removed_exts)[:50],
+        "ran_at": now_iso(),
+    }
 
 
 @router.post("/onu/{external_id}/reboot")

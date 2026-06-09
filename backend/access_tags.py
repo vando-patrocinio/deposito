@@ -104,6 +104,9 @@ TAGS: List[Dict] = [
     # ============================ Sistema =================================
     {"key": "users",             "label": "Usuários (acessos)",       "icon": "🛡️", "category": "Sistema"},
     {"key": "motor-ia",          "label": "Motor IA",                 "icon": "⚙️", "category": "Sistema"},
+    {"key": "audit-trail",       "label": "Audit Trail",              "icon": "🛡️", "category": "Sistema"},
+    {"key": "lgpd-portal",       "label": "LGPD Portal",              "icon": "🛡️", "category": "Sistema"},
+    {"key": "backend-health",    "label": "Saúde Técnica",            "icon": "📊", "category": "Sistema"},
     {"key": "settings",          "label": "Configurações",            "icon": "⚙️", "category": "Sistema"},
     {"key": "platform",          "label": "Plataforma (multi-empresa)", "icon": "🏛️", "category": "Sistema"},
     {"key": "backup",            "label": "Backup DB",                "icon": "💾", "category": "Sistema"},

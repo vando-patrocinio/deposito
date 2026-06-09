@@ -731,12 +731,29 @@ async def update_ce(ce_id: str, body: CEIn,
 async def delete_ce(ce_id: str,
                      user: dict = Depends(require_role("administrador", "gestor", "gestor_rede"))):
     cid = _company(user)
+    ce_doc = await db.network_ces.find_one(
+        {"id": ce_id, "company_id": cid}, {"_id": 0})
+    if not ce_doc:
+        raise HTTPException(404, "CE não encontrada")
+    cables_snap = await db.network_cables.find(
+        {"company_id": cid,
+         "$or": [{"from_id": ce_id}, {"to_id": ce_id}]},
+        {"_id": 0}).to_list(500)
+    from datetime import datetime, timezone
+    actor = user.get("name") or user.get("email") or "?"
+    await db.rede_ia_trash.insert_one({
+        "id": f"trash-{uuid.uuid4().hex[:10]}",
+        "company_id": cid, "kind": "ce", "ref_id": ce_id,
+        "label": ce_doc.get("name") or ce_id,
+        "deleted_at": datetime.now(timezone.utc).isoformat(),
+        "deleted_by": actor,
+        "snapshot": ce_doc,
+        "cables_snapshot": cables_snap,
+    })
     # remove cabos ligados
     await db.network_cables.delete_many({"company_id": cid,
                                             "$or": [{"from_id": ce_id}, {"to_id": ce_id}]})
-    r = await db.network_ces.delete_one({"id": ce_id, "company_id": cid})
-    if r.deleted_count == 0:
-        raise HTTPException(404, "CE não encontrada")
+    await db.network_ces.delete_one({"id": ce_id, "company_id": cid})
     return {"ok": True}
 
 
@@ -866,15 +883,75 @@ async def delete_cable(cable_id: str,
     cid = _company(user)
     prev = await db.network_cables.find_one(
         {"id": cable_id, "company_id": cid}, {"_id": 0})
-    r = await db.network_cables.delete_one({"id": cable_id, "company_id": cid})
-    if r.deleted_count == 0:
+    if not prev:
         raise HTTPException(404, "Cabo não encontrado")
+    from datetime import datetime, timezone
+    actor = user.get("name") or user.get("email") or "?"
+    await db.rede_ia_trash.insert_one({
+        "id": f"trash-{uuid.uuid4().hex[:10]}",
+        "company_id": cid, "kind": "cable", "ref_id": cable_id,
+        "label": prev.get("label") or f"Cabo {prev.get('type', '')}",
+        "deleted_at": datetime.now(timezone.utc).isoformat(),
+        "deleted_by": actor,
+        "snapshot": prev,
+    })
+    await db.network_cables.delete_one({"id": cable_id, "company_id": cid})
     # Devolve o material ao estoque (refund)
-    if prev and prev.get("type") in _CABLE_TYPE_TO_STOK_ID \
+    if prev.get("type") in _CABLE_TYPE_TO_STOK_ID \
             and (prev.get("length_m") or 0) > 0:
         await _debit_fiber_for_cable(
             cid, user, prev["type"], prev.get("length_m"), cable_id, action="delete")
     return {"ok": True}
+
+
+# iter215bk — Lixeira + Restore para o Mapa Interativo
+@router.get("/trash")
+async def list_trash(
+    user: dict = Depends(require_role("administrador", "gestor", "gestor_rede")),
+):
+    """Lista CTOs/CEs/Cabos apagados (últimos 50)."""
+    cid = _company(user)
+    items = await db.rede_ia_trash.find(
+        {"company_id": cid}, {"_id": 0, "snapshot": 0, "cables_snapshot": 0,
+                                 "ports_snapshot": 0},
+    ).sort("deleted_at", -1).limit(50).to_list(50)
+    return {"items": items, "count": len(items)}
+
+
+@router.post("/restore/{trash_id}")
+async def restore_from_trash(
+    trash_id: str,
+    user: dict = Depends(require_role("administrador", "gestor", "gestor_rede")),
+):
+    """Restaura um item da lixeira (CTO/CE/Cabo + dependências em cascata)."""
+    cid = _company(user)
+    rec = await db.rede_ia_trash.find_one(
+        {"id": trash_id, "company_id": cid}, {"_id": 0})
+    if not rec:
+        raise HTTPException(404, "Item da lixeira não encontrado")
+    kind = rec["kind"]
+    snap = rec.get("snapshot") or {}
+    restored = {"kind": kind, "label": rec.get("label")}
+    if kind == "cto":
+        await db.ctos.insert_one(dict(snap))
+        for cab in rec.get("cables_snapshot") or []:
+            await db.rede_cables.insert_one(dict(cab))
+        for port in rec.get("ports_snapshot") or []:
+            await db.cto_ports.insert_one(dict(port))
+        restored["cables_restored"] = len(rec.get("cables_snapshot") or [])
+        restored["ports_restored"] = len(rec.get("ports_snapshot") or [])
+    elif kind == "ce":
+        await db.network_ces.insert_one(dict(snap))
+        for cab in rec.get("cables_snapshot") or []:
+            await db.network_cables.insert_one(dict(cab))
+        restored["cables_restored"] = len(rec.get("cables_snapshot") or [])
+    elif kind == "cable":
+        await db.network_cables.insert_one(dict(snap))
+    else:
+        raise HTTPException(400, f"Tipo desconhecido: {kind}")
+    await db.rede_ia_trash.delete_one({"id": trash_id})
+    restored["restored"] = True
+    return restored
 
 
 class BulkDeleteIn(BaseModel):

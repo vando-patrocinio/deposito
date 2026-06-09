@@ -1,0 +1,34 @@
+{
+  "summary": "iter219c — Leo/Secretária IA com superpoderes de execução + confirmação. Criada suite completa 15 testes (13 + 2 REST regression). 15/15 PASS (100%). Cobriu: SYSTEM_PROMPT com regras 'Confirma?', 5 novas exec_* tools em spec+func, delegação para services.agent_tools.execute_tool_call, persistência+FIFO (≤6 msgs) em db.secretaria_conversation_state, e2e turno1(proposta sem exec)+turno2 SIM(exec_pause_promo chamada, promo active=False, revertida), e2e turno2 NÃO(nenhuma exec chamada), regression das 5 tools não-destrutivas e regression iter218 dos endpoints REST do Presidente IA.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter219c_leo_exec.py",
+    "/app/test_reports/pytest/iter219c_leo_exec.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "secretaria_ia.py linha ~582: history só carregado se who; correto. iter219c bem isolado.",
+    "secretaria_tools.py: _exec_via_agent_tools faz .pop('_justification', None) DENTRO de args mas args já foi montado pelo wrapper específico (sem _justification) — branch dead, OK mas pode remover.",
+    "TOOLS_SPEC final tem 31 tools (12 base + 19 extras incl 5 presidente + 5 exec). Tamanho do prompt cresce — monitorar token usage do Motor IA.",
+    "ask() persiste histórico mas NÃO inclui os tool_calls/tool results — só user+assistant text. Turno 2 com confirmação funciona porque LLM relê o texto anterior, mas evidências de que ele propôs algo estão só no content. Está OK pelo design atual, considerar guardar tool_calls em iter futura para auditoria.",
+    "Não há TTL/limpeza em secretaria_conversation_state — recomenda-se índice TTL ou limpeza periódica para conversas antigas."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter219c_leo_exec.py (novo)"
+  ],
+  "success_rate": {"backend": "100%", "frontend": "n/a (não testado)"},
+  "test_credentials": "admin@empresa.com / 123456",
+  "seed_data_creation": "Nenhum dado novo. Tests usam promo existente (pr-f0f9158f606b) em parcerias_promotions, pausa e reverte no finally. Limpeza de secretaria_conversation_state nos who de teste após cada caso.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Para rodar test_regression_presidente_dashboard/conselho via REST, exportar REACT_APP_BACKEND_URL=https://dual-combine-3.preview.emergentagent.com antes do pytest (caso contrário pular). Promo de teste em db.parcerias_promotions company_id=co-demo. WHO_TURN/WHO_NO/WHO_FIFO são limpos no setup. LLM real é chamado nos testes e2e (Motor IA / OpenRouter) — duração ~14s total.",
+  "rca of the issue": "n/a (não foi bug fix; foi feature test)"
+}

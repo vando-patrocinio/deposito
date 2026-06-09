@@ -1,6 +1,1092 @@
 # PontoIA — Changelog
 
 
+## 2026-06-08 — OPERAÇÃO TESE VALIDADA (orquestrador + 10 fases)
+
+### Entregue
+- **`services/operacao_tese.py`** — orquestra as 10 fases:
+  - Fase 1: `pre_flight_check()` valida 10 condições (Baileys, gestor_phone,
+    wa_dispatcher, billing, handlers, scheduler fresco, regras, company_id
+    válido, audit chain íntegra, sem pilot ativo). **Bloqueia início**
+    se qualquer item crítico falha.
+  - Fase 2: `select_eligible_clients()` — inadimplentes 5-30d, telefone
+    válido, sem ticket de cobrança, não bloqueado judicialmente nem
+    negativado.
+  - Fase 3: `score_and_classify()` — score 0-100, tiers
+    ALTO/MEDIO/BAIXO/EXCLUIDO.
+  - Fase 4: ativa LIVE apenas para `escalate_dunning` via
+    `company_settings.set_live`. NADA além.
+  - Fase 5: envia WhatsApp via `wa_dispatcher.send_text` com 2 templates
+    (amigável 5-15d, firme 16-30d). Tracking completo em
+    `operacao_tese_messages`.
+  - Fase 6: `monitor_panel()` — métricas R$ em tempo real (mensagens,
+    pagamentos, valor recuperado, tempo médio, ROI).
+  - Fase 7: `learn_from_payments()` — taxa de recuperação POR TEMPLATE,
+    persiste learning em `motor_ia_learnings`.
+  - Fase 8: `daily_report()` — relatório agregado.
+  - **Fase 9: `smartolt_gate()`** — bloqueia cobrança se ONU offline,
+    sinal degradado (rx < -27dBm) ou incidente coletivo aberto. Cria
+    automaticamente tarefa em `alvaro_tasks` para o técnico verificar.
+  - Fase 10: `success_criteria()` — veredito SIM/NÃO + valor.
+
+### Endpoints REST (`routes/operacao_tese.py`)
+- `GET  /api/operacao-tese/pre-flight/{company_id}`
+- `POST /api/operacao-tese/start`
+- `GET  /api/operacao-tese/monitor/{op_id}`
+- `GET  /api/operacao-tese/report/{op_id}`
+- `GET  /api/operacao-tese/success/{op_id}`
+- `POST /api/operacao-tese/stop/{op_id}`
+
+### Frontend
+- Card "Operação Tese Validada (R$)" no `CtoCommandCenter.jsx`:
+  input company_id + botão "▶ Iniciar (DRY-RUN)" + exibição em tempo
+  real de eligíveis / bloqueados SmartOLT / mensagens / pagamentos /
+  R$ recuperados / ROI.
+
+### Testes
+- **34/34 E2E passando** (+4 novos):
+  - `test_operacao_tese_pre_flight` (valida 10 checks)
+  - `test_operacao_tese_dry_run_full_pipeline` (seed 3 invoices → seleção →
+    score → mensagens dry-run → monitor → success_criteria)
+  - `test_smartolt_gate_blocks_offline_client` (ONU offline → bloqueado)
+  - `test_smartolt_gate_passes_healthy_client`
+
+### Demo end-to-end real (rodada em DEV, contra co-demo + 5 invoices seed)
+```
+FASE 2 — Eligíveis: 4
+FASE 3 — Score & Classify (top 5):
+  sub-tese-demo-1   dias=10  R$ 149.00  score=70  tier=ALTO     ✅PASSA
+  sub-tese-demo-2   dias=14  R$ 199.00  score=70  tier=ALTO     ✅PASSA
+  sub-tese-demo-3   dias=18  R$ 249.00  score=60  tier=MEDIO    ✅PASSA
+  sub-tese-demo-0   dias= 6  R$  99.00  score=-1  tier=EXCLUIDO 🔴BLOQUEADO
+
+FASE 9 — SmartOLT Gate: 1 bloqueado (cliente com ONU offline)
+FASES 4-5 — Mensagens planejadas (DRY-RUN): 3
+   → Cliente Demo 1   +5511999000001   template=amigavel_5_15d
+   → Cliente Demo 2   +5511999000002   template=amigavel_5_15d
+   → Cliente Demo 3   +5511999000003   template=firme_16_30d
+
+FASE 10 — Veredito: "AGUARDANDO LIVE" (Baileys não conectado em dev).
+```
+
+### O que falta para LIVE em produção
+1. Conectar Baileys (sessão real em `wa_baileys_sessions`).
+2. Configurar `PRESIDENTE_IA_GESTOR_PHONE` no .env de prod.
+3. Chamar `POST /api/operacao-tese/start` com `dry_run=false` em 1 cliente.
+4. Rodar `monitor` por 7 dias.
+5. `success_criteria` retorna **SIM + R$ recuperados** ou **NÃO**.
+
+
+
+## 2026-06-08 — Sprints 19/19.5/20/21/22 (5 sprints em batch)
+
+### Sprint 19 — Plug-in cirúrgico (cobertura nervosa)
+- `routes/subscribers.py::create_subscriber` → `emit_business("client.created")`
+- `routes/financeiro_ops.py::pay_bill` → `emit_business("payment.received")`
+- `routes/billing.py::mark_paid` → `emit_business("payment.received")`
+- `routes/billing.py::create_invoice` → `emit_business("payment.overdue")` (quando atrasada)
+- `routes/sales_funnel.py::convert_lead_to_ticket` → `sale.created` + `ticket.opened`
+- `routes/referrals.py::admin_approve_payout` → `emit_business("referral.converted")`
+- `routes/whatsapp_baileys.py::inbound_webhook` → `emit_business("wa.inbound")`
+- **Cobertura nervosa: 3.83% → 6.33%** (+2.5pp, +65% relativo).
+
+### Sprint 19.5 — LIVE Pilot Infrastructure
+- **`services/live_pilot.py`** (novo): `start_pilot(co, [actions])` ativa
+  LIVE + grava baseline (overdue, tickets); `pilot_metrics(co)` mede
+  impacto (ações LIVE, WhatsApp enviados, dunning real, pagamentos
+  recebidos, redução de overdue) e devolve `thesis_validated: SIM/NÃO`.
+- Endpoints `POST /api/motor-ia/pilot/start`, `pilot/stop/{co}`,
+  `pilot/metrics/{co}`, `pilot/list`.
+- Coleção `live_pilot_runs` armazena baseline pra comparação.
+
+### Sprint 20 — Predictions Validation Harness
+- **`services/predictions_validation.py`** (novo):
+  - `_validate_churn`: confere se subscribers preditos viraram
+    `canceled/inactive/overdue` na janela.
+  - `_validate_ticket_demand`: compara forecast vs tickets reais.
+  - `run_validation_cycle()` itera predições com horizon expirado.
+  - `accuracy_summary()` agrega precision/pct_error por (kind, model).
+- Coleção `motor_ia_predictions_validation`.
+- Endpoints `POST /api/motor-ia/predictions/validate`,
+  `GET predictions/accuracy`.
+
+### Sprint 21 — Frontend v2 (recharts + edit + ML cards)
+- `CtoCommandCenter.jsx` agora com **8 cards** (era 4):
+  Leader · Feedback · FeedbackChart (recharts BarChart) · Predictions ·
+  MLChurnCard (IsolationForest top-5) · ThresholdsCard (edit + botão
+  Auto-Tune) · ValidationAccuracyCard (botão Rodar Validation) ·
+  Learnings.
+- Lint zero.
+
+### Sprint 22 — Load Test
+- **`scripts/load_test.py`** (novo): emit_burst com pool de
+  workers + benchmark de decision_cycle + action_engine + pipeline
+  ponta-a-ponta.
+- **Resultado medido (single-worker, MongoDB local):**
+  - **3491 ev/s** (2000 eventos em 0.57s)
+  - decision_cycle: 16ms para 200 eventos
+  - action_engine: 0ms (0 decisões pra esses eventos sem CTO)
+  - pipeline total: 3395 ev/s
+- Em prod com 4 workers + Mongo cluster, projeção 10k+ ev/s factível.
+
+### Testes
+- **30/30 E2E LIVE passando** (+4 novos: live_pilot_full_lifecycle,
+  predictions_validation_skip, predictions_validation_churn,
+  load_test_high_throughput).
+
+### Resultado mensurável vs Sprint 13A
+| Métrica | Sprint 13A | Agora |
+|---|---:|---:|
+| Cobertura nervosa | 3.83% | **6.33%** ⬆️ +65% |
+| Throughput medido | (não medido) | **3491 ev/s** |
+| Endpoints REST motor-ia | 13 | **21** |
+| Frontend cards | 4 | **8** |
+| Testes E2E | 26 | **30** |
+
+
+
+## 2026-06-08 — Sprints 13/14/15/16/17/18 (6 sprints em batch)
+
+### Sprint 13 — Plug-in Massivo do Event Bus
+- **`services/event_emitters.py`** (novo): helper `emit_business(kind=…)`
+  com mapeamento kind→EventType (28 kinds cobrindo tickets, clientes,
+  financeiro, vendas, wa, rede, gps, parceiros, indicações, audit).
+- **`middleware/auto_emit_middleware.py`** (novo): middleware HTTP
+  auto-emite eventos para 13 rotas mutations (POST/PATCH/DELETE em
+  /api/tickets, /api/subscribers, /api/sales, /api/billing,
+  /api/whatsapp, /api/baileys, /api/partners, /api/referrals,
+  /api/fleet/gps). Captura body para extrair IDs.
+- Plugado no `server.py` ANTES do middleware RBAC.
+
+### Sprint 14 — Multi-tenant 100% blindado
+- `services/data_quality.py::run_scan(company_id=…)` agora filtra
+  TODOS os checks por company_id (8 checks + dedup emails).
+- `services/data_quality.py::run_scan_all_tenants()` (novo): itera
+  por `subscribers.distinct(company_id)` e gera 1 insight por empresa.
+- `services/executive_health.py::compute_executive_score(company_id=…)`
+  agora filtra cada métrica por company. Adiciona campo `company_id`
+  ao insight gravado.
+- `compute_executive_score_all_tenants()` (novo).
+- Scheduler tick 1h chama as versões `*_all_tenants`.
+
+### Sprint 15 — Modo LIVE feature flag por cliente
+- **`services/company_settings.py`** (novo): collection
+  `company_settings` com `presidente_ia.live_actions`.
+  APIs: `is_live(co, action_type)`, `set_live(co, [...])`,
+  `get_live_actions(co)`, `list_all_live_settings()`.
+- `services/action_engine.py::_live_for(co, action_type)` (novo) usado
+  em todos os handlers (`notify_manager`, `escalate_dunning`,
+  `execute_pending`). PRESIDENTE_IA_LIVE=1 ainda funciona como
+  override global.
+
+### Sprint 16 — Centro de Comando IA (Frontend)
+- **`frontend/src/CtoCommandCenter.jsx`** (novo): 4 cards consumindo
+  `/api/motor-ia/*` com polling 10-30s:
+  Leader · Feedback Loop · Predictions · Learnings Recentes.
+- Plugado no `App.js` como view `cto-command`, link no menu para
+  administrador/auditor.
+
+### Sprint 17 — Auto-tuning de Thresholds
+- **`services/rule_thresholds.py`** (novo): coleção `rule_thresholds`
+  com config dinâmico por regra + cache TTL 5min + histórico.
+  Função `auto_tune()` heurística:
+    - factor < 0.7 → aumenta threshold em +1 (regra fazendo lixo)
+    - factor ≥ 1.20 + 20+ amostras → reduz em -1 (regra confiável,
+      pode ser mais sensível)
+- `decision_engine.py` agora lê thresholds dinâmicos para
+  `collective_outage` e `rbac_abuse`.
+
+### Sprint 18 — ML real (sklearn)
+- `pip install scikit-learn` (1.9.0).
+- **`services/ml_predictions.py`** (novo):
+  - `churn_iforest(company_id)`: IsolationForest com features
+    [tickets_abertos, days_since_payment, rx_dbm_inverted, plan_price].
+    Retorna top-50 ranked por anomaly_score.
+  - `ticket_arima(company_id, horizon)`: AR(2) numpy puro
+    (sem statsmodels) forecast 7d.
+  - `run_all_ml()` itera por company.
+  - Falha graciosamente: `{error: "serie_curta"}` etc.
+
+### Novos endpoints REST (motor_ia_intel.py)
+- `GET  /api/motor-ia/live-settings` — todas configs LIVE
+- `POST /api/motor-ia/live-settings/{company_id}` — habilita actions LIVE
+- `GET  /api/motor-ia/thresholds` — defaults + atual
+- `POST /api/motor-ia/thresholds/auto-tune` — roda heurística agora
+- `POST /api/motor-ia/thresholds/{rule}` — set manual
+- `POST /api/motor-ia/ml/run` — executa run_all_ml
+- `GET  /api/motor-ia/ml/churn` — última predição IF
+- `GET  /api/motor-ia/ml/ticket-forecast` — última predição AR(2)
+
+### Testes
+- **26/26 E2E LIVE passando** (+10 novos para Sprints 13-18):
+  event_emitters, data_quality isolation, executive_health isolation,
+  live feature flag, action engine respeita flag, rule_thresholds
+  dinâmicos, auto_tune, ML graceful errors.
+
+### Resultado mensurável (vs auditoria CTO de poucas horas atrás)
+| Métrica | Antes | Agora |
+|---|---:|---:|
+| motor_ia_outcomes c/ company_id | 92.9% | **NEW 84.8%** (drop temporário pelo seed de testes) |
+| Rules dinâmicas (threshold ajustável) | 0 | **2** |
+| ML models reais | 0 | **2** (IsolationForest + AR(2)) |
+| Action flag granular por cliente | NÃO | **SIM** |
+| Endpoints REST motor-ia | 5 | **13** |
+| Testes E2E | 16 | **26** |
+
+> NB: cobertura nervosa segue 3.5-3.8% porque o middleware só
+> dispara em chamadas HTTP reais — o que SUBIRÁ naturalmente
+> conforme uso de produção.
+
+
+
+## 2026-06-08 — Sprints 10/11/12: Feedback Loop, Predictions, Learnings
+
+### Sprint 10 — Feedback Loop (data-driven confidence)
+- **`services/feedback_loop.py`**: lê `motor_ia_outcomes` (janela 30d),
+  agrega success_rate por `action_type` (join com `motor_ia_actions`),
+  calcula `factor ∈ [0.50, 1.20]` em curva discreta.
+- `adjust_confidence(action_type, base)` aplicado em
+  `decision_engine.run_decision_cycle()` ANTES de persistir cada
+  decisão. Campo novo: `confidence_base` (valor da regra) +
+  `confidence` (ajustado). Cache TTL 5min.
+- Scheduler tick 1h chama `refresh_stats(force=True)`.
+
+### Sprint 11 — Predictions
+- **`services/predictions.py`** com 3 modelos heurísticos:
+  - **churn**: top-100 subscribers em risco por company. Score combina
+    tickets abertos (+30 se ≥2), pagamento atrasado (+40), sinal baixo
+    rx_dbm <-27 (+15).
+  - **revenue**: MRR atual + forecast 30d via trend de novos
+    subscribers (30d vs 30-60d).
+  - **ticket_demand**: média móvel 14d + forecast 7d por company.
+- Persistido em `motor_ia_predictions`. Scheduler tick 6h
+  (`_tick_6h`) chama `run_all_predictions()`.
+
+### Sprint 12 — Learnings
+- **`services/learnings.py`**: cada snapshot do feedback_loop gera doc
+  em `motor_ia_learnings` com:
+  - `stats`: factor + success_rate por action_type
+  - `deltas`: diferença vs último snapshot
+  - `alerts`: factor caiu ≥ 30% → emite `AI_LEARNING_ALERT` no
+    event_bus (severidade alta)
+- Auditável: dá pra ver quando o sistema mudou comportamento.
+
+### Novos endpoints REST (`routes/motor_ia_intel.py`)
+- `GET /api/motor-ia/leader` — quem é o líder do scheduler (host/pid +
+  expiração do lock).
+- `GET /api/motor-ia/feedback?refresh=true` — stats por action_type.
+- `GET /api/motor-ia/learnings?limit=30` — histórico de aprendizados.
+- `GET /api/motor-ia/predictions` — últimas predições agregadas.
+- `POST /api/motor-ia/predictions/run` — força execução agora (admin).
+- `GET /api/motor-ia/llm-budget` — uso mensal do Estrategista IA.
+
+### Testes
+- 16/16 E2E passando (`tests/test_e2e_live.py`):
+  6 novos para Sprint 10/11/12: feedback adjustment, factor curve,
+  predictions all, churn signals, learning snapshot, decision
+  confidence integrado com feedback loop (verifica que outcome
+  histórico ruim reduz confidence em decisão futura).
+
+
+
+## 2026-06-08 — Pós-CTO Audit Sprint 7 — Correções P0+P1+P2 (13 itens)
+
+### P0 (Bloqueadores resolvidos)
+- **Audit chain retroativa** (`scripts/migrate_audit_chain.py`): 100% dos
+  90 docs do `audit_log` agora têm `hash` + `prev_hash` válidos.
+  Verificação ao vivo: **0 quebras** nos últimos 50 elos (antes: 13).
+- **Audit chain enforcement**: `rbac.py::audit_log`, `server.py` (RBAC
+  middleware) e `routes/audit_log_panel.py::export_csv` agora gravam
+  via `lgpd_chain.insert_audit_event()`. Nenhuma rota bypassando chain.
+- **company_id no event_bus**: `emit_event()` loga WARNING para
+  company_id=None e gera `correlation_id` automático.
+- **scan_security_alerts** refatorado: emite via `emit_event()` formal
+  (AUDIT_EXPORT/AUDIT_DELETE/RBAC_DENIED/IMPERSONATE) e resolve
+  `company_id` do user_id escopado.
+- **Leader election** (`services/scheduler_lock.py`): scheduler usa lock
+  distribuído via MongoDB (heartbeat 20s + TTL 60s). Em N workers
+  apenas 1 leader executa os ticks.
+- **Suíte E2E LIVE** (`tests/test_e2e_live.py`): 10 testes contra Mongo
+  real — collective_outage, rbac_abuse, payment_overdue, onu_low_signal,
+  hash chain integrity, correlation_id propagation, leader election,
+  budget guard, memory cleanup, tenant isolation. **10/10 passando**.
+
+### P1
+- **Padronização event_type** (`scripts/migrate_event_types.py`): 55
+  docs legados migrados — event_types `<null>` = **0** (antes: 54).
+- **correlation_id propagation**: flui evento → decisão → ação → outcome.
+  **61.2%** de cobertura (vs 0%); 100% dos novos eventos.
+- **Decision Engine ampliado**: **15 regras** ativas (antes: 4) cobrindo
+  CTO_CRITICAL, ONU_LOW_SIGNAL, VLAN_SATURATED, TICKET_RECURRING,
+  OPPORTUNITY_DETECTED, SALE_LOST, GPS_ROUTE_DEVIATION,
+  TECH_PRODUCTIVITY_DROP, DATA_QUALITY_DROP, DUNNING_ESCALATED, etc.
+- **Tenant isolation LGPD**: `subject-report` e `subject-report.pdf`
+  filtram por company_id do auditor (super admin bypassa).
+
+### P2
+- **Rate limit `/api/audit-log/export.csv`**: 10/min em prod, 100/min em
+  dev (bucket `audit_export`).
+- **Redis storage opcional**: `rate_limit.py` lê `REDIS_URL` ou
+  `RATE_LIMIT_STORAGE_URI`. Fallback in-memory.
+- **Budget guard Estrategista IA** (`services/llm_budget.py`): contador
+  por (ano-mês, company_id) com limite configurável; bloqueia
+  fallback textual ao estourar.
+- **Cleanup memory collections** (`services/memory_cleanup.py`):
+  rodando no tick de 1h. Retentions configuráveis via env.
+- **Streaming cursor decision engine**: `run_decision_cycle()` agora
+  permite `limit_events=None`, processando backlog em lotes de 200 sem
+  carregar tudo em RAM.
+
+### Auditoria V2 (contra DB local)
+| Métrica | V1 | V2 |
+|---|---:|---:|
+| Audit hash coverage | 12.5% | **100%** ✅ |
+| Chain breaks (últimos 50) | 13 | **0** ✅ |
+| Tenant isolation events | 31% | **63.8%** ⬆️ |
+| correlation_id em eventos | 0% | **61.2%** ⬆️ |
+| Event_type `<null>` | 54 | **0** ✅ |
+| Regras Decision Engine | 4 | **15** ✅ |
+
+### Artefatos novos
+- `services/scheduler_lock.py`, `services/memory_cleanup.py`,
+  `services/llm_budget.py`
+- `scripts/migrate_audit_chain.py`, `scripts/migrate_event_types.py`,
+  `scripts/generate_cto_report.py`
+- `tests/test_e2e_live.py` (10 testes)
+
+
+
+## 2026-02-07 — iter215bx: Cron automático do Conselho IA
+
+### Pedido do usuário
+> "a" (Cron automático do Conselho IA)
+
+### Implementação
+
+**Novo scheduler** (`/app/backend/services/conselho_ia_scheduler.py`)
+- Worker async, check_interval=1h, default `cron_hour_utc=11` (08:00 BRT).
+- `_list_active_companies()`: empresas com `cron_enabled=true` em settings.
+- `_run_for_company(cid)`: replica todo o fluxo do POST /report
+  (auditor → re-collect → agent → LLM brief → store em
+  conselho_ia_reports) sem precisar user/token.
+- `_send_morning_digest(cid, report)`: monta mensagem com KPIs +
+  ações + "merece atenção" e envia pelo Baileys.
+- Idempotência: 1× por dia por empresa (cache em memória `_last_run_per_company` + cache no DB por (cid, period, day)).
+- Registrado no `server.py` startup.
+
+**Backend** (`/app/backend/routes/conselho_ia.py`)
+- `NotifySettingsIn` ganhou `cron_enabled: bool` e `cron_hour_utc: int`
+  (0-23, validado).
+- `GET/PUT /api/conselho-ia/settings` aceitam os novos campos.
+
+**Frontend** (`/app/frontend/src/ConselhoIaPanel.js`)
+- Modal de Notificações ganhou bloco "Geração automática diária":
+  - Checkbox `cia-cron-enabled`.
+  - Input numérico de hora UTC `cia-cron-hour`.
+  - Tradução automática: "BRT = UTC-3 → HH:00" calculado em tempo real.
+
+### Validação E2E
+- `supervisorctl restart backend` → log confirma:
+  `[conselho-ia-cron] worker iniciado (check 3600s)`.
+- Screenshot mostra modal completo com toggle de cron habilitado,
+  hora 11 UTC traduzida pra "BRT 08:00".
+
+### Comportamento do cron
+Toda manhã às 08:00 BRT (configurável):
+1. Auditor IA roda (corrige inconsistências whitelist).
+2. Agente IA decide e executa ações.
+3. WhatsApp do operador recebe **2 mensagens**:
+   - Resumo das ações executadas (uma por ação)
+   - **Resumo executivo da manhã**: clientes ativos, MRR,
+     inadimplência%, registros corrigidos, ações tomadas,
+     "merece atenção" (do parecer).
+
+### Test IDs
+- `cia-cron-enabled`, `cia-cron-hour`.
+
+
+
+
+## 2026-02-07 — iter215bw: Notificações proativas do Agente IA via WhatsApp
+
+### Pedido do usuário
+> "sim" — pra dar ao Agente IA capacidade de mandar WhatsApp ao operador
+
+### Implementação
+
+**Backend** (`/app/backend/services/agent_tools.py`)
+- `_send_wa_summary(cid, phone, action)` — chama o sidecar Baileys
+  (`SIDECAR_BASE`, default `http://127.0.0.1:3002/send`) com
+  payload `{phone, text}`. Best-effort, não bloqueia o fluxo.
+- `_maybe_notify_operator(cid, result)` — lê
+  `conselho_ia_settings.{notify_on_action, notify_phone}` e dispara
+  só se habilitado e ação for `status=executed`.
+- Chamado em `execute_tool_call` logo após log de execução bem-sucedida.
+
+**Backend** (`/app/backend/routes/conselho_ia.py`)
+- `GET /api/conselho-ia/settings` — retorna config atual.
+- `PUT /api/conselho-ia/settings`
+  `{notify_on_action: bool, notify_phone: str}` — valida telefone
+  (mín 10 dígitos quando habilitado), normaliza pra dígitos.
+
+**Frontend** (`/app/frontend/src/ConselhoIaPanel.js`)
+- Novo botão `NotifySettingsButton` no header (ícone Lucide Bell).
+- Estado visual:
+  - Desabilitado → fundo branco, label "WhatsApp"
+  - Habilitado → fundo verde claro, label "WA ativo"
+- Modal com checkbox + input telefone + ícone Phone.
+
+### Validação E2E
+- Sidecar Baileys respondendo em :3002 (HTTP 200).
+- `curl PUT /settings` aceita config com telefone normalizado:
+  `{notify_on_action: true, notify_phone: "21999887766"}`.
+- Screenshot: botão "WA ativo" verde no header + modal abrindo
+  com config preenchida.
+- Em runtime: ao executar `flag_dunning` com notify habilitado,
+  envia WhatsApp com formato:
+  ```
+  *Agente IA · Conselho Estratégico*
+  Acabei de executar: *Marcar para cobrança* (X registros)
+  Status: executed
+  _justificativa do LLM_
+  Veja em Conselho IA > Timeline.
+  ```
+
+### Test IDs
+- `cia-notify-settings-btn`, `cia-notify-modal`,
+  `cia-notify-enabled`, `cia-notify-phone`, `cia-notify-save`.
+
+
+
+
+## 2026-02-07 — iter215bv: Timeline visual do Agente IA
+
+### Pedido do usuário
+> "sim" — pra criar timeline visual de "quem é o Agente e o que ele anda fazendo"
+
+### Implementação
+Novo componente `AgentTimeline` em `ConselhoIaPanel.js`:
+- Card colapsável com ícone Lucide `History`.
+- Consome `GET /api/conselho-ia/agent-actions?limit=30`.
+- Linha vertical de timeline com dots coloridos por status:
+  - Executed → verde Oracle (#237a4b)
+  - Pending → laranja Oracle (#f28c28)
+  - Failed → vermelho Oracle (#b42318)
+  - Rejected → cinza (#64748b)
+- Cada item mostra:
+  - Nome da tool traduzido (`AGENT_TOOL_LABEL`)
+  - Pílula de status colorida
+  - Tempo relativo ("agora", "há X min", "há Xh", "há Xd")
+  - Justificativa do LLM em texto humano
+  - Resultado bruto (JSON) em fontFamily monospace + truncado
+
+### Helper `relativeTime(iso)`
+Converte ISO timestamp em texto relativo PT-BR:
+- < 1min → "agora"
+- < 1h → "há X min"
+- < 24h → "há Xh"
+- < 30d → "há Xd"
+- ≥ 30d → data formatada pt-BR
+
+### Validação E2E
+Screenshot mostrando 3 execuções históricas com dots verdes,
+nomes traduzidos, timestamps relativos ("há 11 min", "há 18 min",
+"há 21 min"), justificativas do LLM e resultados JSON.
+Posicionado entre Auditor IA e Módulo 1.
+
+### Test IDs
+- `cia-agent-timeline`, `cia-agent-timeline-toggle`,
+  `cia-timeline-item-{id}`.
+
+
+
+
+## 2026-02-07 — iter215bu: Agente IA com Memory Loop
+
+### Pedido do usuário
+> "sim" — pra dar ao agente acesso ao HISTÓRICO de execuções
+
+### Implementação
+Em `_agent_plan_and_execute` (backend `conselho_ia.py`):
+- Consulta `conselho_ia_agent_actions` dos últimos 30 dias.
+- Agrupa por tool: `{tool_name: {count, last_at, last_args, last_result}}`.
+- Marca quais subscribers da lista de inadimplentes JÁ TÊM
+  `dunning_queue=true` pra excluí-los da próxima ação.
+- Envia tudo no prompt do LLM com regras explícitas:
+  - "NÃO repita ação se ela JÁ FOI executada recentemente pros mesmos ids/CTOs/etc."
+  - "Se a ação anterior NÃO RESOLVEU, considere ESCALAR (anotando isso na justificativa)."
+- Retorna `memory` no response pro frontend exibir (opcional).
+
+### Validação E2E
+1. Criei 4 subscribers inadimplentes.
+2. **1ª execução**:
+   - LLM detectou os 4 (zero no histórico).
+   - Chamou `flag_dunning([4 ids])` → 4 modified.
+   - Justificativa: *"Existem 4 assinantes inadimplentes ainda não marcados para cobrança"*.
+3. **2ª execução (imediatamente depois)**:
+   - LLM viu memória: `flag_dunning: count=3, last=18:37:47`.
+   - Viu que todos os 4 inadimplentes já estão em `dunning_queue=true`.
+   - **Plan: 0 ações** — não repetiu desnecessariamente.
+
+### Benefícios
+- Agente não gera ruído por repetição.
+- Hábil pra escalar (ex.: se inadimplência persistir após 7d com
+  dunning_queue=true, próxima execução pode escalar pra suspensão).
+- Histórico fica disponível pro humano via `GET /agent-actions`.
+
+
+
+
+## 2026-02-07 — iter215bt: Agente IA com Toolkit Executável
+
+### Pedido do usuário
+> "sim" — pra implementar agente autônomo que executa ações
+
+### Implementação
+
+**Novo serviço** (`/app/backend/services/agent_tools.py`)
+- Catálogo `TOOL_CATALOG` com 3 ferramentas iniciais:
+  - `flag_dunning(subscriber_ids, reason)` — whitelist, AUTO-EXECUTE.
+    Marca campo `dunning_queue=True` em até 100 subscribers
+    (sem disparar mensagem; vira insumo pra fluxo de cobrança).
+  - `create_inspection_ticket(cto_id, reason, priority)` — whitelist.
+    Cria um chamado técnico de inspeção (`tickets`, type=
+    `inspecao_preventiva`).
+  - `bulk_whatsapp_campaign(segment_name, ids, template)` — NÃO
+    auto-executa. Grava rascunho em `whatsapp_campaigns_drafts`
+    com `status=pending_approval`.
+- `execute_tool_call(cid, call)` valida contra catálogo,
+  executa whitelist, registra pending pro resto.
+- Log completo em `conselho_ia_agent_actions`
+  (status: executed | pending | failed | rejected).
+
+**Backend** (`/app/backend/routes/conselho_ia.py`)
+- `_agent_plan_and_execute(cid, overview, network, sales)`:
+  - Coleta contexto realista (até 50 ids de inadimplentes + top
+    5 CTOs >85%).
+  - Pede ao LLM (Anthropic Claude 4.5 via OpenRouter) um JSON
+    `{"actions": [{"tool", "args", "justification"}]}` (máx 3).
+  - Executa cada call via `execute_tool_call`.
+  - Retorna `{plan, executions}`.
+- Rodado no `generate_report` após o auditor.
+- Novos endpoints:
+  - `GET /api/conselho-ia/agent-actions` — lista log.
+  - `GET /api/conselho-ia/agent-tools` — devolve catálogo.
+
+**Frontend** (`/app/frontend/src/ConselhoIaPanel.js`)
+- Novo componente `AgentCard` (gradient roxo Oracle, ícone Lucide
+  Bot). Mostra cada execução com:
+  - Tool em formato `flag_dunning()` (monospace).
+  - Pílula de status (Executado/Pending/Falhou).
+  - Justificativa do LLM em texto humano.
+  - Resultado bruto (JSON) em fontFamily monospace.
+
+### Validação E2E
+1. Marquei 5 subscribers como `financial_status=inadimplente` (teste).
+2. `POST /api/conselho-ia/report` →
+   - LLM detectou os 3 inadimplentes do contexto.
+   - Chamou `flag_dunning({subscriber_ids: [...3 ids], reason})`.
+   - Backend executou: `matched=3, modified=3` no Mongo.
+   - Log gravado em `conselho_ia_agent_actions`.
+3. Verificado via Mongo: 3 subscribers tinham `dunning_queue=True`,
+   `dunning_flagged_at`, `dunning_reason='Detectado pelo Conselho IA'`.
+4. Screenshot E2E: card roxo "Agente IA · Ações executáveis"
+   renderizado com pílula EXECUTADO + justificativa + resultado.
+
+### Segurança (Modelo B)
+- Whitelist explícita por tool (`auto_apply: True/False`).
+- Tools whitelist são determinísticas e reversíveis
+  (apenas marca flags ou cria registros). Nunca deleta.
+- Tools sensíveis (envio WhatsApp em massa) ficam como rascunho
+  pendente — humano aprova depois.
+- LLM com `temperature=0.2` (decisões conservadoras).
+- LLM instruído: "NÃO invente ids. Só use os do contexto."
+- Limite hard: máximo 3 ações por execução.
+- Tudo logado com `source=agent_ia`, justification, args,
+  result, action_id.
+
+### Próximos passos (futuro)
+- Adicionar mais tools ao catálogo conforme a confiança cresce:
+  `assign_technician_to_ticket`, `create_campaign_offer`,
+  `pause_promo_inactive`, `resend_invoice`...
+- Botões de "Aprovar" no rascunho da campanha WhatsApp.
+- Replay/desfazer: cada tool grava `undo_payload` quando aplicável.
+
+### Test IDs
+- `cia-agent-card`, `cia-agent-exec-{tool}`.
+
+
+
+
+## 2026-02-07 — iter215bs: Auditor IA com Auto-correção (Modelo B)
+
+### Pedido do usuário
+> "quando encontrar inconsistencia use a ia para auditar e aplicar a solução"
+>
+> Modelo escolhido: B (auto-aplica whitelist + pending pro resto)
+
+### Implementação
+
+**Backend** (`/app/backend/routes/conselho_ia.py`)
+- Novas funções de auditoria:
+  - `_audit_backfill_plan_price(cid)` — whitelist, AUTO-APLICA.
+    Procura `subscribers.plan_price_brl in [null, 0, ""]` com `plan_id`
+    válido, copia preço de `plans.price_brl` (ou `monthly_price`).
+  - `_audit_backfill_plan_name(cid)` — whitelist, AUTO-APLICA.
+    Backfill de `plan_name` quando vazio/"—" via `plans.name`.
+  - `_audit_normalize_status_case(cid)` — whitelist, AUTO-APLICA.
+    Padroniza ATIVA→ATIVO, CANCELADA→CANCELADO, etc.
+  - `_audit_anomalia_vendas(cid, sales)` — detection-only,
+    cria pending quando conversão > 100% ou vendas > 2 × leads.
+- `_run_auditor_ia(cid, sales)` orquestra todas, retorna
+  `{applied_actions, pending_actions, total_records_fixed, ran_at}`.
+- `generate_report` agora roda o auditor ANTES do LLM e
+  re-coleta `overview/sales/universo` se algo foi corrigido,
+  pra que o parecer já reflita os dados limpos.
+- Cada ação grava 1 entrada em `conselho_ia_audit_log`
+  (status: applied | pending | rejected | approved | failed).
+- Novos endpoints:
+  - `GET /api/conselho-ia/audit-log` — lista log com filtro de status.
+  - `POST /api/conselho-ia/audit-log/{aid}/resolve` `{decision, notes}`
+    aprovar ou rejeitar uma ação pendente.
+
+**Frontend** (`/app/frontend/src/ConselhoIaPanel.js`)
+- Novo componente `AuditorCard` (gradient verde, ícone Lucide Wand2).
+  - Mostra resumo: "X registros corrigidos automaticamente (whitelist)".
+  - Lista ações aplicadas com sample do diff (antes → depois com R$).
+  - Lista ações pendentes com botões "Aprovar" / "Ignorar".
+- Renderiza acima dos módulos.
+
+### Validação E2E
+- Geração de report → auditor rodou:
+  - `backfill_plan_price`: 2 subscribers corrigidos
+    (Maria José Silva: plan_price_brl null → R$ 149.90 do plano Fibra 1 Giga)
+  - `normalize_status_case`: 0 (já estavam normalizados)
+  - `anomalia_vendas`: 1 pending (conversão 1433%, conforme detectado pelo LLM)
+- MRR foi de R$ 0,00 → R$ 229,80 após auto-fix
+- Screenshot confirma card verde no topo + pending amarelo + módulos
+  com valores corrigidos.
+
+### Comportamento de segurança
+- Whitelist explícita (`AUTO_APPLY_ACTIONS`) — apenas backfill
+  de campos vazios + normalização case. Nunca deleta, nunca
+  modifica valores não-vazios.
+- Log de tudo em `conselho_ia_audit_log` com sample do antes/depois
+  pra eventual rollback manual.
+- Idempotente: rodar 2× não duplica (queries usam filtros que excluem
+  valores já corrigidos).
+
+### Test IDs
+- `cia-auditor-card`, `cia-applied-{action}`, `cia-pending-{action}`,
+  `cia-approve-{action}`, `cia-reject-{action}`.
+
+
+
+
+## 2026-02-07 — iter215br: Conselho Estratégico IA (Fase 2)
+
+### Pedido do usuário
+> "fase 2"
+
+### Entregue
+Módulos 3 a 7 adicionados (de 12). Painel agora cobre 7 módulos.
+
+**Backend** (`/app/backend/routes/conselho_ia.py`)
+- 5 novos coletores de dados (best-effort, MongoDB aggregations):
+  - `_collect_technicians`: tickets agrupados por tipo, top 10
+    técnicos por volume + nota média, tempo médio (horas).
+  - `_collect_atendimento`: Isabella (sessions), Álvaro (analyses),
+    chat humano (`neo_chat_messages`), suporte (`customer_support_requests`),
+    distribuição de sentimento, top 5 assuntos.
+  - `_collect_sales`: leads (`sales_leads` + `site_leads` +
+    `indicacao_leads`), vendas concluídas (subscribers novos),
+    taxa de conversão, top bairros, top planos do período.
+  - `_collect_universo_ligo`: base Fibra, ligo de casa, conteúdos,
+    Clube (indicações + conversões), Parceiros QR (resgates + top 5).
+  - `_collect_protege`: security_sites/sensors/alarms +
+    fleet_vehicles/events.
+- `_ai_brief` agora envia TODOS os 7 módulos pro LLM e recebe 7
+  insights + parecer executivo (max_tokens=3500).
+- Fallback mecânico estendido pros 7 módulos.
+
+**Frontend** (`/app/frontend/src/ConselhoIaPanel.js`)
+- 5 novos `ModuleCard` com ícones Lucide (Wrench, MessagesSquare,
+  ShoppingCart, Sparkles, ShieldCheck).
+- 5 novos sub-componentes de dados:
+  - `TechniciansData`: KPIs + distribuição por tipo + top técnicos
+    com nota média colorida por faixa.
+  - `AtendimentoData`: KPIs + **barra de sentimento horizontal
+    colorida** (positivo/neutro/negativo) + top assuntos.
+  - `SalesData`: KPIs (leads, vendas, conversão) + top bairros +
+    top planos do período.
+  - `UniversoData`: 7 KPIs do ecosystem + top parceiros acessados.
+  - `ProtegeData`: 6 KPIs (security + fleet).
+
+### Validação E2E
+- `curl POST /api/conselho-ia/report` retorna 7 módulos com insights
+  do Anthropic Claude 4.5:
+  - Vendas (CRÍTICO): *"Conversão de vendas anômala (1433.3%)
+    com 86 vendas a partir de apenas 6 leads"* — IA detectou
+    inconsistência real.
+  - Técnicos (ATENÇÃO): *"Alta carga de reparos (421) com tempo
+    médio elevado (11.1h)"*.
+  - Atendimento (CRÍTICO): *"Ausência total de atividade nos canais"*.
+- Screenshots E2E: 7 módulos renderizados + Parecer Executivo
+  cobrindo todas as 7 dimensões com ações 7/30/90 dias específicas.
+
+### Próxima fase (Fase 3, futura)
+- Módulos 8-11: Financeiro avançado · RH · Alertas Executivos
+  (4 cores: vermelho/amarelo/verde/azul) · Oportunidades Automáticas
+  com cálculo de receita potencial.
+- Cron diário/semanal/mensal.
+- Envio do Parecer pelo WhatsApp.
+
+
+
+
+## 2026-02-07 — iter215bq: Conselho Estratégico IA (Fase 1)
+
+### Pedido do usuário
+> "Criar um módulo executivo dentro do SmartProv chamado 'Conselho
+> Estratégico IA', responsável por consolidar automaticamente todas
+> as informações da operação em um único relatório estratégico
+> para tomada de decisão."
+
+### Escopo desta Fase 1
+- Esqueleto completo do painel.
+- 5 períodos: Diário / Semanal / Mensal / Trimestral / Anual.
+- 3 módulos (de 12): **Módulo 1 (Visão Geral)**, **Módulo 2
+  (Rede e Operação)**, **Módulo 12 (Parecer Executivo do
+  Presidente IA)**.
+- Cache em Mongo `conselho_ia_reports` (1 por dia/período/empresa).
+- Fallback mecânico quando o LLM falha.
+
+### Implementação
+
+**Backend** — `/app/backend/routes/conselho_ia.py` (novo, 426 linhas)
+- `POST /api/conselho-ia/report` `{period, regenerate?}` —
+  gera ou devolve cached. Consulta `subscribers`, `ctos`, `olts`,
+  `support_tickets` direto. Chama `services.motor_ia.chat_completion`
+  com prompt estruturado pedindo JSON com 3 sub-objetos:
+  `overview_insight`, `network_insight`, `parecer_executivo`.
+- `GET /api/conselho-ia/reports?limit=20` — lista histórico.
+- `GET /api/conselho-ia/reports/{rid}` — busca individual.
+- Risco por cor (vermelho/amarelo/verde/azul) calculado pelo LLM.
+- Registrado em `server.py` (linha 765).
+
+**Frontend** — `/app/frontend/src/ConselhoIaPanel.js` (novo, 451 linhas)
+- Entrada na sidebar **"Conselho IA"** (ícone Lucide BrainCircuit,
+  grupo Sistema, role administrador).
+- Cabeçalho: gradient roxo Oracle + seletor de período + botão
+  "Regerar com IA" (com spinner).
+- `ModuleCard`: header colorido com pílula de risco + KPIs com
+  cores Oracle + 2 caixas (Interpretação laranja, Recomendação verde).
+- `ParecerCard`: card escuro roxo (gradient) com 7 sub-seções,
+  cada uma com seu ícone e borda lateral colorida.
+- Listas colapsáveis (`SubList`) pra top cidades / top planos /
+  top CTOs / bairros com chamados.
+
+### Validação E2E
+- `curl POST /api/conselho-ia/report` (period=monthly) →
+  Anthropic Claude 4.5 retornou JSON estruturado, 200 OK, com
+  insight: *"Base sólida com 2741 clientes ativos e zero
+  inadimplência/churn, mas dados monetários zerados indicam falha
+  na integração financeira."*
+- Screenshot E2E: painel completo renderizando com 3 módulos
+  visíveis e Parecer Executivo em card escuro. ✓
+
+### Próximas fases (não implementadas)
+- **Fase 2**: Módulos 3-7 (Técnicos, Atendimento, Vendas,
+  Universo Ligo, Ligo Protege)
+- **Fase 3**: Módulos 8-11 (Financeiro, RH, Alertas Executivos,
+  Oportunidades Automáticas) + cron diário + notif WhatsApp.
+
+### Test IDs
+- `conselho-ia-panel`, `cia-period-select`, `cia-regenerate`,
+  `cia-error`, `cia-module-módulo-1`, `cia-module-módulo-2`,
+  `cia-parecer-executivo`.
+
+
+
+
+## 2026-02-07 — iter215bp: Histórico + Estorno (admin & app do parceiro)
+
+### Pedido do usuário
+> "cri uma sub aba chamada historico, ali fica registrado todo tipo de
+> transação e evidencia, inclusive coloca tambem no app do parceiro
+> relacionado ao negocio dele"
+
+### Implementação
+
+**Backend (`/app/backend/routes/parceria.py`)**
+- Nova collection `parcerias_scan_log` (auto-criada). Helper async
+  `_log_scan_event(...)` grava **TODA tentativa** de scan com:
+  - `outcome`: success / duplicate_30s / limit_reached / inactive_client
+    / delinquent / too_new / promo_inactive / wrong_tenant / qr_invalid
+    / qr_expired / ineligible / reversed
+  - `reason`, `client_*`, `partner_*`, `promotion_*`
+  - `voucher_code`, `reimbursement_value`, `redemption_id`
+  - Evidência: `qr_kind` (v1/v2/url/json), `qr_prefix` (16 chars)
+  - Timestamp ISO UTC.
+- `POST /api/parcerias/redemptions/{rid}/reverse` (admin):
+  - Estorna com motivo obrigatório (3-300 chars).
+  - Marca `reversed=True`, decrementa `total_redemptions` e `total_due`
+    da promo. Bloqueia se já paga ou já estornada (409).
+  - Loga evento `reversed` no scan_log.
+- `GET /api/parcerias/scan-history` (admin): full feed com filtros
+  (`partner_id`, `promotion_id`, `outcome`, `client_id`, `limit`).
+- `GET /api/parceiro-portal/history` (partner): mesma estrutura, só
+  do partner_id do token JWT.
+- Hidrata `reversed`/`paid` lookup pra cada sucesso.
+
+**Frontend (admin — `ParceriaAdminPage.js`)**
+- Nova sub-aba **"Histórico"** ao lado de Redenções.
+- Componente `HistoryTab` com filtros (parceiro + outcome), tabela
+  com pílulas coloridas seguindo Oracle (#237a4b sucesso, #b42318
+  recusa crítica, #f28c28 duplicado/limite, #94a3b8 inativo).
+- Botão **"Estornar"** em cada redenção (tab Redenções + tab Histórico),
+  abre prompt pedindo motivo (mín. 3 chars).
+- Linhas estornadas ficam em `opacity .55`.
+
+**Frontend (parceiro — `PartnerPortalApp.js`)**
+- Nova seção **"Histórico completo"** abaixo de "Últimas redenções".
+- Toggle "Mostrar/Ocultar" + "Atualizar".
+- Mesmas pílulas coloridas + motivo + valor.
+
+### Validação E2E
+- 2 scans rodados via curl (1 sucesso + 1 duplicate_30s):
+  ambos viraram registros em `parcerias_scan_log` com `qr_kind="url"`,
+  `qr_prefix="https://ligofibr"` ✓
+- Screenshot admin: aba Histórico mostra 2 eventos com pílulas SUCESSO
+  / DUPLICADO <30S, botão Estornar no sucesso ✓
+- Screenshot parceiro: seção Histórico completo aberta mostra
+  mesmos 2 eventos com mesmas pílulas ✓
+
+### Test IDs
+- `pa-history-tab`, `pa-history-filter-partner`, `pa-history-filter-outcome`,
+  `pa-history-reload`, `pa-history-row-{id}`, `pa-history-reverse-{id}`
+- `pa-reverse-{id}` (tab Redenções)
+- `partner-history-section`, `partner-history-toggle`,
+  `partner-history-reload`, `partner-history-row-{id}`
+
+
+
+
+## 2026-02-07 — iter215bo: Cooldown anti-replay no scan do parceiro
+
+### Pedido do usuário
+> "audita" (após ver no painel parceiro Adelia Maria Marano com
+> 2 redenções da mesma promoção no mesmo segundo — R$ 80 a receber).
+
+### Achado da auditoria
+A proteção contra duplicação SÓ rodava se a promo tinha
+`max_uses_per_client > 0`. Quando `0` (ilimitado) ou ausente, o cliente
+podia abrir o QR, escanear, abrir de novo (gera token novo, single-use
+já foi consumido), escanear de novo — sem nenhuma proteção temporal.
+
+### Fix
+Adicionado **cooldown anti-replay padrão de 30s** no `partner_scan`,
+aplicado SEMPRE (independente de `max_uses_per_client`):
+
+```python
+recent = await db.parcerias_redemptions.find_one(
+    {"client_id": subscriber["id"],
+     "promotion_id": promotion["id"],
+     "redeemed_at": {"$gte": (_now() - timedelta(seconds=30)).isoformat()}})
+if recent:
+    return {"ok": False,
+             "reason": f"Resgate duplicado em menos de 30s "
+                       f"(voucher anterior: {recent.get('voucher_code')})"}
+```
+
+### Validação E2E
+- Promo `pr-1f66ff432f52` com `max_uses_per_client=0` (ilimitado).
+- Cliente Antônio José dos Santos:
+  - 1ª: `ok=True  voucher=VD550E6`
+  - 2ª (<30s): `ok=False reason=Resgate duplicado em menos de 30s
+    (voucher anterior: VD550E6)` ✓
+
+### Defesa em camadas (final)
+1. Token QR é **single-use** (apaga após consumo)
+2. **Cooldown 30s** entre redenções (cliente, promo) — independente
+   de config
+3. **`max_uses_per_client`** opcional (day/week/month/year/campaign)
+4. Verificação de **tenant** (cliente de outra operadora bloqueado)
+5. Verificação de **status** (ATIVO + adimplente + ≥30 dias)
+
+
+
+
+## 2026-02-07 — iter215bn: QRs do app /cliente agora são reconhecidos pelo /scan
+
+### Pedido do usuário
+> "e o qrcode não estao se conversando nao vai, audita isso"
+
+### Causa raiz
+O sistema tinha 2 fluxos de QR Code que **não se conversavam**:
+- **Sistema A** (`/api/qr-token` em `referrals.py`):
+  cliente loga por CPF (Maria, Pamela) → grava token em `customer_qr_ephemeral`
+- **Sistema B** (`/api/parceiro-portal/scan` em `parceria.py`):
+  só consultava `client_qr_tokens` (fluxo JWT do `cliente-portal/auth/login`)
+
+Resultado: parceiro escaneia QR da Maria → endpoint procura no Sistema B
+→ não acha → "QR inválido ou não cadastrado".
+
+### Fix
+Em `partner_scan` (`parceria.py`), adicionei lookup intermediário (1.5):
+- Procura primeiro em `client_qr_tokens` (legado JWT).
+- **Novo**: se não achar, procura em `customer_qr_ephemeral` (CPF login).
+- Valida TTL (rejeita expirado com 400).
+- Single-use: deleta o token efêmero após consumo (anti-screenshot).
+
+### Validação
+- `curl /api/parceiro-portal/scan` com URL V1 (CPF login Maria) →
+  subscriber encontrado ✓ (erro mudou de "QR inválido" para
+  "Promoção não encontrada", o que é check posterior).
+- `curl /api/parceiro-portal/scan` com URL V2 (Fernet portal Maria) →
+  subscriber encontrado ✓ (mesmo comportamento, Fernet OK).
+
+### Arquivos tocados
+- `backend/routes/parceria.py` — bloco "1.5) lookup no token efêmero"
+  no endpoint `partner_scan` (linhas 1037-1064).
+
+
+
+
+## 2026-02-07 — iter215bm: QR Code do cliente vira URL pra abrir o site
+
+### Pedido do usuário
+> "quem não tem o leitor da ligo e ler na câmera normal pode ler o site
+> da ligo: 'ligofibra.com.br' já abre o site"
+
+### Solução
+- Payload do QR vira uma **URL** (`https://ligofibra.com.br/q/<token>` ou
+  `/q2/<encrypted>` pra V2 Fernet).
+- Câmera comum do celular → abre o navegador → vai pra homepage.
+- App parceiro Ligo → extrai o token da URL e segue validando normalmente.
+
+### Mudanças
+
+**Backend (`/app/backend/routes/parceria.py`)**
+- Novas constantes: `LIGO_QR_BASE_URL` (env, default `https://ligofibra.com.br`),
+  `QR_URL_V1_PATH = "/q/"`, `QR_URL_V2_PATH = "/q2/"`.
+- Novos helpers: `_wrap_qr_v1(token)`, `_wrap_qr_v2(encrypted)`,
+  `_extract_qr_token(raw)` — extrai o token de URL, `LIGO:`, `LIGO2:` ou puro.
+- Endpoints que geram `qr_payload` agora retornam URL:
+  - `POST /api/cliente-portal/auth/login`
+  - `POST /api/cliente-portal/auth/quick-login`
+  - `GET  /api/cliente-portal/me`
+  - `POST /api/cliente-portal/qr/rotate`
+  - `GET  /api/cliente-portal/qr-token` (Fernet → `/q2/`)
+- `POST /api/parceiro-portal/scan` usa `_extract_qr_token()` —
+  aceita URL, `LIGO:`, `LIGO2:` ou token puro.
+
+**Backend (`/app/backend/routes/referrals.py`)**
+- `GET /api/qr-token` retorna URL `https://ligofibra.com.br/q/<token>`.
+- `GET /api/customer/qr-resolve/{token}` aceita URL completa,
+  `LIGO:<token>` ou token puro.
+
+**Frontend (`/app/frontend/src/parceria/ParceiroPWA.js`)**
+- `handleQr` reconhece `/q/` (V1) e `/q2/` (V2) — preserva o prefixo
+  `LIGO2:` pra V2 ser corretamente desencriptada pelo backend.
+
+### Validação
+- `curl GET /api/qr-token` (CPF login Maria) →
+  `qr_payload = "https://ligofibra.com.br/q/ov04qr..."` ✓
+- `curl GET /api/cliente-portal/qr-token` (JWT) →
+  `qr_payload = "https://ligofibra.com.br/q2/gAAA..."` ✓
+- Screenshot E2E: QR renderizado, "Tempo de cliente: 3 anos" ✓
+
+### Compatibilidade
+- QRs antigos (`LIGO:` e `LIGO2:`) continuam sendo aceitos pelo
+  endpoint de scan até expirarem (60s/90s).
+- Sem migração necessária no banco.
+
+
+
+
+## 2026-02-07 — iter215bl: Fix QR Code "indisponível" + "Tempo de cliente"
+
+### Pedido do usuário
+> "erro: QR indisponível. Verifique sua conexão e tente novamente."
+> + "Tempo de Cliente" mostrando "Cliente Ligo" em vez do tempo real.
+
+### Causa raiz
+1. `ClientQRModal.js` chamava sempre `${API}/qr-token` (=`/api/cliente-portal/
+   qr-token`), que exige **JWT** do tipo `client_portal`. Mas clientes que
+   logam por **CPF** (`/api/customer/login` em `referrals.py`) recebem um
+   token simples `{sub_id}.{salt}` que NÃO É JWT. Backend respondia 401
+   → modal caía em "QR indisponível".
+2. `/api/cliente-portal/me` não retornava `installation_date` / 
+   `activation_date` / `subscriber_since`, então o modal nunca achava data
+   pra calcular tempo e mostrava o fallback "Cliente Ligo".
+
+### Mudanças
+- `frontend/src/cliente/ClientQRModal.js`
+  - Detecta o token presente no localStorage e escolhe o endpoint correto:
+    - JWT portal (`client_portal_token`/`ligo_cliente_token`) →
+      `GET /api/cliente-portal/qr-token` (Fernet, `LIGO2:`)
+    - Token CPF (`ligo_indica_token`) →
+      `GET /api/qr-token` (efêmero, `LIGO:`)
+  - Adicionado `console.warn` com status + body do erro pra facilitar
+    debug em produção.
+- `backend/routes/parceria.py` — `/api/cliente-portal/me` agora devolve
+  `installation_date`, `activation_date`, `subscriber_since`, `cpf`,
+  `document` no objeto `user`.
+
+### Validação
+- `curl GET /api/qr-token` com token CPF da Maria → 200 + `{qr_payload: "LIGO:_CPRxzxJ..."}`.
+- E2E (screenshot): Login CPF → Hub → 3 pontinhos → "Meu QR Code de
+  cliente" → modal mostra **QR Code renderizado** + **"Tempo de cliente: 3 anos"**.
+
+### Observação
+Clientes sem `installation_date`/`activation_date`/`subscriber_since`
+continuam mostrando "Cliente Ligo" (sem contador) — comportamento
+intencional (iter215bd) para evitar chutar `created_at`, que é só data
+de importação do Atlaz.
+
+
+
+
+## 2026-02-07 — iter215bk: Botão "Lixeira" no Mapa Interativo (FIX usabilidade)
+
+### Pedido do usuário
+> "caraio, esse botao e no mapa interativom ele e o mapa principal"
+
+### Contexto
+O usuário queria que o botão **Lixeira** (soft-delete restore) ficasse no **Mapa
+Interativo** (Rede IA → Mapa interativo) — que ele considera o mapa principal — e
+não apenas no painel "Documentação (As-Built)" / LigoMapsPanel.
+
+### Mudanças
+- **Novo componente compartilhado**: `/app/frontend/src/components/LigoTrashModal.jsx`
+  - Recebe `{ data: { assets, cables }, onRestore, onClose }`.
+  - Lista assets e cabos com botão "Restaurar" por linha.
+  - Sem emojis (Lucide `Trash2` + `Undo2`), cores Oracle (#4b1d7a, #f28c28).
+- **`RedeIaMap.js`** (Mapa Interativo):
+  - Botão "Lixeira" existente foi corrigido: removido emoji 🗑, trocado por
+    ícone Lucide `Trash2`, cor primária `#4b1d7a`.
+  - Endpoint trocado de `/rede-ia/map/trash` (inexistente) para o correto
+    `/api/ligo-maps/trash`.
+  - Estados `trashOpen`/`trashItems` substituídos por `trashData`
+    (`{assets, cables}`).
+  - Modal `LigoTrashModal` agora renderizado dentro do `<Card>` do mapa.
+  - Restore chama `POST /api/ligo-maps/restore/{kind}/{id}` e recarrega o mapa
+    via `load()`.
+
+### Arquivos tocados
+- `frontend/src/components/LigoTrashModal.jsx` (novo)
+- `frontend/src/RedeIaMap.js` (import, state, botão, render do modal)
+
+### Validação
+- Screenshot manual: botão visível na toolbar do Mapa Interativo.
+- Modal abre e mostra "Lixeira vazia." (esperado — sem itens deletados).
+- Test IDs: `map-trash-btn`, `ligo-trash-modal`, `ligo-trash-restore-{id}`,
+  `ligo-trash-close`.
+
+
+
+
 ## 2026-06-04 — iter212d: Portal Cliente Redesenhado (dark mode premium)
 
 ### Pedido do usuário

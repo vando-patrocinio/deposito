@@ -16,6 +16,41 @@ function signalQuality(rx) {
   return { color: "#b91c1c", label: "Crítico", bg: "#fee2e2" };
 }
 
+function RebootButton({ extId, onDone }) {
+  const [busy, setBusy] = useState(false);
+  const [done, setDone] = useState(false);
+  const click = async () => {
+    if (!window.confirm(
+      "Religar a ONT/ONU agora? Isso vai derrubar a conexão "
+      + "do cliente por ~30s e o equipamento vai reiniciar.")) return;
+    setBusy(true);
+    try {
+      await api.smartoltOnuReboot(extId);
+      setDone(true);
+      // Aguarda ~25s antes de buscar sinal de novo (ONU precisa subir)
+      setTimeout(() => { if (typeof onDone === "function") onDone(); }, 25000);
+    } catch (e) {
+      window.alert("Falha ao religar: "
+        + (e?.response?.data?.detail || e.message));
+    } finally { setBusy(false); }
+  };
+  return (
+    <button type="button" onClick={click} disabled={busy || done}
+            data-testid="signal-reboot-onu-btn"
+            style={{ marginTop: 8, padding: "6px 12px", borderRadius: 8,
+                      border: "none",
+                      background: done ? "#15803d" : "#b91c1c",
+                      color: "white", fontWeight: 800, fontSize: 11,
+                      cursor: (busy || done) ? "default" : "pointer",
+                      opacity: busy ? 0.7 : 1,
+                      fontFamily: "Inter, sans-serif" }}>
+      {done
+        ? "Religada — aguardando voltar (~25s)…"
+        : busy ? "Religando…" : "Religar ONU agora"}
+    </button>
+  );
+}
+
 function SignalBlock({ ticketId }) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -93,7 +128,33 @@ function SignalBlock({ ticketId }) {
             <div style={{ fontFamily: "monospace", color: "#64748b" }}>SN: {onu.sn || onu.unique_external_id}</div>
             {onu.last_status_change && <div style={{ color: "#64748b" }}>Última mudança de status: {onu.last_status_change}</div>}
           </div>
-          {data.warning && <div style={{ marginTop: 6, fontSize: 11, color: "#a16207" }}>{data.warning}</div>}
+          {data.warning && (
+            <div data-testid="signal-warning"
+                  style={{ marginTop: 8, padding: "8px 10px",
+                            borderRadius: 8, fontSize: 11,
+                            background: data?.live_error?.is_los
+                              ? "#fef2f2" : "#fef9c3",
+                            border: `1px solid ${data?.live_error?.is_los
+                              ? "#fca5a5" : "#fde68a"}`,
+                            color: data?.live_error?.is_los
+                              ? "#7f1d1d" : "#713f12",
+                            lineHeight: 1.5 }}>
+              <b style={{ display: "block", marginBottom: 2 }}>
+                {data?.live_error?.cleared
+                  ? "Sem leitura · cache zerado"
+                  : data?.live_error?.is_los
+                  ? "ONU em LOS · sem sinal pra ler"
+                  : "Aviso"}
+              </b>
+              {data.warning}
+              {data?.live_error?.is_los && (onu.unique_external_id || onu.sn) && (
+                <RebootButton
+                  extId={onu.unique_external_id || onu.sn}
+                  onDone={() => load(true)}
+                />
+              )}
+            </div>
+          )}
         </div>
         <button
           type="button"

@@ -27,29 +27,50 @@ export default function ClientQRModal({ open, onClose, me }) {
   const status = me?.status || me?.subscriber_status || "ativo";
   const isActive = String(status).toLowerCase().startsWith("ativ");
 
-  // Busca um token criptografado novo a cada 60s enquanto o modal estiver aberto
+  // iter215be — QR SEGURO. Pega token efêmero (60s) do backend.
+  // SEM FALLBACK em texto puro: bug crítico anterior gerava JSON com
+  // nome+CPF legível por câmera. Agora se a chamada falhar, mostra
+  // "QR indisponível" em vez de vazar dados.
+  //
+  // iter215bl — Escolhe o endpoint certo de acordo com o tipo de
+  // sessão do cliente:
+  //   - JWT do portal (email+senha)  →  /api/cliente-portal/qr-token
+  //     (Fernet criptografado, prefixo LIGO2:)
+  //   - Token CPF (login por CPF)    →  /api/referrals/qr-token
+  //     (token efêmero single-use, prefixo LIGO:)
+  // Antes, o modal sempre chamava /cliente-portal/qr-token. Clientes
+  // que logaram por CPF recebiam 401 ("Token inválido") e o modal caía
+  // em "QR indisponível".
   useEffect(() => {
     if (!open || !me) return;
     let alive = true;
     const fetchToken = async () => {
       try {
-        const tk = localStorage.getItem("client_portal_token")
-          || localStorage.getItem("ligo_cliente_token")
-          || localStorage.getItem("ligo_indica_token");
-        const r = await axios.get(`${API}/qr-token`, {
+        const portalTk = localStorage.getItem("client_portal_token")
+          || localStorage.getItem("ligo_cliente_token");
+        const cpfTk = localStorage.getItem("ligo_indica_token");
+        const tk = portalTk || cpfTk;
+        if (!tk) throw new Error("no-token");
+        // Escolhe o endpoint compatível com o token disponível
+        const endpoint = portalTk
+          ? `${BACKEND}/api/cliente-portal/qr-token`
+          : `${BACKEND}/api/qr-token`;
+        const r = await axios.get(endpoint, {
           headers: { Authorization: `Bearer ${tk}` },
         });
         if (alive) {
           setQrValue(r.data.qr_payload || "");
           setLoading(false);
         }
-      } catch {
-        // fallback: gera local sem encriptação (legado, só nome)
+      } catch (err) {
+        // ⚠️ NÃO usar fallback com dados pessoais — vaza nome/CPF.
+        // Loga o erro pra facilitar suporte (produção).
+        try {
+          console.warn("[ClientQRModal] qr-token falhou:",
+            err?.response?.status, err?.response?.data || err?.message);
+        } catch { /* noop */ }
         if (alive) {
-          setQrValue(JSON.stringify({
-            v: 1, name: titleCase(me.name || ""),
-            cpf: cpfRaw, sid: me.id || null,
-          }));
+          setQrValue("");
           setLoading(false);
         }
       }
@@ -57,7 +78,7 @@ export default function ClientQRModal({ open, onClose, me }) {
     fetchToken();
     const iv = setInterval(fetchToken, 60 * 1000);
     return () => { alive = false; clearInterval(iv); };
-  }, [open, me, cpfRaw]);
+  }, [open, me]);
 
   if (!me) return null;
 
@@ -138,13 +159,20 @@ export default function ClientQRModal({ open, onClose, me }) {
                 alignItems: "center", minHeight: 256,
                 boxShadow: "0 14px 36px rgba(0,0,0,.35)",
               }}>
-                {loading || !qrValue ? (
+                {loading ? (
                   <div style={{
                     width: 220, height: 220, display: "grid",
                     placeItems: "center", color: "#6B2BFB",
                     fontSize: 12, fontWeight: 700,
                     animation: "pulse 1.4s ease-in-out infinite",
                   }}>Gerando QR seguro…</div>
+                ) : !qrValue ? (
+                  <div style={{
+                    width: 220, height: 220, display: "grid",
+                    placeItems: "center", color: "#b42318",
+                    fontSize: 12, fontWeight: 700, textAlign: "center",
+                    padding: "0 18px",
+                  }}>QR indisponível.<br />Verifique sua conexão e tente novamente.</div>
                 ) : (
                   <QRCodeSVG value={qrValue} size={220} level="M"
                     bgColor="#ffffff" fgColor={COLORS.purpleDeep || "#1a0840"}
@@ -167,8 +195,14 @@ export default function ClientQRModal({ open, onClose, me }) {
                     <span data-testid="client-qr-tenure"
                           style={{ color: "#fde68a", fontWeight: 800 }}>
                       {(() => {
+                        // iter215bd — NÃO usar created_at como fallback
+                        // porque é data de importação do Atlaz, não do
+                        // início real do relacionamento. Sem data fiel,
+                        // mostra apenas "Cliente Ligo" sem contador.
                         const d = me.installation_date
-                          || me.activation_date || me.created_at;
+                          || me.activation_date
+                          || me.subscriber_since;
+                        if (!d) return "Cliente Ligo";
                         const t = formatTenure(d);
                         // iter215 — pra clientes com 5+ anos (fidelidade)
                         try {

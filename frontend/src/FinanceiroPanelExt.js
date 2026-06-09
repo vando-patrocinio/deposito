@@ -689,7 +689,7 @@ function BillForm({ initial, refs, onClose, onSaved, onRefsChanged }) {
                 { value: "income", label: "Receita" },
                 { value: "both", label: "Ambos" },
               ], defaultValue: "expense", required: true },
-            { key: "color", label: "Cor (hex)", placeholder: "#6366f1" },
+            { key: "color", label: "Cor (hex)", placeholder: "#4b1d7a" },
           ]}
           onClose={() => setCreatingCategory(false)}
           onCreated={async (created) => {
@@ -722,7 +722,7 @@ function BillForm({ initial, refs, onClose, onSaved, onRefsChanged }) {
 
 const inlineCreateBtnStyle = {
   width: 34, height: 34, border: "1px solid #cbd5e1",
-  background: "linear-gradient(135deg,#6366f1,#8b5cf6)",
+  background: "linear-gradient(135deg,#4b1d7a,#8b5cf6)",
   color: "#fff", borderRadius: 6, cursor: "pointer",
   fontSize: 18, fontWeight: 700, flexShrink: 0,
 };

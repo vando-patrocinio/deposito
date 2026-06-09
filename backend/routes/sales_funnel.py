@@ -311,6 +311,25 @@ async def convert_lead_to_ticket(phone: str, payload: ConvertIn,
     }
     await db.tickets.insert_one(dict(ticket))
 
+    # Sprint 19 — emit sale.created + ticket.opened
+    try:
+        from services.event_emitters import emit_business
+        await emit_business(
+            kind="sale.created", actor=user,
+            payload={"lead_id": pre_sub["id"],
+                       "ticket_id": ticket["id"],
+                       "phone": phone,
+                       "plan_name": payload.plan_name},
+            severity="media", source="sales_funnel.convert")
+        await emit_business(
+            kind="ticket.opened", actor=user,
+            payload={"ticket_id": ticket["id"],
+                       "type": "instalacao",
+                       "priority": "alta"},
+            severity="media", source="sales_funnel.convert")
+    except Exception:
+        pass
+
     # 3. Marca conversa como "convertida" pra parar de aparecer em leads
     await db.wa_conversations.update_one(
         {"company_id": cid, "phone": phone},

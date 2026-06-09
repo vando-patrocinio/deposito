@@ -822,6 +822,7 @@ export default function LousaAdminPanel({ systemStatus = { offline: false, drift
                 data-testid="lousa-fleet-filter-btn"
                 title="Mostrar apenas alertas de Frota (vistoria recusada pela IA)"
                 accent={onlyFleetAlerts ? "warning" : "neutral"}
+                style={{ minWidth: 110, justifyContent: "center" }}
               >
                 <span style={{ fontSize: 13 }}></span>
                 <span>{onlyFleetAlerts ? "Só Frota" : "Frota"} · {fleetAlertCount}</span>
@@ -845,6 +846,7 @@ export default function LousaAdminPanel({ systemStatus = { offline: false, drift
               data-testid="lousa-sla-alerts-toggle"
               title={alertsOn ? "Alertas sonoros ativos — clique para desligar" : "Ativar alertas sonoros para serviços atrasados"}
               accent={alertsOn ? "success" : "neutral"}
+              style={{ minWidth: 96, justifyContent: "center" }}
             >
               <span style={{ fontSize: 13 }}>{alertsOn ? "" : ""}</span>
               <span>{alertsOn ? "Alertas" : "Mudo"}</span>
@@ -854,7 +856,8 @@ export default function LousaAdminPanel({ systemStatus = { offline: false, drift
               disabled={refreshing}
               data-testid="lousa-refresh-btn"
               accent={refreshFlash ? "success" : "neutral"}
-              style={{ transition: "background-color .25s, color .25s" }}
+              style={{ minWidth: 130, justifyContent: "center",
+                       transition: "background-color .25s, color .25s" }}
             >
               <span style={{ fontSize: 13 }}>{refreshing ? "⏳" : refreshFlash ? "✓" : ""}</span>
               <span>{refreshing ? "Atualizando" : refreshFlash ? "Atualizado" : "Atualizar"}</span>

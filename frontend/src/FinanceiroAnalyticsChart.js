@@ -394,7 +394,7 @@ export default function AnalyticsChart() {
                         stroke="#dc2626" strokeWidth={2.5}
                         dot={{ r: 3 }} activeDot={{ r: 5 }} />
                   <Line type="monotone" dataKey="net" name="Resultado"
-                        stroke="#3b82f6" strokeWidth={1.5}
+                        stroke="#4b1d7a" strokeWidth={1.5}
                         strokeDasharray="6 4"
                         dot={false} />
                 </LineChart>

@@ -21,7 +21,7 @@ function fmtNum(n) {
 
 // Mapeia service → cor de destaque (gradient)
 const SERVICE_COLOR = {
-  text:   "linear-gradient(90deg, #6366f1, #8b5cf6)",
+  text:   "linear-gradient(90deg, #4b1d7a, #8b5cf6)",
   vision: "linear-gradient(90deg, #10b981, #14b8a6)",
   stt:    "linear-gradient(90deg, #f59e0b, #f97316)",
   tts:    "linear-gradient(90deg, #ec4899, #f43f5e)",
@@ -322,7 +322,7 @@ export default function MotorIaUsageCard() {
               data-testid="usage-limits-save"
               style={{
                 padding: "6px 12px", border: 0,
-                background: "linear-gradient(90deg, #6366f1, #8b5cf6)",
+                background: "linear-gradient(90deg, #4b1d7a, #8b5cf6)",
                 color: "#fff", borderRadius: 6,
                 cursor: savingLimits ? "wait" : "pointer", fontSize: 12,
                 fontWeight: 600,
@@ -523,7 +523,7 @@ export default function MotorIaUsageCard() {
                        flex: 1,
                        height: `${h}%`,
                        minHeight: 2,
-                       background: "linear-gradient(180deg, #8b5cf6, #6366f1)",
+                       background: "linear-gradient(180deg, #8b5cf6, #4b1d7a)",
                        borderRadius: "2px 2px 0 0",
                        cursor: "pointer",
                      }} />

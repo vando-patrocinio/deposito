@@ -67,6 +67,15 @@ from routes import (
     ai_dashboard as routes_ai_dashboard,
     aihub as routes_aihub,
     motor_ia as routes_motor_ia,
+    conselho_ia as routes_conselho_ia,
+    presidente_ia as routes_presidente_ia,
+    audit_log_panel as routes_audit_log,
+    backend_health_routes as routes_backend_health,
+    warroom as routes_warroom,
+    diagnostic_report as routes_diagnostic_report,
+    pre_attendance as routes_pre_attendance,
+    whatsapp_campaigns as routes_wa_campaigns,
+    diagnostic as routes_diagnostic,
     smartolt_ai as routes_smartolt_ai,
     ai_topology as routes_ai_topology,
     copilot_ranking as routes_copilot_ranking,
@@ -246,7 +255,17 @@ async def ensure_indexes() -> None:
 # -------------------------------------------------------------------------
 # Scheduler & Jobs
 # -------------------------------------------------------------------------
-scheduler = AsyncIOScheduler(timezone="America/Sao_Paulo")
+scheduler = AsyncIOScheduler(
+    timezone="America/Sao_Paulo",
+    # P0.2 Scheduler Hardening — protege TODOS os jobs contra misfire por
+    # downtime do processo (causa do gap de backup 07/jun). Aplica
+    # uniformemente em todos os add_job sem alterar frequências.
+    job_defaults={
+        "misfire_grace_time": 3600,  # 1h de janela pra recuperar job perdido
+        "coalesce": True,            # combina múltiplos misfires em 1 execução
+        "max_instances": 1,          # evita execução concorrente do mesmo job
+    },
+)
 
 
 async def monthly_email_job() -> None:
@@ -393,6 +412,216 @@ async def _add_powered_by_header(request, call_next):
     response.headers["X-Powered-By"] = x_powered_by_value()
     return response
 
+
+# ─────────────────── Sprint 13 — Auto-emit no Event Bus ───────────────────
+from middleware.auto_emit_middleware import auto_emit_middleware
+app.middleware("http")(auto_emit_middleware)
+
+
+# ─────────────────── Sprint 2 — RBAC global (iter221) ───────────────────
+@app.middleware("http")
+async def _rbac_middleware(request: Request, call_next):
+    """Aplica RBAC por path. Decisão antes de bater no router.
+
+    Fluxo:
+      1. path público (PUBLIC_PATHS) -> passa
+      2. extrai JWT do header. 401 se ausente/inválido.
+      3. consulta required_roles_for(path). Se None, basta auth.
+      4. valida role do user contra o set. 403 se não bate.
+      5. logs DELETE em audit_log automaticamente.
+    """
+    from fastapi.responses import JSONResponse
+    from rbac_policy import (
+        is_public, required_roles_for, is_destructive, is_export,
+        is_ia, is_non_staff_auth,
+    )
+    import time as _t
+
+    path = request.url.path or ""
+    method = request.method or ""
+    _t0 = _t.time()
+    # captura IP do cliente (atrás de proxy Kubernetes)
+    fwd = request.headers.get("x-forwarded-for") or ""
+    client_ip = (fwd.split(",")[0].strip()
+                   if fwd else (request.client.host if request.client
+                                  else ""))
+    user_agent = (request.headers.get("user-agent") or "")[:200]
+
+    # 1) Públicos passam
+    if is_public(path):
+        return await call_next(request)
+
+    # 2) Extrai JWT
+    auth_h = request.headers.get("authorization") or ""
+    token = auth_h[7:] if auth_h.lower().startswith("bearer ") else ""
+    user = None
+    if token:
+        try:
+            from auth import decode_token
+            payload = decode_token(token)
+            user = payload if isinstance(payload, dict) else None
+        except Exception:
+            user = None
+
+    # Endpoints fora do /api passam (frontend SPA)
+    if not path.startswith("/api/"):
+        return await call_next(request)
+
+    if not user:
+        # Sem token válido — bloqueia tudo do /api/ (exceto publics)
+        return JSONResponse(
+            {"detail": "Não autenticado"}, status_code=401)
+
+    # 3) Role check (pula em endpoints com fluxo próprio - portais)
+    if not is_non_staff_auth(path):
+        roles = required_roles_for(path)
+        if roles is not None:
+            u_role = user.get("role") or "colaborador"
+            is_super = bool(user.get("is_super_admin"))
+            if not is_super and u_role != "administrador" \
+                    and u_role not in roles:
+                # log do bloqueio RBAC (Sprint 3 + chain Sprint 4)
+                try:
+                    import uuid as _uuid
+                    from datetime import datetime as _dt, timezone as _tz
+                    from services.lgpd_chain import insert_audit_event
+                    await insert_audit_event({
+                        "id": f"aud-{_uuid.uuid4().hex[:14]}",
+                        "company_id": user.get("company_id"),
+                        "user_id": user.get("sub") or user.get("id"),
+                        "user_email": user.get("email"),
+                        "user_role": u_role,
+                        "category": "rbac_blocked",
+                        "criticality": "media",
+                        "method": method,
+                        "target": path,
+                        "endpoint": path,
+                        "action": f"{method} {path}",
+                        "status": 403,
+                        "reason": (
+                            f"role={u_role} não está em "
+                            f"{sorted(list(roles))}"),
+                        "ip": client_ip,
+                        "user_agent": user_agent,
+                        "data": {},
+                        "created_at": _dt.now(_tz.utc).isoformat(),
+                    })
+                except Exception:
+                    pass
+                return JSONResponse(
+                    {"detail": "Você não tem permissão para "
+                                  "acessar este recurso."},
+                    status_code=403)
+
+    # 4) Rate-limit em rotas de IA (best-effort, in-memory)
+    if is_ia(path):
+        try:
+            from rbac import rate_limit as _rl
+            _dep = _rl(per_minute=int(os.environ.get(
+                "IA_RATE_PER_MIN", "30") or 30),
+                          per_day=int(os.environ.get(
+                              "IA_RATE_PER_DAY", "1000") or 1000),
+                          scope="ia")
+            try:
+                await _dep(request, user)
+            except Exception as e:
+                from fastapi import HTTPException as _HE
+                if isinstance(e, _HE):
+                    # registra rate-limit
+                    try:
+                        import uuid as _uuid
+                        from datetime import datetime as _dt, \
+                            timezone as _tz
+                        from services.lgpd_chain import insert_audit_event
+                        await insert_audit_event({
+                            "id": f"aud-{_uuid.uuid4().hex[:14]}",
+                            "company_id": user.get("company_id"),
+                            "user_id": user.get("sub") or user.get("id"),
+                            "user_email": user.get("email"),
+                            "user_role": user.get("role"),
+                            "category": "ai_rate_limited",
+                            "criticality": "baixa",
+                            "method": method, "target": path,
+                            "endpoint": path,
+                            "action": f"{method} {path}",
+                            "status": 429,
+                            "reason": str(e.detail),
+                            "ip": client_ip, "user_agent": user_agent,
+                            "data": {}, "created_at":
+                                _dt.now(_tz.utc).isoformat(),
+                        })
+                    except Exception:
+                        pass
+                    return JSONResponse(
+                        {"detail": e.detail}, status_code=e.status_code)
+                raise
+        except Exception:
+            pass
+
+    # 5) Audit log para DELETE + EXPORT + CONFIG + IMPERSONATE +
+    # LOGIN_ADMIN
+    _is_delete = is_destructive(method, path)
+    _is_export = is_export(path)
+    _is_cfg = (method in ("PUT", "POST", "PATCH") and (
+        path.startswith("/api/settings") or
+        path.startswith("/api/branding") or
+        path.startswith("/api/integrations") or
+        path.startswith("/api/motor-ia/config")))
+    _is_ai_cfg = (method in ("PUT", "POST", "PATCH", "DELETE") and (
+        path.startswith("/api/ai-config")))
+    _is_impersonate = path.startswith("/api/auth/impersonate")
+    _is_login_admin = path == "/api/auth/admin-login" and method == "POST"
+
+    needs_audit = (_is_delete or _is_export or _is_cfg or _is_ai_cfg
+                     or _is_impersonate or _is_login_admin)
+    if needs_audit:
+        if _is_delete:
+            cat, crit = "destructive", "alta"
+        elif _is_export:
+            cat, crit = "export", "media"
+        elif _is_ai_cfg:
+            cat, crit = "ai_config_change", "alta"
+        elif _is_cfg:
+            cat, crit = "config_change", "alta"
+        elif _is_impersonate:
+            cat, crit = "impersonate", "alta"
+        else:
+            cat, crit = "login_admin", "media"
+        try:
+            import uuid as _uuid
+            from datetime import datetime as _dt, timezone as _tz
+            from services.lgpd_chain import insert_audit_event
+            await insert_audit_event({
+                "id": f"aud-{_uuid.uuid4().hex[:14]}",
+                "company_id": user.get("company_id"),
+                "user_id": user.get("sub") or user.get("id"),
+                "user_email": user.get("email"),
+                "user_role": user.get("role"),
+                "category": cat,
+                "criticality": crit,
+                "method": method,
+                "target": path,
+                "endpoint": path,
+                "action": f"{method} {path}",
+                "status": 200,
+                "ip": client_ip,
+                "user_agent": user_agent,
+                "data": {},
+                "created_at": _dt.now(_tz.utc).isoformat(),
+            })
+        except Exception:
+            pass
+
+    response = await call_next(request)
+    # registra latência para o painel de saúde
+    try:
+        from services.backend_health import record_request
+        record_request(path, response.status_code,
+                          (_t.time() - _t0) * 1000.0)
+    except Exception:
+        pass
+    return response
+
 # Rate limiting global via slowapi
 from slowapi.errors import RateLimitExceeded
 from slowapi import _rate_limit_exceeded_handler
@@ -412,10 +641,16 @@ async def _startup() -> None:
         from routes.fleet_portal import ensure_indexes as _fp_idx
         from routes.security_home import ensure_indexes as _sh_idx
         from routes.parceria import ensure_indexes as _pa_idx
+        from routes.audit_log_panel import ensure_indexes as _al_idx
+        from services.event_bus import ensure_indexes as _eb_idx
+        from services.executive_scheduler import start_scheduler
         await _ft_idx()
         await _fp_idx()
         await _sh_idx()
         await _pa_idx()
+        await _al_idx()
+        await _eb_idx()
+        start_scheduler()
     except Exception as _e:
         logger.warning("[startup] fleet/security/parceria indexes falhou: %s", _e)
     # Migrations aditivas (idempotentes — só adicionam campos/índices,
@@ -489,6 +724,35 @@ async def _startup() -> None:
                       id="wifi_mark_abandoned", replace_existing=True)
     scheduler.add_job(retarget_abandoned_sessions_job, "interval", hours=1,
                       id="wifi_retarget_48h", replace_existing=True)
+    # FASE 10 sprint final V5.0 — Autonomy scheduler integrado
+    if os.environ.get("AUTONOMY_SCHEDULER_DISABLED", "0") != "1":
+        from services import autonomy_scheduler_jobs as _autosch
+        scheduler.add_job(_autosch.drives, "interval", minutes=30,
+                           id="autonomy_drives_30m", replace_existing=True,
+                           max_instances=1)
+        scheduler.add_job(_autosch.reconcile, "interval", hours=4,
+                           id="autonomy_reconcile_4h",
+                           replace_existing=True, max_instances=1)
+        scheduler.add_job(_autosch.briefing_07h,
+                           CronTrigger(hour=7, minute=0),
+                           id="autonomy_briefing_07h",
+                           replace_existing=True)
+        scheduler.add_job(_autosch.briefing_12h,
+                           CronTrigger(hour=12, minute=0),
+                           id="autonomy_briefing_12h",
+                           replace_existing=True)
+        scheduler.add_job(_autosch.briefing_18h,
+                           CronTrigger(hour=18, minute=0),
+                           id="autonomy_briefing_18h",
+                           replace_existing=True)
+        scheduler.add_job(_autosch.self_healing_auto,
+                           "interval", hours=1,
+                           id="autonomy_self_heal_1h",
+                           replace_existing=True,
+                           max_instances=1)
+        logger.info("[startup] autonomy scheduler jobs registered "
+                      "(drives/30m, reconcile/4h, briefings 07/12/18, "
+                      "self_heal/1h)")
     # Atlaz: sync de assinantes diário às 22h00 (America/Sao_Paulo)
     scheduler.add_job(routes_atlaz.nightly_customers_sync_job,
                       CronTrigger(hour=22, minute=0),
@@ -550,6 +814,14 @@ async def _startup() -> None:
     asyncio.create_task(_aging_loop())
     from services.churn_scheduler import start_worker as start_churn_scheduler
     start_churn_scheduler()
+    # iter215bx — Cron do Conselho Estratégico IA (8h BRT)
+    from services.conselho_ia_scheduler import (
+        start_worker as start_conselho_ia_cron)
+    start_conselho_ia_cron()
+    from services.readjustment_scheduler import (
+        start_worker as start_readjustment_scheduler,
+    )
+    start_readjustment_scheduler()
     from services.ai_training_scheduler import (
         start_worker as start_ai_training_scheduler,
     )
@@ -685,6 +957,10 @@ async def _startup() -> None:
     # 08:30 BRT pra empresas com preventive_os.enabled=True)
     from routes.preventive_os import preventive_os_daily_worker
     asyncio.create_task(preventive_os_daily_worker())
+    # iter215am — Worker que analisa fotos de ONT (retirada/troca sem SN
+    # SmartOLT) com Claude Sonnet 4.6 e atualiza estoque do técnico.
+    from services.sn_photo_worker import sn_photo_worker
+    asyncio.create_task(sn_photo_worker())
     logger.info("Scheduler iniciado.")
 
 
@@ -702,6 +978,33 @@ dashboard_overtime = routes_clock.dashboard_overtime  # routes/dashboard.py impo
 
 # Inclui todos os routers (cada um já vem com prefix="/api")
 app.include_router(routes_users.router)
+from routes import ai_center_v51 as routes_ai_center_v51  # noqa: E402
+app.include_router(routes_ai_center_v51.router)
+from routes import ai_center_observability as routes_observ  # noqa: E402
+app.include_router(routes_observ.router)
+from routes import ai_center_homologation as routes_homo  # noqa: E402
+app.include_router(routes_homo.router)
+# ─── Safety Admin (Kill Switch + Backup + Vault) ─────────────
+from routes import admin_safety as routes_admin_safety  # noqa: E402
+app.include_router(routes_admin_safety.router)
+# ─── Integration Credentials (Grafana/Zabbix via Vault) ──────
+from routes import admin_integrations as routes_admin_int  # noqa: E402
+app.include_router(routes_admin_int.router)
+# ─────────────────────────────────────────────────────────────
+from routes import ai_center_v6 as routes_ai_center_v6  # noqa: E402
+app.include_router(routes_ai_center_v6.router)
+from routes import ai_center_v7 as routes_ai_center_v7  # noqa: E402
+app.include_router(routes_ai_center_v7.router)
+# Integra scheduler V5.1 quando o APScheduler global existir
+try:
+    from services import scheduler_v51 as _sched_v51  # noqa: E402
+    import server as _srv_self  # noqa: E402
+    if hasattr(_srv_self, "scheduler"):
+        _sched_v51.start_scheduler(_srv_self.scheduler)
+except Exception as _e:
+    import logging as _logging
+    _logging.getLogger("server").warning(
+        "V5.1 scheduler not started: %r", _e)
 app.include_router(routes_pracas.router)
 app.include_router(routes_clock.router)
 app.include_router(routes_locations.router)
@@ -754,6 +1057,58 @@ app.include_router(routes_ai_preventive.router)
 app.include_router(routes_ai_dashboard.router)
 app.include_router(routes_aihub.router)
 app.include_router(routes_motor_ia.router)
+app.include_router(routes_conselho_ia.router)
+app.include_router(routes_presidente_ia.router)
+app.include_router(routes_audit_log.router)
+app.include_router(routes_backend_health.router)
+app.include_router(routes_warroom.router)
+# Sprints 10/11/12 — feedback loop, predictions, learnings + leader
+from routes import motor_ia_intel as routes_motor_ia_intel  # noqa: E402
+from routes import operacao_tese as routes_operacao_tese  # noqa: E402
+from routes import ai_center_revenue as routes_ai_center_revenue  # noqa: E402
+from routes import ai_center_data_quality as routes_ai_center_dq  # noqa: E402
+from routes import ai_center_nervous_system as routes_ai_center_ns  # noqa: E402
+from routes import ai_center_smartolt_twin as routes_ai_center_twin  # noqa: E402
+from routes import ai_center_home as routes_ai_center_home  # noqa: E402
+from routes import ai_center_isabella as routes_ai_center_isabella  # noqa: E402
+from routes import ai_center_knowledge_graph as routes_ai_center_kg  # noqa: E402
+from routes import ai_center_alvaro as routes_ai_center_alvaro  # noqa: E402
+from routes import ai_center_alvaro_v5 as routes_ai_center_alvaro_v5  # noqa: E402
+from routes import ai_center_failure_risk as routes_ai_center_frs  # noqa: E402
+from routes import ai_center_multitenant as routes_ai_center_mt  # noqa: E402
+from routes import ai_center_financial as routes_ai_center_fin  # noqa: E402
+from routes import public_smartprov as routes_public_smartprov  # noqa: E402
+from routes import ai_center_autonomous as routes_ai_center_auto  # noqa: E402
+from routes import ai_center_blockers as routes_ai_center_blk  # noqa: E402
+from routes import ai_center_predictive as routes_ai_center_pred  # noqa: E402
+from routes import ai_center_v62 as routes_ai_center_v62  # noqa: E402
+from routes import ai_center_cash as routes_ai_center_cash  # noqa: E402
+from routes import ai_center_v80 as routes_ai_center_v80  # noqa: E402
+app.include_router(routes_motor_ia_intel.router)
+app.include_router(routes_operacao_tese.router)
+app.include_router(routes_ai_center_revenue.router)
+app.include_router(routes_ai_center_dq.router)
+app.include_router(routes_ai_center_ns.router)
+app.include_router(routes_ai_center_twin.router)
+app.include_router(routes_ai_center_home.router)
+app.include_router(routes_ai_center_isabella.router)
+app.include_router(routes_ai_center_kg.router)
+app.include_router(routes_ai_center_alvaro.router)
+app.include_router(routes_ai_center_alvaro_v5.router)
+app.include_router(routes_ai_center_frs.router)
+app.include_router(routes_ai_center_mt.router)
+app.include_router(routes_ai_center_fin.router)
+app.include_router(routes_public_smartprov.router)
+app.include_router(routes_ai_center_auto.router)
+app.include_router(routes_ai_center_blk.router)
+app.include_router(routes_ai_center_pred.router)
+app.include_router(routes_ai_center_v62.router)
+app.include_router(routes_ai_center_cash.router)
+app.include_router(routes_ai_center_v80.router)
+app.include_router(routes_diagnostic_report.router)
+app.include_router(routes_pre_attendance.router)
+app.include_router(routes_wa_campaigns.router)
+app.include_router(routes_diagnostic.router)
 app.include_router(routes_smartolt_ai.router)
 app.include_router(routes_ai_topology.router)
 app.include_router(routes_copilot_ranking.router)
@@ -849,6 +1204,8 @@ app.include_router(routes_os_validation_toggles.router)
 app.include_router(routes_tech_tracking.router)
 from routes import kpi_churn as routes_kpi_churn  # noqa: E402
 app.include_router(routes_kpi_churn.router)
+from routes import ligo_maps as routes_ligo_maps  # noqa: E402
+app.include_router(routes_ligo_maps.router)
 
 
 # ============================================================

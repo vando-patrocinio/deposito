@@ -219,35 +219,37 @@ async def _match_collaborator(
     rr_counter: Dict[str, int],
 ) -> Optional[Dict[str, Any]]:
     """Escolhe técnico pra essa OS preventiva.
-    strategy = city | praca | any. Sempre cai em round-robin como fallback."""
+    iter215al — Cascata progressiva: cidade → praça → qualquer disponível.
+    Garante que sempre que houver slots, alguém recebe a bolha (vs ficar
+    sem match quando city/praca não batem)."""
     sub = candidate["subscriber"]
-    sub_city = (sub.get("city") or sub.get("metadata", {}).get("city")
+    sub_city = (sub.get("city") or (sub.get("metadata") or {}).get("city")
                 or "").strip().lower()
-    sub_praca = sub.get("praca_id") or sub.get("metadata", {}).get("praca_id")
+    sub_praca = (sub.get("praca_id")
+                 or (sub.get("metadata") or {}).get("praca_id"))
 
-    # 1) tenta city
-    if strategy in ("city", "praca") and sub_city:
+    # 1) Match exato por cidade
+    if strategy != "any" and sub_city:
         matches = [c for c in collabs_pool
-                   if (c.get("city") or "").strip().lower() == sub_city
-                   and c["_slots_left"] > 0]
+                    if (c.get("city") or "").strip().lower() == sub_city
+                    and c["_slots_left"] > 0]
         if matches:
             matches.sort(key=lambda c: rr_counter.get(c["id"], 0))
             return matches[0]
-    # 2) tenta praca
-    if strategy in ("praca", "city") and sub_praca:
+    # 2) Match por praça
+    if strategy != "any" and sub_praca:
         matches = [c for c in collabs_pool
-                   if (c.get("praca_id") == sub_praca
-                       or sub_praca in (c.get("praca_ids_extra") or []))
-                   and c["_slots_left"] > 0]
+                    if (c.get("praca_id") == sub_praca
+                        or sub_praca in (c.get("praca_ids_extra") or []))
+                    and c["_slots_left"] > 0]
         if matches:
             matches.sort(key=lambda c: rr_counter.get(c["id"], 0))
             return matches[0]
-    # 3) any: round-robin global
-    if strategy in ("any", "city", "praca"):
-        avail = [c for c in collabs_pool if c["_slots_left"] > 0]
-        if avail:
-            avail.sort(key=lambda c: rr_counter.get(c["id"], 0))
-            return avail[0]
+    # 3) Fallback: qualquer técnico com slot livre (round-robin)
+    avail = [c for c in collabs_pool if c["_slots_left"] > 0]
+    if avail:
+        avail.sort(key=lambda c: rr_counter.get(c["id"], 0))
+        return avail[0]
     return None
 
 
@@ -324,17 +326,27 @@ async def _gather_collaborator_pool(
     company_id: str, date_iso: str, target: int,
     only_collaborator_id: Optional[str] = None,
 ) -> List[Dict[str, Any]]:
-    """Lista colaboradores ativos com slots restantes (target - já_na_grade)."""
-    q = {"company_id": company_id, "active": True,
-         "role": {"$in": ["Tecnico", "Tecnico Master", "Tecnico Senior"]}}
+    """Lista colaboradores ativos com slots restantes (target - já_na_grade).
+    iter215al — Match de role flexível: pega qualquer colaborador cuja
+    role contenha 'tecnic', 'reparador' ou 'instalador' (case-insensitive).
+    Cobre variantes: Tecnico, Técnico, Técnico (Atlaz), Reparador
+    Instalador, técnico minúsculo, etc."""
+    base_q = {"company_id": company_id, "active": True}
     if only_collaborator_id:
-        q = {"id": only_collaborator_id}
+        base_q = {"id": only_collaborator_id}
     pool: List[Dict[str, Any]] = []
-    async for c in db.collaborators.find(q, {
+    async for c in db.collaborators.find(base_q, {
         "_id": 0, "id": 1, "name": 1, "city": 1, "praca_id": 1,
         "praca_ids_extra": 1, "company_id": 1, "active": 1, "role": 1,
     }):
         if not c.get("active"):
+            continue
+        role_lc = (c.get("role") or "").lower()
+        # Filtra só técnicos/reparadores/instaladores. Excluir admin,
+        # auxiliares, inbox, etc.
+        is_tech = any(s in role_lc for s in
+                       ("tecnic", "técnic", "reparador", "instalador"))
+        if not is_tech and not only_collaborator_id:
             continue
         pending = await _count_pending_today(c["id"], date_iso)
         slots = max(0, target - pending)
@@ -348,15 +360,20 @@ async def _generate_for_company(
     company_id: str, *, dry_run: bool = False,
     actor_email: str = "system",
     only_collaborator_id: Optional[str] = None,
+    force: bool = False,
 ) -> Dict[str, Any]:
-    """Job principal — roda 1x/dia OU sob demanda."""
+    """Job principal — roda 1x/dia OU sob demanda.
+
+    iter215al — `force=True` (botão manual do gestor) ignora weekend e
+    sobrescreve `enabled=false`. Cron diário usa force=False (respeita
+    config de fim de semana e habilitação)."""
     settings = await _get_settings(company_id)
-    if not dry_run and not settings.get("enabled"):
+    if not dry_run and not force and not settings.get("enabled"):
         return {"skipped": True, "reason": "disabled", "settings": settings}
 
     date_iso = await _today_iso_brt()
-    # weekend check
-    if not settings.get("include_weekends"):
+    # weekend check (só pra dry_run + cron — botão manual ignora)
+    if not force and not settings.get("include_weekends"):
         dow = datetime.fromisoformat(date_iso).weekday()  # 5=sáb 6=dom
         if dow >= 5 and not dry_run:
             return {"skipped": True, "reason": "weekend",
@@ -406,7 +423,16 @@ async def _generate_for_company(
     created: List[Dict[str, Any]] = []
     preview_only: List[Dict[str, Any]] = []
     for cand in candidates:
-        coll = await _match_collaborator(cand, pool, strategy, rr_counter)
+        # iter215al — Filtra pool pelos técnicos que ainda têm cota
+        # `_max_create` antes de chamar o matcher. Garante que
+        # max_preventive_per_run é respeitado por técnico.
+        available_pool = [c for c in pool
+                          if c.get("_max_create", 0) > 0
+                          and c.get("_slots_left", 0) > 0]
+        if not available_pool:
+            break
+        coll = await _match_collaborator(
+            cand, available_pool, strategy, rr_counter)
         if not coll:
             break
         rr_counter[coll["id"]] = rr_counter.get(coll["id"], 0) + 1
@@ -478,10 +504,11 @@ async def preview_run(user: dict = Depends(require_role("gestor"))):
 
 @router.post("/preventive-os/run-now")
 async def run_now(user: dict = Depends(require_role("gestor"))):
-    """Roda agora (cria as bolhas)."""
+    """Roda agora (cria as bolhas). Botão manual → ignora weekend e
+    sobrescreve `enabled=false` (gestor sabe o que está fazendo)."""
     company_id = user.get("company_id") or DEMO_COMPANY_ID
     return await _generate_for_company(
-        company_id, dry_run=False,
+        company_id, dry_run=False, force=True,
         actor_email=user.get("email") or "manual",
     )
 

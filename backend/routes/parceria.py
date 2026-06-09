@@ -71,6 +71,7 @@ Endpoints do PORTAL DO CLIENTE (?portal=cliente):
 from __future__ import annotations
 
 import logging
+import os
 import secrets
 import uuid
 from datetime import datetime, timezone, timedelta
@@ -98,6 +99,56 @@ QR_TOKEN_PREFIX = "LIGO:"
 # Apenas backend pode ler/escrever — nem cliente nem parceiro veem o conteúdo.
 QR_V2_PREFIX = "LIGO2:"
 QR_V2_TTL_SECONDS = 90  # token válido por 90s (anti-replay)
+
+# iter215bm — QR é uma URL pra que qualquer câmera abra o site Ligo
+# automaticamente. Formato:
+#   - V1 (legado, plain token):  https://ligofibra.com.br/q/<token>
+#   - V2 (Fernet, anti-replay):  https://ligofibra.com.br/q2/<encrypted>
+# Quem escaneia com câmera normal vai direto pro site; o app parceiro
+# extrai o token via os helpers `_extract_qr_token_v1/v2` abaixo.
+LIGO_QR_BASE_URL = os.environ.get(
+    "LIGO_QR_BASE_URL", "https://ligofibra.com.br").rstrip("/")
+QR_URL_V1_PATH = "/q/"
+QR_URL_V2_PATH = "/q2/"
+
+
+def _wrap_qr_v1(token: str) -> str:
+    """Devolve a URL pública pro QR Code V1 (token plano)."""
+    return f"{LIGO_QR_BASE_URL}{QR_URL_V1_PATH}{token}"
+
+
+def _wrap_qr_v2(encrypted: str) -> str:
+    """Devolve a URL pública pro QR Code V2 (Fernet)."""
+    return f"{LIGO_QR_BASE_URL}{QR_URL_V2_PATH}{encrypted}"
+
+
+def _extract_qr_token(raw: str) -> str:
+    """Extrai o token de qualquer formato suportado:
+      - URL Ligo:  https://ligofibra.com.br/q/<token>   →  <token>
+      - URL V2:    https://ligofibra.com.br/q2/<token>  →  LIGO2:<token>
+      - LIGO:xxx                                        →  xxx
+      - LIGO2:xxx                                       →  LIGO2:xxx (mantém)
+      - xxx                                             →  xxx
+    Mantém o prefixo LIGO2: pra fluxo Fernet identificar.
+    """
+    if not raw:
+        return ""
+    t = raw.strip()
+    # URL? extrai a última parte do path
+    if t.startswith("http://") or t.startswith("https://"):
+        try:
+            from urllib.parse import urlparse
+            u = urlparse(t)
+            path = u.path or ""
+            if path.startswith(QR_URL_V2_PATH):
+                return QR_V2_PREFIX + path[len(QR_URL_V2_PATH):]
+            if path.startswith(QR_URL_V1_PATH):
+                return path[len(QR_URL_V1_PATH):]
+            # URL sem path conhecido — retorna vazio (não é QR Ligo)
+            return ""
+        except Exception:
+            return ""
+    return t
 
 
 # ─────────────── Fernet seguro (lazy singleton) ──────────────
@@ -239,6 +290,58 @@ async def _promo_avg_rating(promotion_id: str) -> dict:
 
 
 # ─────────────────────── eligibility ────────────────────────
+async def _log_scan_event(
+    *, company_id: str, partner_id: str, partner_name: str,
+    partner_user_email: str, promotion_id: Optional[str],
+    promotion_title: str, outcome: str, reason: Optional[str] = None,
+    subscriber: Optional[dict] = None, voucher_code: Optional[str] = None,
+    reimbursement_value: Optional[float] = None,
+    redemption_id: Optional[str] = None,
+    qr_kind: Optional[str] = None,
+    qr_prefix: Optional[str] = None,
+) -> None:
+    """iter215bp — registra cada tentativa de scan (sucesso ou recusa)
+    em `parcerias_scan_log` pra trilha de auditoria + histórico.
+
+    Outcomes possíveis:
+      - "success"           redenção criada
+      - "duplicate_30s"     bloqueado pelo cooldown anti-replay
+      - "limit_reached"     atingiu max_uses_per_client
+      - "inactive_client"   status != ATIVO
+      - "delinquent"        cliente inadimplente
+      - "too_new"           contrato < 30 dias
+      - "promo_inactive"    promoção encerrada/inativa
+      - "wrong_tenant"      cliente de outra operadora
+      - "qr_invalid"        QR não cadastrado
+      - "qr_expired"        token TTL passou
+    """
+    try:
+        await db.parcerias_scan_log.insert_one({
+            "id": f"slog-{uuid.uuid4().hex[:14]}",
+            "company_id": company_id,
+            "partner_id": partner_id,
+            "partner_name": partner_name,
+            "partner_user_email": partner_user_email,
+            "promotion_id": promotion_id,
+            "promotion_title": promotion_title,
+            "outcome": outcome,
+            "reason": reason,
+            "client_id": (subscriber or {}).get("id"),
+            "client_name": (subscriber or {}).get("name", ""),
+            "client_document": (subscriber or {}).get("document")
+                or (subscriber or {}).get("cpf", ""),
+            "client_pppoe": (subscriber or {}).get("pppoe_user", ""),
+            "voucher_code": voucher_code,
+            "reimbursement_value": reimbursement_value,
+            "redemption_id": redemption_id,
+            "qr_kind": qr_kind,             # "v1" | "v2" | "url" | "json"
+            "qr_prefix": qr_prefix,         # 12 primeiros chars (evidência)
+            "attempted_at": _now_iso(),
+        })
+    except Exception:
+        logger.exception("[parcerias] falha ao gravar scan_log")
+
+
 async def _check_eligibility(subscriber: dict, promotion: dict) -> dict:
     """Regra padrão: assinante ATIVO, adimplente e com > 30 dias de
     ativação. Retorna {ok, reason}. Limites por promoção também são
@@ -574,6 +677,111 @@ async def mark_paid(rid: str, user: dict = Depends(get_current_user)):
     if r.matched_count == 0:
         raise HTTPException(404, "Redenção já paga ou inexistente")
     return {"ok": True}
+
+
+# iter215bp — Histórico de scans (admin: ver tudo, parceiro: só o seu)
+class ReverseRedemptionIn(BaseModel):
+    reason: str = Field(..., min_length=3, max_length=300)
+
+
+@router.post("/redemptions/{rid}/reverse")
+async def reverse_redemption(rid: str, payload: ReverseRedemptionIn,
+                              user: dict = Depends(get_current_user)):
+    """Estorna uma redenção (admin only). Não deleta — marca como
+    `reversed=True` com motivo, e decrementa os contadores da promo.
+    Idempotente: se já foi estornada, retorna 409.
+    """
+    _require_manager(user)
+    cid = _cid(user)
+    red = await db.parcerias_redemptions.find_one(
+        {"id": rid, "company_id": cid}, {"_id": 0})
+    if not red:
+        raise HTTPException(404, "Redenção não encontrada")
+    if red.get("reversed"):
+        raise HTTPException(409, "Redenção já estornada anteriormente")
+    if red.get("paid"):
+        raise HTTPException(409,
+            "Redenção já paga — estorne pelo financeiro, não pelo painel.")
+    await db.parcerias_redemptions.update_one(
+        {"id": rid},
+        {"$set": {"reversed": True,
+                   "reversed_at": _now_iso(),
+                   "reversed_by": user.get("email", ""),
+                   "reverse_reason": payload.reason.strip()}})
+    # decrementa contadores da promo (não fica negativo)
+    await db.parcerias_promotions.update_one(
+        {"id": red["promotion_id"], "total_redemptions": {"$gt": 0}},
+        {"$inc": {"total_redemptions": -1,
+                    "total_due": -float(
+                      red.get("reimbursement_value") or 0)}})
+    # log evento de estorno no scan_log
+    try:
+        await db.parcerias_scan_log.insert_one({
+            "id": f"slog-{uuid.uuid4().hex[:14]}",
+            "company_id": cid,
+            "partner_id": red.get("partner_id"),
+            "partner_name": red.get("partner_name", ""),
+            "partner_user_email": user.get("email", ""),
+            "promotion_id": red.get("promotion_id"),
+            "promotion_title": red.get("promotion_title", ""),
+            "outcome": "reversed",
+            "reason": payload.reason.strip(),
+            "client_id": red.get("client_id"),
+            "client_name": red.get("client_name", ""),
+            "client_document": red.get("client_document", ""),
+            "voucher_code": red.get("voucher_code"),
+            "reimbursement_value": red.get("reimbursement_value"),
+            "redemption_id": rid,
+            "qr_kind": "estorno",
+            "qr_prefix": "",
+            "attempted_at": _now_iso(),
+        })
+    except Exception:
+        logger.exception("[parcerias] falha ao logar estorno")
+    return {"ok": True, "rid": rid}
+
+
+@router.get("/scan-history")
+async def admin_scan_history(
+    partner_id: Optional[str] = None,
+    promotion_id: Optional[str] = None,
+    outcome: Optional[str] = None,
+    client_id: Optional[str] = None,
+    limit: int = 500,
+    user: dict = Depends(get_current_user),
+):
+    """iter215bp — Histórico completo de tentativas de scan (admin).
+    Inclui sucessos, recusas, estornos. Ordenado pelo mais recente."""
+    _require_manager(user)
+    cid = _cid(user)
+    q: Dict[str, Any] = {"company_id": cid}
+    if partner_id:
+        q["partner_id"] = partner_id
+    if promotion_id:
+        q["promotion_id"] = promotion_id
+    if outcome:
+        q["outcome"] = outcome
+    if client_id:
+        q["client_id"] = client_id
+    cur = db.parcerias_scan_log.find(q, {"_id": 0}) \
+        .sort("attempted_at", -1).limit(max(1, min(limit, 2000)))
+    items = await cur.to_list(2000)
+    # Hidrata `reversed` flag pegando do redemption (apenas sucesso)
+    for it in items:
+        if it.get("outcome") == "success" and it.get("redemption_id"):
+            red = await db.parcerias_redemptions.find_one(
+                {"id": it["redemption_id"]},
+                {"_id": 0, "reversed": 1, "reverse_reason": 1, "paid": 1})
+            if red:
+                it["reversed"] = bool(red.get("reversed"))
+                it["reverse_reason"] = red.get("reverse_reason")
+                it["paid"] = bool(red.get("paid"))
+    return {"items": items, "total": len(items)}
+
+
+# iter215bp — endpoint /api/parceiro-portal/history fica após
+# partner_scan (precisa do get_partner_user definido mais abaixo).
+
 
 
 @router.get("/partners/{pid}/payout-summary")
@@ -943,19 +1151,54 @@ async def partner_promos(u: dict = Depends(get_partner_user)):
 @partner_router.post("/scan")
 async def partner_scan(payload: ScanIn,
                         u: dict = Depends(get_partner_user)):
-    token = payload.qr_token.strip()
+    # iter215bm — QR Code agora é uma URL `https://ligofibra.com.br/q[2]/<token>`
+    # pra que câmeras comuns abram o site Ligo. Normalizamos pra extrair
+    # o token interno (mantém compat com QRs antigos LIGO:/LIGO2:/puro).
+    token = _extract_qr_token(payload.qr_token)
+    qr_payload_str = payload.qr_payload \
+        if isinstance(payload.qr_payload, str) else None
+    if qr_payload_str:
+        qr_payload_str = _extract_qr_token(qr_payload_str) or qr_payload_str
     subscriber = None
+
+    # iter215bp — evidência pro scan_log
+    raw_qr = (payload.qr_token or "").strip()
+    qr_kind = "v2" if (token.startswith(QR_V2_PREFIX)
+                        or (qr_payload_str
+                            and qr_payload_str.startswith(QR_V2_PREFIX))) \
+        else ("url" if raw_qr.startswith("http")
+              else ("json" if isinstance(payload.qr_payload, dict)
+                    else "v1"))
+    qr_prefix = raw_qr[:16]
+
+    # helper local para reduzir boilerplate
+    async def _log(outcome, reason=None, sub=None, voucher=None,
+                    reimb=None, rid=None, promo_obj=None):
+        await _log_scan_event(
+            company_id=u.get("company_id", DEMO_COMPANY_ID),
+            partner_id=u.get("partner_id", ""),
+            partner_name=u.get("partner_name", ""),
+            partner_user_email=u.get("email", ""),
+            promotion_id=(promo_obj or {}).get("id") if promo_obj
+                else payload.promotion_id,
+            promotion_title=(promo_obj or {}).get("title", "") if promo_obj
+                else "",
+            outcome=outcome, reason=reason, subscriber=sub,
+            voucher_code=voucher, reimbursement_value=reimb,
+            redemption_id=rid, qr_kind=qr_kind, qr_prefix=qr_prefix,
+        )
 
     # 0) PRIORIDADE MÁXIMA: token criptografado V2 (Fernet, TTL 90s).
     #    Contém o subscriber_id em formato opaco — anti-replay.
     if token.startswith(QR_V2_PREFIX) or (
-            payload.qr_payload
-            and isinstance(payload.qr_payload, str)
-            and payload.qr_payload.startswith(QR_V2_PREFIX)):
+            qr_payload_str
+            and qr_payload_str.startswith(QR_V2_PREFIX)):
         enc = token if token.startswith(QR_V2_PREFIX) \
-            else payload.qr_payload  # type: ignore[arg-type]
+            else qr_payload_str  # type: ignore[arg-type]
         decoded = decrypt_qr_payload(enc)
         if decoded is None:
+            await _log("qr_expired",
+                       reason="QR V2 (Fernet) expirado/inválido")
             raise HTTPException(400,
                 "QR expirado ou inválido. Peça pro cliente abrir o QR de novo.")
         sid = decoded.get("sid")
@@ -967,13 +1210,42 @@ async def partner_scan(payload: ScanIn,
     if token.upper().startswith(QR_TOKEN_PREFIX):
         token = token[len(QR_TOKEN_PREFIX):]
 
-    # 1) lookup por token random (caminho legado)
+    # 1) lookup por token random (caminho legado — JWT portal)
     if not subscriber:
         qr = await db.client_qr_tokens.find_one({"token": token},
                                                    {"_id": 0})
         if qr:
             subscriber = await db.subscribers.find_one(
                 {"id": qr["client_id"]}, {"_id": 0})
+
+    # 1.5) iter215bn — lookup no token efêmero do CPF login
+    #      (collection separada `customer_qr_ephemeral`).
+    #      Antes desse fix, QRs gerados em `/api/qr-token` (referrals.py)
+    #      NÃO eram aceitos pelo /scan do parceiro — os dois sistemas
+    #      não se conversavam. Token efêmero é single-use (apagado após
+    #      consumo, igual ao /customer/qr-resolve).
+    if not subscriber and token:
+        from datetime import datetime as _dt, timezone as _tz
+        eph = await db.customer_qr_ephemeral.find_one(
+            {"token": token}, {"_id": 0})
+        if eph:
+            expires_at = eph.get("expires_at")
+            if isinstance(expires_at, str):
+                expires_at = _dt.fromisoformat(
+                    expires_at.replace("Z", "+00:00"))
+            if expires_at and expires_at.tzinfo is None:
+                expires_at = expires_at.replace(tzinfo=_tz.utc)
+            now = _dt.now(_tz.utc)
+            if expires_at and expires_at < now:
+                await db.customer_qr_ephemeral.delete_one({"token": token})
+                await _log("qr_expired", reason="QR efêmero TTL passou")
+                raise HTTPException(400,
+                    "QR expirado. Peça pro cliente abrir o QR de novo.")
+            subscriber = await db.subscribers.find_one(
+                {"id": eph["subscriber_id"]}, {"_id": 0})
+            if subscriber:
+                # Single-use: invalida o token após uso (anti-screenshot)
+                await db.customer_qr_ephemeral.delete_one({"token": token})
 
     # 2) lookup direto por subscriber_id (QR JSON com `sid`)
     if not subscriber and token and ":" not in token:
@@ -1020,12 +1292,15 @@ async def partner_scan(payload: ScanIn,
                 {"_id": 0})
 
     if not subscriber:
+        await _log("qr_invalid", reason="QR não bateu em nenhum cadastro")
         raise HTTPException(404, "QR inválido ou não cadastrado")
 
     # Garante que o cliente pertença à mesma empresa do parceiro
     if subscriber.get("company_id") and \
             u.get("company_id") and \
             subscriber["company_id"] != u["company_id"]:
+        await _log("wrong_tenant",
+                    reason="Cliente de outra operadora", sub=subscriber)
         raise HTTPException(403,
             "Cliente de outra operadora — não pode resgatar aqui.")
 
@@ -1033,11 +1308,52 @@ async def partner_scan(payload: ScanIn,
         {"id": payload.promotion_id, "partner_id": u["partner_id"],
          "active": True}, {"_id": 0})
     if not promotion:
+        await _log("promo_inactive",
+                    reason="Promoção não encontrada ou inativa",
+                    sub=subscriber)
         raise HTTPException(404, "Promoção não encontrada ou inativa")
 
     elig = await _check_eligibility(subscriber, promotion)
     if not elig["ok"]:
+        # mapeia a razão pra outcome estruturado
+        rsn = (elig.get("reason") or "").lower()
+        if "inadimpl" in rsn or "débito" in rsn or "debito" in rsn:
+            oc = "delinquent"
+        elif "status" in rsn:
+            oc = "inactive_client"
+        elif "recente" in rsn:
+            oc = "too_new"
+        elif "limite" in rsn:
+            oc = "limit_reached"
+        elif "encerrada" in rsn or "começou" in rsn or "comecou" in rsn:
+            oc = "promo_inactive"
+        else:
+            oc = "ineligible"
+        await _log(oc, reason=elig["reason"], sub=subscriber,
+                    promo_obj=promotion)
         return {"ok": False, "reason": elig["reason"],
+                 "client": {"name": subscriber.get("name", ""),
+                              "pppoe": subscriber.get("pppoe_user", "")}}
+
+    # iter215bo — Anti-replay: rejeita redenção dupla da MESMA promo
+    # pelo MESMO cliente em janela curta (30s). Defesa contra:
+    #  - scan duplo acidental (parceiro encosta a câmera 2x)
+    #  - cliente abrindo o QR várias vezes pra burlar limite
+    # Aplica SEMPRE, independente de `max_uses_per_client`.
+    from datetime import timedelta as _td
+    cooldown = _now() - _td(seconds=30)
+    recent = await db.parcerias_redemptions.find_one(
+        {"client_id": subscriber["id"],
+         "promotion_id": promotion["id"],
+         "redeemed_at": {"$gte": cooldown.isoformat()}},
+        {"_id": 0, "redeemed_at": 1, "voucher_code": 1})
+    if recent:
+        await _log("duplicate_30s",
+                    reason=f"Voucher anterior {recent.get('voucher_code')}",
+                    sub=subscriber, promo_obj=promotion)
+        return {"ok": False,
+                 "reason": f"Resgate duplicado em menos de 30s "
+                           f"(voucher anterior: {recent.get('voucher_code')})",
                  "client": {"name": subscriber.get("name", ""),
                               "pppoe": subscriber.get("pppoe_user", "")}}
 
@@ -1064,6 +1380,9 @@ async def partner_scan(payload: ScanIn,
         {"id": promotion["id"]},
         {"$inc": {"total_redemptions": 1,
                     "total_due": promotion["reimbursement_value"]}})
+    await _log("success", sub=subscriber, voucher=voucher,
+                reimb=promotion["reimbursement_value"], rid=rid,
+                promo_obj=promotion)
     logger.info("[parcerias] scan ok partner=%s client=%s promo=%s",
                 u["partner_id"], subscriber["id"], promotion["id"])
     # iter215 — Calcula tempo de cliente pra exibição VIP no parceiro
@@ -1110,6 +1429,34 @@ async def partner_redemptions(limit: int = 200,
         {"partner_id": u["partner_id"]}, {"_id": 0}) \
         .sort("redeemed_at", -1).limit(limit)
     return await cur.to_list(limit)
+
+
+@partner_router.get("/history")
+async def partner_history(
+    outcome: Optional[str] = None,
+    limit: int = 200,
+    u: dict = Depends(get_partner_user),
+):
+    """iter215bp — Histórico de scans do parceiro logado (apenas o seu).
+    Inclui sucessos, recusas e estornos. Ordenado pelo mais recente."""
+    pid = u.get("partner_id")
+    if not pid:
+        raise HTTPException(403, "Parceiro não identificado no token")
+    q: Dict[str, Any] = {"partner_id": pid}
+    if outcome:
+        q["outcome"] = outcome
+    cur = db.parcerias_scan_log.find(q, {"_id": 0}) \
+        .sort("attempted_at", -1).limit(max(1, min(limit, 500)))
+    items = await cur.to_list(500)
+    for it in items:
+        if it.get("outcome") == "success" and it.get("redemption_id"):
+            red = await db.parcerias_redemptions.find_one(
+                {"id": it["redemption_id"]},
+                {"_id": 0, "reversed": 1, "reverse_reason": 1, "paid": 1})
+            if red:
+                it["reversed"] = bool(red.get("reversed"))
+                it["paid"] = bool(red.get("paid"))
+    return {"items": items, "total": len(items)}
 
 
 @partner_router.get("/today-stats")
@@ -1280,7 +1627,7 @@ async def client_login(payload: PortalLoginIn):
              "user": {"id": sub["id"], "email": sub.get("email", ""),
                        "name": sub.get("name", ""),
                        "qr_token": qr_token,
-                       "qr_payload": f"{QR_TOKEN_PREFIX}{qr_token}"}}
+                       "qr_payload": _wrap_qr_v1(qr_token)}}
 
 
 @client_router.post("/auth/quick-login")
@@ -1306,7 +1653,7 @@ async def client_quick_login(payload: ClientQuickLoginIn):
              "user": {"id": sub["id"], "email": sub.get("email", ""),
                        "name": sub.get("name", ""),
                        "qr_token": qr_token,
-                       "qr_payload": f"{QR_TOKEN_PREFIX}{qr_token}"}}
+                       "qr_payload": _wrap_qr_v1(qr_token)}}
 
 
 @client_router.get("/me")
@@ -1318,15 +1665,26 @@ async def client_me(u: dict = Depends(get_client_user)):
     elig_general = (sub.get("status", "").upper() in ("ATIVO", "ATIVA")
                      and (sub.get("financial_status") or "").lower() not in
                        ("inadimplente", "atrasado", "bloqueado"))
+    # iter215bl — devolve as datas pro frontend calcular "Tempo de cliente"
+    # no modal de QR. Sem isso o ClientQRModal cai no fallback "Cliente Ligo"
+    # porque não encontra nenhum dos campos canônicos.
     return {"user": {"id": sub["id"], "name": sub.get("name", ""),
                        "email": sub.get("email", ""),
                        "pppoe_user": sub.get("pppoe_user", ""),
                        "plan_name": sub.get("plan_name", ""),
                        "status": sub.get("status", ""),
+                       "cpf": sub.get("cpf") or sub.get("document", ""),
+                       "document": sub.get("document")
+                                    or sub.get("cpf", ""),
+                       "installation_date": sub.get("installation_date"),
+                       "activation_date": sub.get("activation_date"),
+                       "subscriber_since": sub.get("subscriber_since")
+                                            or sub.get("installation_date")
+                                            or sub.get("activation_date"),
                        "financial_status": sub.get(
                          "financial_status", "")},
              "qr_token": qr_token,
-             "qr_payload": f"{QR_TOKEN_PREFIX}{qr_token}",
+             "qr_payload": _wrap_qr_v1(qr_token),
              "is_eligible": elig_general}
 
 
@@ -1358,7 +1716,7 @@ async def rotate_qr(u: dict = Depends(get_client_user)):
         {"client_id": u["sub"]},
         {"$set": {"token": token, "last_rotated_at": _now_iso()}},
         upsert=True)
-    return {"qr_token": token, "qr_payload": f"{QR_TOKEN_PREFIX}{token}"}
+    return {"qr_token": token, "qr_payload": _wrap_qr_v1(token)}
 
 
 @client_router.get("/qr-token")
@@ -1381,9 +1739,13 @@ async def client_encrypted_qr_token(
         "tid": sub.get("company_id"),
         "iat": int(datetime.now(timezone.utc).timestamp()),
     }
-    encrypted = encrypt_qr_payload(payload)
+    # encrypt_qr_payload retorna "LIGO2:<encrypted>". Removemos o prefixo
+    # e embutimos a parte criptografada na URL pública (iter215bm).
+    encrypted_full = encrypt_qr_payload(payload)  # "LIGO2:<...>"
+    encrypted_body = encrypted_full[len(QR_V2_PREFIX):] \
+        if encrypted_full.startswith(QR_V2_PREFIX) else encrypted_full
     return {
-        "qr_payload": encrypted,
+        "qr_payload": _wrap_qr_v2(encrypted_body),
         "ttl_seconds": QR_V2_TTL_SECONDS,
         "expires_at": (datetime.now(timezone.utc)
                        + timedelta(seconds=QR_V2_TTL_SECONDS)).isoformat(),

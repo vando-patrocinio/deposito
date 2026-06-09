@@ -32,9 +32,10 @@ SGS_CODES = {
 DEFAULT_INDEX = "IPCA"   # mais comum em contratos de telecom residencial
 
 
-async def fetch_sgs_series(code: int, last_n_months: int = 14) -> List[Dict]:
+async def fetch_sgs_series(code: int, last_n_months: int = 132) -> List[Dict]:
     """Busca série temporal do SGS-BCB nos últimos N meses.
 
+    Default: 132 meses (~11 anos) — suficiente para reajustes retroativos.
     Retorna: [{"data": "01/04/2026", "valor": "0.49"}, ...]
     """
     url = f"https://api.bcb.gov.br/dados/serie/bcdata.sgs.{code}/dados"
@@ -44,7 +45,7 @@ async def fetch_sgs_series(code: int, last_n_months: int = 14) -> List[Dict]:
         start = (date.today() - timedelta(days=last_n_months * 31)).strftime("%d/%m/%Y")
         params["dataInicial"] = start
     try:
-        async with httpx.AsyncClient(timeout=10.0) as cli:
+        async with httpx.AsyncClient(timeout=15.0) as cli:
             r = await cli.get(url, params=params)
             r.raise_for_status()
             return r.json() or []
@@ -70,7 +71,7 @@ async def refresh_index_cache(index_name: str = "IPCA") -> Dict:
     if not code:
         raise ValueError(f"Índice desconhecido: {index_name}")
 
-    raw = await fetch_sgs_series(code, last_n_months=14)
+    raw = await fetch_sgs_series(code, last_n_months=132)
     if not raw:
         return {}
 

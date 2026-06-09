@@ -9,6 +9,7 @@ import {
 import WhatsAppQRPanel from "@/WhatsAppQRPanel";
 import WhatsAppChannelsPanel from "@/WhatsAppChannelsPanel";
 import IntegrationsConfigPanel from "@/IntegrationsConfigPanel";
+import AtendimentoDutyGate from "@/AtendimentoDutyGate";
 
 const BASE_TABS = [
   { id: "whatsapp_qr", label: "WhatsApp", icon: QrCode, dynamic: true },
@@ -124,7 +125,16 @@ export default function AIHubPanel({ initialTab = "whatsapp_qr" }) {
 
       {tab === "whatsapp_qr" && (
         <ChatErrorBoundary>
-          <WhatsAppQRPanel />
+          <AtendimentoDutyGate
+            onPontoClick={() => {
+              try {
+                window.dispatchEvent(new CustomEvent("ponto:navigate", {
+                  detail: { view: "espelho" },
+                }));
+              } catch { /* ignore */ }
+            }}>
+            <WhatsAppQRPanel />
+          </AtendimentoDutyGate>
         </ChatErrorBoundary>
       )}
       {tab === "channels" && <WhatsAppChannelsPanel />}

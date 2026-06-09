@@ -339,6 +339,22 @@ async def create_invoice(payload: InvoiceIn,
         "created_by": user.get("email"),
     }
     await db.subscriber_invoices.insert_one(dict(inv))
+    # Sprint 19 — emit overdue se já passou da data
+    try:
+        from services.event_emitters import emit_business
+        from datetime import datetime
+        is_overdue = (due_date and due_date < datetime.utcnow()
+                       .strftime("%Y-%m-%d"))
+        if is_overdue:
+            await emit_business(
+                kind="payment.overdue", actor=user,
+                payload={"invoice_id": inv["id"],
+                           "subscriber_id": sub.get("id"),
+                           "amount": float(payload.amount),
+                           "due_date": due_date},
+                severity="media", source="billing.create_invoice")
+    except Exception:
+        pass
     return _normalize_invoice(inv)
 
 
@@ -371,6 +387,17 @@ async def mark_paid(inv_id: str, payload: MarkPaidIn,
     updated = await db.subscriber_invoices.find_one(
         {"company_id": cid, "id": inv_id}, {"_id": 0},
     )
+    # Sprint 19 — emit payment.received
+    try:
+        from services.event_emitters import emit_business
+        await emit_business(
+            kind="payment.received", actor=user,
+            payload={"invoice_id": inv_id,
+                       "subscriber_id": inv.get("subscriber_id"),
+                       "amount": float(paid_amount)},
+            severity="baixa", source="billing.mark_paid")
+    except Exception:
+        pass
     return _normalize_invoice(updated)
 
 

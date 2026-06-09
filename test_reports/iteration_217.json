@@ -1,0 +1,31 @@
+{
+  "summary": "iter217 — Backend e Frontend testados. Pre-Attendance Promos (CRUD + upload imagem + stats + serviço unit) e WA Campaigns Drafts (list/create/get/edit/approve/reject) — 23/23 testes pytest passaram. Frontend: PreAttendancePromosPanel verificado E2E (login admin → sidebar 'Propaganda Pré-Atend.' → painel renderiza com StatsBar e 2 cards + 'Nova Propaganda' → modal abre com todos os campos title/message/filter/weight/IA/active/image → criar promo → card aparece → toggle/delete OK). WhatsAppCampaignsPanel verificado via APIs (todas funcionando, smoke E2E prévio do main agent confirmou UI com 5 filter tabs e empty state).",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter217_pre_attendance_wa_campaigns.py",
+    "/app/test_reports/pytest/iter217.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "pre_attendance.py upload-image: detecção de extensão por magic byte é correta; rejeição de path traversal em GET /image/{filename} adequada.",
+    "whatsapp_campaigns.py: BackgroundTasks usado corretamente para dispatch; jitter aleatório 2-5s implementado; logs por destinatário em wa_campaign_logs; contador de progresso atualiza a cada 10 envios — bom.",
+    "services/pre_attendance_promo.py: cooldown 24h respeitado via _was_dispatched_recently com cutoff ISO; fallback _weighted_pick funciona quando IA falha; try/except engole exceções (safe). _filter_matches cobre todos os 5 alvos (all/active/inactive/inadimplentes/by_plan).",
+    "Edit-after-dispatch retorna 409 (verificado). Reject de draft já processado retorna 404 (verificado).",
+    "Sem hardcoded URLs/credenciais; padrão data-testid completo nos painéis para automação."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter217_pre_attendance_wa_campaigns.py (criado)"
+  ],
+  "success_rate": {"backend": "100% (23/23)", "frontend": "Pre-Attendance 100% / WA Campaigns API 100% — UI sidebar nav não validada no meu script (selector timing), main agent já confirmou smoke E2E"},
+  "test_credentials": "admin@empresa.com / 123456 (de /app/memory/test_credentials.md)",
+  "seed_data_creation": "Promos e drafts prefixados com 'TEST_iter217' foram criados e deletados (cleanup automático nos testes).",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Pre-Attendance panel e WA Campaigns panel ambos funcionais. Próximas iterações devem usar test_iter217_pre_attendance_wa_campaigns.py como regressão para os endpoints /api/pre-attendance/* e /api/wa-campaigns/*. Sidecar Baileys é MOCKADO no ambiente — disparos reais falham silenciosamente sem afetar status HTTP (200 + queued retornado). O hook em whatsapp_baileys.py linhas ~1450-1470 chama try_dispatch_pre_attendance_promo via BackgroundTasks (não bloqueia inbound). Sidebar entries para clicar: 'Propaganda Pré-Atend.' e 'Campanhas WhatsApp' (texto exato, scroll into view antes do click).",
+  "rca of the issue": "Nenhum bug encontrado nesta iteração. Implementação está consistente com especificação iter217."
+}

@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { api } from "@/api";
+import { api, client } from "@/api";
 import {
   UserCircle, Search, Plus, Save, X, Trash2, Edit2, Upload,
   ChevronLeft, ChevronRight, ChevronDown, ChevronUp, History,
@@ -26,6 +26,9 @@ const EMPTY_FILTERS = {
   street: "", number: "", district: "", city: "", state: "", zip_code: "",
   complement: "", external_code: "",
   branch: "", billing_method: "", contract_status: "", status: "",
+  // iter215ay — Filtros de rede (advanced)
+  olt: "", cto: "", cto_port: "", vlan: "",
+  pppoe: "", sn: "", mac: "",
 };
 
 export default function SubscribersPanel() {
@@ -41,6 +44,7 @@ export default function SubscribersPanel() {
   const [editing, setEditing] = useState(null);
   const [historyOf, setHistoryOf] = useState(null);
   const [showImport, setShowImport] = useState(false);
+  const [showNoPlan, setShowNoPlan] = useState(false);
   const [busy, setBusy] = useState(false);
   const [selected, setSelected] = useState(() => new Set());
   const [bulkAction, setBulkAction] = useState("");
@@ -118,6 +122,8 @@ export default function SubscribersPanel() {
   if (historyOf) return <SubscriberHistory subscriber={historyOf}
     onClose={() => setHistoryOf(null)} />;
   if (showImport) return <CsvImporter onClose={() => { setShowImport(false); load(); }} />;
+  if (showNoPlan) return <NoPlanReport
+    onClose={() => { setShowNoPlan(false); load(); }} />;
 
   const allChecked = items.length > 0 && selected.size === items.length;
 
@@ -205,6 +211,44 @@ export default function SubscribersPanel() {
                 ]} />
             </div>
 
+            {/* iter215ay — Filtros avançados de REDE (OLT/CTO/PPPoE/SN/MAC) */}
+            {advOpen && (
+              <div data-testid="subs-adv-filters"
+                    style={{ marginTop: 14, paddingTop: 14,
+                              borderTop: "1px solid var(--border)",
+                              display: "grid", gap: 10,
+                              gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))" }}>
+                <FilterField label="OLT" value={draftFilters.olt}
+                  testid="filter-olt"
+                  onChange={(v) => setDraftFilters({ ...draftFilters,
+                      olt: v })} />
+                <FilterField label="CTO" value={draftFilters.cto}
+                  testid="filter-cto"
+                  onChange={(v) => setDraftFilters({ ...draftFilters,
+                      cto: v })} />
+                <FilterField label="Porta CTO" value={draftFilters.cto_port}
+                  testid="filter-cto-port"
+                  onChange={(v) => setDraftFilters({ ...draftFilters,
+                      cto_port: v })} />
+                <FilterField label="VLAN" value={draftFilters.vlan}
+                  testid="filter-vlan"
+                  onChange={(v) => setDraftFilters({ ...draftFilters,
+                      vlan: v })} />
+                <FilterField label="PPPoE" value={draftFilters.pppoe}
+                  testid="filter-pppoe"
+                  onChange={(v) => setDraftFilters({ ...draftFilters,
+                      pppoe: v })} />
+                <FilterField label="SN da ONT" value={draftFilters.sn}
+                  testid="filter-sn"
+                  onChange={(v) => setDraftFilters({ ...draftFilters,
+                      sn: v.toUpperCase() })} />
+                <FilterField label="MAC da ONT" value={draftFilters.mac}
+                  testid="filter-mac"
+                  onChange={(v) => setDraftFilters({ ...draftFilters,
+                      mac: v.toUpperCase() })} />
+              </div>
+            )}
+
             <div style={{ marginTop: 12, display: "flex", gap: 8, alignItems: "center" }}>
               <button className="btn btn-ghost btn-sm"
                 onClick={() => setAdvOpen(!advOpen)}
@@ -260,6 +304,34 @@ export default function SubscribersPanel() {
           <button className="btn btn-secondary btn-sm" onClick={() => setShowImport(true)}
             data-testid="subs-import-btn">
             <Upload size={13} /> Importar CSV
+          </button>
+          <button className="btn btn-secondary btn-sm"
+            data-testid="subs-no-plan-btn"
+            title="Lista clientes ATIVOS sem plano e permite vincular em lote"
+            onClick={() => setShowNoPlan(true)}>
+            Sem plano
+          </button>
+          <button className="btn btn-secondary btn-sm"
+            data-testid="subs-backfill-cto-btn"
+            title="Varre OS finalizadas e popula CTO/porta dos cadastros sem essa info"
+            onClick={async () => {
+              const dry = await api.subscribersBackfillCtoPorts(true);
+              const msg = `Preview (dry-run):\n\n`
+                + `• Tickets varridos: ${dry.scanned_tickets}\n`
+                + `• Assinantes únicos: ${dry.unique_subscribers}\n`
+                + `• Já estavam OK: ${dry.already_ok}\n`
+                + `• Vai sincronizar: ${dry.would_sync}\n\n`
+                + `Aplicar agora?`;
+              if (!window.confirm(msg)) return;
+              const r = await api.subscribersBackfillCtoPorts(false);
+              window.alert(
+                `Backfill concluído!\n\n`
+                + `• Sincronizados: ${r.synced}\n`
+                + `• Erros: ${r.errors_count}\n`
+                + `Atualize a página pra ver os cartões preenchidos.`
+              );
+            }}>
+            Backfill CTO
           </button>
           <button className="btn btn-primary btn-sm" onClick={newSub}
             data-testid="subs-new-btn">
@@ -398,6 +470,42 @@ function FilterField({ label, value, onChange, testid }) {
   );
 }
 
+function NetRow({ label, value, testid, mono = false }) {
+  return (
+    <div style={{ display: "flex", justifyContent: "space-between",
+                    gap: 12 }}>
+      <span style={{ color: "#475569", fontWeight: 600 }}>{label}:</span>
+      <span data-testid={testid}
+             style={{ color: value ? "#0f172a" : "#94a3b8",
+                        fontWeight: value ? 800 : 500,
+                        fontFamily: mono ? "monospace" : "inherit",
+                        textAlign: "right" }}>
+        {value || "—"}
+      </span>
+    </div>
+  );
+}
+
+// iter215aw — Style padrão pra inputs read-only nos cards de info
+const readonlyInputStyle = {
+  background: "var(--bg-surface-2)",
+  color: "var(--text-muted)",
+  cursor: "not-allowed",
+};
+
+// iter215aw — Cor do sinal por faixa GPON
+function signalColor(s) {
+  if (s == null || s === "—") return "var(--text-muted)";
+  const v = parseFloat(s);
+  if (isNaN(v)) return "var(--text-muted)";
+  if (v >= -23) return "#15803d"; // excelente
+  if (v >= -27) return "#a16207"; // atenção
+  return "#b91c1c"; // crítico
+}
+
+
+
+
 function FilterDropdown({ label, value, onChange, options }) {
   return (
     <div>
@@ -424,6 +532,7 @@ function ToolIcon({ icon: Icon, title, onClick, disabled }) {
 const fieldLabelStyle = {
   display: "block", fontSize: 10, fontWeight: 700, color: "var(--text-secondary)",
   textTransform: "uppercase", letterSpacing: 0.4, marginBottom: 3,
+  lineHeight: 1.25, minHeight: 26,
 };
 const thStyle = {
   padding: "10px 12px", fontSize: 12, fontWeight: 700,
@@ -475,6 +584,55 @@ function SubscriberEditor({ data, setData, onSaved, onCancel }) {
       .then((r) => setPlansList(r.items || []))
       .catch(() => setPlansList([]));
   }, []);
+
+  /* iter215av — Carrega info de rede (OLT/CTO/porta/VLAN/PPPoE) */
+  const [networkInfo, setNetworkInfo] = useState(null);
+  useEffect(() => {
+    if (!data.id) { setNetworkInfo(null); return; }
+    let alive = true;
+    api.subscribersNetworkInfo(data.id)
+      .then((r) => { if (alive) setNetworkInfo(r); })
+      .catch(() => { if (alive) setNetworkInfo(null); });
+    return () => { alive = false; };
+  }, [data.id]);
+
+  /* iter215ba — Preview de reajuste (IPCA com cascata para clientes vencidos) */
+  const [readjPreview, setReadjPreview] = useState(null);
+  const [readjModal, setReadjModal] = useState(false);
+  const [readjBusy, setReadjBusy] = useState(false);
+  const [readjReloadKey, setReadjReloadKey] = useState(0);
+  useEffect(() => {
+    if (!data.id || !data.installation_date || !data.plan_price) {
+      setReadjPreview(null); return;
+    }
+    let alive = true;
+    client.get(`/financeiro/reajuste/preview/${data.id}`)
+      .then((r) => { if (alive) setReadjPreview(r.data); })
+      .catch(() => { if (alive) setReadjPreview(null); });
+    return () => { alive = false; };
+  }, [data.id, data.installation_date, data.plan_price,
+       data.readjustment_index, data.last_readjustment_at, readjReloadKey]);
+
+  const applyReadjustment = async () => {
+    if (!data.id || readjBusy) return;
+    setReadjBusy(true);
+    try {
+      const resp = await client.post(
+        `/financeiro/reajuste/apply/${data.id}?force=true`, {});
+      const r = resp.data;
+      if (r.applied) {
+        setData((d) => ({ ...d, plan_price: r.final_price }));
+        setReadjReloadKey((k) => k + 1);
+        setReadjModal(false);
+      } else {
+        alert(`Reajuste não aplicado: ${r.reason || "erro desconhecido"}`);
+      }
+    } catch (e) {
+      alert(`Erro ao aplicar reajuste: ${e?.response?.data?.detail || e?.message || e}`);
+    } finally {
+      setReadjBusy(false);
+    }
+  };
 
   const onPickPlan = (planId) => {
     const p = plansList.find((x) => x.id === planId);
@@ -566,12 +724,131 @@ function SubscriberEditor({ data, setData, onSaved, onCancel }) {
                          canManage={true} />
       )}
 
-      <div style={{ display: "grid", gridTemplateColumns: "2fr 1.5fr 1fr 1fr", gap: 12 }}>
+      {/* iter215av — Layout em 3 linhas (best practice ISP):
+          1) PLANO/COMERCIAL: o que o cliente contratou (plano/velocidade/valor)
+          2) REDE: onde ele está conectado (OLT/porta OLT/CTO/porta CTO/VLAN)
+          3) EQUIPAMENTO: identidade do dispositivo (PPPoE/SN/MAC/sinal) */}
+      {data.id && (
+        <>
+          {/* LINHA 1 — Comercial + Sinal (4 cols iguais) */}
+          <div data-testid="sub-plan-row"
+                style={{ display: "grid", gap: 12,
+                          gridTemplateColumns: "repeat(4, 1fr)",
+                          marginBottom: 12 }}>
+            <Field label="Plano contratado">
+              <input className="input" readOnly disabled
+                data-testid="plan-card-name"
+                value={data.plan_name || "—"}
+                style={readonlyInputStyle} />
+            </Field>
+            <Field label="Velocidade do plano">
+              <input className="input" readOnly disabled
+                data-testid="plan-card-speed"
+                value={data.plan_speed || "—"}
+                style={readonlyInputStyle} />
+            </Field>
+            <Field label="Valor mensal">
+              <input className="input" readOnly disabled
+                data-testid="plan-card-price"
+                value={data.plan_price != null
+                  ? new Intl.NumberFormat("pt-BR", { style: "currency",
+                                                       currency: "BRL" })
+                      .format(data.plan_price)
+                  : "—"}
+                style={readonlyInputStyle} />
+            </Field>
+            <Field label="Sinal (1490 nm)">
+              <input className="input" readOnly disabled
+                data-testid="net-card-signal"
+                value={networkInfo?.network?.signal_dbm
+                  ? `${networkInfo.network.signal_dbm} dBm`
+                  : "—"}
+                style={{ ...readonlyInputStyle,
+                          fontFamily: "monospace",
+                          color: signalColor(networkInfo?.network?.signal_dbm),
+                          fontWeight: 700 }} />
+            </Field>
+          </div>
+
+          {/* LINHA 2 — Localização na rede (4 cols iguais) */}
+          <div data-testid="sub-network-row"
+                style={{ display: "grid", gap: 12,
+                          gridTemplateColumns: "repeat(4, 1fr)",
+                          marginBottom: 12 }}>
+            <Field label="OLT">
+              <input className="input" readOnly disabled
+                data-testid="net-card-olt"
+                value={networkInfo?.network?.olt_name || "—"}
+                style={readonlyInputStyle} />
+            </Field>
+            <Field label="Porta OLT">
+              <input className="input" readOnly disabled
+                data-testid="net-card-olt-port"
+                title="Formato: board/port/onu"
+                value={networkInfo?.network?.porta_olt || "—"}
+                style={{ ...readonlyInputStyle,
+                          fontFamily: "monospace" }} />
+            </Field>
+            <Field label="CTO">
+              <input className="input" readOnly disabled
+                data-testid="net-card-cto"
+                value={networkInfo?.network?.cto_name || "—"}
+                style={readonlyInputStyle} />
+            </Field>
+            <Field label="Porta CTO">
+              <input className="input" readOnly disabled
+                data-testid="net-card-cto-port"
+                value={networkInfo?.network?.port_number ?? "—"}
+                style={readonlyInputStyle} />
+            </Field>
+          </div>
+
+          {/* LINHA 3 — Equipamento (VLAN + PPPoE + SN + MAC) */}
+          <div data-testid="sub-equip-row"
+                style={{ display: "grid", gap: 12,
+                          gridTemplateColumns: "repeat(4, 1fr)",
+                          marginBottom: 12 }}>
+            <Field label="VLAN">
+              <input className="input" readOnly disabled
+                data-testid="net-card-vlan"
+                value={networkInfo?.network?.vlan ?? "—"}
+                style={{ ...readonlyInputStyle,
+                          fontFamily: "monospace" }} />
+            </Field>
+            <Field label="PPPoE">
+              <input className="input" readOnly disabled
+                data-testid="net-card-pppoe"
+                value={networkInfo?.network?.pppoe_user
+                  || data.pppoe_user || "—"}
+                style={{ ...readonlyInputStyle,
+                          fontFamily: "monospace" }} />
+            </Field>
+            <Field label="SN da ONT">
+              <input className="input" readOnly disabled
+                data-testid="net-card-sn"
+                value={networkInfo?.network?.sn || "—"}
+                style={{ ...readonlyInputStyle,
+                          fontFamily: "monospace",
+                          textTransform: "uppercase" }} />
+            </Field>
+            <Field label="MAC da ONT">
+              <input className="input" readOnly disabled
+                data-testid="net-card-mac"
+                value={networkInfo?.network?.mac || "—"}
+                style={{ ...readonlyInputStyle,
+                          fontFamily: "monospace",
+                          textTransform: "uppercase" }} />
+            </Field>
+          </div>
+        </>
+      )}
+
+      <div style={{ display: "grid", gridTemplateColumns: "2fr 1.5fr 1fr 1fr", gap: 12, alignItems: "end" }}>
         <Field label="Nome completo *">
           <input className="input" value={data.name || ""} onChange={(e) => set("name", e.target.value)}
             data-testid="sub-name" />
         </Field>
-        <Field label="Apelido (dê dois cliques para editar)">
+        <Field label="Apelido" hint="Dê dois cliques para editar o apelido">
           {/* REGRA: auto-preenche com primeiro nome. Só editável após
               double-click. Visual: read-only = fundo cinza claro. */}
           <input className="input"
@@ -594,7 +871,7 @@ function SubscriberEditor({ data, setData, onSaved, onCancel }) {
               fontWeight: nicknameEditable ? 400 : 600,
             }} />
         </Field>
-        <Field label="ID do Assinante (gerado pelo sistema)">
+        <Field label="ID do Assinante" hint="Código gerado automaticamente pelo sistema">
           {/* REGRA: external_code é gerado pelo backend. Aqui é apenas
               read-only. Em criação, mostra "ASS-(novo)". */}
           <input className="input"
@@ -617,7 +894,7 @@ function SubscriberEditor({ data, setData, onSaved, onCancel }) {
         </Field>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 12 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 12, alignItems: "end" }}>
         <Field label="CPF/CNPJ">
           <input className="input" value={data.document || ""}
             onChange={(e) => set("document", e.target.value)} data-testid="sub-document" />
@@ -657,8 +934,8 @@ function SubscriberEditor({ data, setData, onSaved, onCancel }) {
         </Field>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr 1fr 1fr", gap: 12 }}>
-        <Field label="Plano (escolha da aba Planos)">
+      <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr 1fr 1fr", gap: 12, alignItems: "end" }}>
+        <Field label="Plano contratado" hint="Escolha o plano cadastrado na aba Planos">
           {/* REGRA: o plano vem da aba Planos. Não é digitado.
               Ao escolher, o backend salva snapshot de name/speed/price.
               Reajuste anual de inflação fica no plano (não duplicado aqui). */}
@@ -679,7 +956,7 @@ function SubscriberEditor({ data, setData, onSaved, onCancel }) {
             </div>
           )}
         </Field>
-        <Field label="Velocidade (do plano)">
+        <Field label="Velocidade do plano">
           <input className="input" readOnly disabled
             value={data.plan_speed || "—"}
             style={{ background: "var(--bg-surface-2)",
@@ -706,8 +983,8 @@ function SubscriberEditor({ data, setData, onSaved, onCancel }) {
       </div>
 
       {/* Reajuste anual — campos financeiros */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12 }}>
-        <Field label="Data de instalação (define data-base do reajuste)">
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12, alignItems: "end" }}>
+        <Field label="Data de instalação" hint="Define a data-base do reajuste anual">
           <input className="input" type="date"
             data-testid="sub-installation-date"
             value={(data.installation_date || "").slice(0, 10)}
@@ -727,40 +1004,99 @@ function SubscriberEditor({ data, setData, onSaved, onCancel }) {
           </select>
         </Field>
         <Field label="Próximo reajuste">
-          {data.installation_date ? (
-            <div style={{
-              padding: "6px 10px",
-              background: "#f8fafc",
-              border: "1px solid #e2e8f0",
-              borderRadius: 6,
-              fontSize: 12,
-              color: "#0f172a",
-            }}>
-              {(() => {
-                const base = data.last_readjustment_at || data.installation_date;
-                const d = new Date(base);
-                d.setFullYear(d.getFullYear() + 1);
-                const isDue = d <= new Date();
-                return (
+          {data.installation_date ? (() => {
+            // Cálculo client-side simples: base + N anos > hoje
+            const base = data.last_readjustment_at || data.installation_date;
+            const baseDate = new Date(base);
+            const today = new Date();
+            const nextDate = new Date(baseDate);
+            let pendingCount = 0;
+            while (nextDate <= today) {
+              nextDate.setFullYear(nextDate.getFullYear() + 1);
+              pendingCount += 1;
+              if (pendingCount > 30) break;
+            }
+            // Se já tem next > today logo de cara, pendingCount=1 mas
+            // só conta como pendente se ANTES de avançar já estava vencido.
+            // Reajusta: pending = qtas viradas vencidas (não conta a futura).
+            const firstAnniv = new Date(baseDate);
+            firstAnniv.setFullYear(firstAnniv.getFullYear() + 1);
+            const isOverdue = firstAnniv <= today;
+            const pending = isOverdue ? pendingCount : 0;
+            // nextDate agora é a primeira virada > hoje
+            const displayNext = isOverdue
+              ? new Date(firstAnniv) : new Date(nextDate);
+
+            return (
+              <div data-testid="sub-readjustment-card"
+                style={{
+                  padding: "6px 10px",
+                  background: "#f8fafc",
+                  border: "1px solid #e2e8f0",
+                  borderRadius: 6,
+                  fontSize: 12,
+                  color: "#0f172a",
+                }}>
+                <div style={{ display: "flex", alignItems: "center",
+                                gap: 6, flexWrap: "wrap" }}>
                   <span data-testid="sub-next-readjustment">
-                    {d.toLocaleDateString("pt-BR")}
-                    {isDue && (
-                      <span style={{
-                        marginLeft: 6, padding: "1px 6px", borderRadius: 4,
-                        background: "#fef2f2", color: "#dc2626",
-                        fontSize: 10, fontWeight: 700,
-                      }}>VENCIDO</span>
-                    )}
+                    {displayNext.toLocaleDateString("pt-BR")}
                   </span>
-                );
-              })()}
-              {data.last_readjustment_pct != null && (
-                <div style={{ fontSize: 10, color: "#64748b", marginTop: 2 }}>
-                  Último: +{data.last_readjustment_pct.toFixed(2)}%
+                  {isOverdue && (
+                    <span style={{
+                      padding: "1px 6px", borderRadius: 4,
+                      background: "#fef2f2", color: "#dc2626",
+                      fontSize: 10, fontWeight: 700,
+                    }}>VENCIDO</span>
+                  )}
+                  {pending > 1 && (
+                    <span data-testid="sub-pending-count" style={{
+                      padding: "1px 6px", borderRadius: 4,
+                      background: "#fef3c7", color: "#92400e",
+                      fontSize: 10, fontWeight: 700,
+                    }}>
+                      {pending} pendentes
+                    </span>
+                  )}
                 </div>
-              )}
-            </div>
-          ) : (
+                {readjPreview && readjPreview.is_due && (
+                  <div style={{ fontSize: 10, color: "#64748b",
+                                  marginTop: 2 }}>
+                    Cascata IPCA: +{readjPreview.accumulated_pct_total
+                      .toFixed(2)}% · R$ {readjPreview.current_price
+                      .toFixed(2)} → R$ {readjPreview.new_price.toFixed(2)}
+                  </div>
+                )}
+                {readjPreview && readjPreview.is_due && (
+                  <button type="button"
+                    data-testid="sub-apply-readjustment-btn"
+                    onClick={() => setReadjModal(true)}
+                    style={{
+                      marginTop: 6,
+                      padding: "4px 10px",
+                      fontSize: 11, fontWeight: 700,
+                      background: "#4b1d7a", color: "#fff",
+                      border: "none", borderRadius: 4,
+                      cursor: "pointer",
+                    }}>
+                    Aplicar reajuste agora
+                  </button>
+                )}
+                {isOverdue && !readjPreview && !data.plan_price && (
+                  <div style={{ fontSize: 10, color: "#92400e",
+                                  marginTop: 2 }}>
+                    Defina um plano para calcular o valor do reajuste
+                  </div>
+                )}
+                {!isOverdue && data.last_readjustment_pct != null && (
+                  <div style={{ fontSize: 10, color: "#64748b",
+                                  marginTop: 2 }}>
+                    Último: +{data.last_readjustment_pct.toFixed(2)}%
+                  </div>
+                )}
+              </div>
+            );
+          })() : (
             <div style={{ fontSize: 11, color: "var(--text-muted)" }}>
               Defina a data de instalação primeiro
             </div>
@@ -768,7 +1104,7 @@ function SubscriberEditor({ data, setData, onSaved, onCancel }) {
         </Field>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12, alignItems: "end" }}>
         <Field label="Método de cobrança">
           <select className="input" value={data.billing_method || ""}
             onChange={(e) => set("billing_method", e.target.value)}>
@@ -904,6 +1240,15 @@ function SubscriberEditor({ data, setData, onSaved, onCancel }) {
           </button>
         </div>
       </div>
+
+      {/* iter215ba — Modal de confirmação do Reajuste IPCA */}
+      {readjModal && readjPreview && (
+        <ReadjustmentModal
+          preview={readjPreview}
+          busy={readjBusy}
+          onConfirm={applyReadjustment}
+          onClose={() => setReadjModal(false)} />
+      )}
     </div>
   );
 }
@@ -1018,11 +1363,423 @@ function CsvImporter({ onClose }) {
   );
 }
 
-function Field({ label, children }) {
+function Field({ label, children, hint }) {
+  // iter215az — flex column + label com flex:1 garante que o INPUT
+  // fica sempre alinhado na base do cell, independente da altura do label.
+  // Combinado com `alignItems: "end"` no grid pai, elimina lacunas verticais.
   return (
-    <label style={{ display: "block", marginTop: 10, marginBottom: 4 }}>
-      <div style={fieldLabelStyle}>{label}</div>
+    <label style={{ display: "flex", flexDirection: "column",
+                     marginTop: 10, marginBottom: 4, minWidth: 0 }}
+      title={hint || undefined}>
+      <div style={{ ...fieldLabelStyle, flex: 1 }}>{label}</div>
       {children}
     </label>
   );
 }
+
+
+/* iter215ba — Modal de confirmação para Aplicar Reajuste IPCA em cascata */
+function ReadjustmentModal({ preview, busy, onConfirm, onClose }) {
+  const fmtBRL = (v) => new Intl.NumberFormat("pt-BR", {
+    style: "currency", currency: "BRL",
+  }).format(v);
+  return (
+    <div style={{
+      position: "fixed", inset: 0, zIndex: 1000,
+      background: "rgba(15,23,42,0.55)",
+      display: "flex", alignItems: "center", justifyContent: "center",
+      padding: 16,
+    }}
+      onClick={onClose} data-testid="readjustment-modal-backdrop">
+      <div onClick={(e) => e.stopPropagation()}
+        data-testid="readjustment-modal"
+        style={{
+          background: "#fff", borderRadius: 12, maxWidth: 640, width: "100%",
+          maxHeight: "90vh", overflow: "auto",
+          boxShadow: "0 20px 50px rgba(0,0,0,0.25)",
+        }}>
+        <div style={{
+          padding: "16px 20px",
+          borderBottom: "1px solid #e2e8f0",
+          display: "flex", justifyContent: "space-between", alignItems: "center",
+        }}>
+          <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700,
+                         color: "#4b1d7a" }}>
+            Aplicar reajuste — {preview.index_name}
+          </h3>
+          <button className="btn btn-ghost btn-sm" onClick={onClose}
+            data-testid="readjustment-modal-close">
+            <X size={14} />
+          </button>
+        </div>
+
+        <div style={{ padding: 20 }}>
+          <div style={{ fontSize: 12, color: "#475569", marginBottom: 12 }}>
+            Você está prestes a aplicar{" "}
+            <strong>{preview.pending_count} virada{preview.pending_count > 1 ? "s" : ""} de reajuste</strong>{" "}
+            em cascata para <strong>{preview.name}</strong>. Cada virada usa o{" "}
+            {preview.index_name} acumulado dos 12 meses anteriores à data-base.
+          </div>
+
+          <div style={{
+            border: "1px solid #e2e8f0", borderRadius: 8,
+            background: "#f8fafc", padding: 0, marginBottom: 16,
+          }}>
+            <table style={{ width: "100%", fontSize: 12,
+                              borderCollapse: "collapse" }}>
+              <thead>
+                <tr style={{ background: "#f1f5f9", textAlign: "left" }}>
+                  <th style={{ padding: "8px 10px", fontWeight: 700,
+                                 color: "#475569" }}>Virada</th>
+                  <th style={{ padding: "8px 10px", fontWeight: 700,
+                                 color: "#475569" }}>%</th>
+                  <th style={{ padding: "8px 10px", fontWeight: 700,
+                                 color: "#475569", textAlign: "right" }}>De</th>
+                  <th style={{ padding: "8px 10px", fontWeight: 700,
+                                 color: "#475569", textAlign: "right" }}>Para</th>
+                </tr>
+              </thead>
+              <tbody>
+                {(preview.cascade || []).map((step, i) => (
+                  <tr key={i}
+                    data-testid={`readjustment-step-${i}`}
+                    style={{ borderTop: "1px solid #e2e8f0" }}>
+                    <td style={{ padding: "8px 10px" }}>
+                      {new Date(step.anniversary).toLocaleDateString("pt-BR")}
+                    </td>
+                    <td style={{ padding: "8px 10px",
+                                   color: "#237a4b", fontWeight: 700 }}>
+                      +{step.accumulated_pct.toFixed(2)}%
+                    </td>
+                    <td style={{ padding: "8px 10px", textAlign: "right",
+                                   color: "#64748b" }}>
+                      {fmtBRL(step.from_price)}
+                    </td>
+                    <td style={{ padding: "8px 10px", textAlign: "right",
+                                   fontWeight: 700 }}>
+                      {fmtBRL(step.to_price)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          <div style={{
+            background: "#fef9c3", border: "1px solid #fde68a",
+            borderRadius: 8, padding: "10px 12px", fontSize: 12,
+            color: "#92400e", marginBottom: 16,
+          }}>
+            <strong>Resumo:</strong> R$ {preview.current_price.toFixed(2)} →{" "}
+            <strong>{fmtBRL(preview.new_price)}</strong>{" "}
+            (+{preview.accumulated_pct_total.toFixed(2)}% acumulado)
+          </div>
+
+          <div style={{ display: "flex", gap: 8,
+                          justifyContent: "flex-end" }}>
+            <button className="btn btn-ghost" onClick={onClose}
+              disabled={busy}
+              data-testid="readjustment-cancel">
+              Cancelar
+            </button>
+            <button
+              onClick={onConfirm} disabled={busy}
+              data-testid="readjustment-confirm"
+              style={{
+                padding: "8px 16px", fontSize: 13, fontWeight: 700,
+                background: "#4b1d7a", color: "#fff",
+                border: "none", borderRadius: 6,
+                cursor: busy ? "wait" : "pointer",
+                opacity: busy ? 0.6 : 1,
+              }}>
+              {busy ? "Aplicando…" : `Aplicar ${preview.pending_count} reajuste${preview.pending_count > 1 ? "s" : ""}`}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* iter215bb — Painel "Clientes sem plano" com bulk-assign */
+function NoPlanReport({ onClose }) {
+  const [loading, setLoading] = useState(true);
+  const [data, setData] = useState(null);
+  const [branchFilter, setBranchFilter] = useState("");
+  const [selected, setSelected] = useState(() => new Set());
+  const [plans, setPlans] = useState([]);
+  const [planId, setPlanId] = useState("");
+  const [applying, setApplying] = useState(false);
+
+  useEffect(() => {
+    let alive = true;
+    setLoading(true);
+    const params = branchFilter
+      ? { params: { branch: branchFilter, limit: 1000 } }
+      : { params: { limit: 1000 } };
+    client.get("/subscribers/reports/no-plan", params)
+      .then((r) => { if (alive) { setData(r.data); setLoading(false); } })
+      .catch(() => { if (alive) { setData(null); setLoading(false); } });
+    return () => { alive = false; };
+  }, [branchFilter]);
+
+  useEffect(() => {
+    api.plansList({ active: true })
+      .then((r) => setPlans(r.items || []))
+      .catch(() => setPlans([]));
+  }, []);
+
+  const items = data?.items || [];
+  const allChecked = items.length > 0 && selected.size === items.length;
+  const toggleAll = () => {
+    if (allChecked) setSelected(new Set());
+    else setSelected(new Set(items.map((it) => it.id)));
+  };
+  const toggleOne = (id) => {
+    const next = new Set(selected);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    setSelected(next);
+  };
+
+  const applyBulk = async () => {
+    if (!planId) {
+      alert("Selecione um plano antes de aplicar.");
+      return;
+    }
+    if (selected.size === 0) {
+      alert("Selecione ao menos um cliente.");
+      return;
+    }
+    const plan = plans.find((p) => p.id === planId);
+    const msg = `Vincular o plano "${plan?.name}" `
+      + `(R$ ${plan?.monthly_price?.toFixed(2)}/mês) a `
+      + `${selected.size} cliente(s)?`;
+    if (!window.confirm(msg)) return;
+    setApplying(true);
+    try {
+      const r = await client.post("/subscribers/bulk-assign-plan", {
+        subscriber_ids: Array.from(selected),
+        plan_id: planId,
+        only_without_plan: true,
+      });
+      const res = r.data;
+      alert(`Sucesso!\n\n• Encontrados: ${res.matched}\n`
+            + `• Atualizados: ${res.modified}\n\n`
+            + `Esses clientes agora têm plan_price e o reajuste IPCA `
+            + `pode ser calculado automaticamente.`);
+      setSelected(new Set());
+      const reload = await client.get("/subscribers/reports/no-plan",
+        { params: { limit: 1000, ...(branchFilter
+                                       ? { branch: branchFilter } : {}) } });
+      setData(reload.data);
+    } catch (e) {
+      alert(`Erro: ${e?.response?.data?.detail || e?.message || e}`);
+    } finally {
+      setApplying(false);
+    }
+  };
+
+  return (
+    <div data-testid="no-plan-report" style={{ padding: "0 4px" }}>
+      <div style={{ marginBottom: 18, display: "flex",
+                      justifyContent: "space-between", alignItems: "center" }}>
+        <h1 className="page-title" style={{ margin: 0 }}>
+          Clientes sem plano vinculado
+        </h1>
+        <button className="btn btn-ghost btn-sm" onClick={onClose}
+          data-testid="no-plan-close">
+          <X size={14} /> Voltar
+        </button>
+      </div>
+
+      <div className="surface" style={{
+        padding: 16, borderRadius: 12, marginBottom: 16,
+      }}>
+        <div style={{ fontSize: 12, color: "#475569", marginBottom: 8 }}>
+          Esses são clientes <strong>ATIVOS</strong> sem
+          <code style={{ background: "#f1f5f9", padding: "1px 6px",
+                          borderRadius: 4, margin: "0 4px" }}>
+            plan_price
+          </code>
+          definido. Sem isso o motor de reajuste IPCA não consegue
+          calcular o valor da próxima virada. Vincule um plano em lote
+          pra regularizar o cadastro.
+        </div>
+
+        {loading && <div style={{ padding: 16 }}>Carregando…</div>}
+
+        {!loading && data && (
+          <>
+            <div style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+              gap: 12, marginBottom: 16,
+            }}>
+              <div style={{
+                background: "#fef3c7", border: "1px solid #fde68a",
+                borderRadius: 8, padding: 12,
+              }}>
+                <div style={{ fontSize: 10, fontWeight: 700,
+                                color: "#92400e",
+                                textTransform: "uppercase",
+                                letterSpacing: 0.4 }}>
+                  Total sem plano
+                </div>
+                <div style={{ fontSize: 24, fontWeight: 800,
+                                color: "#78350f", marginTop: 2 }}
+                  data-testid="no-plan-total">
+                  {data.count}
+                </div>
+              </div>
+              {(data.by_branch || []).slice(0, 4).map((b) => (
+                <div key={b.branch}
+                  style={{
+                    background: "#f8fafc",
+                    border: "1px solid #e2e8f0",
+                    borderRadius: 8, padding: 12, cursor: "pointer",
+                  }}
+                  onClick={() => setBranchFilter(
+                    branchFilter === b.branch ? "" : b.branch)}
+                  data-testid={`no-plan-branch-${b.branch}`}>
+                  <div style={{ fontSize: 10, fontWeight: 700,
+                                  color: "#64748b",
+                                  textTransform: "uppercase",
+                                  letterSpacing: 0.4 }}>
+                    {b.branch}
+                    {branchFilter === b.branch && (
+                      <span style={{ marginLeft: 4, color: "#4b1d7a" }}>
+                        ✓
+                      </span>
+                    )}
+                  </div>
+                  <div style={{ fontSize: 22, fontWeight: 700,
+                                  color: "#0f172a", marginTop: 2 }}>
+                    {b.count}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div style={{
+              display: "flex", gap: 8, alignItems: "center",
+              padding: "10px 12px",
+              background: "#f8fafc",
+              border: "1px solid #e2e8f0",
+              borderRadius: 8, marginBottom: 12,
+            }}>
+              <strong style={{ fontSize: 12 }}>Vincular em lote:</strong>
+              <select className="input"
+                data-testid="no-plan-select-plan"
+                value={planId}
+                onChange={(e) => setPlanId(e.target.value)}
+                style={{ minWidth: 280, fontSize: 12 }}>
+                <option value="">— Escolha um plano —</option>
+                {plans.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {`${p.name} · ${p.speed_label || ""} · `
+                     + new Intl.NumberFormat("pt-BR",
+                                              { style: "currency",
+                                                  currency: "BRL" })
+                       .format(p.monthly_price || 0)}
+                  </option>
+                ))}
+              </select>
+              <button
+                data-testid="no-plan-apply-btn"
+                disabled={applying || selected.size === 0 || !planId}
+                onClick={applyBulk}
+                style={{
+                  padding: "6px 14px", fontSize: 12, fontWeight: 700,
+                  background: "#4b1d7a", color: "#fff",
+                  border: "none", borderRadius: 6,
+                  cursor: applying ? "wait" : "pointer",
+                  opacity: applying || selected.size === 0 || !planId
+                    ? 0.5 : 1,
+                }}>
+                {applying ? "Aplicando…"
+                  : `Aplicar a ${selected.size} selecionado(s)`}
+              </button>
+              {branchFilter && (
+                <button className="btn btn-ghost btn-sm"
+                  onClick={() => setBranchFilter("")}
+                  data-testid="no-plan-clear-filter">
+                  Limpar filtro
+                </button>
+              )}
+            </div>
+
+            <div style={{ maxHeight: 540, overflow: "auto",
+                            border: "1px solid #e2e8f0",
+                            borderRadius: 8 }}>
+              <table style={{ width: "100%", borderCollapse: "collapse",
+                                fontSize: 12 }}>
+                <thead style={{ position: "sticky", top: 0,
+                                  background: "#f1f5f9", zIndex: 1 }}>
+                  <tr>
+                    <th style={{ padding: "10px 12px", textAlign: "left" }}>
+                      <input type="checkbox" checked={allChecked}
+                        onChange={toggleAll}
+                        data-testid="no-plan-select-all" />
+                    </th>
+                    <th style={{ padding: "10px 12px", textAlign: "left",
+                                   color: "#475569" }}>Nome</th>
+                    <th style={{ padding: "10px 12px", textAlign: "left",
+                                   color: "#475569" }}>Filial</th>
+                    <th style={{ padding: "10px 12px", textAlign: "left",
+                                   color: "#475569" }}>ID</th>
+                    <th style={{ padding: "10px 12px", textAlign: "left",
+                                   color: "#475569" }}>Instalação</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {items.map((it) => (
+                    <tr key={it.id}
+                      data-testid={`no-plan-row-${it.id}`}
+                      style={{ borderTop: "1px solid #e2e8f0" }}>
+                      <td style={{ padding: "8px 12px" }}>
+                        <input type="checkbox"
+                          checked={selected.has(it.id)}
+                          onChange={() => toggleOne(it.id)} />
+                      </td>
+                      <td style={{ padding: "8px 12px",
+                                     fontWeight: 600 }}>
+                        {it.name || "—"}
+                      </td>
+                      <td style={{ padding: "8px 12px" }}>
+                        {it.branch || "—"}
+                      </td>
+                      <td style={{ padding: "8px 12px",
+                                     fontFamily: "monospace",
+                                     fontSize: 11, color: "#64748b" }}>
+                        {it.external_code || "—"}
+                      </td>
+                      <td style={{ padding: "8px 12px",
+                                     color: "#64748b" }}>
+                        {it.installation_date
+                          ? new Date(it.installation_date)
+                              .toLocaleDateString("pt-BR")
+                          : "—"}
+                      </td>
+                    </tr>
+                  ))}
+                  {items.length === 0 && (
+                    <tr>
+                      <td colSpan={5} style={{
+                        padding: 24, textAlign: "center",
+                        color: "#64748b",
+                      }}>
+                        Nenhum cliente sem plano encontrado.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+

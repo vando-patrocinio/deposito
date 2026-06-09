@@ -14,6 +14,8 @@ import OntTraceabilityModal from "@/OntTraceabilityModal";
 import ManualWithdrawDialog from "@/ManualWithdrawDialog";
 import OntDuplicateAlertsPanel from "@/OntDuplicateAlertsPanel";
 import StokHealthDashboard from "@/StokHealthDashboard";
+import StokAiReviewPanel from "@/StokAiReviewPanel";
+import SmartoltHistoryPanel from "@/SmartoltHistoryPanel";
 
 // ============================================================
 // Helpers visuais
@@ -24,10 +26,12 @@ const SUB_TABS = [
   { id: "onts", label: "ONTs" },
   { id: "insumos", label: "Insumos" },
   { id: "clientes", label: "Clientes (SmartOLT)" },
+  { id: "smartolt-historico", label: "Histórico SmartOLT" },
   { id: "servicos", label: "Ordens de serviço" },
   { id: "balanco", label: "Balanço" },
   { id: "historico", label: "Histórico" },
   { id: "transfers", label: "Transferências" },
+  { id: "ai-review", label: "Revisão IA" },
   { id: "defeitos", label: "️ Defeitos" },
   { id: "duplicados", label: "ONTs Duplicadas" },
   { id: "audit-sn", label: "Auditoria SN" },
@@ -1214,7 +1218,7 @@ function OntsSection({ onts, technicians, reload }) {
         </div>
       )}
 
-      <AddOntsDialog open={showAdd} onClose={() => setShowAdd(false)} onDone={reload} />
+      <AddOntsDialog open={showAdd} onClose={() => setShowAdd(false)} onDone={reload} technicians={technicians} />
 
       {/* iter201 — Modal de Rastreabilidade (SN → NF de origem + histórico) */}
       {traceIdent && (
@@ -1225,18 +1229,35 @@ function OntsSection({ onts, technicians, reload }) {
   );
 }
 
-function AddOntsDialog({ open, onClose, onDone }) {
+function AddOntsDialog({ open, onClose, onDone, technicians = [] }) {
   const [model, setModel] = useState("");
   const [snsText, setSnsText] = useState("");
+  // iter215bc — destino do cadastro: empresa OR técnico específico
+  const [destination, setDestination] = useState(""); // "" = empresa
   const submit = asyncCall(async () => {
     const list = snsText.split(/[\s,;\n]+/).map((s) => s.trim()).filter(Boolean);
     if (!model.trim()) return await window.alert("Informe o modelo.");
     if (list.length === 0) return await window.alert("Informe pelo menos 1 SN.");
-    // iter211h — base obrigatória pelo SN. Backend aceita cada string
-    // como SN no formato legado, ou items: [{sn, mac?}] preferido.
-    await api.stokOntsBulk(model.trim(),
-                             list.map((sn) => ({ sn: sn.toUpperCase() })));
-    setModel(""); setSnsText(""); onClose();
+    // iter215bc — passa technician_id se destino for um técnico
+    const techId = destination || undefined;
+    const result = await api.stokOntsBulk(
+      model.trim(),
+      list.map((sn) => ({ sn: sn.toUpperCase() })),
+      techId,
+    );
+    // Mensagem de sucesso EXPLÍCITA com destino (corrige confusão antiga
+    // do bug "cadastrei mas não aparece no estoque do técnico")
+    await window.alert(
+      `✓ ${result.inserted} ONT(s) cadastrada(s)\n\n`
+      + `Destino: ${result.destination_name || "Estoque da empresa"}\n\n`
+      + (techId
+          ? `As ONTs JÁ ESTÃO no estoque do técnico. `
+            + `Ele pode usá-las direto na próxima OS.`
+          : `As ONTs estão no estoque da EMPRESA. `
+            + `Para enviar a um técnico, use "↗ Transferir".`)
+    );
+    setModel(""); setSnsText(""); setDestination("");
+    onClose();
   }, onDone, "Erro ao cadastrar ONTs");
   return (
     <Modal open={open} onClose={onClose} title="Adicionar ONTs" data-testid="ont-add-dialog"
@@ -1248,6 +1269,23 @@ function AddOntsDialog({ open, onClose, onDone }) {
       <div style={{ marginBottom: 12 }}>
         <label style={labelStyle}>Modelo</label>
         <input data-testid="ont-add-model" style={inputStyle} value={model} onChange={(e) => setModel(e.target.value)} placeholder="ZTE F670L, Huawei HG8245H, etc." />
+      </div>
+      <div style={{ marginBottom: 12 }}>
+        <label style={labelStyle}>Destino do cadastro</label>
+        <select data-testid="ont-add-destination" style={inputStyle}
+          value={destination}
+          onChange={(e) => setDestination(e.target.value)}>
+          <option value="">Estoque da empresa (precisa transferir depois)</option>
+          {technicians.map((t) => (
+            <option key={t.id} value={t.id}>
+              Direto no estoque de: {t.name}
+            </option>
+          ))}
+        </select>
+        <div style={{ fontSize: 11, color: "#64748b", marginTop: 4 }}>
+          Escolha um técnico para que as ONTs entrem direto no estoque dele,
+          sem precisar de transferência manual.
+        </div>
       </div>
       <div>
         <label style={labelStyle}>SN — Número de Série (1 por linha)</label>
@@ -1514,7 +1552,7 @@ function InsumosSection({ consumables, technicians, stock, reload }) {
         </div>
       )}
 
-      <ConsumablePurchaseDialog open={showPurchase} onClose={() => setShowPurchase(false)} onDone={reload} consumables={consumables} />
+      <ConsumablePurchaseDialog open={showPurchase} onClose={() => setShowPurchase(false)} onDone={reload} consumables={consumables} technicians={technicians} />
       <QuickPurchaseDialog open={showQuickPurchase}
                               onClose={() => setShowQuickPurchase(false)}
                               onDone={reload} consumables={consumables} />
@@ -1603,15 +1641,27 @@ function QuickPurchaseDialog({ open, onClose, onDone, consumables }) {
 }
 
 
-function ConsumablePurchaseDialog({ open, onClose, onDone, consumables }) {
+function ConsumablePurchaseDialog({ open, onClose, onDone, consumables, technicians = [] }) {
   const [cid, setCid] = useState("");
   const [qty, setQty] = useState(1);
+  // iter215bd — destino opcional: empresa (default) ou técnico direto
+  const [destination, setDestination] = useState("");
   const item = consumables.find((c) => c.id === cid);
   const total = item ? qty * item.pack_qty : 0;
   const submit = asyncCall(async () => {
     if (!cid || qty <= 0) return await window.alert("Selecione insumo e informe quantidade.");
-    await api.stokConsumablePurchase(cid, parseInt(qty, 10));
-    setCid(""); setQty(1); onClose();
+    const result = await api.stokConsumablePurchase(
+      cid, parseInt(qty, 10), destination || undefined);
+    await window.alert(
+      `✓ ${result.added} ${item?.unit || "un"} adicionado(s)\n\n`
+      + `Destino: ${result.destination_name || "Estoque da empresa"}\n\n`
+      + (destination
+          ? `O insumo JÁ ESTÁ no estoque do técnico. `
+            + `Ele pode usar direto na próxima OS.`
+          : `O insumo está no estoque da EMPRESA. `
+            + `Para enviar a um técnico, use "↗ Transferir".`)
+    );
+    setCid(""); setQty(1); setDestination(""); onClose();
   }, onDone, "Erro na compra");
   return (
     <Modal open={open} onClose={onClose} title="Registrar compra" data-testid="cons-purchase-dialog"
@@ -1624,6 +1674,22 @@ function ConsumablePurchaseDialog({ open, onClose, onDone, consumables }) {
           <option value="">Selecione…</option>
           {consumables.map((c) => <option key={c.id} value={c.id}>{c.name} ({c.pack_label} = {c.pack_qty} {c.unit})</option>)}
         </select>
+      </div>
+      <div style={{ marginBottom: 12 }}>
+        <label style={labelStyle}>Destino do cadastro</label>
+        <select data-testid="cons-purchase-destination" style={inputStyle}
+          value={destination}
+          onChange={(e) => setDestination(e.target.value)}>
+          <option value="">Estoque da empresa (precisa transferir depois)</option>
+          {technicians.map((t) => (
+            <option key={t.id} value={t.id}>
+              Direto no estoque de: {t.name}
+            </option>
+          ))}
+        </select>
+        <div style={{ fontSize: 11, color: "#64748b", marginTop: 4 }}>
+          Escolha um técnico para que o insumo entre direto no estoque dele.
+        </div>
       </div>
       <div>
         <label style={labelStyle}>Quantidade ({item?.pack_label || "pacotes"})</label>
@@ -2588,6 +2654,7 @@ export default function EstoquePanel({ currentUser }) {
       {tab === "onts" && <OntsSection onts={data.onts} technicians={data.technicians} reload={reload} />}
       {tab === "insumos" && <InsumosSection consumables={data.consumables} technicians={data.technicians} stock={data.stock} reload={reload} />}
       {tab === "clientes" && <ClientesSection />}
+      {tab === "smartolt-historico" && <SmartoltHistoryPanel />}
       {tab === "servicos" && <ServicosSection services={data.services} technicians={data.technicians} consumables={data.consumables} reload={reload} />}
       {tab === "balanco" && <BalancoTab
         pracas={(data.pracas || []).map((p) => ({ id: p.id, name: p.name }))}
@@ -2596,6 +2663,7 @@ export default function EstoquePanel({ currentUser }) {
         currentUser={currentUser} />}
       {tab === "historico" && <HistoricoSection history={data.history} reload={reload} />}
       {tab === "transfers" && <StokTransfersPanel />}
+      {tab === "ai-review" && <StokAiReviewPanel />}
       {tab === "defeitos" && <DefectiveOntsPanel />}
       {tab === "duplicados" && <OntDuplicateAlertsPanel />}
       {tab === "saude" && <StokHealthDashboard onNavigate={setTab} />}

@@ -1,0 +1,1041 @@
+{
+  "report_id": "cto-maturity-16bd985567",
+  "generated_at": "2026-06-08T02:49:21.959957+00:00",
+  "mongo_db": "test_database",
+  "q1_maturity_scores": {
+    "scores_por_dimensao": {
+      "Arquitetura": 78,
+      "Eventos": 67.4,
+      "Dados": 32.7,
+      "Observabilidade": 87.1,
+      "IA": 95,
+      "Autonomia": 20.0,
+      "Segurança": 55.8,
+      "Escalabilidade": 55,
+      "Governança": 79.6,
+      "Produto": 70,
+      "UX": 55,
+      "Operação": 70
+    },
+    "maturidade_geral": 63.8,
+    "raw_signals": {
+      "chain_pct": 100.0,
+      "tenant_pct": 59.3,
+      "correlation_pct": 67.9,
+      "actions_live_pct": 0.0,
+      "rules_active": 15,
+      "event_types_defined": 33,
+      "event_types_used": 7,
+      "learnings_count": 35,
+      "predictions_count": 15,
+      "health_score": 61.5,
+      "data_quality_score": 32.7,
+      "decisions_count": 32,
+      "actions_count": 48,
+      "outcomes_count": 66,
+      "insights_count": 38,
+      "collections_in_db": 311
+    }
+  },
+  "q2_nervous_coverage": {
+    "total_modules": 235,
+    "emitting_modules": 9,
+    "silent_modules": 226,
+    "coverage_pct": 3.8,
+    "emitters_sample": [
+      "backend/routes/audit_log_panel.py",
+      "backend/routes/fleet_tracking.py",
+      "backend/services/audit_alerts.py",
+      "backend/services/data_quality.py",
+      "backend/services/event_bus.py",
+      "backend/services/event_emitters.py",
+      "backend/services/learnings.py",
+      "backend/services/lgpd_chain.py",
+      "backend/services/presidente_ia.py"
+    ],
+    "silent_sample": [
+      "backend/routes/__init__.py",
+      "backend/routes/admin.py",
+      "backend/routes/ai_config.py",
+      "backend/routes/ai_corrections.py",
+      "backend/routes/ai_dashboard.py",
+      "backend/routes/ai_preventive.py",
+      "backend/routes/ai_topology.py",
+      "backend/routes/ai_training.py",
+      "backend/routes/aihub.py",
+      "backend/routes/alvaro.py",
+      "backend/routes/alvaro_os_summary.py",
+      "backend/routes/appointments.py",
+      "backend/routes/atlaz.py",
+      "backend/routes/atlaz_financeiro.py",
+      "backend/routes/backend_health_routes.py",
+      "backend/routes/backup.py",
+      "backend/routes/balanco.py",
+      "backend/routes/bank_import.py",
+      "backend/routes/billing.py",
+      "backend/routes/boleto_template.py",
+      "backend/routes/branding.py",
+      "backend/routes/budget.py",
+      "backend/routes/central_ia.py",
+      "backend/routes/checklist_ai.py",
+      "backend/routes/churn.py",
+      "backend/routes/client_errors.py",
+      "backend/routes/clients_segments.py",
+      "backend/routes/clock.py",
+      "backend/routes/collab_auth.py",
+      "backend/routes/collaborator_assets.py"
+    ]
+  },
+  "q3_event_bus": {
+    "types_defined": 33,
+    "types_used": 7,
+    "usage_pct": 21.2,
+    "events_last_24h": 130,
+    "events_last_7d": 130,
+    "events_last_30d": 130,
+    "top_20": [
+      {
+        "event_type": "RBAC_DENIED",
+        "count": 61
+      },
+      {
+        "event_type": "DATA_QUALITY_DROP",
+        "count": 28
+      },
+      {
+        "event_type": "CLIENT_OFFLINE",
+        "count": 23
+      },
+      {
+        "event_type": "presidente_scan",
+        "count": 10
+      },
+      {
+        "event_type": "CLIENT_CHURN_RISK",
+        "count": 8
+      },
+      {
+        "event_type": "AI_LEARNING_ALERT",
+        "count": 6
+      },
+      {
+        "event_type": "PAYMENT_OVERDUE",
+        "count": 4
+      }
+    ],
+    "unused_types": [
+      "AI_ACTION",
+      "AI_DECISION",
+      "AI_OUTCOME",
+      "AUDIT_DELETE",
+      "AUDIT_EXPORT",
+      "CLIENT_CREATED",
+      "CLIENT_ONLINE",
+      "COLLECTIVE_OUTAGE",
+      "CTO_CRITICAL",
+      "CTO_DEGRADED",
+      "DUNNING_ESCALATED",
+      "GPS_ROUTE_DEVIATION",
+      "IMPERSONATE",
+      "ONU_LOW_SIGNAL",
+      "ONU_OFFLINE",
+      "OPPORTUNITY_DETECTED",
+      "PARTNER_QR_REDEEMED",
+      "PAYMENT_RECEIVED",
+      "REFERRAL_CONVERTED",
+      "SALE_CREATED",
+      "SALE_LOST",
+      "TECH_PRODUCTIVITY_DROP",
+      "TICKET_CLOSED",
+      "TICKET_OPENED",
+      "TICKET_RECURRING",
+      "VLAN_SATURATED",
+      "WA_CAMPAIGN_SENT",
+      "WA_INBOUND_RECEIVED"
+    ]
+  },
+  "q4_president_capabilities": {
+    "OBSERVAR": {
+      "yes": true,
+      "evidence": "140 eventos no event_bus"
+    },
+    "ENTENDER": {
+      "yes": true,
+      "evidence": "38 insights gerados (executive_health + data_quality)"
+    },
+    "CORRELACIONAR": {
+      "yes": true,
+      "evidence": "95 eventos com correlation_id (propagado a decisões/ações/outcomes)"
+    },
+    "PREVER": {
+      "yes": true,
+      "evidence": "15 predictions geradas em 3 modelos: ['churn', 'revenue', 'ticket_demand']"
+    },
+    "DECIDIR": {
+      "yes": true,
+      "evidence": "32 decisões; 32 com reasoning explícito"
+    },
+    "AGIR": {
+      "yes": true,
+      "evidence": "48 ações executadas, mas 0 em LIVE (100% DRY-RUN por default — flag PRESIDENTE_IA_LIVE=0)",
+      "partial": true
+    },
+    "APRENDER": {
+      "yes": true,
+      "evidence": "35 snapshots em motor_ia_learnings; 4 action_types com feedback ativo"
+    }
+  },
+  "q5_memory_collections": {
+    "collections": [
+      {
+        "collection": "motor_ia_events",
+        "docs": 140,
+        "last_write": "2026-06-08T02:49:02.030882+00:00",
+        "status": "ativa"
+      },
+      {
+        "collection": "motor_ia_memory",
+        "docs": 20,
+        "last_write": "2026-06-08T02:09:30.621414+00:00",
+        "status": "ativa"
+      },
+      {
+        "collection": "motor_ia_insights",
+        "docs": 38,
+        "last_write": "2026-06-08T02:49:02.035386+00:00",
+        "status": "ativa"
+      },
+      {
+        "collection": "motor_ia_predictions",
+        "docs": 15,
+        "last_write": "2026-06-08T02:47:20.870932+00:00",
+        "status": "ativa"
+      },
+      {
+        "collection": "motor_ia_decisions",
+        "docs": 32,
+        "last_write": "2026-06-08T02:48:49.430268+00:00",
+        "status": "ativa"
+      },
+      {
+        "collection": "motor_ia_actions",
+        "docs": 48,
+        "last_write": "2026-06-08T02:48:49.437233+00:00",
+        "status": "ativa"
+      },
+      {
+        "collection": "motor_ia_outcomes",
+        "docs": 66,
+        "last_write": "2026-06-08T02:48:49.437981+00:00",
+        "status": "ativa"
+      },
+      {
+        "collection": "motor_ia_learnings",
+        "docs": 36,
+        "last_write": "2026-06-08T02:49:22.017635+00:00",
+        "status": "ativa"
+      }
+    ]
+  },
+  "q6_predictions": {
+    "kinds": [
+      "churn",
+      "revenue",
+      "ticket_demand"
+    ],
+    "total_predictions": 15,
+    "samples": {
+      "churn": {
+        "generated_at": "2026-06-08T02:47:20.857238+00:00",
+        "model": "heuristic_v1",
+        "horizon_days": 30,
+        "sample_items": [
+          {
+            "subscriber_id": "sub-pred-1012be",
+            "company_id": "test-pred-6c5a87",
+            "risk_score": 70,
+            "reasons": [
+              "2 tickets abertos",
+              "1 mensalidades em atraso"
+            ]
+          }
+        ],
+        "total_items": 1
+      },
+      "revenue": {
+        "generated_at": "2026-06-08T02:47:20.869103+00:00",
+        "model": "trend_v1",
+        "horizon_days": 30,
+        "sample_items": [],
+        "total_items": 0
+      },
+      "ticket_demand": {
+        "generated_at": "2026-06-08T02:47:20.870932+00:00",
+        "model": "moving_average_v1",
+        "horizon_days": 7,
+        "sample_items": [
+          {
+            "company_id": "co-demo",
+            "avg_tickets_per_day_14d": 18.9,
+            "forecast_7d": 132.0,
+            "samples_observed": 14
+          },
+          {
+            "company_id": "test-pred-6c5a87",
+            "avg_tickets_per_day_14d": 2.0,
+            "forecast_7d": 14.0,
+            "samples_observed": 1
+          }
+        ],
+        "total_items": 2
+      }
+    },
+    "accuracy_measured": false,
+    "validation_in_place": false,
+    "feedback_loop_into_predictions": false,
+    "history_kept": true
+  },
+  "q7_learnings": {
+    "total_snapshots": 36,
+    "latest_sample": {
+      "id": "lrn-58dfac99d894",
+      "generated_at": "2026-06-08T02:49:22.017635+00:00",
+      "stats": {
+        "create_retention_opportunity": {
+          "success_rate": 1.0,
+          "factor": 1.2,
+          "total": 10,
+          "ok": 10
+        },
+        "notify_manager": {
+          "success_rate": 0.692,
+          "factor": 0.85,
+          "total": 26,
+          "ok": 18
+        },
+        "open_incident": {
+          "success_rate": 1.0,
+          "factor": 1.2,
+          "total": 6,
+          "ok": 6
+        },
+        "escalate_dunning": {
+          "success_rate": 1.0,
+          "factor": 1.2,
+          "total": 6,
+          "ok": 6
+        }
+      },
+      "deltas": {
+        "create_retention_opportunity": {
+          "factor_before": 1.2,
+          "factor_after": 1.2,
+          "delta": 0.0,
+          "success_rate": 1.0,
+          "total": 10
+        },
+        "notify_manager": {
+          "factor_before": 0.85,
+          "factor_after": 0.85,
+          "delta": 0.0,
+          "success_rate": 0.692,
+          "total": 26
+        },
+        "open_incident": {
+          "factor_before": 1.2,
+          "factor_after": 1.2,
+          "delta": 0.0,
+          "success_rate": 1.0,
+          "total": 6
+        },
+        "escalate_dunning": {
+          "factor_before": 1.2,
+          "factor_after": 1.2,
+          "delta": 0.0,
+          "success_rate": 1.0,
+          "total": 6
+        }
+      },
+      "alerts": []
+    },
+    "alerts_lifetime": 2,
+    "auto_tuning_applied": false,
+    "explain_if_zero": "Os aprendizados existem mas não estão modificando as regras automaticamente — isso é a Sprint 14 (auto-tuning de thresholds). Hoje, o aprendizado ajusta apenas confidence."
+  },
+  "q8_action_engine": {
+    "implemented_handlers": [
+      "open_incident",
+      "create_retention_opportunity",
+      "notify_manager",
+      "escalate_dunning",
+      "open_technical_ticket",
+      "create_sales_lead"
+    ],
+    "by_action_type": [
+      {
+        "action_type": "notify_manager",
+        "total": 26,
+        "live": 0,
+        "dry_run": 26
+      },
+      {
+        "action_type": "escalate_dunning",
+        "total": 6,
+        "live": 0,
+        "dry_run": 6
+      },
+      {
+        "action_type": "create_retention_opportunity",
+        "total": 10,
+        "live": 0,
+        "dry_run": 10
+      },
+      {
+        "action_type": "open_incident",
+        "total": 6,
+        "live": 0,
+        "dry_run": 6
+      }
+    ],
+    "live_mode_env": "0",
+    "human_in_the_loop": [
+      "notify_manager (envio WhatsApp ao gestor, só em LIVE)",
+      "escalate_dunning (Asaas/integração financeira em LIVE)",
+      "open_incident (NOC humano confirma)",
+      "create_retention_opportunity (Isabella IA recebe e age)"
+    ]
+  },
+  "q9_decisions": {
+    "total_decisions": 32,
+    "executed": 32,
+    "by_action_type_outcomes": [
+      {
+        "action_type": "open_incident",
+        "outcomes_total": 6,
+        "ok": 6,
+        "fail": 0,
+        "ok_rate_pct": 100.0
+      },
+      {
+        "action_type": "escalate_dunning",
+        "outcomes_total": 6,
+        "ok": 6,
+        "fail": 0,
+        "ok_rate_pct": 100.0
+      },
+      {
+        "action_type": "create_retention_opportunity",
+        "outcomes_total": 10,
+        "ok": 10,
+        "fail": 0,
+        "ok_rate_pct": 100.0
+      },
+      {
+        "action_type": "notify_manager",
+        "outcomes_total": 26,
+        "ok": 18,
+        "fail": 8,
+        "ok_rate_pct": 69.2
+      }
+    ],
+    "sample_recent": [
+      {
+        "title": "Data Quality em risco — score 32.7",
+        "action_type": "notify_manager",
+        "confidence_base": 0.85,
+        "confidence": 0.722,
+        "executed": true,
+        "reasoning": "Score do banco caiu. Issues prioritários detectados pelo scanner."
+      },
+      {
+        "title": "Data Quality em risco — score 32.7",
+        "action_type": "notify_manager",
+        "confidence_base": 0.85,
+        "confidence": 0.722,
+        "executed": true,
+        "reasoning": "Score do banco caiu. Issues prioritários detectados pelo scanner."
+      },
+      {
+        "title": "Data Quality em risco — score 32.7",
+        "action_type": "notify_manager",
+        "confidence_base": 0.85,
+        "confidence": 0.722,
+        "executed": true,
+        "reasoning": "Score do banco caiu. Issues prioritários detectados pelo scanner."
+      }
+    ]
+  },
+  "q10_vision_360": {
+    "visibilidades": [
+      {
+        "dominio": "Clientes",
+        "presente": true,
+        "docs": 2788,
+        "eventos_emitidos": 31,
+        "tipos_previstos": [
+          "CLIENT_OFFLINE",
+          "CLIENT_ONLINE",
+          "CLIENT_CHURN_RISK",
+          "CLIENT_CREATED"
+        ],
+        "visibilidade_pct": 75.0
+      },
+      {
+        "dominio": "Financeiro",
+        "presente": true,
+        "docs": 1,
+        "eventos_emitidos": 4,
+        "tipos_previstos": [
+          "PAYMENT_OVERDUE",
+          "PAYMENT_RECEIVED",
+          "DUNNING_ESCALATED"
+        ],
+        "visibilidade_pct": 67.0
+      },
+      {
+        "dominio": "Rede",
+        "presente": true,
+        "docs": 40,
+        "eventos_emitidos": 0,
+        "tipos_previstos": [
+          "ONU_LOW_SIGNAL",
+          "ONU_OFFLINE",
+          "CTO_DEGRADED",
+          "CTO_CRITICAL",
+          "VLAN_SATURATED",
+          "COLLECTIVE_OUTAGE"
+        ],
+        "visibilidade_pct": 50.0
+      },
+      {
+        "dominio": "WhatsApp",
+        "presente": false,
+        "docs": 0,
+        "eventos_emitidos": 0,
+        "tipos_previstos": [
+          "WA_INBOUND_RECEIVED",
+          "WA_CAMPAIGN_SENT"
+        ],
+        "visibilidade_pct": 0
+      },
+      {
+        "dominio": "Atendimento",
+        "presente": true,
+        "docs": 621,
+        "eventos_emitidos": 0,
+        "tipos_previstos": [
+          "TICKET_OPENED",
+          "TICKET_CLOSED",
+          "TICKET_RECURRING"
+        ],
+        "visibilidade_pct": 50.0
+      },
+      {
+        "dominio": "GPS",
+        "presente": false,
+        "docs": 0,
+        "eventos_emitidos": 0,
+        "tipos_previstos": [
+          "GPS_ROUTE_DEVIATION",
+          "TECH_PRODUCTIVITY_DROP"
+        ],
+        "visibilidade_pct": 0
+      },
+      {
+        "dominio": "Estoque",
+        "presente": false,
+        "docs": 0,
+        "eventos_emitidos": 0,
+        "tipos_previstos": [],
+        "visibilidade_pct": 0
+      },
+      {
+        "dominio": "Parceiros",
+        "presente": false,
+        "docs": 0,
+        "eventos_emitidos": 0,
+        "tipos_previstos": [
+          "PARTNER_QR_REDEEMED"
+        ],
+        "visibilidade_pct": 0
+      },
+      {
+        "dominio": "Indicações",
+        "presente": true,
+        "docs": 7,
+        "eventos_emitidos": 0,
+        "tipos_previstos": [
+          "REFERRAL_CONVERTED"
+        ],
+        "visibilidade_pct": 50.0
+      },
+      {
+        "dominio": "Lousa",
+        "presente": false,
+        "docs": 0,
+        "eventos_emitidos": 0,
+        "tipos_previstos": [],
+        "visibilidade_pct": 0
+      },
+      {
+        "dominio": "RBAC",
+        "presente": true,
+        "docs": 98,
+        "eventos_emitidos": 61,
+        "tipos_previstos": [
+          "RBAC_DENIED"
+        ],
+        "visibilidade_pct": 100.0
+      },
+      {
+        "dominio": "Audit Trail",
+        "presente": true,
+        "docs": 98,
+        "eventos_emitidos": 0,
+        "tipos_previstos": [
+          "AUDIT_EXPORT",
+          "AUDIT_DELETE",
+          "IMPERSONATE"
+        ],
+        "visibilidade_pct": 50.0
+      },
+      {
+        "dominio": "SmartOLT",
+        "presente": false,
+        "docs": 0,
+        "eventos_emitidos": 0,
+        "tipos_previstos": [],
+        "visibilidade_pct": 0
+      },
+      {
+        "dominio": "Motor IA",
+        "presente": true,
+        "docs": 32,
+        "eventos_emitidos": 0,
+        "tipos_previstos": [
+          "AI_DECISION",
+          "AI_ACTION",
+          "AI_OUTCOME"
+        ],
+        "visibilidade_pct": 50.0
+      }
+    ],
+    "media": 35.1
+  },
+  "q11_multi_tenant": {
+    "by_collection": {
+      "motor_ia_events": {
+        "total": 140,
+        "with_company_id": 83,
+        "pct": 59.3,
+        "ok": false
+      },
+      "motor_ia_insights": {
+        "total": 38,
+        "with_company_id": 3,
+        "pct": 7.9,
+        "ok": false
+      },
+      "motor_ia_decisions": {
+        "total": 32,
+        "with_company_id": 22,
+        "pct": 68.8,
+        "ok": false
+      },
+      "motor_ia_actions": {
+        "total": 48,
+        "with_company_id": 38,
+        "pct": 79.2,
+        "ok": false
+      },
+      "motor_ia_outcomes": {
+        "total": 66,
+        "with_company_id": 56,
+        "pct": 84.8,
+        "ok": false
+      }
+    },
+    "tenant_leak_risk": true,
+    "evidence": "69% dos eventos órfãos de company_id na V1 da auditoria; após correção, ainda há scans globais que rodam sem company_id atrelado."
+  },
+  "q12_data_quality": {
+    "current_score": 32.7,
+    "status": "critico",
+    "issues_count": 9,
+    "top_50_issues": [
+      {
+        "key": "clients_no_cto",
+        "label": "Clientes sem CTO",
+        "collection": "subscribers",
+        "bad_count": 2788,
+        "total_count": 2788,
+        "pct_clean": 0.0
+      },
+      {
+        "key": "clients_no_address",
+        "label": "Clientes sem endereço",
+        "collection": "subscribers",
+        "bad_count": 2788,
+        "total_count": 2788,
+        "pct_clean": 0.0
+      },
+      {
+        "key": "contracts_incomplete",
+        "label": "Contratos incompletos",
+        "collection": "contracts",
+        "bad_count": 1,
+        "total_count": 1,
+        "pct_clean": 0.0
+      },
+      {
+        "key": "clients_no_plan",
+        "label": "Clientes sem plano",
+        "collection": "subscribers",
+        "bad_count": 2786,
+        "total_count": 2788,
+        "pct_clean": 0.1
+      },
+      {
+        "key": "clients_no_price",
+        "label": "Clientes sem preço",
+        "collection": "subscribers",
+        "bad_count": 2784,
+        "total_count": 2788,
+        "pct_clean": 0.1
+      },
+      {
+        "key": "clients_no_cpf",
+        "label": "Clientes sem CPF",
+        "collection": "subscribers",
+        "bad_count": 2786,
+        "total_count": 2788,
+        "pct_clean": 0.1
+      },
+      {
+        "key": "cto_no_vlan",
+        "label": "CTOs sem VLAN",
+        "collection": "ctos",
+        "bad_count": 2,
+        "total_count": 40,
+        "pct_clean": 95.0
+      },
+      {
+        "key": "dup_emails",
+        "label": "E-mails duplicados",
+        "collection": "subscribers",
+        "bad_count": 28,
+        "total_count": 2788,
+        "pct_clean": 99.0
+      },
+      {
+        "key": "onu_no_cto",
+        "label": "ONUs sem CTO",
+        "collection": "onus",
+        "bad_count": 0,
+        "total_count": 1,
+        "pct_clean": 100.0
+      }
+    ],
+    "history_last_10": [
+      {
+        "generated_at": "2026-06-08T02:49:22.069298+00:00",
+        "score": 32.7,
+        "status": "critico"
+      },
+      {
+        "generated_at": "2026-06-08T02:49:02.030386+00:00",
+        "score": 32.7,
+        "status": "critico"
+      },
+      {
+        "generated_at": "2026-06-08T02:49:02.002578+00:00",
+        "score": 32.7,
+        "status": "critico"
+      },
+      {
+        "generated_at": "2026-06-08T02:48:49.414689+00:00",
+        "score": 32.7,
+        "status": "critico"
+      },
+      {
+        "generated_at": "2026-06-08T02:48:49.390966+00:00",
+        "score": 32.7,
+        "status": "critico"
+      },
+      {
+        "generated_at": "2026-06-08T02:48:49.374496+00:00",
+        "score": 32.7,
+        "status": "critico"
+      },
+      {
+        "generated_at": "2026-06-08T02:29:51.157278+00:00",
+        "score": 32.7,
+        "status": "critico"
+      },
+      {
+        "generated_at": "2026-06-08T02:29:51.124054+00:00",
+        "score": 32.7,
+        "status": "critico"
+      },
+      {
+        "generated_at": "2026-06-08T02:29:51.074736+00:00",
+        "score": 32.7,
+        "status": "critico"
+      },
+      {
+        "generated_at": "2026-06-08T02:29:26.334070+00:00",
+        "score": 32.7,
+        "status": "critico"
+      }
+    ],
+    "improved_since_sprint7": false
+  },
+  "q13_health_score": {
+    "current": {
+      "overall_score": 26.5,
+      "status": "critico",
+      "scores": {
+        "dados": 32.7,
+        "operacional": 0.0,
+        "comercial": 100.0,
+        "financeiro": 0.0,
+        "seguranca": 0.0
+      },
+      "company_id": null,
+      "generated_at": "2026-06-08T02:49:22.093239+00:00"
+    },
+    "formula": "overall = dados*0.20 + operacional*0.25 + comercial*0.20 + financeiro*0.20 + seguranca*0.15",
+    "history_last_30": [
+      {
+        "generated_at": "2026-06-08T02:49:22.093239+00:00",
+        "overall_score": 26.5,
+        "scores": {
+          "dados": 32.7,
+          "operacional": 0.0,
+          "comercial": 100.0,
+          "financeiro": 0.0,
+          "seguranca": 0.0
+        }
+      },
+      {
+        "generated_at": "2026-06-08T02:49:02.035386+00:00",
+        "overall_score": 61.5,
+        "scores": {
+          "dados": 32.7,
+          "operacional": 0.0,
+          "comercial": 100.0,
+          "financeiro": 100.0,
+          "seguranca": 100.0
+        }
+      },
+      {
+        "generated_at": "2026-06-08T02:48:49.394902+00:00",
+        "overall_score": 26.5,
+        "scores": {
+          "dados": 32.7,
+          "operacional": 0.0,
+          "comercial": 100.0,
+          "financeiro": 0.0,
+          "seguranca": 0.0
+        }
+      },
+      {
+        "generated_at": "2026-06-08T02:29:51.128528+00:00",
+        "overall_score": 26.5,
+        "scores": {
+          "dados": 32.7,
+          "operacional": 0.0,
+          "comercial": 100.0,
+          "financeiro": 0.0,
+          "seguranca": 0.0
+        }
+      },
+      {
+        "generated_at": "2026-06-08T02:29:26.273780+00:00",
+        "overall_score": 26.5,
+        "scores": {
+          "dados": 32.7,
+          "operacional": 0.0,
+          "comercial": 100.0,
+          "financeiro": 0.0,
+          "seguranca": 0.0
+        }
+      },
+      {
+        "generated_at": "2026-06-08T01:32:14.052869+00:00",
+        "overall_score": 46.5,
+        "scores": {
+          "dados": 32.7,
+          "operacional": 0.0,
+          "comercial": 100.0,
+          "financeiro": 100.0,
+          "seguranca": 0.0
+        }
+      },
+      {
+        "generated_at": "2026-06-08T01:32:13.954535+00:00",
+        "overall_score": 46.5,
+        "scores": {
+          "dados": 32.7,
+          "operacional": 0.0,
+          "comercial": 100.0,
+          "financeiro": 100.0,
+          "seguranca": 0.0
+        }
+      },
+      {
+        "generated_at": "2026-06-08T01:31:54.651560+00:00",
+        "overall_score": 46.5,
+        "scores": {
+          "dados": 32.7,
+          "operacional": 0.0,
+          "comercial": 100.0,
+          "financeiro": 100.0,
+          "seguranca": 0.0
+        }
+      },
+      {
+        "generated_at": "2026-06-08T01:31:38.739240+00:00",
+        "overall_score": 46.5,
+        "scores": {
+          "dados": 32.7,
+          "operacional": 0.0,
+          "comercial": 100.0,
+          "financeiro": 100.0,
+          "seguranca": 0.0
+        }
+      },
+      {
+        "generated_at": "2026-06-08T01:31:38.627280+00:00",
+        "overall_score": 46.5,
+        "scores": {
+          "dados": 32.7,
+          "operacional": 0.0,
+          "comercial": 100.0,
+          "financeiro": 100.0,
+          "seguranca": 0.0
+        }
+      },
+      {
+        "generated_at": "2026-06-08T01:31:38.429990+00:00",
+        "overall_score": 46.5,
+        "scores": {
+          "dados": 32.7,
+          "operacional": 0.0,
+          "comercial": 100.0,
+          "financeiro": 100.0,
+          "seguranca": 0.0
+        }
+      }
+    ]
+  },
+  "q14_corporate_timeline": {
+    "total_events": 142,
+    "events_per_day_avg": 71.0,
+    "days_with_events": 2,
+    "events_last_24h": 132,
+    "events_last_7d": 132,
+    "with_correlation": 97,
+    "without_correlation": 45,
+    "correlation_pct": 68.3
+  },
+  "q15_detectors": {
+    "detectors": [
+      {
+        "detector": "detect_impersonate",
+        "last_exec_ms": 0,
+        "alerts_returned": 0,
+        "status": "ok"
+      },
+      {
+        "detector": "detect_mass_delete",
+        "last_exec_ms": 0,
+        "alerts_returned": 0,
+        "status": "ok"
+      },
+      {
+        "detector": "detect_mass_export",
+        "last_exec_ms": 0,
+        "alerts_returned": 0,
+        "status": "ok"
+      },
+      {
+        "detector": "detect_rbac_abuse",
+        "last_exec_ms": 0,
+        "alerts_returned": 0,
+        "status": "ok"
+      },
+      {
+        "detector": "data_quality_scan",
+        "last_exec_ms": 17,
+        "score": 32.7,
+        "status": "critico"
+      }
+    ],
+    "count": 5
+  },
+  "q16_estrategista": {
+    "total_reports": 2,
+    "by_period": {
+      "daily": 1,
+      "weekly": 1,
+      "monthly": 0
+    },
+    "llm_used_count": 2,
+    "latest_preview": "# Análise Estratégica Semanal — SmartProv\n**Período: 01-07 Jun 2026 | Status Geral: CRÍTICO**\n\n---\n\n## 1️⃣ TENDÊNCIAS DA SEMANA\n\nA semana registrou **18 eventos** com predominância absoluta de **DATA_QUALITY_DROP** (12 ocorrências, 67% do total), sinalizando degradação sistêmica na integridade dos dados. Seis clientes apresentaram status **CLIENT_OFFLINE**, indicando interrupções no serviço ou fal",
+    "decisions_from_reports": 0,
+    "note": "Estrategista hoje gera relatórios consumíveis por humano. NÃO há feedback automático (recommendations → decisions). Sprint futura.",
+    "estimated_financial_impact": "Sem medição instrumentada. Heurística do CTO: potencial de R$ 50-150k/mês recuperados via churn evitado se modo LIVE estiver ativo."
+  },
+  "q17_security": {
+    "audit_chain_coverage_pct": 100.0,
+    "audit_log_total": 98,
+    "rbac_blocked_total": 58,
+    "rate_limit_storage": "memory (per-pod)",
+    "rbac_policy_routes": 0,
+    "endpoints_without_audit": "não instrumentado — heurística indica 100% via middleware",
+    "known_gaps": [
+      "rate-limit in-memory (sem Redis em prod) — limita real só em single-worker",
+      "alguns endpoints internos de health/diag bypassam RBAC intencionalmente"
+    ]
+  },
+  "q18_performance": {
+    "timings": {
+      "emit_event_ms": {
+        "avg_ms": 0.24,
+        "p95_ms": 0.35,
+        "p99_ms": 0.47,
+        "samples": 50
+      },
+      "decision_cycle_ms": {
+        "avg_ms": 3.96,
+        "p95_ms": 3.96,
+        "p99_ms": 3.96,
+        "samples": 1
+      },
+      "action_engine_ms": {
+        "avg_ms": 9.74,
+        "p95_ms": 9.74,
+        "p99_ms": 9.74,
+        "samples": 1
+      },
+      "timeline_query_ms": {
+        "avg_ms": 1.04,
+        "p95_ms": 1.04,
+        "p99_ms": 1.04,
+        "samples": 1
+      },
+      "warroom_aggregate_ms": {
+        "avg_ms": 0.9,
+        "p95_ms": 0.9,
+        "p99_ms": 0.9,
+        "samples": 1
+      }
+    },
+    "bottlenecks_observed": [
+      "decision_engine carrega 200 eventos em memória antes de iterar (poderia ser totalmente streaming)",
+      "audit_chain insert_audit_event faz find_one antes de cada insert (overhead em alta concorrência)",
+      "rate_limit in-memory não coordena entre workers"
+    ]
+  }
+}

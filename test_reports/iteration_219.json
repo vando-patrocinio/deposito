@@ -1,0 +1,33 @@
+{
+  "summary": "iter219b — Leo (Secretária IA) conectado ao Presidente IA. 21/21 testes backend PASSED. As 5 novas tools (corporate_health, top_risks, top_opportunities, clients_at_risk, presidente_scan) estão registradas em TOOLS_SPEC_EXTRA + TOOL_FUNCS_EXTRA e visíveis em TOOLS_SPEC final do secretaria_ia. SYSTEM_PROMPT cita 'Presidente IA' e 'Leo'. _is_manager_phone reconhece presidente_briefing_phone e notify_phone do conselho_ia_settings. e2e ask() chamou as tools corretas para perguntas sobre saúde/riscos/oportunidades/churn e gravou em secretaria_log. Regression OK (tools antigas continuam funcionando).",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter219_leo_presidente.py",
+    "/app/test_reports/pytest/iter219b_leo.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "secretaria_tools.py: o pattern de extend() em TOOLS_SPEC_EXTRA no fim do arquivo funciona, mas seria mais limpo declarar tudo em uma única lista inicial (cosmético).",
+    "secretaria_tools.py linha 376-387: na _tool_consult_subscriber_invoices a lógica de status='paid' tem uma instrução com 'if q.get($or) else None' que zera a chave $or quando vazio — funciona porque na linha seguinte é sobreposto, mas é confuso (não causa bug).",
+    "conftest.py de /app/backend/tests usa fallback hardcoded para REACT_APP_BACKEND_URL (selfie-attendance-7…). Não afeta testes (variável é exportada no shell de execução), mas idealmente deveria falhar fast com pytest.skip se ausente.",
+    "Avisos pytest.mark.timeout — o marker 'timeout' não está registrado (pytest-timeout não instalado). Inofensivo: o teste roda sem timeout enforcement. Os testes terminaram em ~28s total."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter219_leo_presidente.py (novo, 21 testes)"
+  ],
+  "success_rate": {"backend": "100%", "frontend": "n/a (não solicitado)"},
+  "test_credentials": "admin@empresa.com / 123456 (via /api/auth/login REST). REACT_APP_BACKEND_URL=https://dual-combine-3.preview.emergentagent.com — precisa estar exportado no shell para os 2 testes REST (briefing/settings e briefing/preview); caso contrário, eles são SKIPPED graciosamente.",
+  "seed_data_creation": "Nenhuma seed criada. O teste de _is_manager_phone faz upsert temporário em conselho_ia_settings (presidente_briefing_phone=5511999998888) e restaura o valor anterior no finally. O setup_phone fixture do módulo também restaura ao final.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Arquivo de testes /app/backend/tests/test_iter219_leo_presidente.py serve como regressão completa do Leo↔Presidente IA. Para incluir os 2 testes REST de briefing/settings, exporte REACT_APP_BACKEND_URL antes do pytest. Tools do Presidente IA (corporate_health, top_risks, top_opportunities, clients_at_risk, presidente_scan) já validadas em shape + e2e via LLM. Próxima iter pode focar na trilha visual/UX se houver mudança de frontend (não houve nesta iter). Os logs em db.secretaria_log podem ser limpados periodicamente — a tag 'TEST_ITER219_LOG_MARKER' foi gravada e fica como referência.",
+  "rca of the issue": "N/A — todos os testes passaram na primeira execução. Conexão Leo↔Presidente IA está funcional e estável."
+}

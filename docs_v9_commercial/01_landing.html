@@ -1,0 +1,341 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="robots" content="noindex,nofollow" />
+<title>SmartProv — Plataforma Operacional para Provedores (DRAFT V9.4)</title>
+<style>
+  :root {
+    --bg: #0b0f14;
+    --bg-2: #0f1620;
+    --ink: #e6edf3;
+    --ink-dim: #93a4b8;
+    --line: #1c2a3a;
+    --accent: #4cc38a;
+    --accent-2: #3aa0ff;
+    --warn: #f5a524;
+    --mono: ui-monospace, "JetBrains Mono", Menlo, Consolas, monospace;
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: var(--bg); color: var(--ink); font-family: var(--sans); line-height: 1.55; }
+  a { color: var(--accent-2); text-decoration: none; }
+  .draft-banner {
+    background: var(--warn);
+    color: #2a1d00;
+    padding: 8px 16px;
+    text-align: center;
+    font-family: var(--mono);
+    font-size: 12px;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    font-weight: 700;
+  }
+  header {
+    max-width: 1080px;
+    margin: 0 auto;
+    padding: 56px 24px 32px;
+    border-bottom: 1px solid var(--line);
+  }
+  .logo {
+    font-family: var(--mono);
+    font-size: 14px;
+    color: var(--accent);
+    letter-spacing: .15em;
+    text-transform: uppercase;
+  }
+  h1 {
+    font-size: clamp(28px, 4vw, 44px);
+    line-height: 1.1;
+    margin: 18px 0 12px;
+    letter-spacing: -.02em;
+  }
+  .sub {
+    color: var(--ink-dim);
+    font-size: 17px;
+    max-width: 740px;
+  }
+  main { max-width: 1080px; margin: 0 auto; padding: 40px 24px 80px; }
+  section { margin: 56px 0; }
+  h2 {
+    font-size: 22px;
+    letter-spacing: -.01em;
+    margin: 0 0 18px;
+    color: var(--ink);
+  }
+  h2::before {
+    content: "//";
+    font-family: var(--mono);
+    color: var(--accent);
+    margin-right: 10px;
+    opacity: .8;
+  }
+  .lead { color: var(--ink-dim); max-width: 760px; }
+  .grid {
+    display: grid;
+    gap: 16px;
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  }
+  .card {
+    background: var(--bg-2);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 20px;
+  }
+  .card h3 {
+    margin: 0 0 8px;
+    font-size: 16px;
+    color: var(--accent);
+    font-family: var(--mono);
+    letter-spacing: .04em;
+  }
+  .card p { margin: 0; font-size: 14.5px; color: var(--ink-dim); }
+  .pill {
+    display: inline-block;
+    background: rgba(76,195,138,.08);
+    border: 1px solid rgba(76,195,138,.35);
+    color: var(--accent);
+    font-family: var(--mono);
+    font-size: 11px;
+    padding: 3px 8px;
+    border-radius: 999px;
+    margin-right: 6px;
+  }
+  .kpi-row {
+    display: grid;
+    gap: 16px;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  }
+  .kpi {
+    background: var(--bg-2);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 20px;
+  }
+  .kpi .n {
+    font-family: var(--mono);
+    font-size: 28px;
+    color: var(--ink);
+    letter-spacing: -.01em;
+  }
+  .kpi .l {
+    color: var(--ink-dim);
+    font-size: 13px;
+    margin-top: 4px;
+  }
+  .timeline {
+    border-left: 1px solid var(--line);
+    padding-left: 20px;
+  }
+  .timeline .step {
+    margin-bottom: 18px;
+    position: relative;
+  }
+  .timeline .step::before {
+    content: "";
+    width: 8px;
+    height: 8px;
+    background: var(--accent);
+    border-radius: 50%;
+    position: absolute;
+    left: -25px;
+    top: 8px;
+  }
+  .timeline .step h4 {
+    margin: 0 0 4px;
+    font-size: 15px;
+    color: var(--ink);
+  }
+  .timeline .step p {
+    margin: 0;
+    color: var(--ink-dim);
+    font-size: 14px;
+  }
+  .disclaimer {
+    margin-top: 56px;
+    padding: 18px 20px;
+    background: rgba(245,165,36,.06);
+    border: 1px solid rgba(245,165,36,.3);
+    border-radius: 10px;
+    color: var(--ink-dim);
+    font-size: 13px;
+  }
+  .disclaimer strong { color: var(--warn); }
+  footer {
+    border-top: 1px solid var(--line);
+    color: var(--ink-dim);
+    font-size: 12px;
+    padding: 24px;
+    text-align: center;
+    font-family: var(--mono);
+  }
+  ul.clean {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+  }
+  ul.clean li {
+    padding: 8px 0;
+    border-bottom: 1px dashed var(--line);
+    color: var(--ink-dim);
+    font-size: 14.5px;
+  }
+  ul.clean li:last-child { border-bottom: none; }
+  ul.clean li::before {
+    content: "›";
+    color: var(--accent);
+    margin-right: 10px;
+    font-family: var(--mono);
+  }
+</style>
+</head>
+<body>
+
+<div class="draft-banner">DRAFT V9.4 — Material institucional. Uso interno e apresentação a piloto controlado.</div>
+
+<header>
+  <div class="logo">SmartProv // Plataforma Operacional</div>
+  <h1>Operação de provedor com ROI mensurável, do chamado ao caixa.</h1>
+  <p class="sub">
+    SmartProv conecta sua operação de campo, sua esteira financeira e sua observabilidade técnica em uma única
+    plataforma. Construída para provedores regionais que querem provar — com dados — o impacto de cada ação operacional
+    sobre a receita atribuída e o custo evitado.
+  </p>
+</header>
+
+<main>
+
+  <section>
+    <h2>O problema que resolvemos</h2>
+    <p class="lead">
+      Provedores regionais perdem receita por três falhas operacionais combinadas:
+      ordens de serviço fechadas sem rastreabilidade, ações de cobrança e retenção desconectadas do caixa,
+      e indicadores técnicos isolados em silos (Zabbix, Grafana, planilhas).
+      O SmartProv une essas três camadas e torna cada ação operacional mensurável.
+    </p>
+  </section>
+
+  <section>
+    <h2>Módulos da Plataforma</h2>
+    <div class="grid">
+      <div class="card">
+        <h3>Smart Field Ops</h3>
+        <p>Fechamento estruturado de OS em campo: tipo de resolução, equipamento recuperado e comprovante assinado. Telemetria de adoção embutida.</p>
+      </div>
+      <div class="card">
+        <h3>Action → Cash</h3>
+        <p>Esteira que conecta cada ação operacional (visita, cobrança, retenção) à reconciliação financeira. Receita atribuída por evento, não por estimativa.</p>
+      </div>
+      <div class="card">
+        <h3>AI Center</h3>
+        <p>Orquestrador de agentes operacionais. Trabalha sob gateway de homologação por padrão. Liberação para produção via whitelist controlada.</p>
+      </div>
+      <div class="card">
+        <h3>Observability Twin</h3>
+        <p>Camada de observabilidade plugável em Zabbix e Grafana. Tradução de sinais técnicos em alertas operacionais e financeiros.</p>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Por que o SmartProv prova valor</h2>
+    <div class="grid">
+      <div class="card">
+        <h3>1. Causalidade Controlada</h3>
+        <p>Cohorts A/B nativos (<span class="pill">motor_ia_cohorts</span> <span class="pill">motor_ia_causality</span>). Cada teste mede o <em>lift</em> real entre grupo de tratamento e controle.</p>
+      </div>
+      <div class="card">
+        <h3>2. Homologação por Padrão</h3>
+        <p>Gateway WhatsApp em <span class="pill">HOMOLOG_MODE=true</span>. Toda saída é mascarada, auditada e roteada para o número técnico até a liberação por whitelist autorizada.</p>
+      </div>
+      <div class="card">
+        <h3>3. Receita Atribuída, Não Estimada</h3>
+        <p>Cada R$ entra no banco com rastro até a ação operacional que o gerou. Auditoria completa em <span class="pill">motor_ia_outcomes</span>.</p>
+      </div>
+      <div class="card">
+        <h3>4. Telemetria de Adoção</h3>
+        <p>A própria plataforma mede quanto da sua equipe está preenchendo os campos críticos da OS — sem precisar cobrar manualmente.</p>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Indicadores do Piloto Controlado</h2>
+    <p class="lead">Métricas medidas durante o piloto de 30 dias com 1 provedor parceiro. Valores ilustrativos de configuração de baseline — não constituem promessa contratual.</p>
+    <div class="kpi-row">
+      <div class="kpi">
+        <div class="n">A/B</div>
+        <div class="l">Cohorts ativos para medição de lift</div>
+      </div>
+      <div class="kpi">
+        <div class="n">99,5%</div>
+        <div class="l">Disponibilidade-alvo da API backend</div>
+      </div>
+      <div class="kpi">
+        <div class="n">≤ 4h</div>
+        <div class="l">Tempo de resolução S1 (crítico)</div>
+      </div>
+      <div class="kpi">
+        <div class="n">30 dias</div>
+        <div class="l">Janela de piloto controlado</div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Como funciona o Piloto</h2>
+    <div class="timeline">
+      <div class="step">
+        <h4>1. Onboarding técnico (semana 1)</h4>
+        <p>Integração da base operacional, configuração da whitelist controlada e ativação dos módulos Smart Field Ops e Action→Cash.</p>
+      </div>
+      <div class="step">
+        <h4>2. Cohorts A/B (semanas 2–3)</h4>
+        <p>Divisão de tickets em grupo de tratamento e controle. Medição de lift sobre métricas operacionais e de receita atribuída.</p>
+      </div>
+      <div class="step">
+        <h4>3. Observability Twin (semanas 2–4)</h4>
+        <p>Conexão dos seus Zabbix/Grafana e tradução de alertas técnicos em sinais operacionais e financeiros.</p>
+      </div>
+      <div class="step">
+        <h4>4. Relatório Final do Piloto (semana 4)</h4>
+        <p>Entrega do relatório com adoção, disponibilidade, lift medido e proposta de conversão em contrato definitivo.</p>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Para quem é o SmartProv</h2>
+    <ul class="clean">
+      <li>Provedores regionais com 1.000 a 50.000 assinantes que querem profissionalizar a operação.</li>
+      <li>Times de NOC que precisam ligar indicadores técnicos a decisões financeiras.</li>
+      <li>Gestores operacionais cansados de planilhas paralelas e relatórios sem rastreabilidade.</li>
+      <li>Operações em fase de consolidação que precisam de medição antes de aumentar investimento.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>Próximo passo</h2>
+    <p class="lead">
+      Vagas limitadas para o piloto controlado. Reunião técnica de 30 minutos para avaliar compatibilidade
+      operacional, requisitos LGPD e janela de execução.
+    </p>
+    <p class="lead" style="margin-top:8px;">Contato comercial: <em>a ser preenchido na proposta enviada ao prospect.</em></p>
+  </section>
+
+  <div class="disclaimer">
+    <strong>AVISO:</strong> Este material é DRAFT V9.4 e tem finalidade institucional. Nenhum dos números ou métricas
+    apresentados constitui promessa contratual de receita ou de causalidade definitiva atribuída à inteligência artificial.
+    Os resultados de cada piloto são individuais e dependem da realidade operacional do CONTRATANTE. SLA, LGPD e contrato
+    base são documentos próprios, sujeitos à revisão jurídica.
+  </div>
+
+</main>
+
+<footer>
+  SmartProv © — DRAFT V9.4 // Plataforma Operacional para Provedores // Uso interno
+</footer>
+
+</body>
+</html>

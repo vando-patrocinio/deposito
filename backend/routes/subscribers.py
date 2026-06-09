@@ -17,6 +17,7 @@ import io
 import logging
 import re
 import uuid
+from datetime import datetime
 from typing import Any, Dict, List, Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
@@ -382,6 +383,14 @@ async def list_subscribers(
     plan: Optional[str] = None,
     tag: Optional[str] = None,
     external_code: Optional[str] = None,
+    # iter215ay — Filtros de rede (cruzam com smartolt_onus + cto_ports)
+    pppoe: Optional[str] = None,
+    sn: Optional[str] = None,
+    mac: Optional[str] = None,
+    olt: Optional[str] = None,
+    vlan: Optional[str] = None,
+    cto: Optional[str] = None,
+    cto_port: Optional[str] = None,
     page: int = 1,
     page_size: int = 50,
     user: dict = Depends(require_role("gestor")),
@@ -402,6 +411,44 @@ async def list_subscribers(
         flt["contract_status"] = contract_status
     if external_code:
         flt["external_code"] = external_code
+    # iter215ay — Filtros de rede via smartolt_onus + cto_ports
+    if pppoe:
+        flt["pppoe_user"] = {"$regex": pppoe, "$options": "i"}
+    if any([sn, mac, olt, vlan]):
+        onu_q: Dict[str, Any] = {"company_id": cid}
+        if sn:
+            onu_q["sn"] = {"$regex": sn, "$options": "i"}
+        if mac:
+            onu_q["mac"] = {"$regex": mac, "$options": "i"}
+        if olt:
+            onu_q["olt_name"] = {"$regex": olt, "$options": "i"}
+        if vlan:
+            onu_q["service_ports.vlan"] = str(vlan)
+        names = await db.smartolt_onus.find(
+            onu_q, {"_id": 0, "name": 1},
+        ).to_list(50000)
+        pppoes = [n["name"] for n in names if n.get("name")]
+        if not pppoes:
+            return {"items": [], "total": 0, "page": page,
+                    "page_size": page_size}
+        flt["pppoe_user"] = {"$in": pppoes}
+    if cto or cto_port:
+        cp_q: Dict[str, Any] = {"company_id": cid, "status": "occupied"}
+        if cto:
+            cp_q["cto_name"] = {"$regex": cto, "$options": "i"}
+        if cto_port:
+            try:
+                cp_q["port_number"] = int(cto_port)
+            except (TypeError, ValueError):
+                cp_q["port_number"] = cto_port
+        sids = await db.cto_ports.find(
+            cp_q, {"_id": 0, "subscriber_id": 1},
+        ).to_list(50000)
+        sub_ids = [s["subscriber_id"] for s in sids if s.get("subscriber_id")]
+        if not sub_ids:
+            return {"items": [], "total": 0, "page": page,
+                    "page_size": page_size}
+        flt["id"] = {"$in": sub_ids}
     if name:
         flt["$or"] = [
             {"name": {"$regex": name, "$options": "i"}},
@@ -547,6 +594,18 @@ async def create_subscriber(payload: SubscriberIn,
     await db.subscribers.insert_one(dict(doc))
     await _replace_phones(cid, sid, payload.phones)
     await _replace_addresses(cid, sid, payload.addresses)
+
+    # Sprint 19 — plug-in cirúrgico no event bus
+    try:
+        from services.event_emitters import emit_business
+        await emit_business(
+            kind="client.created", actor=user,
+            payload={"subscriber_id": sid,
+                       "external_code": external_code,
+                       "plan_id": payload.plan_id},
+            severity="baixa", source="subscribers.create")
+    except Exception:
+        pass
 
     sub = await db.subscribers.find_one({"id": sid, "company_id": cid}, {"_id": 0})
     return await _hydrate(sub)
@@ -917,4 +976,494 @@ async def import_csv(file: UploadFile = File(...),
     return {
         "created": created, "updated": updated,
         "errors": errors, "conflicts": conflicts,
+    }
+
+
+# ===========================================================================
+# iter215av — Network info card (OLT/CTO/porta/VLAN/PPPoE) + backfill via OS
+# ===========================================================================
+@router.get("/reports/pppoe-divergent")
+async def pppoe_divergent_report(
+    limit: int = 500,
+    user: dict = Depends(require_role("gestor")),
+):
+    """iter215ax — Lista assinantes cujo `pppoe_user` NÃO bate (após
+    normalização) com nenhum `smartolt_onus.name`. Geralmente erros de
+    digitação no Atlaz que impedem o vínculo automático. Inclui
+    sugestão por fuzzy match (substring de 6+ caracteres)."""
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+    from routes.smartolt import _norm
+    # Carrega todos os name_norm do SmartOLT
+    onus = await db.smartolt_onus.find(
+        {"company_id": cid}, {"_id": 0, "name": 1, "name_norm": 1,
+                                "olt_name": 1},
+    ).to_list(20000)
+    onu_norms = {o["name_norm"]: o for o in onus if o.get("name_norm")}
+    items = []
+    cursor = db.subscribers.find(
+        {"company_id": cid,
+         "pppoe_user": {"$exists": True, "$nin": [None, ""]}},
+        {"_id": 0, "id": 1, "client_name": 1, "pppoe_user": 1, "status": 1},
+    ).limit(limit * 4)
+    async for sub in cursor:
+        pp = sub.get("pppoe_user") or ""
+        nn = _norm(pp)
+        if not nn:
+            continue
+        if nn in onu_norms:
+            continue  # match direto, ok
+        # Tenta fuzzy: substring de 6+ chars
+        suggestion = None
+        for o_norm, o in onu_norms.items():
+            if len(nn) >= 6 and len(o_norm) >= 6:
+                if nn in o_norm or o_norm in nn:
+                    suggestion = o["name"]
+                    break
+        items.append({
+            "subscriber_id": sub.get("id"),
+            "client_name": sub.get("client_name"),
+            "status": sub.get("status"),
+            "pppoe_atlaz": pp,
+            "suggestion_smartolt": suggestion,
+        })
+        if len(items) >= limit:
+            break
+    return {"items": items, "count": len(items),
+             "scanned": len(onu_norms), "limit": limit}
+
+
+# iter215bb — Relatório de Clientes ATIVOS sem plano vinculado
+@router.get("/reports/no-plan")
+async def no_plan_report(
+    branch: Optional[str] = None,
+    limit: int = 1000,
+    user: dict = Depends(require_role("gestor")),
+):
+    """Lista assinantes ATIVOS que estão sem `plan_id` OU sem `plan_price`.
+
+    Bloqueia o motor de reajuste IPCA (cliente sem `plan_price` não pode
+    ter o reajuste calculado). Inclui agrupamento por filial pra ajudar
+    decisões de vinculação em lote.
+    """
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+    query = {
+        "company_id": cid,
+        "status": {"$in": ["ATIVO", "ativo"]},
+        "$or": [
+            {"plan_id": {"$in": [None, ""]}},
+            {"plan_id": {"$exists": False}},
+            {"plan_price": {"$in": [None, 0]}},
+            {"plan_price": {"$exists": False}},
+        ],
+    }
+    if branch:
+        query["branch"] = branch
+
+    cursor = db.subscribers.find(
+        query,
+        {"_id": 0, "id": 1, "name": 1, "external_code": 1, "branch": 1,
+         "installation_date": 1, "plan_name": 1, "plan_id": 1,
+         "plan_price": 1, "status": 1},
+    ).limit(limit)
+
+    items = []
+    by_branch: Dict[str, int] = {}
+    async for sub in cursor:
+        b = sub.get("branch") or "—"
+        by_branch[b] = by_branch.get(b, 0) + 1
+        items.append(sub)
+
+    return {
+        "items": items, "count": len(items), "limit": limit,
+        "by_branch": [{"branch": k, "count": v}
+                       for k, v in sorted(
+                            by_branch.items(), key=lambda x: -x[1])],
+    }
+
+
+# iter215bd — Auditoria de "Tempo de cliente" inconsistente
+@router.get("/reports/missing-install-date")
+async def missing_install_date_report(
+    branch: Optional[str] = None,
+    limit: int = 1000,
+    user: dict = Depends(require_role("gestor")),
+):
+    """Lista clientes ATIVOS sem `installation_date` nem `activation_date`.
+
+    Esses clientes aparecem com "Cliente Ligo" no QR Code do PWA
+    (ou com tempo incorreto baseado em `created_at`). Recomenda-se
+    preencher manualmente ou re-sincronizar com Atlaz.
+    """
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+    query: Dict[str, Any] = {
+        "company_id": cid,
+        "status": {"$in": ["ATIVO", "ativo"]},
+        "$and": [
+            {"$or": [
+                {"installation_date": {"$in": [None, ""]}},
+                {"installation_date": {"$exists": False}},
+            ]},
+            {"$or": [
+                {"activation_date": {"$in": [None, ""]}},
+                {"activation_date": {"$exists": False}},
+            ]},
+        ],
+    }
+    if branch:
+        query["branch"] = branch
+    cursor = db.subscribers.find(
+        query,
+        {"_id": 0, "id": 1, "name": 1, "external_code": 1, "branch": 1,
+         "installation_date": 1, "activation_date": 1, "created_at": 1,
+         "status": 1},
+    ).limit(limit)
+    items: List[Dict[str, Any]] = []
+    by_branch: Dict[str, int] = {}
+    async for s in cursor:
+        b = s.get("branch") or "—"
+        by_branch[b] = by_branch.get(b, 0) + 1
+        items.append(s)
+    return {
+        "items": items, "count": len(items), "limit": limit,
+        "by_branch": [{"branch": k, "count": v}
+                       for k, v in sorted(
+                            by_branch.items(), key=lambda x: -x[1])],
+    }
+
+
+@router.post("/bulk-fix-install-date")
+async def bulk_fix_install_date(
+    payload: Dict[str, Any],
+    user: dict = Depends(require_role("administrador")),
+):
+    """Aplica `installation_date` em lote.
+
+    Útil quando o gestor sabe a data real (ex: do contrato Atlaz) e quer
+    atualizar todos os clientes de uma filial de uma vez.
+
+    Body:
+      { "subscriber_ids": ["sub-xxx", ...],   # opcional
+        "branch": "LIGO RIO",                   # opcional
+        "installation_date": "2024-01-15" }    # obrigatório
+    """
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+    install = (payload.get("installation_date") or "").strip()
+    if not install:
+        raise HTTPException(400, "installation_date é obrigatório")
+    # Aceita YYYY-MM-DD ou ISO completo
+    try:
+        if "T" in install:
+            dt = datetime.fromisoformat(install.replace("Z", "+00:00"))
+        else:
+            dt = datetime.fromisoformat(install + "T12:00:00+00:00")
+    except ValueError:
+        raise HTTPException(400,
+            "installation_date inválido. Use YYYY-MM-DD ou ISO 8601.")
+    iso = dt.isoformat()
+
+    ids = payload.get("subscriber_ids") or []
+    branch = payload.get("branch")
+    query: Dict[str, Any] = {"company_id": cid}
+    if ids:
+        query["id"] = {"$in": ids}
+    elif branch:
+        query["branch"] = branch
+    else:
+        raise HTTPException(400, "Informe subscriber_ids OU branch")
+
+    result = await db.subscribers.update_many(
+        query,
+        {"$set": {"installation_date": iso, "updated_at": now_iso()}},
+    )
+    return {"matched": result.matched_count,
+             "modified": result.modified_count,
+             "installation_date": iso}
+
+
+@router.post("/bulk-assign-plan")
+async def bulk_assign_plan(
+    payload: Dict[str, Any],
+    user: dict = Depends(require_role("administrador")),
+):
+    """Atribui um plano em lote a múltiplos subscribers.
+
+    Body:
+      {
+        "subscriber_ids": ["sub-xxx", ...],   # opcional
+        "branch": "LIGO RIO",                   # opcional (se ids vazio)
+        "only_without_plan": true,              # default true (segurança)
+        "plan_id": "plan-xxx"                   # obrigatório
+      }
+
+    Retorna { matched, modified, plan: {id, name, price} }.
+    """
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+    plan_id = (payload.get("plan_id") or "").strip()
+    if not plan_id:
+        raise HTTPException(400, "plan_id é obrigatório")
+
+    plan = await db.plans.find_one({"id": plan_id, "company_id": cid},
+                                     {"_id": 0})
+    if not plan:
+        raise HTTPException(404, "Plano não encontrado")
+
+    ids = payload.get("subscriber_ids") or []
+    branch = payload.get("branch")
+    only_without = payload.get("only_without_plan", True)
+
+    query: Dict[str, Any] = {"company_id": cid}
+    if ids:
+        query["id"] = {"$in": ids}
+    elif branch:
+        query["branch"] = branch
+        query["status"] = {"$in": ["ATIVO", "ativo"]}
+    else:
+        raise HTTPException(400,
+            "Informe subscriber_ids OU branch")
+
+    if only_without:
+        query["$or"] = [
+            {"plan_id": {"$in": [None, ""]}},
+            {"plan_id": {"$exists": False}},
+            {"plan_price": {"$in": [None, 0]}},
+            {"plan_price": {"$exists": False}},
+        ]
+
+    update_set = {
+        "plan_id": plan_id,
+        "plan_name": plan.get("name"),
+        "plan_speed": plan.get("speed_label"),
+        "plan_price": plan.get("monthly_price"),
+        "readjustment_index": plan.get("readjustment_index") or "IPCA",
+        "updated_at": now_iso(),
+    }
+    result = await db.subscribers.update_many(query, {"$set": update_set})
+
+    logger.info("[bulk-assign-plan] cid=%s plan=%s matched=%s modified=%s",
+                cid, plan_id, result.matched_count, result.modified_count)
+    return {
+        "matched": result.matched_count,
+        "modified": result.modified_count,
+        "plan": {
+            "id": plan_id, "name": plan.get("name"),
+            "price": plan.get("monthly_price"),
+        },
+    }
+
+
+@router.get("/{sid}/network-info")
+async def subscriber_network_info(sid: str,
+                                     user: dict = Depends(require_role("gestor"))):
+    """Retorna info de rede consolidada (OLT, CTO, porta, VLAN, PPPoE).
+
+    Lê primeiramente de `cto_ports` (fonte da verdade após iter215aa).
+    Fallback: extrai do último ticket finalizado com cto_id+port_number.
+    """
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+    sub = await db.subscribers.find_one(
+        {"id": sid, "company_id": cid},
+        {"_id": 0, "id": 1, "client_name": 1, "pppoe_user": 1,
+         "cto_port": 1, "client_id": 1},
+    )
+    if not sub:
+        raise HTTPException(404, "Assinante não encontrado")
+    olt_name = cto_name = vlan = port_number = None
+    pppoe_user = sub.get("pppoe_user")
+    olt_board = olt_port = olt_onu = None
+    mac = sn = signal_dbm = None
+    source = None
+    # iter215aw — Fonte primária para OLT/Porta OLT/VLAN: SmartOLT
+    # (cache `smartolt_onus` indexado por name_norm do PPPoE).
+    if pppoe_user:
+        from routes.smartolt import _norm
+        nn = _norm(pppoe_user)
+        if nn:
+            onu = await db.smartolt_onus.find_one(
+                {"company_id": cid, "name_norm": nn},
+                {"_id": 0, "olt_name": 1, "board": 1, "port": 1,
+                 "onu": 1, "sn": 1, "signal_text": 1,
+                 "signal_1490": 1, "service_ports": 1, "mac": 1},
+            )
+            if onu:
+                olt_name = onu.get("olt_name")
+                olt_board = onu.get("board")
+                olt_port = onu.get("port")
+                olt_onu = onu.get("onu")
+                sn = onu.get("sn")
+                signal_dbm = onu.get("signal_1490") or onu.get("signal_text")
+                mac = onu.get("mac")
+                source = "smartolt_onus"
+                # iter215aw-2 — VLAN vem do PRIMEIRO service_port da ONU
+                # no SmartOLT. service_ports = [{vlan, cvlan, svlan,
+                # upload_speed, download_speed, ...}, ...]
+                sps = onu.get("service_ports") or []
+                if sps and isinstance(sps, list):
+                    sp = sps[0] or {}
+                    vlan = (sp.get("vlan") or sp.get("cvlan")
+                              or sp.get("svlan")) or None
+                # Fallback VLAN: smartolt_olts.client_vlan/default_vlan
+                if not vlan:
+                    olt = await db.smartolt_olts.find_one(
+                        {"company_id": cid, "name": olt_name},
+                        {"_id": 0, "default_vlan": 1, "client_vlan": 1},
+                    )
+                    if olt:
+                        vlan = (olt.get("client_vlan")
+                                  or olt.get("default_vlan"))
+    # Sobrescreve com cto_ports (mais autoritativo p/ CTO + porta CTO)
+    port = await db.cto_ports.find_one(
+        {"company_id": cid, "subscriber_id": sid, "status": "occupied"},
+        {"_id": 0},
+    )
+    if port:
+        # CTO + porta CTO vem APENAS daqui
+        cto_name = port.get("cto_name")
+        port_number = port.get("port_number")
+        # Reaproveita OLT/VLAN do registro se ainda estiver vazio
+        olt_name = olt_name or port.get("olt_name")
+        vlan = vlan or port.get("vlan")
+        pppoe_user = port.get("pppoe_user") or pppoe_user
+        mac = port.get("mac")
+        sn = port.get("sn") or sn
+        signal_dbm = signal_dbm or port.get("signal_dbm")
+        source = source or "cto_ports"
+    if not (olt_name or cto_name or port_number):
+        # Fallback final: último ticket finalizado com CTO port
+        ticket = await db.tickets.find_one(
+            {"company_id": cid,
+             "client_snapshot.id": sid,
+             "completion_data.cto_id": {"$exists": True, "$ne": None},
+             "completion_data.cto_port_number": {"$exists": True}},
+            {"_id": 0, "completion_data": 1},
+            sort=[("closed_at", -1), ("created_at", -1)],
+        )
+        if ticket:
+            cd = ticket.get("completion_data") or {}
+            cto_id = cd.get("cto_id")
+            port_number = cd.get("cto_port_number")
+            if cto_id and port_number:
+                cto = await db.ctos.find_one(
+                    {"id": cto_id},
+                    {"_id": 0, "name": 1, "olt_name": 1, "vlan": 1},
+                )
+                if cto:
+                    cto_name = cto.get("name")
+                    olt_name = olt_name or cto.get("olt_name")
+                    vlan = vlan or cto.get("vlan")
+            source = source or "tickets_fallback"
+    # Monta "Porta OLT" amigável: board/port/onu
+    porta_olt = None
+    if olt_board is not None or olt_port is not None or olt_onu is not None:
+        parts = [str(p) for p in (olt_board, olt_port, olt_onu)
+                  if p is not None and p != ""]
+        if parts:
+            porta_olt = "/".join(parts)
+    return {
+        "subscriber": {
+            "id": sub["id"],
+            "name": sub.get("client_name"),
+        },
+        "network": {
+            "olt_name": olt_name,
+            "porta_olt": porta_olt,
+            "olt_board": olt_board,
+            "olt_port": olt_port,
+            "olt_onu_position": olt_onu,
+            "cto_name": cto_name,
+            "port_number": port_number,
+            "vlan": vlan,
+            "pppoe_user": pppoe_user,
+            "mac": mac,
+            "sn": sn,
+            "signal_dbm": signal_dbm,
+        },
+        "source": source,
+        "has_network": bool(olt_name or cto_name or port_number),
+    }
+
+
+@router.post("/backfill-cto-ports")
+async def backfill_subscriber_cto_ports(
+    dry_run: bool = False,
+    user: dict = Depends(require_role("gestor")),
+):
+    """Backfill global: varre tickets fechados com cto_id+cto_port_number
+    e garante que cada assinante tem o vínculo em `cto_ports`.
+
+    Útil pra OS antigas (pré-iter215aa) que não tinham o sync 1-to-1.
+    """
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+    # Pega todos os tickets com CTO port preenchido
+    cursor = db.tickets.find(
+        {"company_id": cid,
+         "completion_data.cto_id": {"$exists": True, "$ne": None},
+         "completion_data.cto_port_number": {"$exists": True}},
+        {"_id": 0, "id": 1, "client_snapshot": 1,
+         "completion_data": 1, "closed_at": 1, "created_at": 1, "type": 1},
+    ).sort("closed_at", -1)
+    seen_subs: Dict[str, Dict[str, Any]] = {}
+    scanned = 0
+    async for t in cursor:
+        scanned += 1
+        cd = t.get("completion_data") or {}
+        cs = t.get("client_snapshot") or {}
+        sid = cs.get("id")
+        if not sid:
+            continue
+        if sid in seen_subs:
+            continue  # mais recente já vence
+        cto_id = cd.get("cto_id")
+        port_n = cd.get("cto_port_number")
+        if not cto_id or port_n is None:
+            continue
+        seen_subs[sid] = {
+            "ticket_id": t.get("id"),
+            "cto_id": cto_id,
+            "port_number": int(port_n),
+            "type": t.get("type"),
+        }
+    # Verifica quais subs precisam de sync
+    needs_sync: List[Dict[str, Any]] = []
+    already_ok = 0
+    for sid, info in seen_subs.items():
+        existing = await db.cto_ports.find_one(
+            {"company_id": cid, "subscriber_id": sid, "status": "occupied"},
+            {"_id": 0, "cto_id": 1, "port_number": 1},
+        )
+        if (existing
+                and existing.get("cto_id") == info["cto_id"]
+                and int(existing.get("port_number") or -1)
+                  == info["port_number"]):
+            already_ok += 1
+            continue
+        needs_sync.append({"subscriber_id": sid, **info})
+    if dry_run:
+        return {
+            "ok": True, "dry_run": True,
+            "scanned_tickets": scanned,
+            "unique_subscribers": len(seen_subs),
+            "already_ok": already_ok,
+            "would_sync": len(needs_sync),
+            "preview": needs_sync[:30],
+        }
+    # Executa sync usando o helper já existente
+    from routes.cto_ports_base import sync_port_from_cto
+    synced = 0
+    errors: List[Dict[str, Any]] = []
+    for item in needs_sync:
+        try:
+            await sync_port_from_cto(cid, item["cto_id"], item["port_number"])
+            synced += 1
+        except Exception as e:
+            errors.append({"subscriber_id": item["subscriber_id"],
+                            "error": str(e)[:200]})
+    return {
+        "ok": True, "dry_run": False,
+        "scanned_tickets": scanned,
+        "unique_subscribers": len(seen_subs),
+        "already_ok": already_ok,
+        "synced": synced,
+        "errors": errors[:30],
+        "errors_count": len(errors),
+        "ran_at": now_iso(),
     }

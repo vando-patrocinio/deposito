@@ -3174,11 +3174,30 @@ async def delete_cto(
     cto_id: str,
     user: dict = Depends(require_role("administrador", "gestor", "gestor_rede")),
 ):
-    """Apaga uma CTO + cabos relacionados. Logado em rede_ia_history."""
+    """Apaga uma CTO + cabos relacionados. Logado em rede_ia_history.
+    iter215bk — Snapshot em rede_ia_trash para suportar Undo."""
     cid = _user_company(user)
     cto = await db.ctos.find_one({"id": cto_id, "company_id": cid}, {"_id": 0})
     if not cto:
         raise HTTPException(404, "CTO não encontrada")
+    # Snapshot pré-delete (cabos + cto_ports) para restore
+    cables_snap = await db.rede_cables.find(
+        {"company_id": cid,
+         "$or": [{"from_cto_id": cto_id}, {"to_cto_id": cto_id}]},
+        {"_id": 0}).to_list(500)
+    ports_snap = await db.cto_ports.find(
+        {"cto_id": cto_id, "company_id": cid}, {"_id": 0}).to_list(500)
+    actor = user.get("name") or user.get("email") or "?"
+    await db.rede_ia_trash.insert_one({
+        "id": f"trash-{uuid.uuid4().hex[:10]}",
+        "company_id": cid, "kind": "cto", "ref_id": cto_id,
+        "label": cto.get("name") or cto_id,
+        "deleted_at": datetime.now(timezone.utc).isoformat(),
+        "deleted_by": actor,
+        "snapshot": cto,
+        "cables_snapshot": cables_snap,
+        "ports_snapshot": ports_snap,
+    })
     cables_deleted = await db.rede_cables.delete_many(
         {"company_id": cid, "$or": [{"from_cto_id": cto_id}, {"to_cto_id": cto_id}]},
     )

@@ -72,5 +72,7 @@ def about_payload() -> dict:
 
 
 def x_powered_by_value() -> str:
-    """String compacta para o header HTTP X-Powered-By."""
-    return f"{PRODUCT['name']} © {OWNER['cnpj']}"
+    """String compacta para o header HTTP X-Powered-By.
+    Apenas ASCII — headers HTTP devem ser latin-1 e o TestClient httpx
+    falha em decodificar bytes >0x7F como UTF-8."""
+    return f"{PRODUCT['name']} (c) {OWNER['cnpj']}"

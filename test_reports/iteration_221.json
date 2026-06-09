@@ -1,0 +1,35 @@
+{
+  "summary": "iter219d — Leo Proativo. Suite completa de 10 testes em test_iter219d_leo_proactive.py — 10/10 PASS (100%, 8.74s). Cobre: (1) phone não configurado retorna ok:False, (2) detector zero_redemption_promos pega promo seed pr-f0f9158f606b, (3) e2e mock _send: conversation_state populado + motor_ia_proactive_notifications gravado + 2a execução skipa por cooldown, (4) presidente_ia.proactive_scan() retorna campo 'leo_proactive', (5) endpoint REST POST /api/presidente-ia/leo/proactive sem phone, (6) endpoint REST com phone e shape completo, (7) e2e continuation iter219c: proposta seedada via leo proativo + 'sim' do gestor → exec_pause_promo chamada pelo LLM, (8) regression dashboard 200, (9) exec_* tools ainda visíveis, (10) ask() FIFO ≤6 msgs preservado.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter219d_leo_proactive.py",
+    "/app/test_reports/pytest/iter219d_leo_proactive.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "services/leo_proactive.py linha ~120: texto da proposta diz 'mais de 14 dias' mas o detector usa cutoff de 3 dias (timedelta(days=3)). Mensagem ao gestor é enganosa — corrigir para 'mais de 3 dias' OU aumentar threshold para 14 dias.",
+    "services/leo_proactive.py: cooldown key armazenado como ISO string em sent_at; comparação com $gte funciona em strings ISO mas mistura tipos não-padronizados no banco — considerar Timestamp BSON consistente (já é o padrão em outros lugares, mas aqui aceitável).",
+    "services/leo_proactive.py _send: catch bare Exception inclui ImportError do sidecar — funciona como fallback, mas qualquer erro silenciosamente retorna ok:False. Logar com stack trace ajudaria debug.",
+    "services/leo_proactive.py: _seed_conversation_with_proposal grava só assistant content (sem tool_calls) — alinhado com decisão iter219c, OK por agora.",
+    "services/leo_proactive.py _detect_cto_saturation match status ATIVO/ATIVA: convenção mista — considerar normalizar.",
+    "Não há TTL em motor_ia_proactive_notifications; cooldown 4h é o suficiente para idempotência mas registros crescem para sempre — adicionar TTL index ou rotina de limpeza."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter219d_leo_proactive.py (novo)"
+  ],
+  "success_rate": {"backend": "100%", "frontend": "n/a (não testado por escopo)"},
+  "test_credentials": "admin@empresa.com / 123456",
+  "seed_data_creation": "Nenhum dado novo persistido. Tests usam promo seed pr-f0f9158f606b (15% OFF Farmácia, active, 0 redemptions, 2026-06-04 OLD), e fazem cleanup de db.motor_ia_proactive_notifications + db.secretaria_conversation_state + restauram conselho_ia_settings.presidente_briefing_phone após cada teste.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Testes mockam services.leo_proactive._send via monkeypatch (não _sidecar_post_silent direto) para simular envio bem-sucedido. Endpoint /api/presidente-ia/leo/proactive REST é testado em modo real (sem mock) — envio falha porque sidecar não pareado, mas shape e total_candidates são validados. Teste #6 (proposal_then_sim) depende do LLM real (Motor IA) e leva ~3-5s. Promo de teste pr-f0f9158f606b é restaurada com active=True no finally. test_credentials.md verified: admin@empresa.com / 123456 funcionando.",
+  "rca of the issue": "n/a — feature test, sem bug fix"
+}

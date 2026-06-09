@@ -30,7 +30,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
-from core import DEMO_COMPANY_ID, EMERGENT_LLM_KEY, now_iso, require_role
+from core import DEMO_COMPANY_ID, EMERGENT_LLM_KEY, now_iso, require_role, get_current_user
 from database import db
 
 logger = logging.getLogger("ponto.wa_baileys")
@@ -218,23 +218,20 @@ async def send_audio(payload: SendAudioIn,
     send_error: Optional[str] = None
     out: Dict[str, Any] = {}
     try:
-        async with httpx.AsyncClient(headers=_sidecar_headers(), timeout=45.0) as cli:
-            r = await cli.post(
-                f"{SIDECAR_BASE}/send-audio",
-                json={
-                    "phone": payload.phone,
-                    "audio_b64": payload.audio_b64,
-                    "mimetype": payload.mimetype,
-                },
-            )
-            try:
-                out = r.json()
-            except Exception:
-                out = {"raw": r.text}
-            if r.status_code < 400 and out.get("ok"):
-                send_ok = True
-            else:
-                send_error = (out.get("error") or f"HTTP {r.status_code}")
+        # P0.4 A1 — Roteado via gateway (HOMOLOG + Kill Switch + Audit)
+        from services.wa.sidecar import _sidecar_post_silent
+        out = await _sidecar_post_silent("/send-audio", {
+            "phone": payload.phone,
+            "audio_b64": payload.audio_b64,
+            "mimetype": payload.mimetype,
+            "company_id": cid,
+        }) or {}
+        if out.get("blocked_by_gateway"):
+            send_error = "blocked by gateway (HOMOLOG/KillSwitch/Whitelist)"
+        elif out.get("ok"):
+            send_ok = True
+        else:
+            send_error = out.get("error") or out.get("status") or "send failed"
     except httpx.HTTPError as e:
         logger.warning("[wa-baileys] sidecar /send-audio falhou: %s", e)
         send_error = str(e)
@@ -521,21 +518,21 @@ async def send_image(payload: SendImageIn,
     send_error: Optional[str] = None
     out: Dict[str, Any] = {}
     try:
-        async with httpx.AsyncClient(headers=_sidecar_headers(), timeout=30.0) as cli:
-            r = await cli.post(f"{SIDECAR_BASE}/send-image",
-                                json={"phone": payload.phone,
-                                      "image_data_url": payload.image_data_url,
-                                      "caption": payload.caption})
-            try:
-                out = r.json()
-            except Exception:
-                out = {"raw": r.text}
-            if r.status_code == 404:
-                send_error = "sidecar não suporta /send-image (atualize o serviço Baileys)"
-            elif r.status_code < 400 and out.get("ok"):
-                send_ok = True
-            else:
-                send_error = out.get("error") or f"HTTP {r.status_code}"
+        # P0.4 A2 — Roteado via gateway (HOMOLOG + Kill Switch + Audit)
+        from services.wa.sidecar import _sidecar_post_silent
+        out = await _sidecar_post_silent("/send-image", {
+            "phone": payload.phone,
+            "image_data_url": payload.image_data_url,
+            "caption": payload.caption,
+            "company_id": cid,
+        }) or {}
+        if out.get("blocked_by_gateway"):
+            send_error = "blocked by gateway (HOMOLOG/KillSwitch/Whitelist)"
+        elif out.get("ok"):
+            send_ok = True
+        else:
+            send_error = (out.get("error") or out.get("status")
+                          or "sidecar não suporta /send-image (atualize o serviço Baileys)")
     except httpx.HTTPError as e:
         logger.warning("[wa-baileys] sidecar /send-image falhou: %s", e)
         send_error = str(e)
@@ -1121,6 +1118,19 @@ async def inbound_webhook(payload: InboundIn,
         )
     if payload.from_me:
         return {"ok": True, "ignored": "from_me"}
+    # Sprint 19 — emit wa.inbound (best-effort)
+    try:
+        from services.event_emitters import emit_business
+        await emit_business(
+            kind="wa.inbound",
+            company_id=getattr(payload, "company_id", None),
+            payload={"jid": payload.jid,
+                       "from_phone": getattr(payload, "from_phone", None),
+                       "text_preview": (
+                            getattr(payload, "text", "") or "")[:80]},
+            severity="baixa", source="whatsapp_baileys.inbound")
+    except Exception:
+        pass
     # Ignora Status/Broadcast/Newsletters do WhatsApp — não são conversas reais
     # e o WhatsApp bloqueia respostas para esses JIDs (causa "FALHOU" na UI).
     jid_norm = (payload.jid or "").lower()
@@ -1448,6 +1458,23 @@ async def inbound_webhook(payload: InboundIn,
             subscriber_ctx=subscriber_ctx,
             inbound_was_voice=bool(transcript),
         )
+
+    # iter217a — Propaganda Pré-Atendimento: dispara ANTES do agente
+    # se for cliente cadastrado, 1ª msg em 24h, e houver promo ativa.
+    # Roda em background — não bloqueia o sidecar.
+    if subscriber_id and not is_group:
+        try:
+            from services.pre_attendance_promo import (
+                try_dispatch_pre_attendance_promo, mark_reply,
+            )
+            # Marca resposta a um disparo anterior (se houver)
+            background_tasks.add_task(mark_reply, cid, effective_phone)
+            # Tenta novo disparo (cooldown 24h aplica)
+            background_tasks.add_task(
+                try_dispatch_pre_attendance_promo,
+                cid, subscriber_id, effective_phone)
+        except Exception as e:
+            logger.warning("[wa-baileys] pre-attendance hook skip: %s", e)
 
     return {"ok": True, "queued": True, "subscriber_id": subscriber_id,
             "phone": effective_phone, "lid": payload.lid}
@@ -2660,15 +2687,15 @@ async def _maybe_auto_reply(cid: str, phone: str, user_text: str,
     if tts_audio_b64 and any_sent:
         try:
             await _asyncio.sleep(0.4)
-            async with httpx.AsyncClient(headers=_sidecar_headers(),
-                                           timeout=30.0) as cli:
-                tts_r = await cli.post(f"{SIDECAR_BASE}/send-audio", json={
-                    "phone": phone,
-                    "audio_b64": tts_audio_b64,
-                    "mimetype": "audio/ogg; codecs=opus",
-                    "ptt": True,
-                })
-                tts_body = tts_r.json() if tts_r.status_code < 400 else {}
+            # P0.4 A1 — Roteado via gateway (TTS auto-resposta)
+            from services.wa.sidecar import _sidecar_post_silent
+            tts_body = await _sidecar_post_silent("/send-audio", {
+                "phone": phone,
+                "audio_b64": tts_audio_b64,
+                "mimetype": "audio/ogg; codecs=opus",
+                "ptt": True,
+                "company_id": cid,
+            }) or {}
             await db.aihub_wa_messages.insert_one({
                 "id": f"wam-tts-{uuid.uuid4().hex[:10]}",
                 "company_id": cid,
@@ -2825,7 +2852,6 @@ async def _maybe_auto_reply(cid: str, phone: str, user_text: str,
 # Re-export pra compat com código que importa direto deste módulo.
 # ---------------------------------------------------------------------------
 from services.wa.sales_detection import (  # noqa: E402
-    _SALES_DONE_PATTERNS, _SALES_DONE_RE,
     is_sales_completion as _is_sales_completion,
 )
 
@@ -4202,6 +4228,32 @@ async def finalize_conversation(phone: str, payload: FinalizeIn,
     )
     return {"ok": True, "phone": phone, "status": "closed",
             "closed_at": now}
+
+
+@router.get("/atendimento/duty-status")
+async def atendimento_duty_status(user: dict = Depends(get_current_user)):
+    """iter215an — Retorna se o usuário atual está com ponto válido pra
+    operar o chat (regra global). Frontend consulta a cada 30s e aplica
+    overlay grayscale + bloqueio quando off_duty=True."""
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+    from services.atendente_duty import (
+        is_user_on_duty, list_online_attendants, my_workload_snapshot,
+    )
+    on_duty, reason, last = await is_user_on_duty(cid, user)
+    online = await list_online_attendants(cid, exclude_user_id=user.get("id"))
+    workload = await my_workload_snapshot(cid, user)
+    return {
+        "on_duty": on_duty,
+        "reason": reason,
+        "last_event": last,
+        "other_attendants_online": [
+            {"id": a["id"], "name": a.get("name"), "role": a.get("role")}
+            for a in online
+        ],
+        "role": user.get("role"),
+        **workload,
+    }
+
 
 
 @router.get("/attendants")

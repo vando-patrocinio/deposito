@@ -1,0 +1,753 @@
+{
+  "summary": {
+    "total_endpoints": 1345,
+    "public": 29,
+    "private": 1316,
+    "non_staff_auth_protected": 73,
+    "staff_private": 1243,
+    "role_protected": 1231,
+    "auth_only_no_role": 12,
+    "destructive_DELETE": 77,
+    "export_routes": 9,
+    "ia_routes": 289,
+    "ia_routes_unprotected": 0,
+    "destructive_without_role": 0,
+    "export_without_role": 0,
+    "coverage_pct": 99.03
+  },
+  "by_prefix": {
+    "/api/": {
+      "total": 1,
+      "role": 0,
+      "auth_only": 1,
+      "public": 0
+    },
+    "/api/about": {
+      "total": 1,
+      "role": 0,
+      "auth_only": 0,
+      "public": 1
+    },
+    "/api/access-tags": {
+      "total": 2,
+      "role": 2,
+      "auth_only": 0,
+      "public": 0
+    },
+    "/api/admin": {
+      "total": 12,
+      "role": 12,
+      "auth_only": 0,
+      "public": 0
+    },
+    "/api/ai": {
+      "total": 20,
+      "role": 20,
+      "auth_only": 0,
+      "public": 0
+    },
+    "/api/ai-config": {
+      "total": 5,
+      "role": 5,
+      "auth_only": 0,
+      "public": 0
+    },
+    "/api/ai-corrections": {
+      "total": 3,
+      "role": 3,
+      "auth_only": 0,
+      "public": 0
+    },
+    "/api/ai-topology": {
+      "total": 1,
+      "role": 1,
+      "auth_only": 0,
+      "public": 0
+    },
+    "/api/ai-training": {
+      "total": 14,
+      "role": 14,
+      "auth_only": 0,
+      "public": 0
+    },
+    "/api/aihub": {
+      "total": 24,
+      "role": 24,
+      "auth_only": 0,
+      "public": 0
+    },
+    "/api/alvaro": {
+      "total": 7,
+      "role": 7,
+      "auth_only": 0,
+      "public": 0
+    },
+    "/api/appointments": {
+      "total": 4,
+      "role": 4,
+      "auth_only": 0,
+      "public": 0
+    },
+    "/api/atlaz": {
+      "total": 15,
+      "role": 15,
+      "auth_only": 0,
+      "public": 0
+    },
+    "/api/atlaz-financeiro": {
+      "total": 11,
+      "role": 11,
+      "auth_only": 0,
+      "public": 0
+    },
+    "/api/auth": {
+      "total": 9,
+      "role": 4,
+      "auth_only": 2,
+      "public": 3
+    },
+    "/api/auth-recovery": {
+      "total": 1,
+      "role": 1,
+      "auth_only": 0,
+      "public": 0
+    },
+    "/api/billing": {
+      "total": 15,
+      "role": 15,
+      "auth_only": 0,
+      "public": 0
+    },
+    "/api/boleto": {
+      "total": 6,
+      "role": 6,
+      "auth_only": 0,
+      "public": 0
+    },
+    "/api/branding": {
+      "total": 3,
+      "role": 2,
+      "auth_only": 0,
+      "public": 1
+    },
+    "/api/budget": {
+      "total": 10,
+      "role": 10,
+      "auth_only": 0,
+      "public": 0
+    },
+    "/api/central-ia": {
+      "total": 23,
+      "role": 23,
+      "auth_only": 0,
+      "public": 0
+    },
+    "/api/churn": {
+      "total": 12,
+      "role": 12,
+      "auth_only": 0,
+      "public": 0
+    },
+    "/api/client-errors": {
+      "total": 4,
+      "role": 4,
+      "auth_only": 0,
+      "public": 0
+    },
+    "/api/cliente-portal": {
+      "total": 8,
+      "role": 0,
+      "auth_only": 8,
+      "public": 0
+    },
+    "/api/clients-segments": {
+      "total": 2,
+      "role": 2,
+      "auth_only": 0,
+      "public": 0
+    },
+    "/api/clock-records": {
+      "total": 8,
+      "role": 8,
+      "auth_only": 0,
+      "public": 0
+    },
+    "/api/collab-assets": {
+      "total": 11,
+      "role": 8,
+      "auth_only": 0,
+      "public": 3
+    },
+    "/api/collaborator-auth": {
+      "total": 5,
+      "role": 0,
+      "auth_only": 5,
+      "public": 0
+    },
+    "/api/collaborators": {
+      "total": 13,
+      "role": 13,
+      "auth_only": 0,
+      "public": 0
+    },
+    "/api/connections": {
+      "total": 4,
+      "role": 4,
+      "auth_only": 0,
+      "public": 0
+    },
+    "/api/conselho-ia": {
+      "total": 11,
+      "role": 11,
+      "auth_only": 0,
+      "public": 0
+    },
+    "/api/contracts": {
+      "total": 9,
+      "role": 9,
+      "auth_only": 0,
+      "public": 0
+    },
+    "/api/copilot-ranking": {
+      "total": 1,
+      "role": 1,
+      "auth_only": 0,
+      "public": 0
+    },
+    "/api/cto-ports": {
+      "total": 9,
+      "role": 9,
+      "auth_only": 0,
+      "public": 0
+    },
+    "/api/customer": {
+      "total": 32,
+      "role": 0,
+      "auth_only": 32,
+      "public": 0
+    },
+    "/api/dashboard": {
+      "total": 5,
+      "role": 5,
+      "auth_only": 0,
+      "public": 0
+    },
+    "/api/diagnostic": {
+      "total": 1,
+      "role": 1,
+      "auth_only": 0,
+      "public": 0
+    },
+    "/api/disparo-ia": {
+      "total": 14,
+      "role": 14,
+      "auth_only": 0,
+      "public": 0
+    },
+    "/api/disparo-promo": {
+      "total": 4,
+      "role": 4,
+      "auth_only": 0,
+      "public": 0
+    },
+    "/api/drive": {
+      "total": 9,
+      "role": 9,
+      "auth_only": 0,
+      "public": 0
+    },
+    "/api/email": {
+      "total": 1,
+      "role": 1,
+      "auth_only": 0,
+      "public": 0
+    },
+    "/api/events": {
+      "total": 2,
+      "role": 0,
+      "auth_only": 0,
+      "public": 2
+    },
+    "/api/feriados": {
+      "total": 5,
+      "role": 5,
+      "auth_only": 0,
+      "public": 0
+    },
+    "/api/financeiro": {
+      "total": 61,
+      "role": 61,
+      "auth_only": 0,
+      "public": 0
+    },
+    "/api/fleet": {
+      "total": 32,
+      "role": 32,
+      "auth_only": 0,
+      "public": 0
+    },
+    "/api/fleet-portal": {
+      "total": 8,
+      "role": 0,
+      "auth_only": 7,
+      "public": 1
+    },
+    "/api/fleet-tracking": {
+      "total": 24,
+      "role": 24,
+      "auth_only": 0,
+      "public": 0
+    },
+    "/api/geocode": {
+      "total": 2,
+      "role": 2,
+      "auth_only": 0,
+      "public": 0
+    },
+    "/api/geofences": {
+      "total": 3,
+      "role": 3,
+      "auth_only": 0,
+      "public": 0
+    },
+    "/api/gestao-ia": {
+      "total": 9,
+      "role": 9,
+      "auth_only": 0,
+      "public": 0
+    },
+    "/api/holerites": {
+      "total": 20,
+      "role": 20,
+      "auth_only": 0,
+      "public": 0
+    },
+    "/api/holidays": {
+      "total": 2,
+      "role": 2,
+      "auth_only": 0,
+      "public": 0
+    },
+    "/api/integrations": {
+      "total": 3,
+      "role": 3,
+      "auth_only": 0,
+      "public": 0
+    },
+    "/api/kpis": {
+      "total": 2,
+      "role": 0,
+      "auth_only": 2,
+      "public": 0
+    },
+    "/api/ligo-maps": {
+      "total": 18,
+      "role": 18,
+      "auth_only": 0,
+      "public": 0
+    },
+    "/api/locations": {
+      "total": 6,
+      "role": 6,
+      "auth_only": 0,
+      "public": 0
+    },
+    "/api/logs": {
+      "total": 1,
+      "role": 1,
+      "auth_only": 0,
+      "public": 0
+    },
+    "/api/lousa": {
+      "total": 99,
+      "role": 99,
+      "auth_only": 0,
+      "public": 0
+    },
+    "/api/lousa-ai": {
+      "total": 3,
+      "role": 3,
+      "auth_only": 0,
+      "public": 0
+    },
+    "/api/mass-messaging": {
+      "total": 10,
+      "role": 10,
+      "auth_only": 0,
+      "public": 0
+    },
+    "/api/motor-ia": {
+      "total": 13,
+      "role": 13,
+      "auth_only": 0,
+      "public": 0
+    },
+    "/api/neo-chat": {
+      "total": 4,
+      "role": 4,
+      "auth_only": 0,
+      "public": 0
+    },
+    "/api/neo-reports": {
+      "total": 10,
+      "role": 10,
+      "auth_only": 0,
+      "public": 0
+    },
+    "/api/network": {
+      "total": 8,
+      "role": 8,
+      "auth_only": 0,
+      "public": 0
+    },
+    "/api/notifications": {
+      "total": 3,
+      "role": 0,
+      "auth_only": 3,
+      "public": 0
+    },
+    "/api/oauth": {
+      "total": 3,
+      "role": 2,
+      "auth_only": 0,
+      "public": 1
+    },
+    "/api/onboarding": {
+      "total": 5,
+      "role": 5,
+      "auth_only": 0,
+      "public": 0
+    },
+    "/api/parceiro-portal": {
+      "total": 14,
+      "role": 0,
+      "auth_only": 14,
+      "public": 0
+    },
+    "/api/parcerias": {
+      "total": 21,
+      "role": 21,
+      "auth_only": 0,
+      "public": 0
+    },
+    "/api/payments": {
+      "total": 8,
+      "role": 7,
+      "auth_only": 0,
+      "public": 1
+    },
+    "/api/plans": {
+      "total": 14,
+      "role": 14,
+      "auth_only": 0,
+      "public": 0
+    },
+    "/api/pracas": {
+      "total": 4,
+      "role": 4,
+      "auth_only": 0,
+      "public": 0
+    },
+    "/api/pre-attendance": {
+      "total": 10,
+      "role": 10,
+      "auth_only": 0,
+      "public": 0
+    },
+    "/api/presidente-ia": {
+      "total": 15,
+      "role": 15,
+      "auth_only": 0,
+      "public": 0
+    },
+    "/api/preventive-os": {
+      "total": 5,
+      "role": 5,
+      "auth_only": 0,
+      "public": 0
+    },
+    "/api/projects": {
+      "total": 13,
+      "role": 13,
+      "auth_only": 0,
+      "public": 0
+    },
+    "/api/propostas": {
+      "total": 6,
+      "role": 6,
+      "auth_only": 0,
+      "public": 0
+    },
+    "/api/public": {
+      "total": 1,
+      "role": 0,
+      "auth_only": 1,
+      "public": 0
+    },
+    "/api/public-access": {
+      "total": 3,
+      "role": 3,
+      "auth_only": 0,
+      "public": 0
+    },
+    "/api/purchases": {
+      "total": 10,
+      "role": 10,
+      "auth_only": 0,
+      "public": 0
+    },
+    "/api/push": {
+      "total": 5,
+      "role": 5,
+      "auth_only": 0,
+      "public": 0
+    },
+    "/api/qr-token": {
+      "total": 1,
+      "role": 1,
+      "auth_only": 0,
+      "public": 0
+    },
+    "/api/r": {
+      "total": 2,
+      "role": 0,
+      "auth_only": 0,
+      "public": 2
+    },
+    "/api/radius": {
+      "total": 11,
+      "role": 11,
+      "auth_only": 0,
+      "public": 0
+    },
+    "/api/rede-ia": {
+      "total": 105,
+      "role": 105,
+      "auth_only": 0,
+      "public": 0
+    },
+    "/api/referral-campaign": {
+      "total": 3,
+      "role": 3,
+      "auth_only": 0,
+      "public": 0
+    },
+    "/api/referrals": {
+      "total": 11,
+      "role": 11,
+      "auth_only": 0,
+      "public": 0
+    },
+    "/api/saas": {
+      "total": 9,
+      "role": 9,
+      "auth_only": 0,
+      "public": 0
+    },
+    "/api/sales": {
+      "total": 7,
+      "role": 7,
+      "auth_only": 0,
+      "public": 0
+    },
+    "/api/scheduler": {
+      "total": 1,
+      "role": 1,
+      "auth_only": 0,
+      "public": 0
+    },
+    "/api/secretaria": {
+      "total": 8,
+      "role": 8,
+      "auth_only": 0,
+      "public": 0
+    },
+    "/api/security-home": {
+      "total": 20,
+      "role": 20,
+      "auth_only": 0,
+      "public": 0
+    },
+    "/api/security-portal": {
+      "total": 8,
+      "role": 0,
+      "auth_only": 7,
+      "public": 1
+    },
+    "/api/sentinela-lousa": {
+      "total": 5,
+      "role": 5,
+      "auth_only": 0,
+      "public": 0
+    },
+    "/api/server-time": {
+      "total": 1,
+      "role": 0,
+      "auth_only": 1,
+      "public": 0
+    },
+    "/api/settings": {
+      "total": 7,
+      "role": 7,
+      "auth_only": 0,
+      "public": 0
+    },
+    "/api/site": {
+      "total": 6,
+      "role": 0,
+      "auth_only": 0,
+      "public": 6
+    },
+    "/api/smartolt": {
+      "total": 24,
+      "role": 24,
+      "auth_only": 0,
+      "public": 0
+    },
+    "/api/smartolt-ai": {
+      "total": 11,
+      "role": 11,
+      "auth_only": 0,
+      "public": 0
+    },
+    "/api/smartolt-push-ctos": {
+      "total": 5,
+      "role": 5,
+      "auth_only": 0,
+      "public": 0
+    },
+    "/api/stok": {
+      "total": 66,
+      "role": 66,
+      "auth_only": 0,
+      "public": 0
+    },
+    "/api/subscribers": {
+      "total": 20,
+      "role": 20,
+      "auth_only": 0,
+      "public": 0
+    },
+    "/api/system": {
+      "total": 1,
+      "role": 1,
+      "auth_only": 0,
+      "public": 0
+    },
+    "/api/tech-tracking": {
+      "total": 6,
+      "role": 3,
+      "auth_only": 0,
+      "public": 3
+    },
+    "/api/timesheets": {
+      "total": 4,
+      "role": 4,
+      "auth_only": 0,
+      "public": 0
+    },
+    "/api/timesheets-collective": {
+      "total": 1,
+      "role": 1,
+      "auth_only": 0,
+      "public": 0
+    },
+    "/api/tv": {
+      "total": 4,
+      "role": 4,
+      "auth_only": 0,
+      "public": 0
+    },
+    "/api/users": {
+      "total": 7,
+      "role": 7,
+      "auth_only": 0,
+      "public": 0
+    },
+    "/api/utils": {
+      "total": 2,
+      "role": 0,
+      "auth_only": 2,
+      "public": 0
+    },
+    "/api/vehicle-checklist": {
+      "total": 14,
+      "role": 14,
+      "auth_only": 0,
+      "public": 0
+    },
+    "/api/voice": {
+      "total": 5,
+      "role": 5,
+      "auth_only": 0,
+      "public": 0
+    },
+    "/api/wa-campaigns": {
+      "total": 7,
+      "role": 7,
+      "auth_only": 0,
+      "public": 0
+    },
+    "/api/webhook": {
+      "total": 1,
+      "role": 0,
+      "auth_only": 0,
+      "public": 1
+    },
+    "/api/whatsapp-baileys": {
+      "total": 74,
+      "role": 72,
+      "auth_only": 0,
+      "public": 2
+    },
+    "/api/whatsapp-channels": {
+      "total": 7,
+      "role": 7,
+      "auth_only": 0,
+      "public": 0
+    },
+    "/api/whatsapp-meta": {
+      "total": 7,
+      "role": 7,
+      "auth_only": 0,
+      "public": 0
+    },
+    "/api/whatsapp-twilio": {
+      "total": 7,
+      "role": 6,
+      "auth_only": 0,
+      "public": 1
+    },
+    "/api/wifi": {
+      "total": 15,
+      "role": 15,
+      "auth_only": 0,
+      "public": 0
+    },
+    "/api/wifi-hotspot": {
+      "total": 17,
+      "role": 17,
+      "auth_only": 0,
+      "public": 0
+    }
+  },
+  "samples": {
+    "auth_only_no_role": [
+      "GET /api/auth/me",
+      "POST /api/auth/change-my-password",
+      "GET /api/",
+      "GET /api/server-time",
+      "GET /api/notifications",
+      "POST /api/notifications/{nid}/read",
+      "POST /api/notifications/read-all",
+      "GET /api/utils/validate-document",
+      "GET /api/utils/cep/{cep}",
+      "GET /api/public/os-validation-toggles/{collab_id}",
+      "GET /api/kpis/churn-reasons",
+      "POST /api/kpis/churn-reasons/ai-insights"
+    ],
+    "destructive_without_role": [],
+    "export_without_role": [],
+    "ia_unprotected": []
+  }
+}

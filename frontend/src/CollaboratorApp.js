@@ -173,6 +173,11 @@ function CollaboratorAppInner({ mobile = false, forcedCollabId = null, onLogout 
   const [flushingOffline, setFlushingOffline] = useState(false);
   const [showMyAssets, setShowMyAssets] = useState(false);
   const [showPingTest, setShowPingTest] = useState(false); // eslint-disable-line no-unused-vars
+  // iter215ao — Preview da regra de atendimento por ponto: se o user
+  // tem role afetada (gestor/admin/vendedor), mostra um card explicando
+  // o que vai acontecer com as conversas em aberto antes de bater
+  // Início intervalo ou Saída.
+  const [dutyPreview, setDutyPreview] = useState(null);
   const [showMyHolerites, setShowMyHolerites] = useState(false);
   const [avatarJustUpdated, setAvatarJustUpdated] = useState(false);
 
@@ -334,6 +339,29 @@ function CollaboratorAppInner({ mobile = false, forcedCollabId = null, onLogout 
     );
     return () => navigator.geolocation.clearWatch(watchId);
   }, [collabId, pingIntervalSec]);
+
+  // iter215ao — Carrega o preview do duty toda vez que `today` muda
+  // (e a cada 30s). Só faz request quando next_expected é offduty.
+  useEffect(() => {
+    const next = today?.next_expected;
+    if (next !== "Início intervalo" && next !== "Saída") {
+      setDutyPreview(null);
+      return;
+    }
+    let cancelled = false;
+    const fetchPreview = async () => {
+      try {
+        const r = await api._client.get(
+          "/whatsapp-baileys/atendimento/duty-status");
+        if (!cancelled) setDutyPreview(r.data || null);
+      } catch {
+        if (!cancelled) setDutyPreview(null);
+      }
+    };
+    fetchPreview();
+    const t = setInterval(fetchPreview, 30000);
+    return () => { cancelled = true; clearInterval(t); };
+  }, [today?.next_expected]);
 
   function getPosition() {
     return new Promise((resolve) => {
@@ -812,6 +840,56 @@ function CollaboratorAppInner({ mobile = false, forcedCollabId = null, onLogout 
                 <div style={{ fontSize: 30, fontWeight: 800, marginTop: 6, color: "#0f172a", letterSpacing: -0.5 }}>{today.next_expected}</div>
                 <div style={{ marginTop: 4, color: "#64748b", fontSize: 12 }}>{today.records.length} registro(s) hoje</div>
               </div>
+
+              {dutyPreview && ["gestor", "administrador", "vendedor"]
+                .includes(dutyPreview.role) && (() => {
+                const openCount = dutyPreview.my_open_conversations || 0;
+                const othersOnline =
+                  (dutyPreview.other_attendants_online || []).length;
+                const willBlock = openCount > 0 && othersOnline === 0;
+                const willTransfer = openCount > 0 && othersOnline > 0;
+                const isLunch = today.next_expected === "Início intervalo";
+                const eventName = isLunch ? "intervalo (almoço)" : "saída";
+                const bg = willBlock
+                  ? "linear-gradient(135deg,#fef2f2,#fee2e2)"
+                  : willTransfer
+                  ? "linear-gradient(135deg,#fff7ed,#ffedd5)"
+                  : "linear-gradient(135deg,#ecfdf5,#d1fae5)";
+                const border = willBlock ? "#fca5a5"
+                  : willTransfer ? "#fdba74" : "#86efac";
+                const fg = willBlock ? "#7f1d1d"
+                  : willTransfer ? "#7c2d12" : "#065f46";
+                return (
+                  <div data-testid="duty-preview-card"
+                        style={{ padding: "12px 14px", borderRadius: 12,
+                                  background: bg, border: `2px solid ${border}`,
+                                  marginBottom: 10, color: fg,
+                                  fontFamily: "Inter, sans-serif" }}>
+                    <div style={{ fontSize: 12, fontWeight: 800,
+                                    letterSpacing: -0.2, marginBottom: 4 }}>
+                      {willBlock ? "⚠ Bater não vai funcionar agora"
+                        : willTransfer ? "📤 Suas conversas serão transferidas"
+                        : "✓ Você pode bater o ponto"}
+                    </div>
+                    <div style={{ fontSize: 12, lineHeight: 1.5,
+                                    fontWeight: 600 }}>
+                      {willBlock ? (
+                        <>Você tem <b>{openCount}</b> conversa(s) em aberto e
+                          <b> nenhum outro atendente</b> online. Peça pra um
+                          colega bater Entrada/Fim intervalo antes de você
+                          entrar em {eventName}.</>
+                      ) : willTransfer ? (
+                        <>Você tem <b>{openCount}</b> conversa(s) em aberto.
+                          Ao bater {today.next_expected}, todas vão pro
+                          atendente online com menor carga
+                          ({othersOnline} disponível{othersOnline > 1 ? "is" : ""}).</>
+                      ) : (
+                        <>Sem conversas em aberto. Pode entrar em {eventName} à vontade.</>
+                      )}
+                    </div>
+                  </div>
+                );
+              })()}
 
               <button
                 data-testid="open-clock-btn"

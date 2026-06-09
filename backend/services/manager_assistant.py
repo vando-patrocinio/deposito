@@ -73,9 +73,11 @@ COMMANDS: List[Dict[str, str]] = [
 async def _is_manager_phone(company_id: str, phone: str) -> bool:
     """Phone pertence ao gestor cadastrado?
 
-    Considera duas fontes:
+    Considera múltiplas fontes:
       1. `churn_briefing_schedule.notify_phone` (admin já configurou)
       2. `manager_assistant_phones` (lista adicional opcional)
+      3. `conselho_ia_settings.presidente_briefing_phone` (iter219)
+      4. `conselho_ia_settings.notify_phone` (Agente IA legado)
     """
     if not phone:
         return False
@@ -90,7 +92,18 @@ async def _is_manager_phone(company_id: str, phone: str) -> bool:
     # 2) lista manual
     doc = await db.manager_assistant_phones.find_one(
         {"company_id": company_id, "phone": p}, {"_id": 0})
-    return bool(doc and doc.get("enabled", True))
+    if doc and doc.get("enabled", True):
+        return True
+    # 3+4) settings do Conselho/Presidente IA (iter219)
+    cia = await db.conselho_ia_settings.find_one(
+        {"company_id": company_id},
+        {"_id": 0, "presidente_briefing_phone": 1, "notify_phone": 1})
+    if cia:
+        for k in ("presidente_briefing_phone", "notify_phone"):
+            v = re.sub(r"\D", "", cia.get(k) or "")
+            if v and v == p:
+                return True
+    return False
 
 
 # ---------------------------------------------------------------------------

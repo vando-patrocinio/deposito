@@ -356,7 +356,7 @@ function AgingCard({ aging }) {
   const chartData = buckets.filter((b) => b.total > 0).map((b) => ({
     label: b.label,
     value: b.total,
-    color: b.key.startsWith("vencido") ? "#dc2626" : "#0ea5e9",
+    color: b.key.startsWith("vencido") ? "#dc2626" : "#f28c28",
     key: b.key,
   }));
   return (
@@ -368,7 +368,7 @@ function AgingCard({ aging }) {
         gridTemplateColumns: "1fr 1fr", marginBottom: 12,
       }}>
         <SummaryPill label="Vencidas" value={aging.summary.overdue_total} color="#dc2626" />
-        <SummaryPill label="A vencer" value={aging.summary.upcoming_total} color="#0ea5e9" />
+        <SummaryPill label="A vencer" value={aging.summary.upcoming_total} color="#f28c28" />
       </div>
       {chartData.length === 0 ? (
         <div style={{ padding: 20, textAlign: "center", color: "#94a3b8",
@@ -440,7 +440,7 @@ function TopSuppliersCard({ data }) {
               <div style={{
                 position: "absolute", top: 0, left: 0,
                 height: "100%", width: `${(r.total / max) * 100}%`,
-                background: "linear-gradient(90deg, #0ea5e9, #38bdf8)",
+                background: "linear-gradient(90deg, #f28c28, #38bdf8)",
                 opacity: 0.12, borderRadius: 6,
               }} />
               <div style={{

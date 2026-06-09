@@ -15,6 +15,7 @@ import ClienteIndicaApp from "@/cliente/ClienteIndicaApp";
 import WifiCaptivePortal from "@/WifiCaptivePortal";
 import WifiShowcasePage from "@/WifiShowcasePage";
 import LousaTvPanel from "@/lousa/LousaTvPanel";
+import SmartProvLanding from "@/SmartProvLanding";
 
 // iter212a — Roteamento standalone do portal white-label (Fleet)
 // Aciona com `?portal=fleet` OU pathname iniciado em `/fleet-portal`.
@@ -59,6 +60,9 @@ const _isWifiShowcase = _params.get("showcase") === "wifi"
 const _isLousaTv = _params.get("portal") === "lousa-tv"
   || window.location.pathname === "/lousa-tv"
   || window.location.pathname === "/lousa-tv/";
+// FASE 9 V5.0 — Landing pública vendável (sem auth, dados reais ao vivo)
+const _isSmartProvLanding = window.location.pathname === "/smartprov-ai-center"
+  || window.location.pathname === "/smartprov-ai-center/";
 
 const root = ReactDOM.createRoot(document.getElementById("root"));
 root.render(
@@ -67,6 +71,7 @@ root.render(
       : _isWifiCaptive ? <WifiCaptivePortal />
         : _isWifiShowcase ? <WifiShowcasePage />
           : _isLousaTv ? <LousaTvPanel />
+            : _isSmartProvLanding ? <SmartProvLanding />
             : _isClienteIndica ? <ClienteIndicaApp />
               : _isParceiroPWA ? <ParceiroPWA magicToken={_parceiroSegment} />
                 : _isSejaParceiro ? <SejaParceiroLanding />

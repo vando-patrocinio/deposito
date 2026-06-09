@@ -203,7 +203,7 @@ export default function DashboardPanel() {
                   style={{
                     padding: "8px 14px", borderRadius: 12, fontWeight: 800, fontSize: 13,
                     cursor: "pointer", border: "1px solid #e2e8f0",
-                    background: months === n ? "#0ea5e9" : "white",
+                    background: months === n ? "#f28c28" : "white",
                     color: months === n ? "white" : "#0f172a",
                   }}
                 >
@@ -300,7 +300,7 @@ export default function DashboardPanel() {
               <Tooltip formatter={(v) => `${v}h`} />
               <Bar dataKey="HE (h)" radius={[10, 10, 0, 0]}>
                 {chartData.map((d, i) => (
-                  <Cell key={i} fill={d.isCurrent ? "#f59e0b" : "#0ea5e9"} />
+                  <Cell key={i} fill={d.isCurrent ? "#f59e0b" : "#f28c28"} />
                 ))}
               </Bar>
             </BarChart>
@@ -460,7 +460,7 @@ function DwellHeatmap({ year, month }) {
                   <span style={{ fontSize: 13, color: "#0f172a", fontWeight: 800 }}>{fmtMin(r.total_minutes)} · {r.stays} permanência(s)</span>
                 </div>
                 <div style={{ background: "#f1f5f9", borderRadius: 8, overflow: "hidden", height: 10 }}>
-                  <div style={{ width: `${Math.min(100, pct)}%`, height: "100%", background: "linear-gradient(90deg, #0ea5e9, #f59e0b, #dc2626)" }} />
+                  <div style={{ width: `${Math.min(100, pct)}%`, height: "100%", background: "linear-gradient(90deg, #f28c28, #f59e0b, #dc2626)" }} />
                 </div>
                 <div style={{ marginTop: 6, fontSize: 12, color: "#64748b" }}>
                   {(r.by_collab || []).slice(0, 4).map((cb, i) => (
@@ -540,7 +540,7 @@ function DrillModal({ drill, year, month, onClose }) {
                       <div style={{ marginTop: 6, fontSize: 11, color: "#94a3b8" }}>
                         Centro: {s.center_lat.toFixed(5)}, {s.center_lng.toFixed(5)} ·{" "}
                         <a href={mapsUrl} target="_blank" rel="noopener noreferrer" data-testid={`drill-map-link-${i}`}
-                           style={{ color: "#0ea5e9", fontWeight: 700 }}>
+                           style={{ color: "#f28c28", fontWeight: 700 }}>
                           Abrir no mapa ↗
                         </a>
                       </div>
@@ -558,8 +558,8 @@ function DrillModal({ drill, year, month, onClose }) {
 
 
 const TYPE_COLORS_STATS = {
-  reparo: "#3b82f6", instalacao: "#10b981", retirada: "#f59e0b",
-  prioridade: "#dc2626", preventiva: "#0d9488", venda: "#06b6d4",
+  reparo: "#4b1d7a", instalacao: "#10b981", retirada: "#f59e0b",
+  prioridade: "#dc2626", preventiva: "#0d9488", venda: "#f28c28",
 };
 const TYPE_LABELS_STATS = {
   reparo: "Reparo", instalacao: "Instalação", retirada: "Retirada",
@@ -638,7 +638,7 @@ function ServiceStatsSection() {
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 10, marginBottom: 14 }}>
         <KpiCard label="Total" value={stats.total} color="#0f172a" testId="kpi-total" />
-        <KpiCard label="Executados" value={stats.executed_count} color="#3b82f6" testId="kpi-executed" />
+        <KpiCard label="Executados" value={stats.executed_count} color="#4b1d7a" testId="kpi-executed" />
         <KpiCard label="Finalizados" value={stats.finalized_count} color="#10b981" testId="kpi-finalized" />
         <KpiCard label="Cancelados" value={stats.by_status.cancelada || 0} color="#dc2626" testId="kpi-canceled" />
         <KpiCard label="Tempo médio" value={stats.avg_duration_minutes != null ? `${stats.avg_duration_minutes.toFixed(0)}min` : "—"} color="#0d9488" testId="kpi-avg" />
@@ -679,7 +679,7 @@ function ServiceStatsSection() {
                 <XAxis dataKey="day" tickFormatter={(d) => d.slice(5)} fontSize={10} />
                 <YAxis fontSize={10} />
                 <Tooltip />
-                <Bar dataKey="created" fill="#3b82f6" name="Criados" />
+                <Bar dataKey="created" fill="#4b1d7a" name="Criados" />
                 <Bar dataKey="finalized" fill="#10b981" name="Finalizados" />
               </BarChart>
             </ResponsiveContainer>
@@ -868,8 +868,8 @@ function ManagementKpisSection() {
             disabled={insightsBusy}
             style={{
               padding: "6px 14px", borderRadius: 10, fontSize: 12, fontWeight: 700,
-              border: "1px solid #06b6d4", cursor: "pointer",
-              background: insightsBusy ? "#cffafe" : "linear-gradient(135deg,#06b6d4,#0891b2)",
+              border: "1px solid #f28c28", cursor: "pointer",
+              background: insightsBusy ? "#cffafe" : "linear-gradient(135deg,#f28c28,#f28c28)",
               color: insightsBusy ? "#0e7490" : "white",
             }}
           >{insightsBusy ? "Analisando..." : "Insights IA"}</button>
@@ -887,7 +887,7 @@ function ManagementKpisSection() {
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 10, marginBottom: 14 }}>
         <KpiCard label="Trabalhadas (admin)" value={a.trabalhadas_pela_gestao || 0} color="#10b981" testId="mgmt-kpi-worked" />
         <KpiCard label="Encerradas" value={a.encerradas || 0} color="#475569" testId="mgmt-kpi-closed" />
-        <KpiCard label="Reagendadas" value={a.reagendadas || 0} color="#3b82f6" testId="mgmt-kpi-rescheduled" />
+        <KpiCard label="Reagendadas" value={a.reagendadas || 0} color="#4b1d7a" testId="mgmt-kpi-rescheduled" />
         <KpiCard label="Canceladas" value={a.canceladas || 0} color="#dc2626" testId="mgmt-kpi-canceled" />
         <KpiCard label="Editadas" value={a.editadas || 0} color="#0d9488" testId="mgmt-kpi-edited" />
         <KpiCard label="Transferidas" value={a.transferidas || 0} color="#f59e0b" testId="mgmt-kpi-transferred" />

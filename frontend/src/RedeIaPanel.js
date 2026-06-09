@@ -18,6 +18,7 @@ import { fmtAddress } from "@/utils/format";
 import { Card } from "@/ui";
 import { toast } from "sonner";
 import RedeIaMap from "@/RedeIaMap";
+import LigoMapsPanel from "@/LigoMapsPanel";
 import ReconcileAuditPanel from "@/ReconcileAuditPanel";
 import CTOLocationViewer from "@/CTOLocationViewer";
 import CTOOccupancyPanel from "@/CTOOccupancyPanel";
@@ -30,6 +31,7 @@ const TABS = [
   { id: "occupancy", label: "Ocupação" },
   { id: "pendencies", label: "Pendências" },
   { id: "map", label: "Mapa interativo" },
+  { id: "docs_map", label: "Documentação (As-Built)" },
   { id: "reconcile", label: "Conciliação" },
   { id: "bairros", label: "Bairros / VLAN" },
   { id: "orphan_cables", label: "Cabos órfãos" },
@@ -204,6 +206,7 @@ export default function RedeIaPanel({ currentUser }) {
       {tab === "pendencies" && <Pendencies />}
       {tab === "occupancy" && <CTOOccupancyPanel />}
       {tab === "map" && <RedeIaMap />}
+      {tab === "docs_map" && <LigoMapsPanel />}
       {tab === "reconcile" && <ReconcileAuditPanel />}
       {tab === "bairros" && <BairrosManager />}
       {tab === "orphan_cables" && <OrphanCablesPanel />}
@@ -494,7 +497,7 @@ function Overview() {
                          gap: 10 }}>
           <MiniKpi label="CTOs com ONUs detectadas"
             value={`${ctosWithOnu} / ${mapData.ctos?.length || 0}`}
-            color="#0ea5e9" />
+            color="#f28c28" />
           <MiniKpi label="VLANs monitoradas"
             value={mapData.vlans?.length || 0} color="#7c3aed" />
           <MiniKpi label="CEs (Caixas Emenda)"
@@ -793,7 +796,7 @@ function CtoStatsBlock({ stats, period, onChangePeriod }) {
                       fontWeight: 700, cursor: "pointer",
                       border: "1px solid var(--border-default)",
                       background: period === opt.id
-                        ? "linear-gradient(135deg,#0ea5e9,#6366f1)"
+                        ? "linear-gradient(135deg,#f28c28,#4b1d7a)"
                         : "var(--bg-surface-2)",
                       color: period === opt.id ? "white" : "var(--text-secondary)",
                       transition: "all .15s",
@@ -853,7 +856,7 @@ function CtoStatsBlock({ stats, period, onChangePeriod }) {
                        style={{
                          padding: "2px 8px", borderRadius: 999,
                          fontSize: 11, fontWeight: 800,
-                         background: "linear-gradient(135deg,#0ea5e9,#6366f1)",
+                         background: "linear-gradient(135deg,#f28c28,#4b1d7a)",
                          color: "white", textAlign: "center",
                          overflow: "hidden", textOverflow: "ellipsis",
                          whiteSpace: "nowrap",
@@ -868,7 +871,7 @@ function CtoStatsBlock({ stats, period, onChangePeriod }) {
                   <div style={{
                     width: `${(t.total / techMax) * 100}%`,
                     height: "100%",
-                    background: "linear-gradient(90deg,#0ea5e9,#6366f1)",
+                    background: "linear-gradient(90deg,#f28c28,#4b1d7a)",
                     transition: "width .35s",
                   }} />
                   {t.approved > 0 && (
@@ -899,7 +902,7 @@ function CtoStatsBlock({ stats, period, onChangePeriod }) {
                 Aprovadas
               </span>
               <span><span style={{ display: "inline-block", width: 10,
-                height: 10, background: "#6366f1", borderRadius: 2,
+                height: 10, background: "#4b1d7a", borderRadius: 2,
                 marginRight: 4, verticalAlign: "middle" }} />
                 Total (inclui pendentes)
               </span>
@@ -1173,7 +1176,7 @@ function CTOsList() {
                             style={{
                               padding: "3px 9px", borderRadius: 999,
                               fontSize: 11, fontWeight: 800,
-                              background: "linear-gradient(135deg,#0ea5e9,#6366f1)",
+                              background: "linear-gradient(135deg,#f28c28,#4b1d7a)",
                               color: "white", letterSpacing: 0.4,
                               boxShadow: "0 1px 2px rgba(0,0,0,0.1)",
                             }}
@@ -1209,7 +1212,7 @@ function CTOsList() {
                           <a href={c.pdf_drive_url} target="_blank" rel="noreferrer"
                               data-testid={`cto-drive-${c.id}`}
                               title="Abrir PDF salvo no Drive"
-                              style={{ ...btnSm("#0ea5e9"), textDecoration: "none",
+                              style={{ ...btnSm("#f28c28"), textDecoration: "none",
                                         display: "inline-flex", alignItems: "center" }}>
                             
                           </a>
@@ -2038,7 +2041,7 @@ function PortBaseSearchCard() {
     <div data-testid="port-base-search-card" style={{
       marginTop: 12, padding: 12, borderRadius: 10,
       background: "linear-gradient(135deg,#ecfeff,#cffafe)",
-      border: "1px solid #06b6d4",
+      border: "1px solid #f28c28",
     }}>
       <div style={{ display: "flex", alignItems: "center", gap: 8,
                       marginBottom: 8, flexWrap: "wrap" }}>
@@ -2065,7 +2068,7 @@ function PortBaseSearchCard() {
         value={query} onChange={(e) => setQuery(e.target.value)}
         placeholder="Ex.: ALCLFC090E99 · CTO_301_001 · José Silva"
         style={{ width: "100%", padding: "10px 12px", borderRadius: 8,
-                   border: "1px solid #06b6d4",
+                   border: "1px solid #f28c28",
                    fontSize: 13, boxSizing: "border-box",
                    background: "#fff", color: "#0f172a" }} />
 
@@ -2107,7 +2110,7 @@ function PortBaseSearchCard() {
               <div style={{ flex: 1, minWidth: 200 }}>
                 <div style={{ fontSize: 12.5, fontWeight: 700,
                                 color: "#0f172a" }}>
-                  {p.cto_name} <span style={{ color: "#06b6d4" }}>·</span>{" "}
+                  {p.cto_name} <span style={{ color: "#f28c28" }}>·</span>{" "}
                   porta <strong>{p.port_number}</strong>
                   {p.vlan != null && (
                     <span style={{ marginLeft: 6, fontSize: 10,
@@ -2406,7 +2409,7 @@ function PortBaseTab() {
           title="Re-sincronizar a base de portas a partir de ctos.ports[]"
           style={{
             padding: "8px 14px", borderRadius: 10,
-            background: resyncBusy ? "#94a3b8" : "#0ea5e9",
+            background: resyncBusy ? "#94a3b8" : "#f28c28",
             color: "#fff", border: 0, fontSize: 12, fontWeight: 700,
             cursor: resyncBusy ? "wait" : "pointer",
           }}>
@@ -2830,7 +2833,7 @@ function BairrosManager() {
               </td>
               <td style={td}>
                 <button onClick={() => setOnusModal({ vlan: b.vlan, bairro: b.bairro })}
-                        style={{ ...btnSm("#0ea5e9"), padding: "4px 10px",
+                        style={{ ...btnSm("#f28c28"), padding: "4px 10px",
                                   fontSize: 11, marginRight: 6 }}
                         data-testid={`bairro-list-onus-${b.id}`}
                         title={`Buscar ONUs na SmartOLT pela VLAN ${b.vlan}`}>
@@ -4122,7 +4125,7 @@ function LinkEndpointModal({ cable, end, elements, onClose, onConfirm }) {
               <span style={{
                 width: 32, height: 32, borderRadius: 8,
                 background: el.type === "ce" ? "#ede9fe" : "#e0f2fe",
-                color: el.type === "ce" ? "#7c3aed" : "#0ea5e9",
+                color: el.type === "ce" ? "#7c3aed" : "#f28c28",
                 display: "grid", placeItems: "center",
                 fontSize: 11, fontWeight: 800,
               }}>{el.type.toUpperCase()}</span>

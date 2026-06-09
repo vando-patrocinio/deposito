@@ -46,6 +46,14 @@ _LIMITS = {
     "secretaria_ask": f"{30 * _MULT}/minute",
     # Webhooks — protege contra flood (Twilio, Meta retry burst)
     "webhook_inbound": f"{120 * _MULT}/minute",
+    # QR Code do cliente — protege contra brute-force de tokens (iter215be)
+    "qr_resolve": f"{30 * _MULT}/minute",
+    "qr_issue": f"{20 * _MULT}/minute",
+    # Audit/LGPD export — pós-CTO audit (P2)
+    "audit_export": f"{10 * _MULT}/minute",
+    "audit_lgpd_report": f"{20 * _MULT}/minute",
+    # Estrategista IA — não queimar saldo
+    "estrategista_generate": f"{5 * _MULT}/minute",
     # Default fallback
     "default": f"{100 * _MULT}/minute",
 }
@@ -64,12 +72,20 @@ def _key_func(request) -> str:
     return get_remote_address(request)
 
 
+# Storage: por padrão in-memory (single worker). Se REDIS_URL existir,
+# usa Redis para coordenar limites entre workers (pós-CTO audit P2).
+_storage_uri = os.environ.get("RATE_LIMIT_STORAGE_URI") \
+    or (os.environ.get("REDIS_URL") + "/0"
+        if os.environ.get("REDIS_URL") else None) \
+    or "memory://"
+
 limiter = Limiter(
     key_func=_key_func,
     default_limits=[_LIMITS["default"]],
-    storage_uri="memory://",  # In-memory; per-pod. Para multi-pod, redis://
-    headers_enabled=False,  # FastAPI dict-returns conflitam com inject_headers
+    storage_uri=_storage_uri,
+    headers_enabled=False,
 )
 
-logger.info("[rate-limit] inicializado. dev=%s, multiplicador=%dx",
-            _is_dev(), _MULT)
+logger.info("[rate-limit] inicializado. dev=%s, multiplicador=%dx, "
+            "storage=%s",
+            _is_dev(), _MULT, _storage_uri.split("://")[0])

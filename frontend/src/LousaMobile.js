@@ -450,6 +450,19 @@ export default function LousaMobile({ collaboratorId, onBack, isAdminTest = fals
           + "\n\nVolte ao passo da CTO e escolha outra porta livre, "
           + "ou peça pro gestor retirar o cliente atual."
         ), 30);
+      } else if (e?.response?.status === 400
+                  && detail?.code === "SN_PHOTO_REQUIRED") {
+        // iter215am — Retirada/troca sem SN no SmartOLT exige foto da ONT
+        const msg = detail.message || (
+          "Foto do equipamento é obrigatória — SN não está no SmartOLT."
+        );
+        setErr(msg);
+        setTimeout(() => alert(
+          "FOTO OBRIGATÓRIA DA ONT\n\n" + msg
+          + "\n\nVolte uma etapa, anexe pelo menos 1 foto do "
+          + "equipamento retirado. A IA vai analisar e o item será "
+          + "registrado no seu estoque automaticamente."
+        ), 30);
       } else {
         // iter211g — mensagem específica para Network Error / timeout
         const msg = (e?.message || "").toLowerCase();
@@ -906,6 +919,77 @@ export default function LousaMobile({ collaboratorId, onBack, isAdminTest = fals
     </div>
   );
 }
+
+// iter215at — Botão de reconciliação SmartOLT: detecta ONUs trocadas
+// (mesmo PPPoE/name, SN diferente) e atualiza o cache em massa.
+function TrocaOntReconcileButton({ onDone }) {
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState(null);
+  const [err, setErr] = useState(null);
+  const click = async () => {
+    if (busy) return;
+    if (!window.confirm(
+      "Rodar reconciliação SmartOLT?\n\n"
+      + "Vai buscar TODAS as ONUs do SmartOLT, detectar trocas (mesmo "
+      + "nome/PPPoE com SN diferente) e atualizar o cache local. "
+      + "Pode demorar 10-30s.")) return;
+    setBusy(true); setErr(null); setResult(null);
+    try {
+      const r = await api.smartoltReconcileOnus();
+      setResult(r?.summary || null);
+      // Aguarda 1s e chama o callback pra recarregar o cliente
+      setTimeout(() => {
+        if (typeof onDone === "function") onDone(r?.summary);
+      }, 1000);
+    } catch (e) {
+      setErr(e?.response?.data?.detail || e.message || "Falha");
+    } finally { setBusy(false); }
+  };
+  return (
+    <div data-testid="troca-ont-reconcile-wrap"
+          style={{ marginBottom: 10 }}>
+      <button type="button" onClick={click} disabled={busy}
+              data-testid="troca-ont-reconcile-btn"
+              style={{ display: "flex", alignItems: "center", gap: 8,
+                        padding: "10px 14px", borderRadius: 10,
+                        border: "none",
+                        background: "var(--primary, #4b1d7a)",
+                        color: "white", fontSize: 13, fontWeight: 800,
+                        cursor: busy ? "wait" : "pointer", width: "100%",
+                        justifyContent: "center",
+                        fontFamily: "Inter, sans-serif",
+                        opacity: busy ? 0.7 : 1 }}>
+        {busy ? "Reconciliando SmartOLT…" : "Troca ONT · Reconciliar SmartOLT"}
+      </button>
+      {result && (
+        <div data-testid="troca-ont-result"
+              style={{ marginTop: 8, padding: "8px 10px", borderRadius: 8,
+                        background: result.swapped > 0 ? "#dcfce7" : "#f1f5f9",
+                        border: `1px solid ${result.swapped > 0
+                          ? "#86efac" : "#cbd5e1"}`,
+                        fontSize: 11.5, color: "#0f172a",
+                        lineHeight: 1.5,
+                        fontFamily: "Inter, sans-serif" }}>
+          <b>Reconciliação concluída:</b>{" "}
+          {result.swapped} ONU(s) trocada(s),{" "}
+          {result.created} nova(s),{" "}
+          {result.metadata_updated} atualizada(s),{" "}
+          {result.removed_count} removida(s).
+        </div>
+      )}
+      {err && (
+        <div data-testid="troca-ont-err"
+              style={{ marginTop: 8, padding: "8px 10px", borderRadius: 8,
+                        background: "#fee2e2", border: "1px solid #fca5a5",
+                        fontSize: 11.5, color: "#7f1d1d",
+                        fontFamily: "Inter, sans-serif" }}>
+          {err}
+        </div>
+      )}
+    </div>
+  );
+}
+
 
 function Banner({ color, border, icon, text }) {
   return (
@@ -1736,6 +1820,10 @@ function TicketDetail({ ticket, onClose, onFinalize, busy, err, onRefresh,
     fotos: [],          // [{kind:'cto'|'sn', dataUrl}]
     // Troca de ONT/ONU em reparo
     isSwap: false, old_ont_mac: "", new_ont_mac: "",
+    // V9 P2.1 — Smart Field derived fields (opcionais)
+    resolution_kind: null,   // 'remote' | 'onsite' (apenas REPAIR)
+    asset_recovered: null,   // bool (apenas WITHDRAW)
+    signed_receipt: null,    // bool (apenas WITHDRAW)
   });
   const [draftSavedAt, setDraftSavedAt] = useState(null);
 
@@ -1817,6 +1905,14 @@ function TicketDetail({ ticket, onClose, onFinalize, busy, err, onRefresh,
   // com esse valor no MAC informado em retirada/reparo. Quando found=false,
   // não há referência → MAC vira opcional (pedido do usuário, 21/05/2026).
   const [clientSmart, setClientSmart] = useState(null);
+  // iter215at — exposto pra TrocaOntReconcileButton recarregar após
+  // reconciliação detectar troca de ONT.
+  const loadClientSmartOlt = useCallback(() => {
+    if (!ticket?.id) return;
+    api.publicClientByTicket(ticket.id)
+      .then((r) => setClientSmart(r))
+      .catch(() => setClientSmart({ found: false }));
+  }, [ticket?.id]);
   useEffect(() => {
     if (!ticket?.id) return;
     let alive = true;
@@ -2180,6 +2276,14 @@ function TicketDetail({ ticket, onClose, onFinalize, busy, err, onRefresh,
         is_defective: !!form.is_defective,
         defective_reason: (form.is_defective && form.defective_reason)
                               ? form.defective_reason : null,
+        // V9 P2.1 — Smart Field derived fields (condicionais por tipo)
+        resolution_kind: isRepair ? (form.resolution_kind || null) : null,
+        asset_recovered: isWithdraw
+          ? (form.asset_recovered == null ? null : !!form.asset_recovered)
+          : null,
+        signed_receipt: isWithdraw
+          ? (form.signed_receipt == null ? null : !!form.signed_receipt)
+          : null,
       });
       return;
     }
@@ -2296,6 +2400,14 @@ function TicketDetail({ ticket, onClose, onFinalize, busy, err, onRefresh,
       cto_network_type: ctoSelected?.network_type
                           || ctoFlowState.networkType || null,
       cancel_reason_category: form.cancel_reason_category || null,
+      // V9 P2.1 — Smart Field derived fields (condicionais por tipo)
+      resolution_kind: isRepair ? (form.resolution_kind || null) : null,
+      asset_recovered: isWithdraw
+        ? (form.asset_recovered == null ? null : !!form.asset_recovered)
+        : null,
+      signed_receipt: isWithdraw
+        ? (form.signed_receipt == null ? null : !!form.signed_receipt)
+        : null,
     });
   }
 
@@ -3004,6 +3116,39 @@ function TicketDetail({ ticket, onClose, onFinalize, busy, err, onRefresh,
               </div>
             )}
           </div>
+          {/* V9 P2.1 — Smart Field WITHDRAW: equipamento recuperado + recibo */}
+          <div style={{ background: "#f1f5f9", border: "1px solid #cbd5e1",
+                          borderRadius: 10, padding: 12, marginTop: 10,
+                          marginBottom: 4 }}>
+            <div style={{ fontSize: 12, color: "#475569",
+                            fontWeight: 700, marginBottom: 8 }}>
+              📦 Resultado da retirada
+            </div>
+            <label style={{ display: "flex", alignItems: "center",
+                              gap: 8, fontSize: 14, color: "#0f172a",
+                              cursor: "pointer", marginBottom: 6 }}>
+              <input type="checkbox"
+                data-testid="finalize-asset-recovered"
+                checked={form.asset_recovered === true}
+                onChange={(e) => setForm({
+                  ...form,
+                  asset_recovered: e.target.checked ? true : false })}
+                style={{ width: 18, height: 18 }} />
+              Equipamento recuperado?
+            </label>
+            <label style={{ display: "flex", alignItems: "center",
+                              gap: 8, fontSize: 14, color: "#0f172a",
+                              cursor: "pointer" }}>
+              <input type="checkbox"
+                data-testid="finalize-signed-receipt"
+                checked={form.signed_receipt === true}
+                onChange={(e) => setForm({
+                  ...form,
+                  signed_receipt: e.target.checked ? true : false })}
+                style={{ width: 18, height: 18 }} />
+              Recibo assinado?
+            </label>
+          </div>
           <label style={{ fontSize: 12, color: "#475569", fontWeight: 700,
                               marginTop: 10, display: "block" }}>
             📝 Detalhes do motivo (obrigatório · mínimo 10 caracteres)
@@ -3287,6 +3432,18 @@ function TicketDetail({ ticket, onClose, onFinalize, busy, err, onRefresh,
                 <div style={{ marginTop: 10, padding: 12, borderRadius: 10,
                                 background: "#fefce8",
                                 border: "1px solid #fde68a" }}>
+                  {/* iter215at — Botão "Troca ONT" reconcilia o cache
+                      SmartOLT pelo PPPoE: detecta ONUs com mesmo name e
+                      SN diferente (cliente trocou o equipamento) e
+                      atualiza tudo de uma vez. */}
+                  <TrocaOntReconcileButton
+                    onDone={(summary) => {
+                      // Re-busca dados do cliente pra puxar SN/MAC novos
+                      try {
+                        loadClientSmartOlt && loadClientSmartOlt();
+                      } catch { /* ignore */ }
+                    }}
+                  />
                   {clientInSmartOlt && (
                     <div style={{ marginBottom: 8, fontSize: 11.5,
                                     color: "#92400e", lineHeight: 1.5 }}>
@@ -3393,6 +3550,66 @@ function TicketDetail({ ticket, onClose, onFinalize, busy, err, onRefresh,
                     Ambos os MACs serão gravados na OS finalizada para
                     auditoria e rastreabilidade do equipamento.
                   </p>
+                  {/* iter215am — Pergunta sobre defeito da ONT retirada.
+                      Quando marcado, a ONT volta como `bloqueado_defeito`
+                      e fica indisponível pra reinstalar (devolução ao
+                      almoxarifado). Compartilha o mesmo state usado em
+                      retirada (form.is_defective / form.defective_reason). */}
+                  <div data-testid="repair-swap-defective-section"
+                        style={{ marginTop: 12 }}>
+                    <label style={{ display: "flex", alignItems: "center",
+                                      gap: 10, padding: "10px 12px",
+                                      borderRadius: 10,
+                                      background: form.is_defective
+                                        ? "linear-gradient(135deg,#fef2f2,#fee2e2)"
+                                        : "#fff",
+                                      border: `1.5px solid ${form.is_defective ? "#dc2626" : "#fde68a"}`,
+                                      cursor: "pointer", fontSize: 13,
+                                      color: form.is_defective ? "#7f1d1d" : "#475569",
+                                      fontWeight: 700 }}>
+                      <input type="checkbox"
+                              data-testid="repair-swap-defective-toggle"
+                              checked={!!form.is_defective}
+                              onChange={(e) => setForm({ ...form,
+                                  is_defective: e.target.checked,
+                                  defective_reason: e.target.checked
+                                    ? form.defective_reason : "" })}
+                              style={{ width: 18, height: 18,
+                                        cursor: "pointer",
+                                        accentColor: "#dc2626" }} />
+                      <span style={{ flex: 1 }}>
+                        <span style={{ display: "block", fontSize: 13,
+                                          fontWeight: 800 }}>
+                          ONT RETIRADA está com defeito?
+                        </span>
+                        <span style={{ display: "block", fontSize: 11,
+                                          fontWeight: 500,
+                                          color: form.is_defective
+                                            ? "#991b1b" : "#78350f",
+                                          marginTop: 2, lineHeight: 1.4 }}>
+                          {form.is_defective
+                            ? "Não estará disponível para reinstalar. Devolução obrigatória ao estoque da empresa."
+                            : "Marque caso a ONT esteja queimada, sem login, porta GPON danificada, etc."}
+                        </span>
+                      </span>
+                    </label>
+                    {form.is_defective && (
+                      <input
+                        data-testid="repair-swap-defective-reason"
+                        value={form.defective_reason || ""}
+                        onChange={(e) => setForm({ ...form,
+                            defective_reason: e.target.value.slice(0, 300) })}
+                        placeholder="Defeito observado (opcional)…"
+                        style={{ width: "100%", padding: "10px 12px",
+                                  borderRadius: 10,
+                                  border: "1px solid #fca5a5",
+                                  fontSize: 13, marginTop: 6,
+                                  boxSizing: "border-box",
+                                  background: "#fff", color: "#7f1d1d",
+                                  fontFamily: "inherit" }}
+                      />
+                    )}
+                  </div>
                 </div>
               )}
             </div>
@@ -3973,6 +4190,51 @@ function TicketDetail({ ticket, onClose, onFinalize, busy, err, onRefresh,
               resize: "vertical", boxSizing: "border-box", fontFamily: "inherit",
             }}
           />
+
+          {/* V9 P2.1 — Smart Field REPAIR: resolution_kind (remote/onsite) */}
+          {isRepair && (
+            <div style={{ background: "#f1f5f9", border: "1px solid #cbd5e1",
+                            borderRadius: 10, padding: 12, marginBottom: 12 }}>
+              <div style={{ fontSize: 12, color: "#475569",
+                              fontWeight: 700, marginBottom: 8 }}>
+                🔧 Como o reparo foi resolvido?
+              </div>
+              <div style={{ display: "flex", gap: 8 }}>
+                <button type="button"
+                  data-testid="finalize-resolution-remote"
+                  onClick={() => setForm({
+                    ...form, resolution_kind: "remote" })}
+                  style={{
+                    flex: 1, height: 44, borderRadius: 8, fontSize: 14,
+                    fontWeight: 700, cursor: "pointer",
+                    background: form.resolution_kind === "remote"
+                      ? "#16a34a" : "#fff",
+                    color: form.resolution_kind === "remote"
+                      ? "#fff" : "#0f172a",
+                    border: `2px solid ${form.resolution_kind === "remote"
+                      ? "#16a34a" : "#cbd5e1"}`,
+                  }}>
+                  🛜 Remotamente
+                </button>
+                <button type="button"
+                  data-testid="finalize-resolution-onsite"
+                  onClick={() => setForm({
+                    ...form, resolution_kind: "onsite" })}
+                  style={{
+                    flex: 1, height: 44, borderRadius: 8, fontSize: 14,
+                    fontWeight: 700, cursor: "pointer",
+                    background: form.resolution_kind === "onsite"
+                      ? "#2563eb" : "#fff",
+                    color: form.resolution_kind === "onsite"
+                      ? "#fff" : "#0f172a",
+                    border: `2px solid ${form.resolution_kind === "onsite"
+                      ? "#2563eb" : "#cbd5e1"}`,
+                  }}>
+                  🚐 Presencialmente
+                </button>
+              </div>
+            </div>
+          )}
 
           {/* Removido: botão manual de Ping (substituído por PingAutoStep abaixo do IPv6) */}
 
