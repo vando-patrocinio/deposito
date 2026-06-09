@@ -2,6 +2,42 @@
 
 > Documento vivo. Atualizado a cada sprint.
 
+## 💵 OPERAÇÃO CAIXA REAL — Presidente CEO (09/06/2026) ✅
+
+**Ordem CTO**: único KPI = DINHEIRO. Sem estimativa. Confirmado.
+
+### Componentes
+- **Coleção `executive_ledger`** (índices `cid_ts` + `action_id_uniq`)
+- **Coleção `executive_daily_closings`** (índice `cid_date`)
+- **Hook** em `execute_action` → `record_to_ledger()` automático após cada execução
+- **9 entries** backfilladas das ações já completed
+- **Endpoint `/cash/confirm-entry/{action_id}`** para anexar evidência real
+- **Job APScheduler 23:59** registrado no startup (`executive_daily_closing`)
+- **Meta progressiva** R$100 → R$1k → R$10k → R$100k em `corporate_goals`
+
+### Endpoints novos (8 sob `/api/presidente-ia/cash/*`)
+- GET `/cash` — caixa hoje/7d/30d (CONFIRMADO)
+- POST `/cash/daily-closing` — fechamento idempotente
+- GET `/cash/ia-ranking` — ranking financeiro das IAs
+- GET `/cash/module-ranking` — ranking financeiro dos módulos
+- GET `/cash/weekly-ceo-report` — EV semana × hoje + top criadora/destrutiva
+- GET `/cash/progressive-goal` — degraus batidos e próximo
+- POST `/cash/seed-progressive-goal` — semeia em corporate_goals
+- POST `/cash/confirm-entry/{action_id}` — anexa evidência REAL
+
+### Primeira medição real (co-demo · 09/06/2026)
+- **Caixa confirmado total: R$ 16.000,00** (evidência: 200 OS preventivas × R$ 80 = 200 visitas corretivas evitadas)
+- **3 degraus batidos** (R$100 · R$1k · R$10k) · falta **R$ 84.000** para o topo (R$100k)
+- **Fechamento do dia**: 9 ações · previsto R$62.813 · confirmado R$16.000 · perdido R$46.813
+  - Top criadora: `CRIACAO_OS_SMARTFIELD` (R$8.000 confirmados)
+  - Destruiu valor: `DISPARO_COBRANCA` (prev R$6.829 / conf R$0 — target_count=0)
+- **Ranking IAs**: `auto_pilot` → R$ 16.000 / acerto 59,3% · `admin@empresa.com` → R$ 0 / 0%
+- **Ranking módulos**: Smart Field **GERA DINHEIRO** (R$16k) · Cobrança/Retenção/Receita ainda em **DESTRÓI VALOR** (previsto sem confirmação)
+- **CEO weekly**: EV semana passada R$16,93M · hoje R$15,45M · criado R$768k · destruído R$2,24M · delta -R$1,48M (gap entre previsto e confirmado)
+
+### Regra estrita aplicada
+"Se não houver dinheiro confirmado, retornar R$ 0,00." Cumprida — antes de qualquer `confirm-entry`, todos os endpoints retornavam **R$ 0,00**. Só subiu quando 2 entries receberam evidência REAL via endpoint dedicado.
+
 ## 💰 OPERAÇÃO RECEITA AUTÔNOMA — Presidente Sócio (09/06/2026) ✅
 
 **Ordem CTO**: Presidente IA vira gerador direto de resultado. Toda

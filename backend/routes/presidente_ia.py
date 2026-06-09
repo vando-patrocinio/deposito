@@ -654,6 +654,96 @@ async def operator_daily_goals(
     return await op.daily_goals(_cid(user))
 
 
+# ─── OPERAÇÃO CAIXA REAL — Ledger Executivo ───
+@router.get("/cash")
+async def presidente_cash(
+    user: dict = Depends(require_ai_access()),
+):
+    """Caixa real (confirmado, sem estimativa). Janelas hoje/7d/30d."""
+    from services import presidente_cash as cash
+    return await cash.cash_summary(_cid(user))
+
+
+@router.post("/cash/daily-closing")
+async def presidente_daily_closing(
+    body: Dict[str, Any] = Body(default_factory=dict),
+    user: dict = Depends(require_ai_access()),
+):
+    """Fechamento diário (1 entry em executive_daily_closings).
+    Body opcional: date='YYYY-MM-DD' para reprocessar dia específico."""
+    from services import presidente_cash as cash
+    return await cash.daily_closing(_cid(user), body.get("date"))
+
+
+@router.get("/cash/ia-ranking")
+async def presidente_ia_ranking(
+    days: int = 30,
+    user: dict = Depends(require_ai_access()),
+):
+    """Ranking financeiro das IAs (não técnico)."""
+    from services import presidente_cash as cash
+    return {"items": await cash.ia_ranking(_cid(user), days=days),
+              "window_days": days}
+
+
+@router.get("/cash/module-ranking")
+async def presidente_module_ranking(
+    days: int = 30,
+    user: dict = Depends(require_ai_access()),
+):
+    """Ranking financeiro dos módulos (Receita, Cobrança, Smart Field,
+    Retenção, Indicação, Security Home, Fleet, Ligo Móvel, PlayHub)."""
+    from services import presidente_cash as cash
+    return {"items": await cash.module_ranking(_cid(user), days=days),
+              "window_days": days}
+
+
+@router.get("/cash/weekly-ceo-report")
+async def presidente_weekly_ceo_report(
+    user: dict = Depends(require_ai_access()),
+):
+    """Relatório semanal do CEO: EV semana passada vs hoje, valor
+    criado/destruído, top criadora/destrutiva."""
+    from services import presidente_cash as cash
+    return await cash.weekly_ceo_report(_cid(user))
+
+
+@router.get("/cash/progressive-goal")
+async def presidente_progressive_goal(
+    user: dict = Depends(require_ai_access()),
+):
+    """Meta progressiva R$100 → R$1k → R$10k → R$100k."""
+    from services import presidente_cash as cash
+    return await cash.current_progressive_goal(_cid(user))
+
+
+@router.post("/cash/seed-progressive-goal")
+async def presidente_seed_progressive_goal(
+    user: dict = Depends(require_ai_access()),
+):
+    """Cria/atualiza a meta progressiva em corporate_goals."""
+    from services import presidente_cash as cash
+    return await cash.seed_progressive_goals(_cid(user))
+
+
+@router.post("/cash/confirm-entry/{action_id}")
+async def presidente_cash_confirm_entry(
+    action_id: str,
+    body: Dict[str, Any] = Body(...),
+    user: dict = Depends(require_ai_access()),
+):
+    """Confirma manualmente o valor real capturado para uma ação.
+    Body: {valor_confirmado_brl: float, evidence: {...}}."""
+    from services import presidente_cash as cash
+    valor = float(body.get("valor_confirmado_brl") or 0)
+    upd = await cash.confirm_entry(action_id, valor,
+                                       body.get("evidence"))
+    await _audit(user, "ia", "cash_confirm_entry",
+                    target=action_id,
+                    data={"valor_confirmado_brl": valor})
+    return upd
+
+
 # ─────────────── GOVERNADOR V11 — Presidente como Governador ──────────
 #  10 endpoints, todos consolidando dados que já existem.
 

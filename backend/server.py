@@ -721,6 +721,13 @@ async def _startup() -> None:
         _ncj.register(scheduler)
     except Exception as e:
         logger.warning("[startup] nervous_coverage_job falhou: %r", e)
+    # OPERAÇÃO CAIXA REAL — fechamento diário 23:59 + indexes
+    try:
+        from services import presidente_cash as _cash
+        await _cash.ensure_indexes()
+        _cash.register_scheduler(scheduler)
+    except Exception as e:
+        logger.warning("[startup] presidente_cash falhou: %r", e)
     scheduler.add_job(holidays_refresh_job, CronTrigger(day="1", hour=3, minute=0),
                       id="holidays_refresh", replace_existing=True)
     scheduler.add_job(location_logs_cleanup_job, CronTrigger(hour="*/6", minute=10),

@@ -239,6 +239,14 @@ async def execute_action(action_id: str, executor: str,
     # APRENDIZADO — registra correction (previsto vs real)
     await _record_correction(action_id)
 
+    # OPERAÇÃO CAIXA REAL — registra entry no executive_ledger
+    try:
+        from services import presidente_cash as _cash
+        act_doc = await get_action(action_id)
+        await _cash.record_to_ledger(act_doc)
+    except Exception as _e:   # noqa: BLE001
+        logger.warning("[ledger] hook fail: %r", _e)
+
     return await get_action(action_id)
 
 
