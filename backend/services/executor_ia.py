@@ -827,26 +827,46 @@ async def _exec_reajuste_ipca(act: Dict, dry_run: bool) -> Dict:
 
 async def _exec_disparo_cobranca(act: Dict, dry_run: bool) -> Dict:
     cid = act["company_id"]
-    q_target = {"company_id": cid,
-                  "status": {"$in": ["ATIVO", "ATIVA"]},
-                  "financial_status":
-                      {"$regex": "inadimp|atrasad", "$options": "i"}}
-    candidatos = await db.subscribers.count_documents(q_target)
+    # CORREÇÃO: usar subscriber_invoices.overdue (campo real)
+    # ao invés de subscribers.financial_status (que não existe no schema)
+    pipe = [{"$match": {"company_id": cid, "status": "overdue"}},
+             {"$group": {"_id": None,
+                            "n": {"$sum": 1},
+                            "total": {"$sum": "$amount"}}}]
+    candidatos = 0
+    total_em_risco = 0.0
+    async for r in db.subscriber_invoices.aggregate(pipe):
+        candidatos = r["n"]
+        total_em_risco = round(r["total"] or 0, 2)
     if dry_run:
         return {"ok": True, "dry_run": True,
                   "candidatos": candidatos,
-                  "msg": (f"[DRY-RUN] enviaria régua de cobrança a "
-                            f"{candidatos} inadimplentes")}
-    # Real: cria registro de cobrança batch
+                  "valor_em_risco_brl": total_em_risco,
+                  "msg": (f"[DRY-RUN] enviaria régua a {candidatos} "
+                            f"faturas overdue (R$ {total_em_risco:.2f})")}
+    # Real: cria 1 entry por fatura overdue (granularidade de recuperação)
     batch_id = _new_id("dunning")
-    await db.dunning_events.insert_one({
-        "id": batch_id, "company_id": cid,
-        "action_id": act["id"], "kind": "regua_batch",
-        "created_at": _iso(_now()),
-        "target_count": candidatos, "status": "queued",
-    })
+    cur = db.subscriber_invoices.find(
+        {"company_id": cid, "status": "overdue"}).limit(500)
+    enqueued = 0
+    async for inv in cur:
+        await db.dunning_events.insert_one({
+            "id": _new_id("dun-evt"), "company_id": cid,
+            "action_id": act["id"], "batch_id": batch_id,
+            "kind": "regua_invoice",
+            "invoice_id": inv.get("external_id"),
+            "subscriber_id": inv.get("subscriber_external_id"),
+            "amount_brl": inv.get("amount"),
+            "due_date": inv.get("due_date"),
+            "channels_planned": ["whatsapp", "sms", "email"],
+            "created_at": _iso(_now()),
+            "status": "queued",
+        })
+        enqueued += 1
     return {"ok": True, "dry_run": False,
-            "batch_id": batch_id, "candidatos": candidatos}
+              "batch_id": batch_id, "candidatos": candidatos,
+              "enqueued": enqueued,
+              "valor_em_risco_brl": total_em_risco}
 
 
 async def _exec_contato_leo(act: Dict, dry_run: bool) -> Dict:

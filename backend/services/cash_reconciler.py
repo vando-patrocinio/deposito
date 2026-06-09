@@ -43,32 +43,49 @@ async def _confirm(action_id: str, valor: float,
 
 # ─────────────────────────────────────────────
 async def reconcile_disparo_cobranca(action: Dict[str, Any]) -> float:
-    """Soma valor de invoices pagas até 7d depois do dunning."""
+    """Cruza dunning_events.invoice_id × invoices.paid_date > ts.
+    Cada invoice paga após o dunning conta como recuperação confirmada."""
     ts = action.get("completed_at")
     if not ts:
         return 0.0
-    end_dt = datetime.fromisoformat(ts) + timedelta(days=7)
+    end_dt = datetime.fromisoformat(ts) + timedelta(days=30)  # janela 30d
     cid = action.get("company_id")
+    # 1. quais invoices foram alvo desta ação (via dunning_events)
+    dun_cur = db.dunning_events.find(
+        {"company_id": cid, "action_id": action["id"],
+         "invoice_id": {"$exists": True, "$ne": None}})
+    invoice_ids: List[str] = []
+    async for d in dun_cur:
+        if d.get("invoice_id"):
+            invoice_ids.append(d["invoice_id"])
+    if not invoice_ids:
+        await _confirm(action["id"], 0.0,
+                          {"source": "dunning_events",
+                           "invoice_ids": 0,
+                           "reason": "dunning_batch sem invoices"})
+        return 0.0
+    # 2. quantas dessas pagaram após o dunning
     pipe = [
         {"$match": {"company_id": cid,
+                       "external_id": {"$in": invoice_ids},
                        "status": "paid",
                        "paid_date": {"$gte": ts,
                                        "$lte": end_dt.isoformat()}}},
-        {"$group": {"_id": None, "total": {"$sum": "$amount_paid"},
+        {"$group": {"_id": None,
+                       "total": {"$sum": "$amount_paid"},
                        "n": {"$sum": 1}}}
     ]
+    valor = 0.0
+    n_paid = 0
     async for r in db.subscriber_invoices.aggregate(pipe):
-        v = round(r["total"] or 0, 2)
-        await _confirm(action["id"], v,
-                          {"source": "subscriber_invoices.paid",
-                           "n_invoices": r["n"],
-                           "window_days": 7,
-                           "since": ts})
-        return v
-    await _confirm(action["id"], 0.0,
-                      {"source": "subscriber_invoices.paid",
-                       "n_invoices": 0, "since": ts})
-    return 0.0
+        valor = round(r["total"] or 0, 2)
+        n_paid = r["n"]
+    await _confirm(action["id"], valor,
+                      {"source": "dunning_events × invoices.paid",
+                       "invoices_targeted": len(invoice_ids),
+                       "invoices_paid": n_paid,
+                       "window_days": 30})
+    return valor
 
 
 async def reconcile_criacao_os_smartfield(
