@@ -18,6 +18,7 @@ import { Lock, ShieldCheck, AlertTriangle, Eye, EyeOff,
   CheckCircle2, XCircle } from "lucide-react";
 import { api } from "@/lib/apiClient";
 import GrafanaMultiProfile from "@/components/GrafanaMultiProfile";
+import OltSnmpCard from "@/components/OltSnmpCard";
 
 const ProbeBanner = ({ probe, integration }) => {
   if (!probe) return null;
@@ -525,6 +526,8 @@ const ObservabilityCredentialsCard = ({ defaultOpen = false }) => {
                   data-testid="obs-cred-tab-grafana">Grafana</TabsTrigger>
                 <TabsTrigger value="zabbix"
                   data-testid="obs-cred-tab-zabbix">Zabbix</TabsTrigger>
+                <TabsTrigger value="olt"
+                  data-testid="obs-cred-tab-olt">OLT (SNMP)</TabsTrigger>
               </TabsList>
               <TabsContent value="grafana" className="pt-4 space-y-4">
                 <ProbeBanner
@@ -537,6 +540,9 @@ const ObservabilityCredentialsCard = ({ defaultOpen = false }) => {
                   probe={connStatus?.zabbix?.probe}
                   integration="zabbix" />
                 <ZabbixForm status={zabbixStatus} onSaved={load} />
+              </TabsContent>
+              <TabsContent value="olt" className="pt-4 space-y-4">
+                <OltSnmpCard />
               </TabsContent>
             </Tabs>
           )}
