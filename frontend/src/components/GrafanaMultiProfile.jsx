@@ -392,7 +392,7 @@ const GrafanaMultiProfile = () => {
       try {
         const [r, o] = await Promise.all([
           api.get("/api/admin/integrations/grafana/profiles"),
-          api.get("/api/ai-center/observability/grafana/olts")
+          api.get("/api/ai-center/observability/grafana/olts/all")
             .catch(() => null),
         ]);
         if (!cancelled) { setData(r); setOlts(o); }

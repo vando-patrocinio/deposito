@@ -49,7 +49,7 @@ const ObservabilityOnusGrafanaTab = () => {
       setLoading(true);
       try {
         const r = await api.get(
-          "/api/ai-center/observability/grafana/olts");
+          "/api/ai-center/observability/grafana/olts/all");
         if (cancelled) return;
         setData(r);
       } catch (e) {

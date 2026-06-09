@@ -37,7 +37,20 @@ const request = async (path, opts = {}) => {
   const t = getToken();
   if (t && !headers.Authorization) headers.Authorization = `Bearer ${t}`;
   const r = await fetch(url, { ...opts, headers });
-  const text = await r.text();
+  // Robusto contra "body stream already read" (service worker antigo
+  // pode tentar consumir o body). Tentamos clone primeiro; se falhar,
+  // arrayBuffer; se falhar de novo, devolvemos vazio.
+  let text = "";
+  try {
+    text = await r.clone().text();
+  } catch (e1) {
+    try {
+      const buf = await r.arrayBuffer();
+      text = new TextDecoder("utf-8").decode(buf);
+    } catch (e2) {
+      text = "";
+    }
+  }
   let data;
   try { data = text ? JSON.parse(text) : null; }
   catch { data = { raw: text }; }
