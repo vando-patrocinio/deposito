@@ -990,6 +990,9 @@ app.include_router(routes_admin_safety.router)
 # ─── Integration Credentials (Grafana/Zabbix via Vault) ──────
 from routes import admin_integrations as routes_admin_int  # noqa: E402
 app.include_router(routes_admin_int.router)
+# ─── OLT Registry (SNMP direto V-SOL) ────────────────────────
+from routes import olt_registry as routes_olt_reg  # noqa: E402
+app.include_router(routes_olt_reg.router)
 # ─────────────────────────────────────────────────────────────
 from routes import ai_center_v6 as routes_ai_center_v6  # noqa: E402
 app.include_router(routes_ai_center_v6.router)
