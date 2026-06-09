@@ -111,6 +111,7 @@ import SignupPage from "@/SignupPage";
 import OnboardingWizard from "@/OnboardingWizard";
 import { BillingBanner, BillingCancelPage, BillingSuccessPage } from "@/BillingPage";
 import { AuthProvider, hasRole, useAuth } from "@/AuthContext";
+import { Toaster as SonnerToaster } from "@/components/ui/sonner";
 
 function useMobileMode() {
   const detect = () => {
@@ -1349,6 +1350,8 @@ export default function App() {
       <DialogHost />
       <DialogHistoryGate />
       <GlobalToast />
+      <SonnerToaster position="bottom-right" richColors closeButton
+        toastOptions={{ duration: 5000 }} />
       <VersionBadge />
     </AuthProvider>
   );
