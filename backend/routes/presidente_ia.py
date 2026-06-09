@@ -655,3 +655,37 @@ async def self_evolution(user: dict = Depends(require_ai_access())):
 async def self_readiness(user: dict = Depends(require_ai_access())):
     from services import presidente_self_audit as sa
     return await sa.prontidao_comercial(_cid(user))
+
+
+# ─────────────── V20 — DIRETOR DE EVOLUÇÃO ───────────────
+@router.get("/evolution/backlog")
+async def evo_backlog(user: dict = Depends(require_ai_access())):
+    from services import presidente_evolution as ev
+    return await ev.backlog_executivo(_cid(user))
+
+
+@router.get("/evolution/sprints")
+async def evo_sprints(sprint_horas: int = 16,
+                          user: dict = Depends(require_ai_access())):
+    from services import presidente_evolution as ev
+    return await ev.gerar_sprints(_cid(user), sprint_horas)
+
+
+@router.get("/evolution/architect/{gargalo_id}")
+async def evo_arch(gargalo_id: str,
+                       user: dict = Depends(require_ai_access())):
+    from services import presidente_evolution as ev
+    return await ev.arquiteto_item(gargalo_id)
+
+
+@router.get("/evolution/roadmap")
+async def evo_roadmap(user: dict = Depends(require_ai_access())):
+    from services import presidente_evolution as ev
+    return await ev.roadmap_12m(_cid(user))
+
+
+@router.post("/evolution/sprint/{sprint_id}/audit")
+async def evo_audit(sprint_id: str,
+                        user: dict = Depends(require_ai_access())):
+    from services import presidente_evolution as ev
+    return await ev.auditor_execucao_sprint(sprint_id)

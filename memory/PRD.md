@@ -2,7 +2,20 @@
 
 > Documento vivo. Atualizado a cada sprint.
 
-## ⚡ Sprint atual — V15+V16+V17 PRESIDENTE IA AUTOCONSCIENTE (09/06/2026) ✅
+## ⚡ Sprint atual — V20 DIRETOR DE EVOLUÇÃO CONTÍNUA (09/06/2026) ✅
+**5 endpoints sob `/evolution/*`. 1 serviço único.**
+
+| Fase | Endpoint | Saída live |
+|---|---|---|
+| 1 Backlog | `GET /evolution/backlog` | 20 itens · valor R$ 79.000 |
+| 2 Sprints | `GET /evolution/sprints` | 10 sprints ordenados por ROI/h · Sprint A: 5 itens / 12h / R$ 47.000 / R$ 3.916/h |
+| 3 Arquiteto | `GET /evolution/architect/{gargalo_id}` | plano técnico (arquivos, rotas, cols, riscos, testes, rollback) |
+| 4 Auditor | `POST /evolution/sprint/{id}/audit` | diff prometido vs entregue (delta de métricas) |
+| 5 Roadmap 12m | `GET /evolution/roadmap` | 30d/90d/180d/365d × 1k/10k/50k clientes |
+
+**Reuso 100%:** `presidente_self_audit` (gargalos, plano por categoria, prontidão). **0 coleções persistentes novas** (apenas `evolution_sprints` opcional para auditoria).
+
+## ⚡ Sprint anterior — V15+V16+V17 PRESIDENTE IA AUTOCONSCIENTE ✅
 **Presidente IA agora audita o próprio SmartProv como se fosse provedor-cliente.**
 
 | Fase | Endpoint | Saída live |
