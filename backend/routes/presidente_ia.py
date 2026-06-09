@@ -462,3 +462,130 @@ async def learning_drift(
         {"company_id": cid}, {"_id": 0}).sort(
             [("updated_at", -1)])
     return {"drifts": await cursor.to_list(50)}
+
+
+# ─────────────── GOVERNADOR V11 — Presidente como Governador ──────────
+#  10 endpoints, todos consolidando dados que já existem.
+
+@router.post("/governador/goals")
+async def gov_create_goal(
+    body: Dict[str, Any] = Body(...),
+    user: dict = Depends(require_ai_access()),
+):
+    from services import governador_ia as gov
+    cid = _cid(user)
+    try:
+        return await gov.create_goal(
+            company_id=cid, area=body["area"], metric=body["metric"],
+            target_value=float(body["target_value"]),
+            deadline_iso=body["deadline"],
+            owner=body["owner"],
+            created_by=user.get("email") or "system",
+            ia_responsavel=body.get("ia_responsavel"),
+            description=body.get("description") or "")
+    except (KeyError, ValueError) as e:
+        raise HTTPException(400, str(e))
+
+
+@router.get("/governador/goals")
+async def gov_list_goals(
+    status: Optional[str] = None,
+    refresh: bool = False,
+    user: dict = Depends(require_ai_access()),
+):
+    from services import governador_ia as gov
+    cid = _cid(user)
+    if refresh:
+        await gov.refresh_all_goals(cid)
+    return {"goals": await gov.list_goals(cid, status=status)}
+
+
+@router.post("/governador/goals/{goal_id}/refresh")
+async def gov_refresh_goal(
+    goal_id: str,
+    user: dict = Depends(require_ai_access()),
+):
+    from services import governador_ia as gov
+    try:
+        return await gov.update_goal_progress(goal_id)
+    except ValueError as e:
+        raise HTTPException(404, str(e))
+
+
+@router.get("/governador/ia-scorecard")
+async def gov_scorecard(
+    period_days: int = 30,
+    user: dict = Depends(require_ai_access()),
+):
+    from services import governador_ia as gov
+    cid = _cid(user)
+    return {"scorecard": await gov.scorecard_ias(cid, period_days)}
+
+
+@router.get("/governador/ia-roi")
+async def gov_roi(
+    period_days: int = 30,
+    user: dict = Depends(require_ai_access()),
+):
+    from services import governador_ia as gov
+    cid = _cid(user)
+    return await gov.roi_por_ia(cid, period_days)
+
+
+@router.get("/governador/cobranca")
+async def gov_cobranca(user: dict = Depends(require_ai_access())):
+    from services import governador_ia as gov
+    cid = _cid(user)
+    return {"cobranca": await gov.cobranca_resultado(cid)}
+
+
+@router.get("/governador/prioridades")
+async def gov_prioridades(user: dict = Depends(require_ai_access())):
+    from services import governador_ia as gov
+    cid = _cid(user)
+    return {"prioridades": await gov.prioridades_executivas(cid)}
+
+
+@router.get("/governador/saude")
+async def gov_saude(user: dict = Depends(require_ai_access())):
+    from services import governador_ia as gov
+    cid = _cid(user)
+    return await gov.saude_corporativa(cid)
+
+
+@router.get("/governador/sistema-nervoso")
+async def gov_nervoso(
+    hours: int = 24,
+    user: dict = Depends(require_ai_access()),
+):
+    from services import governador_ia as gov
+    cid = _cid(user)
+    return await gov.sistema_nervoso(cid, hours)
+
+
+@router.get("/governador/mapa-executivo")
+async def gov_mapa(user: dict = Depends(require_ai_access())):
+    from services import governador_ia as gov
+    cid = _cid(user)
+    return await gov.mapa_executivo(cid)
+
+
+@router.get("/governador/ranking")
+async def gov_ranking(
+    period_days: int = 30,
+    user: dict = Depends(require_ai_access()),
+):
+    from services import governador_ia as gov
+    cid = _cid(user)
+    return {"ranking": await gov.ranking_eficiencia(cid, period_days)}
+
+
+@router.get("/governador/relatorio-diario")
+async def gov_relatorio(
+    force: bool = False,
+    user: dict = Depends(require_ai_access()),
+    _: bool = Depends(rate_limit(20, 600, "gov_daily")),
+):
+    from services import governador_ia as gov
+    cid = _cid(user)
+    return await gov.relatorio_presidencial_diario(cid, force=force)

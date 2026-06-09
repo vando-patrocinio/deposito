@@ -2,7 +2,35 @@
 
 > Documento vivo. Atualizado a cada sprint.
 
-## ⚡ Sprint atual — P1 PRESIDENTE IA COM BRAÇOS (09/06/2026) ✅
+## ⚡ Sprint atual — V11 PRESIDENTE IA GOVERNADOR (09/06/2026) ✅
+**10 capacidades de governança via agregação de dados existentes. Zero IA nova, zero dashboard, zero executor novo.**
+
+| # | Capacidade | Endpoint | Reuso |
+|---|---|---|---|
+| 1 | Sistema de metas corporativas | `POST/GET /governador/goals` · `POST /goals/{id}/refresh` | Coleção nova `corporate_goals` |
+| 2 | Score das IAs | `GET /governador/ia-scorecard` | Agrega `motor_ia_actions` + `motor_ia_drift` |
+| 3 | ROI por IA | `GET /governador/ia-roi` | Soma `motor_ia_actions.roi_brl` por `source` |
+| 4 | Cobrança de resultado | `GET /governador/cobranca` | Diff metas × IA responsável |
+| 5 | Priorização executiva | `GET /governador/prioridades` | Reuso 100% `presidente_executive.acoes_presidenciais` |
+| 6 | Saúde corporativa | `GET /governador/saude` | Reuso 100% `president_score` (8 drivers) |
+| 7 | Sistema Nervoso | `GET /governador/sistema-nervoso` | Reuso `nervous_coverage.coverage_report + events_by_domain + what_happened_today` |
+| 8 | Mapa executivo (6 áreas × IAs × metas) | `GET /governador/mapa-executivo` | Agregador novo, sem dados próprios |
+| 9 | Ranking eficiência operacional | `GET /governador/ranking` | Reuso scorecard + drift |
+| 10 | Relatório presidencial diário | `GET /governador/relatorio-diario` | Coleção nova `president_daily` (cache 1h) + reuso massivo |
+
+**Coleções novas:** apenas 2 — `corporate_goals` e `president_daily`.
+
+**Métricas suportadas em metas:** mrr_brl · ticket_medio_brl · clientes_ativos · president_score · dinheiro_em_risco_brl · dinheiro_recuperavel_brl · churn_previsto_30d_brl · receita_prevista_30d_brl · score_rede · score_operacao · score_financeiro.
+
+**6 áreas governadas:** RECEITA · OPERACAO · REDE · ATENDIMENTO · COMERCIAL · FINANCEIRO — cada uma com IAs responsáveis mapeadas.
+
+**Validação:**
+- 10/10 endpoints HTTP 200 autenticados
+- Pytest V11: 1/1 passing isolado · P1: 1/1 · V10: 1/1 · Safety: 6/6 = **9 testes verdes isolados**
+- Live: meta MRR R$ 340k criada, baseline R$ 321.876, progress trackable
+- Relatório diário live: saude=59.8/alerta, 5 prioridades, 6 áreas mapeadas, ROI 30d=R$ 0 (dry-run), narrativa auto-gerada
+
+## ⚡ Sprint anterior — P1 PRESIDENTE IA COM BRAÇOS (09/06/2026) ✅
 **Ciclo completo: PROPOSE → CONSELHO → APPROVE → EXECUTE → ROI → APRENDIZADO**
 
 | Etapa | Status | Implementação |
