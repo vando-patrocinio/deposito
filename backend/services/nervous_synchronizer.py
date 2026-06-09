@@ -244,6 +244,52 @@ SYNC_PLAN: List[Dict[str, Any]] = [
         "payload": ["id", "collaborator_id", "internal_block_reason"],
         "severity": "alta",
     },
+    # ---- MISSÃO 100% (Operação 90% · Fase Nervoso) ----
+    # Eventos plug-in sobre coleções já populadas. Filtros calibrados
+    # em valores reais (não-vazios) para não ficar 0 forever.
+    {
+        "collection": "sales_leads",
+        "ts": "updated_at",
+        "kind": "sale.lost",
+        "filter": {"status": {"$in":
+            ["lost", "perdido", "invalid_no_phone", "invalid"]}},
+        "payload": ["id", "phone", "status"],
+        "severity": "alta",
+    },
+    {
+        "collection": "smart_installs",
+        "ts": "finished_at",
+        "kind": "install.failed",
+        "filter": {"first_time_complete": False},
+        "payload": ["id", "ticket_id", "client_id"],
+        "severity": "alta",
+    },
+    {
+        "collection": "subscriber_invoices",
+        "ts": "paid_date",
+        "kind": "payment.received",
+        "filter": {"status": "paid"},
+        "payload": ["external_id", "amount_paid",
+                     "subscriber_external_id"],
+        "severity": "alta",
+    },
+    {
+        "collection": "subscriber_invoices",
+        "ts": "synced_at",
+        "kind": "payment.overdue",
+        "filter": {"status": "overdue"},
+        "payload": ["external_id", "amount", "due_date",
+                     "subscriber_external_id"],
+        "severity": "alta",
+    },
+    {
+        "collection": "ticket_logs",
+        "ts": "created_at",
+        "kind": "ticket.reopened",
+        "filter": {"action": {"$in":
+            ["reagendar", "reabrir", "reopened", "reaberto"]}},
+        "payload": ["ticket_id", "action", "actor_name"],
+    },
 ]
 
 

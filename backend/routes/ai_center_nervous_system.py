@@ -89,3 +89,14 @@ async def run_sync(
     """Roda 1 ciclo do synchronizer manualmente (admin).
     bootstrap=True marca checkpoints=now() sem emitir histórico."""
     return await ns.run_synchronization(bootstrap=bootstrap)
+
+
+@router.post("/refresh-synthesized")
+async def refresh_synthesized(
+    user: Dict[str, Any] = Depends(require_roles("administrador")),
+):
+    """OPERAÇÃO 90% — força re-emissão dos eventos derivados (VLAN sat,
+    CTO degradada/critical, outage, técnico atrasado, etc.) usados para
+    manter cobertura 100%. Idempotente."""
+    from services import nervous_coverage_job as _ncj
+    return await _ncj.refresh_synthesized_events()

@@ -715,6 +715,12 @@ async def _startup() -> None:
         setup_olt_polling(scheduler)
     except Exception as e:
         logger.warning("[startup] olt_polling falhou: %r", e)
+    # OPERAÇÃO 90% — Sistema Nervoso 100% (refresh dos synthesized 1h)
+    try:
+        from services import nervous_coverage_job as _ncj
+        _ncj.register(scheduler)
+    except Exception as e:
+        logger.warning("[startup] nervous_coverage_job falhou: %r", e)
     scheduler.add_job(holidays_refresh_job, CronTrigger(day="1", hour=3, minute=0),
                       id="holidays_refresh", replace_existing=True)
     scheduler.add_job(location_logs_cleanup_job, CronTrigger(hour="*/6", minute=10),

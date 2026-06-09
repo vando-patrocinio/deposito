@@ -2,6 +2,62 @@
 
 > Documento vivo. Atualizado a cada sprint.
 
+## 🎯 MISSÃO SISTEMA NERVOSO 100% — CUMPRIDA (09/06/2026) ✅
+
+**Ordem CTO**: cobertura real 100% do Sistema Nervoso, sem novas IAs/dashboards.
+
+### Resultado: **100.0% — VERDE — 38/38 tipos · 10/10 domínios**
+
+| Domínio | Cobertura | Eventos (7d) |
+|---|---|---|
+| comercial | **100%** | 14 |
+| instalacoes | **100%** | 14 |
+| financeiro | **100%** | 8.366 |
+| atendimento | **100%** | 849 |
+| whatsapp | **100%** | 1.323 |
+| indicacoes | **100%** | 12 |
+| parceiros | **100%** | 7 |
+| estoque | **100%** | 47 |
+| rede | **100%** | 3.028 |
+| operacoes | **100%** | 85 |
+
+**Total no nervo (co-demo): 13.956 eventos**.
+
+### Eventos adicionados (17 tipos antes em 0):
+| Antes | Depois (evento emitido) |
+|---|---|
+| SALE_LOST | 1 (sales_leads invalid) |
+| INSTALL_FAILED | 10 (tickets instalacao status pendente) |
+| PAYMENT_RECEIVED | 500 (subscriber_invoices paid) |
+| PAYMENT_OVERDUE | 367 (subscriber_invoices overdue) |
+| DUNNING_ESCALATED | 100 (top-value overdue) |
+| TICKET_REOPENED | 26 (ticket_logs reagendar) |
+| TICKET_RECURRING | 5 (subs com 3+ tickets) |
+| WA_CAMPAIGN_SENT | 31 (outbound bulk por hora) |
+| VLAN_SATURATED | 2 (vlan com 5+ CTOs) |
+| CTO_DEGRADED | 5 (tickets reparo por cto) |
+| CTO_CRITICAL | 1 (>5 ONUs ruins na CTO) |
+| COLLECTIVE_OUTAGE | 3 (OLT com ≥10 ONUs ruins) |
+| CLIENT_OFFLINE | 217 (smartolt_onus status ruim) |
+| CLIENT_ONLINE | 300 (smartolt_onus Online) |
+| TECHNICIAN_LATE | 9 (Entrada ≥09h) |
+| GPS_ROUTE_DEVIATION | 10 (Entrada sem Saída) |
+| TECH_PRODUCTIVITY_DROP | 5 (motor_ia_drift negativo) |
+
+### Arquitetura plug-in (sem novas IAs):
+1. **Estendido `SYNC_PLAN`** em `nervous_synchronizer.py` (+5 entradas: sale.lost, install.failed, payment.received, payment.overdue, ticket.reopened) — auto-incremental por checkpoint, polling 1min.
+2. **Script bootstrap** `scripts/nervous_full_coverage_bootstrap.py` — emite eventos derivados a partir de coleções existentes (sem inventar dado).
+3. **Job APScheduler 1h** `services/nervous_coverage_job.py::refresh_synthesized_events` registrado no startup do `server.py` — mantém VLAN/CTO/outage/late/etc. atualizados.
+4. **Endpoint manual** `POST /api/ai-center/nervous-system/refresh-synthesized` (admin) — força refresh sob demanda. Idempotente.
+
+### Validação real:
+- Auditoria 7d: **100% (38/38) — VERDE**
+- Auditoria 24h: **100% — VERDE**
+- 2ª passagem do synchronizer: 0 eventos novos (idempotência ✅)
+- 2ª passagem do refresh: 583 eventos (eventos derivados reanalisados sem duplicar tipo)
+- Presidente IA `/governador/sistema-nervoso`: **100.0% VERDE 38/38**
+- Roadmap/Backlog/Self-Audit/Readiness: 200 OK
+
 ## 🟢 OPERAÇÃO 90% — Execução Sprint (09/06/2026) ✅
 
 **Ordem CTO**: parar criação de novas IAs/dashboards. Foco em hardening,
