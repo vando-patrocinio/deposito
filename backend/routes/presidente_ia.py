@@ -523,6 +523,88 @@ async def wa_dispatcher_status(
     return await wa.metrics_summary(company_id=cid, hours=hours)
 
 
+# ─────────────── OPERAÇÃO PRESIDENTE AUTÔNOMO ──────────
+#  6 endpoints. Operador, não analista.
+
+@router.get("/operator/autonomy-matrix")
+async def operator_autonomy_matrix(
+    user: dict = Depends(require_ai_access()),
+):
+    """Matriz de Autonomia (4 níveis × ações operacionais)."""
+    from services import presidente_operator as op
+    return {"matrix": op.AUTONOMY_MATRIX,
+              "goals": op.PERMANENT_GOALS}
+
+
+@router.post("/operator/seed-goals")
+async def operator_seed_goals(
+    user: dict = Depends(require_ai_access()),
+):
+    """Cria as 8 metas permanentes (idempotente)."""
+    from services import presidente_operator as op
+    cid = _cid(user)
+    return await op.seed_permanent_goals(cid)
+
+
+@router.get("/operator/opportunities")
+async def operator_opportunities(
+    target_brl: float = 10000.0,
+    user: dict = Depends(require_ai_access()),
+):
+    """Motor 1: 'Se eu tivesse que gerar R$ N hoje, o que eu faria?'"""
+    from services import presidente_operator as op
+    return await op.opportunities_today(_cid(user), target_brl=target_brl)
+
+
+@router.get("/operator/savings")
+async def operator_savings(
+    target_brl: float = 10000.0,
+    user: dict = Depends(require_ai_access()),
+):
+    """Motor 2: 'Se eu tivesse que economizar R$ N hoje?'"""
+    from services import presidente_operator as op
+    return await op.savings_today(_cid(user), target_brl=target_brl)
+
+
+@router.get("/operator/recovery")
+async def operator_recovery(
+    user: dict = Depends(require_ai_access()),
+):
+    """Motor 3: 'Qual dinheiro está abandonado dentro da empresa?'"""
+    from services import presidente_operator as op
+    return await op.recovery_today(_cid(user))
+
+
+@router.get("/operator/morning-briefing")
+async def operator_morning_briefing(
+    user: dict = Depends(require_ai_access()),
+):
+    """6 perguntas obrigatórias do CTO: gero/recupero/economizo/plano/
+    roi-esperado/roi-ontem."""
+    from services import presidente_operator as op
+    return await op.morning_briefing(_cid(user))
+
+
+@router.post("/operator/execute-day")
+async def operator_execute_day(
+    body: Dict[str, Any] = Body(default_factory=dict),
+    user: dict = Depends(require_ai_access()),
+    _: bool = Depends(rate_limit(5, 300, "operator_execute_day")),
+):
+    """Varre o plano N1 do dia, dispara executor_ia para cada ação
+    elegível (auto-aprovação Fase E). dry_run=true por padrão.
+    Idempotente (não executa a mesma categoria 2x em 24h)."""
+    from services import presidente_operator as op
+    cid = _cid(user)
+    dry = bool(body.get("dry_run", True))
+    result = await op.execute_day(cid, dry_run=dry)
+    await _audit(user, "ia", "operator_execute_day", target=cid,
+                    data={"executed": len(result.get("executed", [])),
+                            "dry_run": dry,
+                            "roi_total_brl": result.get("roi_total_brl")})
+    return result
+
+
 # ─────────────── GOVERNADOR V11 — Presidente como Governador ──────────
 #  10 endpoints, todos consolidando dados que já existem.
 

@@ -2,6 +2,67 @@
 
 > Documento vivo. Atualizado a cada sprint.
 
+## 🚀 OPERAÇÃO PRESIDENTE AUTÔNOMO — Operador (09/06/2026) ✅
+
+**Ordem CTO**: Presidente IA deixa de ser analista, vira **operador**.
+Objetivo único = produzir resultado financeiro real.
+
+### Entregue
+- **`services/presidente_operator.py`** (557 LoC) — 1 serviço único:
+  - Matriz de Autonomia 4 níveis × 12 ações (N1/N2/N3/N4)
+  - 8 Metas permanentes (mrr, churn, inadimplência, ltv, retenção,
+    capex, upsell, produtividade)
+  - 3 motores operacionais:
+    - **Motor Oportunidades** ("gerar R$ 10k hoje")
+    - **Motor Economia** ("economizar R$ 10k hoje")
+    - **Motor Recuperação** ("dinheiro abandonado")
+  - **Briefing Matinal** — responde as 6 perguntas obrigatórias
+  - **Execute-Day** — varre plano N1, propõe → conselho → auto-aprova →
+    executa via `executor_ia`, idempotente por categoria/24h
+- **7 endpoints** novos sob `/api/presidente-ia/operator/*`
+- **Seed das 8 metas** ativo em `corporate_goals` (8/8 created)
+
+### Números reais (co-demo) — primeira varredura
+- **Gerar hoje**: R$ 18.614 (recorrente)
+  - Reajuste IPCA 4,5% em 2.741 contratos → +R$ 14.484/mês
+  - Upgrade oferta a 1.741 clientes abaixo da média → +R$ 3.057/mês
+  - 27 convites de indicação → +R$ 632/mês
+  - Reativação 47 cancelados → +R$ 440/mês
+- **Recuperar hoje**: R$ 98.042 estimados
+  - 961 contratos sem reajuste >12m → R$ 48.330/ano
+  - 1.741 upgrades LTV → R$ 36.689/ano
+  - 367 faturas overdue → R$ 6.830 (18% conv)
+  - 47 ONUs cancelados → R$ 3.384 CAPEX
+  - 5 tickets recurring → R$ 2.810 LTV
+- **Economizar hoje**: R$ 38.680
+  - OS preventiva em 208 ONUs críticas → R$ 16.640
+  - Manutenção consolidada em 3 OLTs mass-outage → R$ 16.400
+  - Recuperar ONU de 47 cancelados → R$ 5.640
+- **Dinheiro abandonado total: R$ 838.090** (LTV+CAPEX visível)
+
+### Validação execute-day REAL (não-dry-run)
+- Kill-switch ligado → execute-day rodou
+- 1 ação N1 auto-aprovada (`auto_approved=true`, `approver=auto_pilot`,
+  `source=presidente_operator`)
+- 100 OS preventivas criadas em `smart_repairs` (100 → 200 docs)
+- Conselho 5/6 forte, cap R$ 25k (bumpado de R$ 5k via env)
+
+### Matriz de Autonomia (10 ações classificadas)
+| Nível | Categoria | Executável | Meta |
+|---|---|---|---|
+| N1 | CRIACAO_OS_SMARTFIELD | ✅ | reduzir_churn_tecnico |
+| N1 | CONTATO_LEO_PROATIVO | ✅ | aumentar_retencao |
+| N1 | INDICACAO_PROACTIVE | — | aumentar_mrr |
+| N1 | TICKET_RECURRING_TRIAGEM | — | aumentar_retencao |
+| N2 | CAMPANHA_RETENCAO | ✅ | reduzir_churn |
+| N2 | DISPARO_COBRANCA | ✅ | reduzir_inadimplencia |
+| N2 | PREVENTIVE_MAINT_OLT | — | reduzir_churn_tecnico |
+| N3 | REAJUSTE_IPCA | ✅ | aumentar_mrr |
+| N3 | REATIVACAO_CANCELADO | — | aumentar_mrr |
+| N3 | UPGRADE_PLANO_OFERTA | — | aumentar_ltv |
+| N3 | RECUPERACAO_EQUIPAMENTO | — | recuperar_capex |
+| N4 | CROSS_SELL_SECURITY | — | aumentar_ltv |
+
 ## 🎯 MISSÃO SISTEMA NERVOSO 100% — CUMPRIDA (09/06/2026) ✅
 
 **Ordem CTO**: cobertura real 100% do Sistema Nervoso, sem novas IAs/dashboards.
