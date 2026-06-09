@@ -2,7 +2,21 @@
 
 > Documento vivo. Atualizado a cada sprint.
 
-## ⚡ Sprint atual — SNMP Direto Multi-Vendor + Merge Discovery (09/06/2026) ✅
+## ⚡ Sprint atual — PRESIDENTE IA V10 · Cérebro Executivo Monetizado (09/06/2026) ✅
+**Ordem executiva**: o Presidente IA deixou de ser dashboard, virou decisão.
+- ✅ Novo `services/presidente_executive.py` (480 LoC) — converte toda contagem em R$, com fontes resilientes.
+- ✅ Endpoint `GET /api/presidente-ia/executive` — retorna 8 blocos: `president_score`, `riscos_criticos`, `oportunidades`, `previsao_30d`, `dinheiro_em_risco`, `dinheiro_recuperavel`, `surpresas`, `acoes_presidenciais`.
+- ✅ Componente `frontend/src/components/PresidenteExecutivo.jsx` (630 LoC) com 8 seções monetizadas.
+- ✅ `PresidenteIaPanel.js` enxugou ~440 LoC de dashboard antigo (OrbitalMap, HealthCard, RisksCard, OpportunitiesCard, StatCard, UniversoLigoCard, ClientsAtRiskCard, MiniRow, Pill, RiskRow, MiniBox, SkeletonLoader, grid3). Mantidos: Conselho Executivo IA (6 cadeiras LLM) + BriefingModal (Café com IA) + Leo Proativo.
+- ✅ Bug `plan_price_brl` (preenchido em 2 docs) corrigido para `plan_price` (preenchido em 2.741 docs) — antes a "receita potencial" saía zerada.
+- ✅ Smartolt_onus.signal_text agora alimenta riscos de rede (254 Critical · 364 Warning · 213 Offline).
+- ✅ Reajuste atrasado integrado: 961 contratos >12m → R$ 423,19/mês recuperáveis.
+- ✅ `acoes_presidenciais` sempre = 5 (regra de ouro) com `{acao, impacto_brl, esforco, prioridade, justificativa}`.
+- ✅ `surpresas_executivas` ≤ 10 (zona com sinal degradado concentrado, OLT problemática, tickets esquecidos, bairros com leads anormais, etc.).
+- ✅ Teste `tests/test_presidente_executive.py` valida estrutura — passing.
+- ✅ Smoke screenshot autenticado mostra `score 60 ALERTA · MRR R$ 321.876 · 5 ações renderizadas`.
+
+## ⚡ Sprint anterior — SNMP Direto Multi-Vendor + Merge Discovery (09/06/2026) ✅
 **Independência operacional**: visibilidade ONU/OLT sem depender de Grafana/Zabbix:
 - ✅ `services/vsol_snmp.py` com OIDs V-SOL/Realtek + Huawei + ZTE (+ status maps + dbm_divider por vendor)
 - ✅ CRUD de OLTs em `routes/olt_registry.py` com perfis no `secrets_vault` (host/port/version/community/vendor/label/enabled)

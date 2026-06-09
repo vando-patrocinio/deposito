@@ -274,3 +274,17 @@ async def security_insight(user: dict = Depends(require_ai_access())):
     """Resumo executivo de segurança das últimas 24h."""
     from services.audit_alerts import daily_security_insight
     return await daily_security_insight()
+
+
+# ─────────────────── EXECUTIVO V10 — Cérebro Presidencial ───────────────────
+@router.get("/executive")
+async def executive_report(user: dict = Depends(require_ai_access()),
+                              _: bool = Depends(rate_limit(
+                                  30, 600, "presidente_executive"))):
+    """Relatório executivo monetizado. Substitui /dashboard como
+    fonte primária do Presidente IA V10. Nada é exibido em contagem;
+    tudo é traduzido em R$, ação e impacto."""
+    from services.presidente_executive import build_executive_report
+    cid = _cid(user)
+    await _audit(user, "ia", "presidente_executive_view", target=cid)
+    return await build_executive_report(cid)

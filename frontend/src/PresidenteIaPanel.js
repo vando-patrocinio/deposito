@@ -1,17 +1,14 @@
-/* PresidenteIaPanel.js — Sistema Nervoso Corporativo (iter218)
+/* PresidenteIaPanel.js — Sistema Nervoso Corporativo (V10)
 
-   Substitui o painel "Conselho IA" antigo. Centro: Presidente IA.
-   Orbital: 14 agentes. Cards: saúde, riscos, oportunidades, clientes
-   em risco, rede, atendimento, comercial, universo Ligo, Conselho
-   Executivo (CEO/COO/CTO/CFO/CPO + Estrategista).
-*/
+   V10 Update: O miolo dashboard foi substituído por PresidenteExecutivo
+   (decisão monetizada). Mantém Header, BriefingModal (Café com IA),
+   Leo Proativo e ConselhoExecutivo (pareceres LLM). */
 import React, { useEffect, useState } from "react";
 import { api } from "@/api";
+import PresidenteExecutivo from "@/components/PresidenteExecutivo";
 import {
-  Activity, AlertTriangle, BrainCircuit, CheckCircle2, ChevronDown,
-  Clock, Coffee, DollarSign, Heart, LineChart, Megaphone, Network,
-  RefreshCw, Settings, ShieldAlert, Sparkles, Target, TrendingUp,
-  Users, Wallet, X, Zap,
+  BrainCircuit, ChevronDown, Clock, Coffee, RefreshCw,
+  Settings, Sparkles, X, Zap,
 } from "lucide-react";
 
 const ORACLE = {
@@ -20,33 +17,16 @@ const ORACLE = {
   border: "#e2e8f0",
 };
 
-const HEALTH_COLOR = {
-  saudavel: ORACLE.green,
-  atencao: ORACLE.orange,
-  alerta: "#dc6803",
-  critico: ORACLE.red,
-};
-
-const RISK_LEVEL_COLOR = {
-  critico: ORACLE.red,
-  alto: ORACLE.orange,
-  medio: "#d97706",
-  baixo: "#64748b",
-};
-
 export default function PresidenteIaPanel() {
-  const [data, setData] = useState(null);
   const [council, setCouncil] = useState(null);
   const [loading, setLoading] = useState(false);
   const [scanning, setScanning] = useState(false);
   const [err, setErr] = useState("");
   const [showBriefing, setShowBriefing] = useState(false);
 
-  const fetchAll = async () => {
+  const fetchCouncil = async () => {
     setLoading(true); setErr("");
     try {
-      const r = await api._client.get("/presidente-ia/dashboard");
-      setData(r.data);
       const c = await api._client.get("/presidente-ia/conselho");
       setCouncil(c.data);
     } catch (e) {
@@ -55,13 +35,27 @@ export default function PresidenteIaPanel() {
     setLoading(false);
   };
 
-  useEffect(() => { fetchAll(); }, []);
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      setLoading(true);
+      try {
+        const c = await api._client.get("/presidente-ia/conselho");
+        if (!cancelled) setCouncil(c.data);
+      } catch (e) {
+        if (!cancelled) setErr(e?.response?.data?.detail || e.message);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
 
   const runScan = async () => {
     setScanning(true); setErr("");
     try {
       await api._client.post("/presidente-ia/scan");
-      await fetchAll();
+      await fetchCouncil();
     } catch (e) { setErr(e.message); }
     setScanning(false);
   };
@@ -91,12 +85,12 @@ export default function PresidenteIaPanel() {
 
   return (
     <div data-testid="presidente-ia-panel" style={{
-      display: "flex", flexDirection: "column", gap: 20, padding: "0 4px",
+      display: "flex", flexDirection: "column", gap: 16, padding: "0 4px",
     }}>
-      <Header data={data} loading={loading} scanning={scanning}
-                onScan={runScan} onRefresh={fetchAll}
-                onBriefing={() => setShowBriefing(true)}
-                onLeoProactive={runLeoProactive} />
+      <ExecActionBar loading={loading} scanning={scanning}
+                       onScan={runScan} onRefresh={fetchCouncil}
+                       onBriefing={() => setShowBriefing(true)}
+                       onLeoProactive={runLeoProactive} />
 
       {showBriefing && (
         <BriefingModal onClose={() => setShowBriefing(false)} />
@@ -109,496 +103,57 @@ export default function PresidenteIaPanel() {
         }}>{err}</div>
       )}
 
-      {!data && !err && (
-        <SkeletonLoader />
-      )}
+      {/* V10: Cérebro Executivo monetizado (substitui dashboard) */}
+      <PresidenteExecutivo />
 
-      {data && (
-        <>
-          {/* Sistema Nervoso — Presidente IA central + agentes orbitando */}
-          <OrbitalMap agents={data.agents} health={data.health}
-                        risks={data.risks} />
-
-          {/* Linhas 1: Saúde + Riscos + Oportunidades */}
-          <div style={grid3()}>
-            <HealthCard health={data.health} />
-            <RisksCard risks={data.risks} />
-            <OpportunitiesCard opps={data.opportunities} />
-          </div>
-
-          {/* Linha 2: Rede + Atendimento + Comercial */}
-          <div style={grid3()}>
-            <StatCard title="Rede" icon={Network}
-                        color="#1e40af"
-                        items={[
-                          { label: "CTOs", v: data.network.ctos },
-                          { label: "CTOs críticas",
-                            v: data.network.ctos_criticas,
-                            warn: data.network.ctos_criticas > 0 },
-                          { label: "ONUs offline",
-                            v: data.network.onus_offline,
-                            warn: data.network.onus_offline > 0 },
-                          { label: "OLTs", v: data.network.olts },
-                          { label: "Outages",
-                            v: data.network.outages,
-                            warn: data.network.outages > 0 },
-                        ]} />
-            <StatCard title="Atendimento" icon={Users}
-                        color="#0891b2"
-                        items={[
-                          { label: "Tickets abertos",
-                            v: data.attendance.tickets_abertos,
-                            warn: data.attendance.tickets_abertos > 50 },
-                          { label: "CSAT 30d",
-                            v: data.attendance.csat_30d || "—",
-                            suffix: data.attendance.csat_30d ? "/5" : "" },
-                        ]} />
-            <StatCard title="Comercial" icon={TrendingUp}
-                        color={ORACLE.green}
-                        items={[
-                          { label: "Leads 30d",
-                            v: data.commercial.leads_30d },
-                          { label: "Conversões",
-                            v: data.commercial.conversoes_30d },
-                          { label: "Taxa", suffix: "%",
-                            v: data.commercial.taxa_conversao_pct },
-                        ]} />
-          </div>
-
-          {/* Linha 3: Universo Ligo + Clientes em risco */}
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr",
-                          gap: 14 }}>
-            <UniversoLigoCard u={data.universo_ligo} />
-            <ClientsAtRiskCard clients={data.clients_at_risk} />
-          </div>
-
-          {/* Conselho Executivo */}
-          {council?.items && (
-            <ConselhoExecutivo items={council.items}
-                                  onRegenerate={regenerateCouncil} />
-          )}
-        </>
+      {/* Conselho Executivo IA (pareceres LLM — não é dashboard) */}
+      {council?.items && (
+        <ConselhoExecutivo items={council.items}
+                              onRegenerate={regenerateCouncil} />
       )}
     </div>
   );
 }
 
-// ─────────────────── Header ───────────────────
-function Header({ data, loading, scanning, onScan, onRefresh,
-                     onBriefing, onLeoProactive }) {
-  const score = data?.health?.score;
-  const status = data?.health?.status;
-  const color = HEALTH_COLOR[status] || ORACLE.purple;
+// ─────────────────── Barra de ações (substitui Header) ───────────────────
+function ExecActionBar({ loading, scanning, onScan, onRefresh,
+                              onBriefing, onLeoProactive }) {
   return (
     <div style={{
-      display: "flex", justifyContent: "space-between", flexWrap: "wrap",
-      gap: 14, alignItems: "center",
+      display: "flex", justifyContent: "flex-end", flexWrap: "wrap",
+      gap: 8, alignItems: "center",
     }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-        <div style={{
-          width: 52, height: 52, borderRadius: 14,
-          background: `linear-gradient(135deg, ${ORACLE.purple}, #6d28d9)`,
-          display: "flex", alignItems: "center", justifyContent: "center",
-          boxShadow: "0 6px 20px rgba(75, 29, 122, .35)",
-        }}>
-          <BrainCircuit size={26} color="white" />
-        </div>
-        <div>
-          <h1 style={{
-            fontSize: 24, fontWeight: 800, margin: 0,
-            letterSpacing: "-0.02em", color: "var(--text-primary)",
-            display: "flex", alignItems: "center", gap: 10,
-          }}>
-            Presidente IA
-            {score != null && (
-              <span style={{
-                fontSize: 12, fontWeight: 800, padding: "3px 10px",
-                borderRadius: 16, background: `${color}15`, color,
-                textTransform: "uppercase", letterSpacing: .5,
-              }}>{score}/100 · {status}</span>
-            )}
-          </h1>
-          <div style={{ fontSize: 12, color: "#64748b", marginTop: 2 }}>
-            Sistema Nervoso Corporativo do SmartProv · Observa,
-            entende, correlaciona, prevê, decide, age, aprende
-          </div>
-        </div>
-      </div>
-      <div style={{ display: "flex", gap: 8 }}>
-        <button onClick={onBriefing}
-                 data-testid="pres-briefing-btn"
-                 style={btnSec()}>
-          <Coffee size={13} />
-          Café com IA
-        </button>
-        <button onClick={onRefresh} disabled={loading || scanning}
-                 data-testid="pres-refresh"
-                 style={btnSec()}>
-          <RefreshCw size={13}
-            style={{
-              animation: loading ? "spin 1s linear infinite" : "none",
-            }} />
-          Atualizar
-        </button>
-        <button onClick={onScan} disabled={loading || scanning}
-                 data-testid="pres-scan-btn"
-                 style={btnPrimary()}>
-          <Zap size={13}
-            style={{ animation: scanning ? "pulse 1s ease infinite" : "none" }} />
-          {scanning ? "Varrendo…" : "Varredura agora"}
-        </button>
-        <button onClick={onLeoProactive} disabled={loading || scanning}
-                 data-testid="pres-leo-proactive-btn"
-                 style={{ ...btnPrimary(),
-                            background: ORACLE.orange }}>
-          <Sparkles size={13} />
-          Leo Proativo
-        </button>
-      </div>
+      <button onClick={onBriefing}
+               data-testid="pres-briefing-btn"
+               style={btnSec()}>
+        <Coffee size={13} />
+        Café com IA
+      </button>
+      <button onClick={onRefresh} disabled={loading || scanning}
+               data-testid="pres-refresh"
+               style={btnSec()}>
+        <RefreshCw size={13}
+          style={{ animation: loading ? "spin 1s linear infinite" : "none" }} />
+        Conselho
+      </button>
+      <button onClick={onScan} disabled={loading || scanning}
+               data-testid="pres-scan-btn"
+               style={btnPrimary()}>
+        <Zap size={13}
+          style={{ animation: scanning ? "pulse 1s ease infinite" : "none" }} />
+        {scanning ? "Varrendo…" : "Varredura proativa"}
+      </button>
+      <button onClick={onLeoProactive} disabled={loading || scanning}
+               data-testid="pres-leo-proactive-btn"
+               style={{ ...btnPrimary(), background: ORACLE.orange }}>
+        <Sparkles size={13} />
+        Leo Proativo
+      </button>
       <style>{`
         @keyframes spin { from {transform:rotate(0)} to {transform:rotate(360deg)} }
         @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
-        @keyframes orbit-glow { 0%,100%{opacity:.5} 50%{opacity:1} }
       `}</style>
     </div>
-  );
-}
-
-// ─────────────────── Orbital Map ───────────────────
-function OrbitalMap({ agents, health, risks }) {
-  const color = HEALTH_COLOR[health?.status] || ORACLE.purple;
-  const totalRisk = risks?.total || 0;
-  const size = 520;
-  const cx = size / 2;
-  const cy = size / 2;
-  const radius = 200;
-
-  return (
-    <div data-testid="orbital-map" style={{
-      background: `radial-gradient(circle at center, rgba(75,29,122,0.08) 0%, transparent 70%), white`,
-      border: `1px solid ${ORACLE.border}`,
-      borderRadius: 16, padding: 24, position: "relative",
-      overflow: "hidden",
-    }}>
-      <div style={{
-        fontSize: 10, fontWeight: 800, color: "#64748b",
-        textTransform: "uppercase", letterSpacing: .8,
-        marginBottom: 8, textAlign: "center",
-      }}>
-        Sistema Nervoso · 14 agentes coordenados
-      </div>
-      <div style={{
-        position: "relative", width: "100%", maxWidth: size,
-        margin: "0 auto", height: size,
-      }}>
-        <svg viewBox={`0 0 ${size} ${size}`}
-              style={{ position: "absolute", inset: 0, width: "100%",
-                         height: "100%" }}>
-          {/* Anéis decorativos */}
-          {[radius * 1.0, radius * 0.7, radius * 0.45].map((r, i) => (
-            <circle key={i} cx={cx} cy={cy} r={r}
-                     fill="none"
-                     stroke={`${color}${i === 0 ? "30" : "15"}`}
-                     strokeWidth={i === 0 ? 1.5 : 0.7}
-                     strokeDasharray={i === 0 ? "" : "4 6"} />
-          ))}
-          {/* Linhas dos agentes ao centro */}
-          {agents.map((a, idx) => {
-            const angle = (2 * Math.PI * idx) / agents.length - Math.PI / 2;
-            const x = cx + radius * Math.cos(angle);
-            const y = cy + radius * Math.sin(angle);
-            return (
-              <line key={`l-${a.id}`} x1={cx} y1={cy} x2={x} y2={y}
-                     stroke={`${a.color}40`} strokeWidth={1}
-                     strokeDasharray="2 4" />
-            );
-          })}
-        </svg>
-
-        {/* Centro — Presidente */}
-        <div style={{
-          position: "absolute", top: "50%", left: "50%",
-          transform: "translate(-50%, -50%)",
-          width: 130, height: 130, borderRadius: "50%",
-          background: `radial-gradient(circle, ${ORACLE.purple} 0%, #2d0f4a 100%)`,
-          boxShadow: `0 0 40px ${ORACLE.purple}55, 0 8px 32px rgba(0,0,0,0.2)`,
-          display: "flex", flexDirection: "column",
-          alignItems: "center", justifyContent: "center", gap: 4,
-          color: "white", textAlign: "center", padding: 6,
-        }}>
-          <BrainCircuit size={26} color="white" />
-          <div style={{ fontSize: 12, fontWeight: 800,
-                          letterSpacing: "-0.01em" }}>Presidente IA</div>
-          <div style={{ fontSize: 8, fontWeight: 700, opacity: .85,
-                          textTransform: "uppercase", letterSpacing: .5 }}>
-            {health?.score}/100
-          </div>
-          {totalRisk > 0 && (
-            <div style={{
-              position: "absolute", top: -8, right: -8,
-              background: ORACLE.red, color: "white",
-              borderRadius: "50%", width: 26, height: 26,
-              display: "flex", alignItems: "center",
-              justifyContent: "center", fontSize: 11, fontWeight: 800,
-              boxShadow: "0 4px 12px rgba(180,35,24,.5)",
-              animation: "pulse 1.5s ease infinite",
-            }}>{totalRisk}</div>
-          )}
-        </div>
-
-        {/* Agentes orbitando */}
-        {agents.map((a, idx) => {
-          const angle = (2 * Math.PI * idx) / agents.length - Math.PI / 2;
-          const x = (size / 2) + radius * Math.cos(angle);
-          const y = (size / 2) + radius * Math.sin(angle);
-          return (
-            <div key={a.id} data-testid={`agent-orbit-${a.id}`} style={{
-              position: "absolute",
-              left: `${(x / size) * 100}%`,
-              top: `${(y / size) * 100}%`,
-              transform: "translate(-50%, -50%)",
-              width: 86, textAlign: "center",
-            }}>
-              <div style={{
-                width: 52, height: 52, borderRadius: "50%",
-                background: "white",
-                border: `2px solid ${a.color}`,
-                margin: "0 auto",
-                display: "flex", alignItems: "center",
-                justifyContent: "center",
-                boxShadow: `0 4px 12px ${a.color}40`,
-                color: a.color, fontSize: 11, fontWeight: 800,
-              }}>
-                {a.label.split(" ")[0].slice(0, 4).toUpperCase()}
-              </div>
-              <div style={{
-                fontSize: 9.5, fontWeight: 700, color: "#334155",
-                marginTop: 4, whiteSpace: "nowrap",
-              }}>{a.label}</div>
-              <div style={{
-                fontSize: 8, color: "#94a3b8", fontWeight: 600,
-              }}>{a.group}</div>
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-// ─────────────────── Cards ───────────────────
-function HealthCard({ health }) {
-  const c = health.components;
-  const color = HEALTH_COLOR[health.status] || ORACLE.purple;
-  return (
-    <Card title="Saúde da Empresa" icon={Heart} color={color}>
-      <div style={{ position: "relative", margin: "8px auto 12px",
-                      width: 130, height: 130 }}>
-        <svg viewBox="0 0 100 100" style={{
-          transform: "rotate(-90deg)", width: "100%", height: "100%" }}>
-          <circle cx="50" cy="50" r="42" fill="none"
-                   stroke="#f1f5f9" strokeWidth="8" />
-          <circle cx="50" cy="50" r="42" fill="none"
-                   stroke={color} strokeWidth="8" strokeLinecap="round"
-                   strokeDasharray={`${(health.score / 100) * 264} 264`} />
-        </svg>
-        <div style={{
-          position: "absolute", inset: 0, display: "flex",
-          alignItems: "center", justifyContent: "center",
-          flexDirection: "column",
-        }}>
-          <div style={{ fontSize: 30, fontWeight: 800, color }}>
-            {health.score}
-          </div>
-          <div style={{ fontSize: 9, color: "#64748b", fontWeight: 700,
-                          textTransform: "uppercase", letterSpacing: .5 }}>
-            {health.status}
-          </div>
-        </div>
-      </div>
-      <MiniRow label="Total clientes" v={c.total_clientes} />
-      <MiniRow label="Ativos" v={c.ativos} ok />
-      <MiniRow label="Churn" v={`${c.churn_pct}%`}
-                bad={c.churn_pct > 3} />
-      <MiniRow label="Inadimplência" v={`${c.inadimplencia_pct}%`}
-                bad={c.inadimplencia_pct > 10} />
-      <MiniRow label="ONUs offline" v={c.onus_offline}
-                bad={c.onu_offline_pct > 2} />
-    </Card>
-  );
-}
-
-function RisksCard({ risks }) {
-  const tot = risks.total || 0;
-  return (
-    <Card title="Riscos" icon={ShieldAlert} color={ORACLE.red}>
-      {tot === 0 ? (
-        <div style={{ textAlign: "center", padding: 20, color: "#64748b" }}>
-          <CheckCircle2 size={32} color={ORACLE.green}
-                          style={{ margin: "0 auto" }} />
-          <div style={{ fontSize: 12, fontWeight: 700, marginTop: 8 }}>
-            Nenhum risco detectado
-          </div>
-        </div>
-      ) : (
-        <>
-          <div style={{ display: "flex", gap: 6, marginBottom: 10 }}>
-            <Pill n={risks.criticos.length} label="crítico"
-                    color={ORACLE.red} />
-            <Pill n={risks.altos.length} label="alto"
-                    color={ORACLE.orange} />
-            <Pill n={risks.medios.length} label="médio" color="#d97706" />
-          </div>
-          {[
-            ...risks.criticos, ...risks.altos, ...risks.medios,
-          ].slice(0, 5).map((r, i) => (
-            <RiskRow key={i} r={r} />
-          ))}
-        </>
-      )}
-    </Card>
-  );
-}
-
-function OpportunitiesCard({ opps }) {
-  return (
-    <Card title="Oportunidades" icon={Target} color={ORACLE.green}>
-      {opps.receita_potencial_brl > 0 && (
-        <div style={{
-          background: `${ORACLE.green}10`,
-          padding: "8px 12px", borderRadius: 8, marginBottom: 8,
-        }}>
-          <div style={{ fontSize: 9, fontWeight: 800, color: ORACLE.green,
-                          textTransform: "uppercase", letterSpacing: .5 }}>
-            Receita potencial
-          </div>
-          <div style={{ fontSize: 18, fontWeight: 800, color: ORACLE.green }}>
-            R$ {Number(opps.receita_potencial_brl).toLocaleString(
-              "pt-BR", { minimumFractionDigits: 2 })}
-          </div>
-        </div>
-      )}
-      {opps.items.slice(0, 4).map((o, i) => (
-        <div key={i} style={{
-          padding: "6px 0", borderBottom: `1px dashed ${ORACLE.border}`,
-        }}>
-          <div style={{ display: "flex", justifyContent: "space-between",
-                          fontSize: 12, fontWeight: 700,
-                          color: "#0f172a" }}>
-            <span>{o.titulo}</span>
-            {o.receita_potencial_brl > 0 && (
-              <span style={{ color: ORACLE.green }}>
-                +R$ {Number(o.receita_potencial_brl).toLocaleString(
-                  "pt-BR", { maximumFractionDigits: 0 })}
-              </span>
-            )}
-          </div>
-          <div style={{ fontSize: 10, color: "#64748b" }}>{o.descricao}</div>
-        </div>
-      ))}
-      {opps.items.length === 0 && (
-        <div style={{ color: "#94a3b8", fontSize: 12, padding: 10 }}>
-          Nenhuma oportunidade identificada agora.
-        </div>
-      )}
-    </Card>
-  );
-}
-
-function StatCard({ title, icon: Icon, color, items }) {
-  return (
-    <Card title={title} icon={Icon} color={color}>
-      <div style={{ display: "grid",
-                      gridTemplateColumns: "repeat(auto-fit, minmax(90px, 1fr))",
-                      gap: 8 }}>
-        {items.map((it, i) => (
-          <div key={i} style={{
-            background: "#fafbfc", borderRadius: 6, padding: "8px 10px",
-            border: `1px solid ${ORACLE.border}`,
-          }}>
-            <div style={{
-              fontSize: 18, fontWeight: 800,
-              color: it.warn ? ORACLE.red : (it.ok ? ORACLE.green : "#0f172a"),
-            }}>{typeof it.v === "number"
-                  ? it.v.toLocaleString("pt-BR") : (it.v ?? "—")}
-                {it.suffix || ""}</div>
-            <div style={{
-              fontSize: 9, color: "#64748b", fontWeight: 700,
-              textTransform: "uppercase", letterSpacing: .4,
-            }}>{it.label}</div>
-          </div>
-        ))}
-      </div>
-    </Card>
-  );
-}
-
-function UniversoLigoCard({ u }) {
-  return (
-    <Card title="Universo Ligo" icon={Sparkles} color={ORACLE.orange}>
-      <div style={{ display: "grid",
-                      gridTemplateColumns: "repeat(3, 1fr)", gap: 8 }}>
-        <MiniBox v={u.clientes_fibra} label="Fibra" color={ORACLE.purple} />
-        <MiniBox v={u.ligo_de_casa} label="Ligo Casa"
-                   color={ORACLE.orange} />
-        <MiniBox v={u.parceiros_ativos} label="Parceiros"
-                   color={ORACLE.green} />
-        <MiniBox v={u.promocoes_ativas} label="Promoções"
-                   color="#0891b2" />
-        <MiniBox v={u.resgates_30d} label="Resgates 30d"
-                   color="#7c3aed" />
-        <MiniBox v={u.indicacoes_total} label="Indicações"
-                   color={ORACLE.orange} />
-      </div>
-    </Card>
-  );
-}
-
-function ClientsAtRiskCard({ clients }) {
-  return (
-    <Card title="Clientes em risco de churn"
-            icon={AlertTriangle} color={ORACLE.red}>
-      {clients.length === 0 ? (
-        <div style={{ padding: 20, textAlign: "center",
-                        color: "#64748b" }}>
-          <CheckCircle2 size={28} color={ORACLE.green}
-                          style={{ margin: "0 auto" }} />
-          <div style={{ fontSize: 12, fontWeight: 700, marginTop: 6 }}>
-            Nenhum cliente em risco crítico
-          </div>
-        </div>
-      ) : (
-        <div style={{ display: "flex", flexDirection: "column", gap: 4,
-                        maxHeight: 240, overflowY: "auto" }}>
-          {clients.map((c) => (
-            <div key={c.subscriber_id} style={{
-              display: "flex", justifyContent: "space-between",
-              padding: "6px 8px", borderRadius: 6,
-              background: c.score >= 60
-                ? `${ORACLE.red}10`
-                : `${ORACLE.orange}10`,
-              fontSize: 11,
-            }}>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontWeight: 700, color: "#0f172a",
-                                whiteSpace: "nowrap", overflow: "hidden",
-                                textOverflow: "ellipsis" }}>
-                  {c.name || c.subscriber_id}
-                </div>
-                <div style={{ fontSize: 10, color: "#64748b" }}>
-                  {(c.reasons || []).join(" · ")}
-                </div>
-              </div>
-              <div style={{
-                fontWeight: 800,
-                color: c.score >= 60 ? ORACLE.red : ORACLE.orange,
-                fontSize: 14, marginLeft: 8,
-              }}>{c.score}</div>
-            </div>
-          ))}
-        </div>
-      )}
-    </Card>
   );
 }
 
@@ -914,77 +469,6 @@ function MiniRow({ label, v, ok, bad }) {
   );
 }
 
-function Pill({ n, label, color }) {
-  return (
-    <div style={{
-      flex: 1, padding: "6px 10px", borderRadius: 6,
-      background: `${color}10`, color, textAlign: "center",
-    }}>
-      <div style={{ fontSize: 18, fontWeight: 800 }}>{n}</div>
-      <div style={{ fontSize: 9, fontWeight: 700,
-                      textTransform: "uppercase", letterSpacing: .5 }}>
-        {label}
-      </div>
-    </div>
-  );
-}
-
-function RiskRow({ r }) {
-  const c = RISK_LEVEL_COLOR[r.level] || "#64748b";
-  return (
-    <div style={{
-      padding: "5px 8px", borderRadius: 6, marginTop: 3,
-      borderLeft: `3px solid ${c}`, background: `${c}08`,
-    }}>
-      <div style={{ fontSize: 11, fontWeight: 700, color: "#0f172a" }}>
-        {r.area}
-      </div>
-      <div style={{ fontSize: 10, color: "#475569" }}>{r.descricao}</div>
-    </div>
-  );
-}
-
-function MiniBox({ v, label, color }) {
-  return (
-    <div style={{
-      background: `${color}08`, borderRadius: 6, padding: "8px 6px",
-      textAlign: "center", border: `1px solid ${color}20`,
-    }}>
-      <div style={{ fontSize: 18, fontWeight: 800, color }}>
-        {typeof v === "number" ? v.toLocaleString("pt-BR") : v}
-      </div>
-      <div style={{
-        fontSize: 9, color: "#64748b", fontWeight: 700,
-        textTransform: "uppercase", letterSpacing: .4,
-      }}>{label}</div>
-    </div>
-  );
-}
-
-function SkeletonLoader() {
-  return (
-    <div style={{
-      background: "white", border: `1px solid ${ORACLE.border}`,
-      borderRadius: 12, padding: 40, textAlign: "center", color: "#64748b",
-    }}>
-      <BrainCircuit size={40} color={ORACLE.purple}
-                       style={{ margin: "0 auto",
-                                  animation: "pulse 1.5s ease infinite" }} />
-      <div style={{ fontSize: 13, fontWeight: 700, marginTop: 12 }}>
-        Inicializando o Sistema Nervoso…
-      </div>
-    </div>
-  );
-}
-
-function grid3() {
-  return {
-    display: "grid",
-    gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
-    gap: 14,
-  };
-}
-
 function btnSec() {
   return {
     padding: "8px 14px", fontSize: 12, fontWeight: 700,
@@ -993,6 +477,7 @@ function btnSec() {
     display: "flex", alignItems: "center", gap: 6,
   };
 }
+
 function btnPrimary() {
   return {
     padding: "8px 16px", fontSize: 12, fontWeight: 700,
@@ -1002,7 +487,3 @@ function btnPrimary() {
   };
 }
 
-// Reexport p/ não dar warning
-export {
-  Activity, DollarSign, LineChart, Megaphone, Wallet,
-};
