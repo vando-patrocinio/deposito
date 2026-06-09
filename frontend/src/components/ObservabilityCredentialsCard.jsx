@@ -17,6 +17,7 @@ import { toast } from "sonner";
 import { Lock, ShieldCheck, AlertTriangle, Eye, EyeOff,
   CheckCircle2, XCircle } from "lucide-react";
 import { api } from "@/lib/apiClient";
+import GrafanaMultiProfile from "@/components/GrafanaMultiProfile";
 
 const ProbeBanner = ({ probe, integration }) => {
   if (!probe) return null;
@@ -529,7 +530,7 @@ const ObservabilityCredentialsCard = ({ defaultOpen = false }) => {
                 <ProbeBanner
                   probe={connStatus?.grafana?.probe}
                   integration="grafana" />
-                <GrafanaForm status={grafanaStatus} onSaved={load} />
+                <GrafanaMultiProfile />
               </TabsContent>
               <TabsContent value="zabbix" className="pt-4 space-y-4">
                 <ProbeBanner

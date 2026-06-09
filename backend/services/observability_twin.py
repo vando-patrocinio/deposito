@@ -319,7 +319,11 @@ class GrafanaConnector:
     async def _load_from_vault(self) -> None:
         """Sobrepõe credenciais com valores do secrets_vault, se presentes.
         Chamado lazy em cada entry-point async. Permite UI dinâmica sem
-        restart do backend."""
+        restart do backend.
+
+        Multi-perfil (P0.5): lê `integration:grafana:active_profile` e
+        carrega `integration:grafana:profiles:{active}:*`. Cai pra chaves
+        legadas `integration:grafana:*` se não houver active_profile."""
         if self._vault_loaded:
             return
         self._vault_loaded = True
@@ -327,11 +331,22 @@ class GrafanaConnector:
             from services import secrets_vault as _v
             if not _v.is_available():
                 return
-            u = await _v.get_secret("integration:grafana:url")
-            tk = await _v.get_secret("integration:grafana:token")
-            usr = await _v.get_secret("integration:grafana:user")
-            pw = await _v.get_secret("integration:grafana:password")
-            org = await _v.get_secret("integration:grafana:org_id")
+            active = await _v.get_secret(
+                "integration:grafana:active_profile")
+            if active:
+                prefix = f"integration:grafana:profiles:{active}"
+                u = await _v.get_secret(f"{prefix}:url")
+                tk = await _v.get_secret(f"{prefix}:token")
+                usr = await _v.get_secret(f"{prefix}:user")
+                pw = await _v.get_secret(f"{prefix}:password")
+                org = await _v.get_secret(f"{prefix}:org_id")
+            else:
+                # Legado (pré-multi-perfil)
+                u = await _v.get_secret("integration:grafana:url")
+                tk = await _v.get_secret("integration:grafana:token")
+                usr = await _v.get_secret("integration:grafana:user")
+                pw = await _v.get_secret("integration:grafana:password")
+                org = await _v.get_secret("integration:grafana:org_id")
             if u:
                 self.url = u.rstrip("/")
             if tk:
