@@ -263,6 +263,12 @@ export const api = {
   fieldSettings: () => client.get("/field/settings").then((r) => r.data),
   fieldSettingsUpdate: (body) => client.put("/field/settings", body).then((r) => r.data),
   fieldAdminOverview: () => client.get("/field/admin/overview").then((r) => r.data),
+  // Isabella Field President
+  isabellaBriefing: (cid) => client.get("/field/isabella/briefing", { params: cid ? { cid } : {} }).then((r) => r.data),
+  isabellaRoute: (cid) => client.get("/field/isabella/route", { params: cid ? { cid } : {} }).then((r) => r.data),
+  isabellaOsBrief: (id, cid) => client.get(`/field/isabella/os/${id}/brief`, { params: cid ? { cid } : {} }).then((r) => r.data),
+  isabellaLousaAnalysis: () => client.get("/field/isabella/lousa-analysis").then((r) => r.data),
+  isabellaPresidentSummary: () => client.get("/field/isabella/president-summary").then((r) => r.data),
 
   lousaByCollaborator: (cid, opts = {}) => {
     const params = opts.adminTest ? { admin_test: 1 } : {};

@@ -114,6 +114,7 @@ from routes import (
     collaborator_assets as routes_collab_assets,
     vehicle_checklist as routes_vehicle_checklist,
     field_ops as routes_field_ops,
+    isabella_field as routes_isabella_field,
     whatsapp_twilio as routes_whatsapp_twilio,
     pdf_reports as routes_pdf_reports,
     whatsapp_meta as routes_whatsapp_meta,
@@ -1229,6 +1230,7 @@ app.include_router(routes_branding.router)
 app.include_router(routes_collab_assets.router)
 app.include_router(routes_vehicle_checklist.router)
 app.include_router(routes_field_ops.router)
+app.include_router(routes_isabella_field.router)
 app.include_router(routes_whatsapp_twilio.router)
 app.include_router(routes_whatsapp_meta.router)
 app.include_router(routes_holerite.router)

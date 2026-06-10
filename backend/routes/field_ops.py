@@ -789,7 +789,15 @@ async def field_os_finish(request: Request, ticket_id: str, payload: FinishIn,
         "collaborator_name": collab.get("name"), "outcome": payload.outcome,
         "sinal": (payload.completion_data or {}).get("sinal"),
     }, severity="media")
-    return {"ok": True, "result": result}
+    # Isabella Field President: nota de instalação/reparo + causa raiz
+    isabella_score = None
+    try:
+        from services.isabella_field import score_finish
+        isabella_score = await score_finish(company, collab, ticket_id,
+                                            payload.outcome)
+    except Exception as e:
+        logger.warning("[field_ops] isabella score_finish fail: %s", e)
+    return {"ok": True, "result": result, "isabella_score": isabella_score}
 
 
 # ---------------------------------------------------------------------------
@@ -990,9 +998,17 @@ async def field_vehicle_inspection(request: Request,
         "inspection_id": insp_id, "collaborator_id": collab["id"],
         "plate": doc["plate"], "km": payload.km,
     })
+    # Isabella: nota imediata + análise visual do Álvaro IA em background
+    isabella_score = None
+    try:
+        from services.isabella_field import score_vehicle_inspection
+        isabella_score = await score_vehicle_inspection(insp_id)
+    except Exception as e:
+        logger.warning("[field_ops] isabella vehicle score fail: %s", e)
     tg = await _toggles(company)
     max_age = int(tg.get("vehicle_inspection_max_age_days") or 7)
     return {"ok": True, "inspection_id": insp_id,
+            "isabella_score": isabella_score,
             "next_due": (datetime.now(timezone.utc)
                          + timedelta(days=max_age)).isoformat()}
 

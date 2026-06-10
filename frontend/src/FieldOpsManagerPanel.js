@@ -47,6 +47,100 @@ function timeAgo(iso) {
   } catch { return "—"; }
 }
 
+/* ISABELLA FIELD PRESIDENT — governança da Lousa + indicadores p/ Presidente IA */
+function IsabellaGovernance() {
+  const [summary, setSummary] = useState(null);
+  const [lousa, setLousa] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState(null);
+
+  useEffect(() => {
+    api.isabellaPresidentSummary().then(setSummary).catch((e) => setErr(e?.response?.data?.detail || e.message));
+  }, []);
+
+  const runLousa = async () => {
+    setBusy(true); setErr(null);
+    try {
+      const r = await api.isabellaLousaAnalysis();
+      setLousa(r);
+    } catch (e) { setErr(e?.response?.data?.detail || e.message); }
+    finally { setBusy(false); }
+  };
+
+  return (
+    <div style={card} data-testid="isabella-governance">
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10, flexWrap: "wrap", gap: 8 }}>
+        <div>
+          <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: 1.2, color: "white", background: "#0f172a", padding: "4px 8px", borderRadius: 6, textTransform: "uppercase" }}>
+            Isabella Field President
+          </span>
+          <span style={{ fontSize: 11, color: "#64748b", marginLeft: 8 }}>preside a operação de campo e alimenta o Presidente IA</span>
+        </div>
+        <button data-testid="isabella-run-lousa" onClick={runLousa} disabled={busy}
+          style={{ height: 36, padding: "0 14px", borderRadius: 10, border: 0, background: "#0f172a", color: "white", fontWeight: 700, fontSize: 12, cursor: "pointer", opacity: busy ? 0.6 : 1 }}>
+          {busy ? "Analisando Lousa…" : "Analisar Lousa agora"}
+        </button>
+      </div>
+
+      {err && <div style={{ fontSize: 12, color: "#b91c1c", marginBottom: 8 }}>{String(err)}</div>}
+
+      {summary && (
+        <div data-testid="isabella-president-summary" style={{ display: "flex", gap: 14, flexWrap: "wrap", marginBottom: 10 }}>
+          {[["Finalizadas hoje", summary.finalizadas_hoje],
+            ["Causas-raiz classificadas (30d)", summary.retrabalho_classificado_30d],
+            ["Truck-roll evitado (30d)", summary.truck_roll_avoidance_30d],
+            ["Nota média frota (30d)", summary.fleet_score_avg_30d ?? "—"],
+            ["Comodato recuperado (30d)", `R$ ${(summary.equipment_recovered_30d_brl || 0).toFixed(2)}`],
+            ["Perda comodato (30d)", `R$ ${(summary.equipment_lost_30d_brl || 0).toFixed(2)}`],
+            ["Eventos de campo (30d)", summary.field_events_30d]].map(([l, v]) => (
+            <div key={l} style={{ minWidth: 130 }}>
+              <div style={{ fontSize: 16, fontWeight: 800, color: "#0f172a" }}>{v ?? 0}</div>
+              <div style={{ fontSize: 9, fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: 0.5 }}>{l}</div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {summary?.techs_today?.length > 0 && (
+        <div style={{ fontSize: 12, color: "#475569", marginBottom: 10 }}>
+          {summary.techs_today.map((t) => (
+            <span key={t.collaborator_id} style={{ marginRight: 14 }}>
+              <strong style={{ color: "#0f172a" }}>{t.name || t.collaborator_id}</strong>: {t.finalizadas_hoje} OS
+              {t.nota_media != null ? ` · nota ${t.nota_media}` : ""}
+            </span>
+          ))}
+        </div>
+      )}
+
+      {lousa && (
+        <div data-testid="isabella-lousa-result" style={{ overflowX: "auto" }}>
+          <div style={{ fontSize: 11, color: "#065f46", fontWeight: 700, marginBottom: 6 }}>
+            {lousa.count} bolha(s) analisadas e priorizadas — análise gravada em cada OS da Lousa.
+          </div>
+          <table style={{ width: "100%", borderCollapse: "collapse" }}>
+            <thead><tr>
+              <th style={th}>#</th><th style={th}>Cliente</th><th style={th}>Tipo</th>
+              <th style={th}>Risco</th><th style={th}>Previsão</th><th style={th}>Análise Isabella</th>
+            </tr></thead>
+            <tbody>
+              {lousa.items.slice(0, 10).map((i) => (
+                <tr key={i.ticket_id}>
+                  <td style={{ ...td, fontWeight: 800 }}>{i.priority_rank}</td>
+                  <td style={td}>{i.client}</td>
+                  <td style={td}>{i.type}</td>
+                  <td style={{ ...td, fontWeight: 700, color: i.risk === "alto" ? "#b91c1c" : (i.risk === "medio" ? "#b45309" : "#065f46") }}>{i.risk}</td>
+                  <td style={td}>{i.prediction}</td>
+                  <td style={{ ...td, fontSize: 11, color: "#475569" }}>{i.analysis}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function Toggle({ checked, onChange, testId, disabled }) {
   return (
     <button data-testid={testId} disabled={disabled}
@@ -119,6 +213,8 @@ export default function FieldOpsManagerPanel() {
         <Kpi title="Retiradas pendentes" value={c.retiradas_pendentes} />
         <Kpi title="Truck-roll evitado (30d)" value={data.truck_roll_avoidance_30d} />
       </div>
+
+      <IsabellaGovernance />
 
       {/* Técnicos */}
       <div style={card} data-testid="field-admin-techs">

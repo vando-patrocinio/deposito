@@ -1963,6 +1963,28 @@ function BubbleCard({ ticket, slotHour, blinkOverdue, isDragging, onDragStart, o
         </div>
       )}
 
+      {/* ISABELLA FIELD PRESIDENT (prioridade/risco/previsão na bolha) */}
+      {ticket.isabella && (
+        <div
+          data-testid={`isabella-pill-${ticket.id}`}
+          title={`Isabella · ${ticket.isabella.analysis || ""} · ${ticket.isabella.prediction || ""}`}
+          style={{
+            display: "inline-flex", alignItems: "center", gap: 4,
+            marginTop: 6, marginLeft: 4, padding: "2px 8px", borderRadius: 999,
+            fontSize: 10, fontWeight: 800,
+            border: "1px solid",
+            background: ticket.isabella.risk === "alto" ? "#fef2f2"
+              : ticket.isabella.risk === "medio" ? "#fffbeb" : "#f0fdf4",
+            color: ticket.isabella.risk === "alto" ? "#b91c1c"
+              : ticket.isabella.risk === "medio" ? "#b45309" : "#065f46",
+            borderColor: ticket.isabella.risk === "alto" ? "#fecaca"
+              : ticket.isabella.risk === "medio" ? "#fcd34d" : "#86efac",
+          }}
+        >
+          ISA #{ticket.isabella.priority_rank} · {ticket.isabella.risk}
+        </div>
+      )}
+
       {/* FOOTER (SLA + IA) */}
       {(ticket.status === "aberta" || ai.score != null) && (
         <div style={{

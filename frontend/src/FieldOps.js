@@ -3,6 +3,7 @@ import { api } from "@/api";
 import { Icon, Row } from "@/ui";
 import FieldOpsFrota from "@/FieldOpsFrota";
 import FieldOpsEstoque from "@/FieldOpsEstoque";
+import { IsabellaCard, IsabellaOsBrief } from "@/FieldOpsIsabella";
 
 /* =============================================================
    Smart Field Ops — módulo do técnico DENTRO do CollaboratorApp.
@@ -194,6 +195,26 @@ function OsDetail({ ticketId, collabId, readOnly, onBack, onOpenLousa }) {
           {t.field_arrived_at && <Row label="Chegada" value={hhmm(t.field_arrived_at)} />}
         </div>
       </div>
+
+      {!done && <IsabellaOsBrief ticketId={t.id} collabId={collabId} />}
+
+      {done && t.isabella_score && (
+        <div data-testid="isabella-score-card" style={{ ...appCard, padding: 14, border: "1.5px solid #0f172a" }}>
+          <div style={{ ...sectionLabel, marginBottom: 8 }}>Nota Isabella desta OS</div>
+          <div style={{ display: "flex", gap: 8 }}>
+            {[["Qualidade", t.isabella_score.qualidade], ["Organização", t.isabella_score.organizacao],
+              ["Processo", t.isabella_score.processo], ["Resultado", t.isabella_score.resultado]].map(([l, v]) => (
+              <div key={l} style={{ flex: 1, textAlign: "center", padding: "8px 4px", borderRadius: 10, background: "#f8fafc", border: "1px solid #eef2f7" }}>
+                <div style={{ fontSize: 16, fontWeight: 800, color: "#0f172a" }}>{v}</div>
+                <div style={{ fontSize: 9, fontWeight: 700, color: "#64748b", textTransform: "uppercase" }}>{l}</div>
+              </div>
+            ))}
+          </div>
+          <div style={{ textAlign: "center", marginTop: 8, fontSize: 13, fontWeight: 800, color: "#0f172a" }}>
+            Nota final: {t.isabella_score.nota_final}/10
+          </div>
+        </div>
+      )}
 
       {!readOnly && !done && (
         <div style={{ ...appCard, padding: 14 }}>
@@ -408,7 +429,7 @@ function BlockForm({ onSubmit, busy }) {
 }
 
 /* ---------------- Dashboard (Hoje) ---------------- */
-function FieldDashboard({ dash, onOpenOs }) {
+function FieldDashboard({ dash, onOpenOs, collabId }) {
   if (!dash) return <div style={{ ...appCard, color: "#64748b", fontSize: 13 }}>Carregando painel…</div>;
   const c = dash.counts || {};
   const metric = (label, value, warn) => (
@@ -419,6 +440,7 @@ function FieldDashboard({ dash, onOpenOs }) {
   );
   return (
     <div data-testid="field-dashboard">
+      <IsabellaCard collabId={collabId} onOpenOs={onOpenOs} />
       <div style={{ ...appCard, padding: 14 }}>
         <div style={{ ...sectionLabel, marginBottom: 10 }}>Meu dia em campo</div>
         <div style={{ display: "flex", gap: 8 }}>
@@ -543,7 +565,7 @@ export default function FieldOps({ collabId, onBack, onOpenLousa }) {
         <OsDetail ticketId={osId} collabId={collabId} readOnly={dash?.read_only}
           onBack={() => { setOsId(null); loadDash(); }} onOpenLousa={onOpenLousa} />
       ) : tab === "hoje" ? (
-        <FieldDashboard dash={dash} onOpenOs={setOsId} />
+        <FieldDashboard dash={dash} onOpenOs={setOsId} collabId={collabId} />
       ) : tab === "estoque" ? (
         <FieldOpsEstoque collabId={collabId} readOnly={dash?.read_only} />
       ) : (

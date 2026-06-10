@@ -106,6 +106,16 @@ class EventType:
     FIELD_VEHICLE_INSPECTION_DONE = "field.vehicle.inspection.done"
     FIELD_EQUIPMENT_RETURNED = "field.equipment.returned"
     FIELD_STOCK_UPDATED = "field.stock.updated"
+    # Isabella Field President — presidência operacional de campo (06/2026)
+    FIELD_ISABELLA_RECOMMENDATION_CREATED = "field.isabella.recommendation.created"
+    FIELD_ISABELLA_ROUTE_OPTIMIZED = "field.isabella.route.optimized"
+    FIELD_ISABELLA_INSTALLATION_SCORED = "field.isabella.installation.scored"
+    FIELD_ISABELLA_REPAIR_SCORED = "field.isabella.repair.scored"
+    FIELD_ISABELLA_VEHICLE_SCORED = "field.isabella.vehicle.scored"
+    FIELD_ISABELLA_STOCK_ALERT = "field.isabella.stock.alert"
+    FIELD_ISABELLA_PRIORITY_CHANGED = "field.isabella.priority.changed"
+    FIELD_ISABELLA_ROOT_CAUSE_DETECTED = "field.isabella.root_cause.detected"
+    FIELD_ISABELLA_TRUCK_ROLL_AVOIDED = "field.isabella.truck_roll_avoided"
 
 
 SEVERITY = ("baixa", "media", "alta", "critica")
