@@ -2,6 +2,85 @@
 
 > Documento vivo. Atualizado a cada sprint.
 
+## 🌌 UNIVERSO LIGO + ISABELLA EXPERIENCE COMMANDER ✅ (10/02/2026)
+
+**Ordem CTO**: transformar a Isabella em anfitriã do Universo Ligo —
+encantamento + pertencimento + retenção emocional, com Human
+Authorization Gate em qualquer ação financeira.
+
+### Entregas
+
+#### Backend
+- `services/universo_ligo.py` — score multidimensional (tempo de casa,
+  pagamentos em dia, NPS, indicações convertidas, addons, retenção,
+  inadimplência) gerando 6 níveis: **Explorador → Cometa → Órbita →
+  Estelar → Galáxia Ouro → Universo Ligo**. Identificação automática
+  por phone / external_code / document / subscriber_id. Histórico de
+  mudança de nível em `universo_ligo_history`. Cache 24h em
+  `universo_ligo_scores`.
+- `services/isabella_experience.py` — Experience Commander com **12
+  templates não-promocionais** (anniversary_install_{1y,3y,5y},
+  birthday, referral_converted, incident_resolved, upgrade_realized,
+  level_up_{galaxia,universo}, vip_pizza, nps_proactive, welcome).
+  - **Regra do nome**: `compose_message` valida ≤ 2 ocorrências do
+    primeiro nome por mensagem; mensagens são reprovadas se exceder.
+  - **Human Authorization Gate** (estados):
+    `DRAFT → READY → AWAITING_APPROVAL → APPROVED → SCHEDULED → EXECUTED
+    | CANCELLED`.
+  - 4 níveis de aprovação: L1 automática (sem custo), L2 gestor, L3
+    administrador, L4 CTO. Validado por `role_rank`.
+  - Auditoria em `experience_campaigns_audit` (created/approved/
+    executed/cancelled).
+  - Parecer do Conselho IA (Isabella + Presidente + Álvaro) por
+    campanha — gera risco + recomendação, mas **nunca executa**.
+- `routes/universo_ligo.py` — 16 endpoints (`/api/universo-ligo/*` e
+  `/api/experience/*`).
+- `services/event_bus.py` — 7 novos EventTypes
+  (`universo.level.changed`, `universo.score.updated`,
+  `experience.event.detected/drafted/approved/executed/cancelled`).
+
+#### Frontend
+- `frontend/src/UniversoLigoPanel.js` — UMA tela com:
+  - Barra de distribuição por nível (6 cores) + legenda
+  - Tab **Campanhas** com 7 filtros de status, aprovar/enviar/cancelar/
+    parecer 1-clique
+  - Tab **Identificar cliente** (busca por telefone, traz nível embutido)
+- Sidebar: novo item "Universo Ligo".
+- 18 helpers novos em `api.js`.
+
+### Validação Zero Mock (`test_universo_ligo.py`)
+12/12 critérios obrigatórios ✅:
+1. Identificação automática (id/phone/external_code) ✅
+2. Regra de não-repetição de nome (1x permitido / 5x reprovado) ✅
+3. Score & nível calculados ✅
+4. Mudança de nível persistida em history ✅
+5. Execução bloqueada sem aprovação (PermissionError) ✅
+6. Execução pós-aprovação OK (status EXECUTED) ✅
+7. Auditoria created/approved/executed ✅
+8. Conselho IA com parecer (isabella/presidente/alvaro) ✅
+9. ROI previsto persistido ✅
+10. **12 templates** sem palavras promocionais ✅
+11. L2/L3/L4 exigem aprovação (auto_execute=False) ✅
+12. L3 financeira bloqueada mesmo via /execute ✅
+
+### Regressão preservada
+- `test_isabella_learning_loop.py` 18/18 ✅
+- `test_isabella_incident.py` 10/10 ✅
+- `test_iter83_baileys_scheduler.py` 6/6 ✅
+
+### Evidências
+- **Identificação por phone 5511991188609** → retornou TELMA SUMICA
+  TAYOTA BUCHALLA com nível **Explorador** embutido
+- **Mensagem de aniversário 1y**: usa nome 1x (saudação), corpo sem
+  repetição — validado mecanicamente
+- **Campanha L3 (pizza R$ 45)** sem aprovação: bloqueada com
+  `PermissionError: requer administrador ou superior`
+- **Após aprovação CTO** → executada via fake transport (registro em
+  `wa_fake_outbox`) → audit com 3 ações (created/approved/executed)
+- **Parecer do Conselho**: `recomendacao=aprovar, risco=moderado` para
+  campanha com expected_roi (R$ 200) > estimated_cost (R$ 45)
+
+
 ## 🛡️ ISABELLA — GOVERNANÇA & DÍVIDA TÉCNICA ZERADA ✅ (10/02/2026)
 
 **Ordem CTO**: parar de criar capacidade nova. Fechar dívida + provar

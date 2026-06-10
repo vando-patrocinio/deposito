@@ -116,6 +116,7 @@ from routes import (
     field_ops as routes_field_ops,
     isabella_field as routes_isabella_field,
     isabella_commanders as routes_isabella_commanders,
+    universo_ligo as routes_universo_ligo,
     whatsapp_twilio as routes_whatsapp_twilio,
     pdf_reports as routes_pdf_reports,
     whatsapp_meta as routes_whatsapp_meta,
@@ -1247,6 +1248,7 @@ app.include_router(routes_vehicle_checklist.router)
 app.include_router(routes_field_ops.router)
 app.include_router(routes_isabella_field.router)
 app.include_router(routes_isabella_commanders.router)
+app.include_router(routes_universo_ligo.router)
 app.include_router(routes_whatsapp_twilio.router)
 app.include_router(routes_whatsapp_meta.router)
 app.include_router(routes_holerite.router)

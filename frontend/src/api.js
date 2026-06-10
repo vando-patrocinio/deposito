@@ -2056,4 +2056,40 @@ export const api = {
   isaIncidentNotify: (incidentId, payload) =>
     client.post(`/isabella/incidents/${incidentId}/notify`, payload)
       .then((r) => r.data),
+
+  // ── Universo Ligo & Experience Commander ──────────────────────────────
+  ulIdentify: (params) =>
+    client.get(`/universo-ligo/identify`, { params }).then((r) => r.data),
+  ulScore: (subscriberId, force = false) =>
+    client.get(`/universo-ligo/score/${subscriberId}`,
+                 { params: { force } }).then((r) => r.data),
+  ulLevels: () =>
+    client.get(`/universo-ligo/levels`).then((r) => r.data),
+  ulPanel: () =>
+    client.get(`/universo-ligo/panel`).then((r) => r.data),
+  ulRefreshAll: () =>
+    client.post(`/universo-ligo/refresh-all`).then((r) => r.data),
+  ulHistory: (subscriberId) =>
+    client.get(`/universo-ligo/history/${subscriberId}`).then((r) => r.data),
+  expScan: () =>
+    client.post(`/experience/scan`).then((r) => r.data),
+  expListCampaigns: (params = {}) =>
+    client.get(`/experience/campaigns`, { params }).then((r) => r.data),
+  expGetCampaign: (id) =>
+    client.get(`/experience/campaigns/${id}`).then((r) => r.data),
+  expApproveCampaign: (id, notes) =>
+    client.post(`/experience/campaigns/${id}/approve`, { notes })
+      .then((r) => r.data),
+  expCancelCampaign: (id, reason) =>
+    client.post(`/experience/campaigns/${id}/cancel`, { reason })
+      .then((r) => r.data),
+  expExecuteCampaign: (id) =>
+    client.post(`/experience/campaigns/${id}/execute`).then((r) => r.data),
+  expCouncilReview: (id) =>
+    client.post(`/experience/campaigns/${id}/council-review`)
+      .then((r) => r.data),
+  expAudit: (id) =>
+    client.get(`/experience/audit/${id}`).then((r) => r.data),
+  expTemplates: () =>
+    client.get(`/experience/templates`).then((r) => r.data),
 };

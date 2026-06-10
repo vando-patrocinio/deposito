@@ -124,6 +124,14 @@ class EventType:
     INCIDENT_CHURN_RISK = "incident.churn.risk"
     INCIDENT_MASS_REPAIR = "incident.mass.repair"
     INCIDENT_MASS_NOTIFY = "incident.mass.notify"
+    # Universo Ligo + Experience Commander (02/2026)
+    UNIVERSO_LEVEL_CHANGED = "universo.level.changed"
+    UNIVERSO_SCORE_UPDATED = "universo.score.updated"
+    EXPERIENCE_EVENT_DETECTED = "experience.event.detected"
+    EXPERIENCE_CAMPAIGN_DRAFTED = "experience.campaign.drafted"
+    EXPERIENCE_CAMPAIGN_APPROVED = "experience.campaign.approved"
+    EXPERIENCE_CAMPAIGN_EXECUTED = "experience.campaign.executed"
+    EXPERIENCE_CAMPAIGN_CANCELLED = "experience.campaign.cancelled"
     # Isabella Commanders — opportunities pipeline (02/2026)
     OPPORTUNITY_CREATED = "opportunity.created"
     OPPORTUNITY_APPROVED = "opportunity.approved"
