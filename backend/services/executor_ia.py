@@ -912,16 +912,56 @@ async def _exec_criar_os_smartfield(act: Dict, dry_run: bool) -> Dict:
                   "msg": (f"[DRY-RUN] abriria {len(rows)} OS "
                             "preventivas para ONUs Critical")}
     created = 0
+    avoided = 0
+    escalated = 0
     for r in rows:
+        sub_id = r.get("subscriber_id") or r.get("id")
+        # Truck Roll Guard obrigatório (OPERAÇÃO 100% AUTÔNOMO)
+        try:
+            from services.truck_roll_guard import evaluate as _trg_eval
+            trg = await _trg_eval(cid, sub_id)
+        except Exception:
+            trg = {"decision": "DISPATCH", "confidence": 0,
+                   "rationale": "guard indisponível"}
+        if trg["decision"] == "DO_NOT_DISPATCH":
+            avoided += 1
+            # registra economia em smart_repairs com truck_roll_avoided=True
+            await db.smart_repairs.insert_one({
+                "id": _new_id("os"),
+                "company_id": cid, "action_id": act["id"],
+                "subscriber_id": sub_id,
+                "kind": "preventiva_sinal_critical",
+                "status": "avoided",
+                "truck_roll_avoided": True,
+                "guard_decision": trg,
+                "created_at": _iso(_now()),
+            })
+            continue
+        if trg["decision"] == "ESCALATE_COLLECTIVE":
+            escalated += 1
+            await db.smart_repairs.insert_one({
+                "id": _new_id("os"),
+                "company_id": cid, "action_id": act["id"],
+                "subscriber_id": sub_id,
+                "kind": "preventiva_sinal_critical",
+                "status": "escalated_collective",
+                "guard_decision": trg,
+                "created_at": _iso(_now()),
+            })
+            continue
         await db.smart_repairs.insert_one({
             "id": _new_id("os"),
             "company_id": cid, "action_id": act["id"],
-            "subscriber_id": r.get("subscriber_id") or r.get("id"),
+            "subscriber_id": sub_id,
             "kind": "preventiva_sinal_critical",
-            "status": "queued", "created_at": _iso(_now()),
+            "status": "queued",
+            "guard_decision": trg,
+            "created_at": _iso(_now()),
         })
         created += 1
-    return {"ok": True, "dry_run": False, "created": created}
+    return {"ok": True, "dry_run": False, "created": created,
+            "truck_roll_avoided": avoided,
+            "escalated_collective": escalated}
 
 
 async def _exec_campanha_retencao(act: Dict, dry_run: bool) -> Dict:
