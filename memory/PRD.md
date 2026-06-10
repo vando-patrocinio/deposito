@@ -1448,3 +1448,34 @@ ticket, notify_manager) só viram envio real quando o WA destravar.
   (RBAC nega; UI tolera — ponto fica vazio p/ logins de técnico via JWT).
 - Race ocasional no 1º clique do botão Smart Field Ops (retry resolve).
 - PRD.md > 700 linhas — dividir em PRD/CHANGELOG/ROADMAP.
+
+---
+
+## ISABELLA FIELD PRESIDENT (10/06/2026) ✅
+
+Ordem CTO: Isabella governa toda a operação de campo em tempo real. ENTREGUE.
+
+- **Motor de decisão** `services/isabella_field.py` (zero mock, dados reais):
+  score de OS (SLA atrasada +40, janela fixa +25, distância GPS→CTO real,
+  reincidência 60d, probabilidade histórica 90d), rota vizinho-mais-próximo,
+  estoque vs média real de materiais, notas pós-OS, causa raiz determinística,
+  vistoria de frota (KM delta) + **Álvaro IA vision REAL** (claude-vision,
+  testado: score 85, previsão e custo estimado; fallback heurístico).
+- **Rotas** `/api/field/isabella/`: briefing, route, os/{id}/brief,
+  lousa-analysis (persiste tickets.isabella em todas as bolhas — 865 reais),
+  president-summary. JWT+RBAC+rate limit.
+- **9 eventos novos** field.isabella.* no event_bus → Presidente IA.
+- **Hooks**: finish → isabella_score + root_cause; vehicle/inspection →
+  nota + Álvaro async.
+- **Frontend**: IsabellaCard no dashboard do técnico (headline dinâmica,
+  recomendação com motivos, rota expandível, alertas de estoque),
+  IsabellaOsBrief no detalhe da OS, nota Isabella em OS finalizada,
+  IsabellaGovernance no painel do gestor, pill ISA #rank·risco nas bolhas
+  da Lousa admin.
+- **Testes**: scripts/test_isabella_field.py 11/11 zero-mock; regressão
+  test_field_ops.py 13/13; E2E frontend iteration_226 7/7 sem bugs.
+
+### Pendências conhecidas
+- Toast residual "Acesso negado" 1x na home mobile (herdado, não bloqueia).
+- Causas prováveis de reparo começam vazias e populam conforme a Isabella
+  classifica reparos reais (aprendizado por acúmulo de isabella_root_cause).

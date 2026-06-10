@@ -139,3 +139,49 @@ bloqueia, GPS bloqueia, material baixa estoque, retirada devolve ao
 estoque, retirada gera impacto financeiro, Lousa atualiza, evento p/
 Presidente IA, frota pendente bloqueia. Fixtures reais criadas e removidas
 pelo próprio script.
+
+---
+
+# ISABELLA FIELD PRESIDENT (10/06/2026)
+
+Isabella preside a operação de campo. Motor de decisão determinístico sobre
+dados REAIS (`services/isabella_field.py`) + visão Álvaro IA (Claude Sonnet
+vision via Emergent Key, fallback heurístico sobre dados reais).
+
+## Rotas (`/api/field/isabella/*` — JWT, mesma segurança da camada field)
+| Rota | Função |
+|---|---|
+| `GET /briefing` | Saudação + agenda + recomendação com motivos reais (SLA, distância GPS→CTO, reincidência, probabilidade histórica) + alertas de estoque + frota. Evento `recommendation.created` (throttle 10min). |
+| `GET /route` | Rota recomendada (vizinho-mais-próximo ponderado por score real). Eventos `route.optimized` + `priority.changed`. |
+| `GET /os/{id}/brief` | Instalação: CTO/porta sugeridas (cto_ports reais), previsão de sinal (média real), materiais (média de 90d), risco da região. Reparo: causas prováveis (histórico `isabella_root_cause`), reincidência, contexto CTO, roteiro de testes. Retirada: comodato, equipamentos do cliente, impacto. |
+| `GET /lousa-analysis` (gestor) | Analisa TODAS as bolhas pendentes/abertas em lote e PERSISTE `tickets.isabella` {priority_rank, score, risk, analysis, prediction}. Pill `ISA #rank · risco` em cada bolha da Lousa admin. |
+| `GET /president-summary` (gestor) | Indicadores consolidados p/ Presidente IA: produtividade/notas por técnico, retrabalho, truck-roll avoidance, frota, comodato. |
+
+## Hooks automáticos
+- `POST /api/field/os/{id}/finish` → `score_finish`: notas reais (qualidade=sinal,
+  organização=fotos/testes, processo=duração, resultado=outcome) persistidas em
+  `tickets.isabella_score` + causa raiz (reparo) em `tickets.isabella_root_cause`.
+  Eventos `installation.scored`/`repair.scored` + `root_cause.detected` +
+  `truck_roll_avoided` (resolution_kind=remote).
+- `POST /api/field/vehicle/inspection` → nota Isabella imediata (KM delta real,
+  4 fotos) + análise Álvaro vision em background gravada em
+  `field_vehicle_inspections.alvaro` {score, risco_quebra, previsao_manutencao,
+  custo_futuro_estimado_brl, avarias}. Evento `vehicle.scored`.
+
+## Eventos novos (motor_ia_events ← Presidente IA)
+`field.isabella.recommendation.created · route.optimized · installation.scored ·
+repair.scored · vehicle.scored · stock.alert · priority.changed ·
+root_cause.detected · truck_roll_avoided`
+
+## Frontend
+- `FieldOpsIsabella.js`: IsabellaCard (topo do dashboard do técnico) +
+  IsabellaOsBrief (detalhe da OS). Nota Isabella exibida em OS finalizada.
+- `FieldOpsManagerPanel.js`: IsabellaGovernance (summary do Presidente +
+  botão "Analisar Lousa agora" + tabela top 10).
+- `LousaAdminPanel.js`: pill `isabella-pill-{id}` em toda bolha analisada.
+
+## Testes zero-mock
+`scripts/test_isabella_field.py` — 11/11 (briefing, eventos, rota reordenada,
+estoque, briefs, finish real com notas+causa raiz, frota+Álvaro, Lousa
+presidida em 865 bolhas reais, president-summary, RBAC). Regressão
+`test_field_ops.py` 13/13. E2E frontend iteration_226 — 7/7.
