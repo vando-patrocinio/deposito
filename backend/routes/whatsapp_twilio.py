@@ -446,16 +446,21 @@ async def _generate_and_send_twilio_reply(
     )
     if not cfg or not cfg.get("enabled"):
         return None
-    # Pega agente via roteamento
+    # Pega agente via roteamento — força Isabella como default
+    isabella_default = await db.aihub_agents.find_one(
+        {"company_id": cid, "name": "Isabella", "active": {"$ne": False}},
+        {"_id": 0},
+    )
     try:
         from services.routing import pick_agent_for_message
-        agent = await pick_agent_for_message(cid, phone, user_text)
+        agent = await pick_agent_for_message(cid, phone, user_text,
+                                                default_agent=isabella_default)
     except Exception:
         agent_name = cfg.get("agent_name") or "Isabella"
         agent = await db.aihub_agents.find_one(
             {"company_id": cid, "name": agent_name, "active": {"$ne": False}},
             {"_id": 0},
-        )
+        ) or isabella_default
     if not agent:
         return None
     # Monta system prompt
@@ -503,6 +508,41 @@ async def _generate_and_send_twilio_reply(
             sys_prompt += "\n\n" + lt_block
     except Exception as e:
         logger.warning("[twilio] long_term_memory inject falhou: %s", e)
+
+    # RELACIONAMENTO 360° — última conversa + VIP + reincidência
+    try:
+        from services.isabella_relationship import (
+            relationship_memory_block, humanized_closing_block,
+        )
+        rb = await relationship_memory_block(
+            company_id=cid, phone=phone, subscriber_id=subscriber_id)
+        if rb:
+            sys_prompt += "\n\n" + rb
+        close_block = await humanized_closing_block(
+            company_id=cid, phone=phone,
+            subscriber_id=subscriber_id, user_text=user_text)
+        if close_block:
+            sys_prompt += "\n\n" + close_block
+    except Exception as e:
+        logger.warning("[twilio] relationship inject falhou: %s", e)
+
+    # REABERTURA AUTOMÁTICA — Operação Relacionamento 360°
+    reopened_ticket_id: Optional[str] = None
+    try:
+        from services.isabella_followup import detect_and_reopen_case
+        reopened_ticket_id = await detect_and_reopen_case(
+            company_id=cid, phone=phone,
+            subscriber_id=subscriber_id, user_text=user_text)
+        if reopened_ticket_id:
+            sys_prompt += (
+                "\n\n=== CASO REABERTO AUTOMATICAMENTE ===\n"
+                f"Acabei de reabrir a OS anterior (ticket {reopened_ticket_id}). "
+                "Comunique isso no início da resposta com tom de cuidado: "
+                "\"Vi que esse problema já tinha acontecido — reabri seu "
+                "chamado pra equipe não recomeçar do zero.\""
+            )
+    except Exception as e:
+        logger.warning("[twilio] case_reopener falhou: %s", e)
     # Memória de correções (Edit & Teach)
     try:
         from routes.ai_corrections import (fetch_recent_for_prompt,
@@ -633,6 +673,19 @@ async def _generate_and_send_twilio_reply(
                 pass
     except Exception as e:
         logger.warning("[twilio] anti_cpf_guardian rewrite falhou: %s", e)
+    # PITCH UNIVERSO LIGO CONTEXTUAL — Operação Relacionamento 360°
+    try:
+        from services.isabella_relationship import (
+            universo_ligo_contextual_pitch,
+        )
+        pitch = await universo_ligo_contextual_pitch(
+            company_id=cid, phone=phone,
+            subscriber_id=subscriber_id, reply=reply_text)
+        if pitch:
+            reply_text = reply_text.rstrip() + "\n\n" + pitch
+    except Exception as e:
+        logger.warning("[twilio] universo_ligo_pitch falhou: %s", e)
+
     # Envia via Twilio
     send_result = await send_via_twilio(cid, phone, reply_text)
     # Persiste outbound
@@ -665,6 +718,22 @@ async def _generate_and_send_twilio_reply(
     except Exception as e:
         logger.warning("[twilio] register_followup falhou phone=%s: %s",
                         phone, e)
+
+    # RELACIONAMENTO 360° — outcome turn-by-turn + follow-up + closing log
+    try:
+        from services.isabella_relationship import (
+            _detect_outcomes, log_closing, detect_closing_intent,
+        )
+        from services.isabella_followup import schedule_followup
+        outcomes = _detect_outcomes(reply_text)
+        await schedule_followup(
+            company_id=cid, phone=phone,
+            subscriber_id=subscriber_id, outcomes=outcomes)
+        if detect_closing_intent(user_text):
+            await log_closing(company_id=cid, phone=phone,
+                                subscriber_id=subscriber_id)
+    except Exception as e:
+        logger.warning("[twilio] relationship_outcome falhou: %s", e)
     return reply_text
 
 

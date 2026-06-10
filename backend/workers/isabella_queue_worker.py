@@ -57,8 +57,26 @@ async def _main() -> None:
 
     await start_workers()
 
+    # FOLLOW-UP scheduler — roda a cada 60s
+    async def _followup_loop():
+        from services.isabella_followup import run_due_followups
+        while not stop_event.is_set():
+            try:
+                stats = await run_due_followups(limit=50)
+                if stats.get("due", 0) > 0:
+                    logger.info("[followup] due=%s sent=%s cancelled=%s err=%s",
+                                stats.get("due"), stats.get("sent"),
+                                stats.get("cancelled"), stats.get("errors"))
+            except Exception as e:
+                logger.warning("[followup] loop falhou: %s", e)
+            try:
+                await asyncio.wait_for(stop_event.wait(), timeout=60.0)
+            except asyncio.TimeoutError:
+                pass
+
     stop_event = asyncio.Event()
     loop = asyncio.get_running_loop()
+    followup_task = asyncio.create_task(_followup_loop())
 
     def _graceful(*_a):
         logger.info("sinal recebido → shutdown graceful")
@@ -71,6 +89,7 @@ async def _main() -> None:
             pass
 
     await stop_event.wait()
+    followup_task.cancel()
     await stop_workers()
     logger.info("Isabella worker terminado")
 

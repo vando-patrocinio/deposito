@@ -7549,3 +7549,50 @@ Relatório completo: `/app/docs/RELATORIO_MEMORIA_TOTAL.md`
 1. Login admin → menu lateral "AI Center · OS"
 2. Sidebar interna → "🧠 Memória Isabella"
 3. Clica num phone recente (ou digita) → "🔍 Inspecionar"
+
+---
+
+## iter219 (Feb/2026) — Operação Relacionamento 360° (Isabella)
+**Tipo**: Bug Fix CRÍTICO P0 (auditoria de tráfego real revelou 9 gargalos)
+**Validação**: `scripts/test_relacionamento_360.py` — 6/6 fixes Zero-Mocks ✓
+
+### Gargalos descobertos (auditoria DB real)
+1. `whatsapp_auto_reply.agent_name=Jerusa` (agente de VOZ, não WhatsApp) em co-demo
+2. `pick_agent_for_message` no fallback retornava "Camila" (3º agente, financeiro)
+3. `co-id-auto` sem auto_reply configurado → cliente desbloqueio nunca foi respondido
+4. Outlier `5521998176526` (41.974 msgs sintéticas) poluindo todas métricas
+5. 15.200 ai_evaluations BACKFILL distorcendo NPS médio (6.01 com 99% detratores fake)
+6. Zero follow-ups proativos (266 turns em ACOMPANHAMENTO órfãos em 30d)
+7. Zero reabertura proativa (453 subscribers reincidentes em 60d)
+8. Cross-sell Universo Ligo apenas 4 phones em 30d (sem gatilho contextual)
+
+### Patches aplicados
+**Backend services:**
+- `services/isabella_relationship.py` (NOVO):
+  - `register_isabella_outcome` — grava ai_evaluations REAL turn-by-turn
+  - `relationship_memory_block` — última conversa + VIP score + reincidência no system prompt
+  - `universo_ligo_contextual_pitch` — pitch só após outcome=resolveu/vendeu, dedup 30d
+  - `humanized_closing_block` + `log_closing` — encerramento + NPS conversacional
+- `services/isabella_followup.py` (NOVO):
+  - `schedule_followup` — agenda 4h/24h/48h/72h/7d conforme outcome
+  - `run_due_followups` — drena fila via worker (cron 60s)
+  - `detect_and_reopen_case` — reabre OS quando subscriber volta com problema do mesmo tipo <30d
+
+**Banco direto:**
+- `aihub_settings.whatsapp_auto_reply.agent_name` → `Isabella` em 3 companies
+- `aihub_wa_messages.is_test_phone=true` em 41.974 msgs do outlier
+- `ai_evaluations.is_backfill=true, exclude_from_metrics=true` em 14.773 docs
+
+**Wire-up:**
+- `routes/whatsapp_twilio.py` — pipeline completo: reopener → memory → closing → LLM → pitch → outcome → followup
+- `workers/isabella_queue_worker.py` — followup loop a cada 60s
+
+### Resultado
+- Cliente reincidente é reconhecido (OS reaberta automaticamente)
+- Cliente VIP é tratado como VIP
+- Cliente em ACOMPANHAMENTO recebe follow-up proativo
+- Cliente satisfeito recebe pitch contextual (não às cegas)
+- Cliente se despedindo recebe encerramento humanizado + sondagem NPS
+
+Relatório completo: `/app/docs/RELATORIO_RELACIONAMENTO_360.md`
+Auditoria pré-fix: `/app/docs/AUDITORIA_ISABELLA_RELACIONAMENTO_360.md`
