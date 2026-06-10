@@ -76,6 +76,57 @@ async def test_motor_endpoint(user: dict = Depends(require_role("administrador")
     return await test_motor(cid)
 
 
+# Budget mensal — GET/PUT (iter232) ---------------------------------------
+@router.get("/budget")
+async def read_budget(user: dict = Depends(require_role("administrador"))):
+    """Retorna limite mensal e gasto atual do mês."""
+    from datetime import datetime, timezone
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+    b = await db.motor_ia_budget.find_one({"company_id": cid}, {"_id": 0}) or {}
+    now = datetime.now(timezone.utc)
+    start = now.replace(day=1, hour=0, minute=0, second=0,
+                          microsecond=0).isoformat()
+    pipe = [
+        {"$match": {"company_id": cid, "created_at": {"$gte": start}}},
+        {"$group": {"_id": None, "spent": {"$sum": "$estimated_cost_usd"}}},
+    ]
+    agg = await db.motor_ia_usage.aggregate(pipe).to_list(1)
+    spent = float(agg[0]["spent"]) if agg else 0.0
+    limit = float(b.get("monthly_limit_usd") or 0)
+    return {
+        "monthly_limit_usd": limit,
+        "spent_month_usd": round(spent, 4),
+        "used_pct": round((spent / limit * 100), 1) if limit else 0,
+        "warn_threshold_pct": int(b.get("warn_threshold_pct") or 80),
+        "enabled": bool(b.get("enabled", True)),
+    }
+
+
+class BudgetIn(BaseModel):
+    monthly_limit_usd: float = Field(..., ge=0, le=100000)
+    warn_threshold_pct: Optional[int] = Field(80, ge=10, le=99)
+
+
+@router.put("/budget")
+async def update_budget(payload: BudgetIn,
+                          user: dict = Depends(require_role("administrador"))):
+    """Atualiza limite mensal de gasto do Motor IA (US$)."""
+    from datetime import datetime, timezone
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+    now = datetime.now(timezone.utc).isoformat()
+    await db.motor_ia_budget.update_one(
+        {"company_id": cid},
+        {"$set": {"company_id": cid,
+                    "monthly_limit_usd": float(payload.monthly_limit_usd),
+                    "warn_threshold_pct": int(payload.warn_threshold_pct or 80),
+                    "enabled": True,
+                    "updated_at": now,
+                    "updated_by": user.get("email") or user.get("id")}},
+        upsert=True)
+    return await read_budget(user=user)
+
+
+
 @router.get("/models/suggested")
 async def suggested_models(user: dict = Depends(require_role("gestor"))):
     """Lista curada de modelos recomendados por tier."""

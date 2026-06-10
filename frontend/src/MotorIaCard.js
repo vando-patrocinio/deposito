@@ -22,6 +22,11 @@ export default function MotorIaCard() {
   const [busy, setBusy] = useState(false);
   const [testResult, setTestResult] = useState(null);
   const [msg, setMsg] = useState("");
+  // iter232 — Orçamento mensal
+  const [budget, setBudget] = useState(null);
+  const [budgetInput, setBudgetInput] = useState("");
+  const [budgetBusy, setBudgetBusy] = useState(false);
+  const [budgetMsg, setBudgetMsg] = useState("");
 
   const reload = async () => {
     try {
@@ -40,6 +45,12 @@ export default function MotorIaCard() {
     try {
       const s = await api.motorIaSuggestedModels();
       setSuggested(s);
+    } catch (e) { /* ignore */ }
+    // iter232 — carrega orçamento
+    try {
+      const b = await api._client.get("/motor-ia/budget");
+      setBudget(b.data);
+      setBudgetInput(String(b.data?.monthly_limit_usd || ""));
     } catch (e) { /* ignore */ }
   };
 
@@ -174,6 +185,61 @@ export default function MotorIaCard() {
           Obter API key <ExternalLink size={11} />
         </a>
       </div>
+
+      {/* iter232 — Orçamento mensal */}
+      <Section title="Orçamento mensal (US$)">
+        <Row label="Limite (US$/mês)">
+          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+            <input
+              type="number" min="0" step="10"
+              value={budgetInput}
+              onChange={(e) => setBudgetInput(e.target.value)}
+              data-testid="motor-ia-budget-input"
+              style={{ ...inputStyle, maxWidth: 140 }}
+              placeholder="200" />
+            <button
+              data-testid="motor-ia-budget-save-btn"
+              disabled={budgetBusy || !budgetInput
+                          || Number(budgetInput) === Number(budget?.monthly_limit_usd)}
+              onClick={async () => {
+                setBudgetBusy(true); setBudgetMsg("");
+                try {
+                  const r = await api._client.put("/motor-ia/budget",
+                    { monthly_limit_usd: Number(budgetInput) });
+                  setBudget(r.data);
+                  setBudgetInput(String(r.data?.monthly_limit_usd || ""));
+                  setBudgetMsg("Limite atualizado.");
+                } catch (e) {
+                  setBudgetMsg("Erro: " + (e?.response?.data?.detail || e.message));
+                } finally { setBudgetBusy(false); }
+              }}
+              style={{
+                padding: "8px 14px", border: 0, borderRadius: 8,
+                background: "var(--accent)", color: "#fff",
+                fontWeight: 600, fontSize: 12,
+                cursor: budgetBusy ? "wait" : "pointer", opacity: budgetBusy ? 0.6 : 1,
+              }}>
+              {budgetBusy ? "Salvando..." : "Salvar limite"}
+            </button>
+            {budget && (
+              <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
+                Gasto neste mês: <strong style={{
+                  color: (budget.used_pct || 0) >= 80 ? "#dc2626" : "var(--text-primary)" }}>
+                  US$ {budget.spent_month_usd?.toFixed(2)}
+                </strong> ({budget.used_pct}% do limite)
+              </span>
+            )}
+          </div>
+        </Row>
+        {budgetMsg && (
+          <div style={{
+            fontSize: 11, padding: "6px 10px", borderRadius: 6, marginTop: 6,
+            background: budgetMsg.startsWith("Erro")
+              ? "rgba(220,38,38,.08)" : "rgba(34,197,94,.08)",
+            color: budgetMsg.startsWith("Erro") ? "#b91c1c" : "#16a34a",
+          }}>{budgetMsg}</div>
+        )}
+      </Section>
 
       {/* OpenRouter key */}
       <Section title="Chave OpenRouter (texto)">
