@@ -195,6 +195,60 @@ async def events_per_company(*, hours: int = 24) -> List[Dict[str, Any]]:
     return res
 
 
+# ─── Operação Isabella V4: cobertura global excluindo tenants de teste ───
+
+def _is_test_tenant(cid: str) -> bool:
+    """Tenants de homologação/teste/órfãos não devem entrar na métrica
+    de saúde operacional do Sistema Nervoso."""
+    if not cid:
+        return True
+    cid_l = cid.lower()
+    return (
+        cid_l.startswith("test-")
+        or cid_l.startswith("co-test-")
+        or cid_l.startswith("co-homolog")
+        or cid_l == "_orphan"
+        or "homolog" in cid_l
+    )
+
+
+async def coverage_global_production(window_days: int = 7) -> Dict[str, Any]:
+    """Cobertura global EXCLUINDO tenants de teste/homologação/órfãos.
+
+    Esta é a métrica REAL de saúde do Sistema Nervoso da operação.
+    """
+    tenants = await db.motor_ia_events.distinct("company_id")
+    prod_tenants = [t for t in tenants if not _is_test_tenant(t)]
+    if not prod_tenants:
+        return {"overall_coverage_pct": 0.0,
+                "level": "VERMELHO",
+                "tenants_evaluated": 0,
+                "tenants": []}
+
+    reports = []
+    total_pct = 0.0
+    for cid in prod_tenants:
+        r = await coverage_report(cid, window_days=window_days)
+        reports.append({
+            "company_id": cid,
+            "coverage_pct": r["overall_coverage_pct"],
+            "level": r["level"],
+            "covered": r["total_covered_types"],
+            "expected": r["total_expected_types"],
+        })
+        total_pct += r["overall_coverage_pct"]
+    overall = round(total_pct / len(prod_tenants), 2)
+    return {
+        "overall_coverage_pct": overall,
+        "tenants_evaluated": len(prod_tenants),
+        "tenants_excluded_as_test": [t for t in tenants if _is_test_tenant(t)],
+        "level": ("VERDE" if overall >= 90 else
+                  "AMARELO" if overall >= 60 else "VERMELHO"),
+        "tenants": reports,
+        "window_days": window_days,
+    }
+
+
 async def timeline_today(
     company_id: str, *, limit: int = 80
 ) -> List[Dict[str, Any]]:
