@@ -185,3 +185,50 @@ root_cause.detected · truck_roll_avoided`
 estoque, briefs, finish real com notas+causa raiz, frota+Álvaro, Lousa
 presidida em 865 bolhas reais, president-summary, RBAC). Regressão
 `test_field_ops.py` 13/13. E2E frontend iteration_226 — 7/7.
+
+---
+
+# ISABELLA INCIDENT COMMANDER (10/06/2026)
+
+Detecção PREDITIVA de incidentes coletivos — a Isabella age antes do cliente
+reclamar. Motor: `services/isabella_incident.py`. Worker automático a cada
+15 min (startup do server) + varredura manual.
+
+## 8 regras (dados reais)
+1. `cto_cluster` ≥3 reparos/CTO/48h · 2. `neighborhood_cluster` ≥5/bairro/48h
+3. `onu_offline` ≥3 ONUs offline na CTO (≥40%) · 4. `optical_loss` ≥3 ONUs <-27dBm
+5. `slow_cluster` ≥3 relatos de lentidão/bairro/48h · 6. `reincidence` taxa CTO ≥2× média
+7. `cto_chronic` ≥6 reparos/CTO/30d · 8. `region_trend` 7d ≥ 2× semana anterior
+
+## Ao detectar (collection `isabella_incidents`)
+probabilidade + criticidade + clientes afetados (portas reais da CTO /
+assinantes do bairro) + risco de churn (clientes × ARPU `arpu_brl` toggle,
+default R$99,90) + impacto financeiro + recomendação → bolha CRÍTICA na
+Lousa (OS coletiva `is_collective`, atribuída ao técnico com mais chamados
+na evidência, Isabella rank #1) + notificação gestor + eventos.
+
+## Eventos
+`incident.predicted · incident.confirmed · incident.cto.cluster ·
+incident.neighborhood.cluster · incident.churn.risk · incident.mass.repair`
+
+## Trava de reparos individuais
+`POST /api/lousa/tickets` (reparo) consulta `incident_block_for_new_repair`:
+incidente aberto cobrindo a CTO/bairro do cliente → **409
+COLLECTIVE_INCIDENT_OPEN** + cliente AGRUPADO no incidente
+(`grouped_clients`/`affected_client_ids`). Toggle
+`incident_block_individual_repairs` (default ON).
+
+## Rotas (gestor/admin)
+`POST /api/field/isabella/incidents/scan` · `GET /incidents?status=open|all`
+· `POST /incidents/{id}/confirm|resolve` · `GET /incidents/network-feed`
+(Rede IA: CTOs/regiões/ONUs suspeitas + tendência). President-summary agora
+inclui bloco `incidents` (open/confirmed/receita em risco/churn).
+
+## Frontend
+`FieldOpsManagerPanel.js` → seção "Isabella Incident Commander" (varrer,
+listar, confirmar, resolver, churn/financeiro/recomendação por incidente).
+
+## Testes
+`scripts/test_isabella_incident.py` — 10/10 zero-mock. Regressões 13/13 +
+11/11. E2E frontend iteration_227 100% (detectou incidente REAL: cluster
+de 8 reparos no bairro Cordovil, confirmado 79%, OS coletiva criada).

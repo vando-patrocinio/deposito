@@ -1479,3 +1479,26 @@ Ordem CTO: Isabella governa toda a operação de campo em tempo real. ENTREGUE.
 - Toast residual "Acesso negado" 1x na home mobile (herdado, não bloqueia).
 - Causas prováveis de reparo começam vazias e populam conforme a Isabella
   classifica reparos reais (aprendizado por acúmulo de isabella_root_cause).
+
+---
+
+## ISABELLA INCIDENT COMMANDER (10/06/2026) ✅
+
+Isabella agora é PREDITIVA: detecta incidente coletivo antes do cliente reclamar.
+
+- `services/isabella_incident.py`: 8 regras reais (cluster CTO 3/48h, bairro
+  5/48h, ONU offline ≥40%, perda óptica <-27dBm, lentidão, reincidência ≥2×
+  média, CTO crônica 6/30d, tendência regional 7d×2). Worker automático 15min.
+- Ao detectar: incidente em `isabella_incidents` com probabilidade,
+  criticidade, clientes afetados (portas reais), churn (ARPU toggle arpu_brl),
+  impacto financeiro, recomendação → bolha CRÍTICA na Lousa (OS coletiva,
+  técnico com mais evidência, rank #1) + notificação + 6 eventos incident.*
+  → Presidente IA + feed Rede IA (CTOs/regiões/ONUs suspeitas).
+- Trava de reparo individual: POST /lousa/tickets reparo → 409 + cliente
+  agrupado quando incidente aberto cobre a CTO/bairro (toggle
+  incident_block_individual_repairs default ON).
+- Rotas: incidents/scan, list, confirm, resolve, network-feed.
+- Frontend: seção "Isabella Incident Commander" no painel Field Ops (Campo).
+- Testes: test_isabella_incident.py 10/10 zero-mock; regressões 13/13+11/11;
+  E2E iteration_227 100% — DETECTOU INCIDENTE REAL (Cordovil, 8 reparos,
+  confirmado 79%, OS coletiva tkt-f92023560d criada automaticamente).
