@@ -339,17 +339,21 @@ async def webhook(request: Request):
         if dup:
             return {"ok": True, "duplicate": True, "message_sid": message_sid}
 
-    # Identifica subscriber (auto-link)
+    # Identifica subscriber (auto-link) — Operação Identificação Automática
     subscriber_id = None
     subscriber_ctx = None
+    link_result: Optional[dict] = None
     try:
-        from phone_normalizer import link_phone_to_subscriber
-        link = await link_phone_to_subscriber(phone, cid)
-        if link and link.get("subscriber_id"):
-            subscriber_id = link["subscriber_id"]
+        from phone_normalizer import (link_phone_to_subscriber,
+                                         normalize_brazilian_phone)
+        link_result = await link_phone_to_subscriber(phone, cid)
+        normalized = normalize_brazilian_phone(phone)
+        if link_result and link_result.get("subscriber_id"):
+            subscriber_id = link_result["subscriber_id"]
             sub = await db.subscribers.find_one(
                 {"id": subscriber_id, "company_id": cid},
-                {"_id": 0, "name": 1, "plan_name": 1, "status": 1, "branch": 1},
+                {"_id": 0, "name": 1, "plan_name": 1, "status": 1,
+                 "branch": 1, "address": 1, "monthly_value": 1},
             )
             if sub:
                 parts = [f"Nome: {sub.get('name')}"]
@@ -357,7 +361,23 @@ async def webhook(request: Request):
                     parts.append(f"Plano: {sub['plan_name']}")
                 if sub.get("status"):
                     parts.append(f"Status: {sub['status']}")
+                if sub.get("address"):
+                    parts.append(f"Endereço: {sub['address']}")
                 subscriber_ctx = " · ".join(parts)
+        # Persiste identidade na conversa (mesmo se conflict ou pending)
+        try:
+            from services.anti_cpf_guardian import update_conversation_identity
+            history_msgs = []
+            async for m in db.aihub_wa_messages.find(
+                    {"company_id": cid, "phone": phone,
+                     "direction": "inbound"},
+                    {"_id": 0, "text": 1}).sort("created_at", -1).limit(20):
+                history_msgs.append(m.get("text", ""))
+            await update_conversation_identity(
+                company_id=cid, phone=phone, link=link_result,
+                normalized=normalized, history_inbound=history_msgs)
+        except Exception as e:
+            logger.warning("[twilio] update_conversation_identity: %s", e)
     except Exception:
         pass
 
@@ -442,6 +462,23 @@ async def _generate_and_send_twilio_reply(
     sys_prompt = agent.get("system_prompt", "")
     if subscriber_ctx:
         sys_prompt += f"\n\n[Dados do cliente]\n{subscriber_ctx}"
+
+    # GUARDIÃO ANTI-CPF — Operação Identificação Automática
+    # Resolve identidade real do telefone (mesma lógica do webhook).
+    link_for_guard = None
+    history_inbound: list[str] = []
+    try:
+        from phone_normalizer import link_phone_to_subscriber
+        link_for_guard = await link_phone_to_subscriber(phone, cid)
+        async for m in db.aihub_wa_messages.find(
+                {"company_id": cid, "phone": phone, "direction": "inbound"},
+                {"_id": 0, "text": 1}).sort("created_at", -1).limit(20):
+            history_inbound.append(m.get("text", ""))
+        from services.anti_cpf_guardian import inject_identification_block
+        sys_prompt += "\n\n" + inject_identification_block(
+            link_for_guard, history_inbound=history_inbound)
+    except Exception as e:
+        logger.warning("[twilio] anti_cpf_guardian inject falhou: %s", e)
     # Memória de correções (Edit & Teach)
     try:
         from routes.ai_corrections import (fetch_recent_for_prompt,
@@ -489,6 +526,34 @@ async def _generate_and_send_twilio_reply(
         return None
     if not reply_text:
         return None
+    # GUARDIÃO ANTI-CPF — pós-processa reply para eliminar pedidos
+    # de CPF/cadastro quando o cliente JÁ foi identificado pelo telefone.
+    try:
+        from services.anti_cpf_guardian import rewrite_if_violates, detect_violations
+        violations = detect_violations(reply_text)
+        if violations and link_for_guard and link_for_guard.get("subscriber_id"):
+            original = reply_text
+            reply_text = rewrite_if_violates(reply_text, link_for_guard)
+            logger.warning(
+                "[twilio] anti_cpf_guardian REWROTE reply (violations=%s) "
+                "phone=%s subscriber=%s", violations, phone,
+                link_for_guard.get("subscriber_id"))
+            try:
+                await db.ai_evaluations.insert_one({
+                    "id": f"anti-cpf-{uuid.uuid4().hex[:10]}",
+                    "company_id": cid,
+                    "phone": phone,
+                    "subscriber_id": link_for_guard.get("subscriber_id"),
+                    "kind": "ANTI_CPF_BLOCK",
+                    "violations": violations,
+                    "original_excerpt": original[:200],
+                    "rewritten_excerpt": reply_text[:200],
+                    "created_at": now_iso(),
+                })
+            except Exception:
+                pass
+    except Exception as e:
+        logger.warning("[twilio] anti_cpf_guardian rewrite falhou: %s", e)
     # Envia via Twilio
     send_result = await send_via_twilio(cid, phone, reply_text)
     # Persiste outbound

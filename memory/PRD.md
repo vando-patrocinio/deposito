@@ -2,6 +2,41 @@
 
 > Documento vivo. Atualizado a cada sprint.
 
+## 🆔 OPERAÇÃO IDENTIFICAÇÃO AUTOMÁTICA DO ASSINANTE ✅ (10/02/2026)
+
+**Ordem CTO**: Isabella não pode mais pedir CPF quando o telefone já existe
+no cadastro. Identificação por telefone é obrigatória ANTES de qualquer
+pergunta de cadastro.
+
+### Entregas
+- `services/anti_cpf_guardian.py` (174 LoC) — guardião 360°:
+  `detect_violations` · `rewrite_if_violates` · `inject_identification_block`
+  · `update_conversation_identity`
+- `routes/whatsapp_twilio.py` — webhook persiste `wa_conversations.identity.*`
+  e o reply pipeline injeta bloco + reescreve violações
+- `scripts/test_identificacao_telefone.py` — 6 cenários do CTO
+
+### Critérios — 4/4 ✅ · Cenários — 6/6 ✅ (19/19 checks)
+| Cenário | Status |
+|---|---|
+| telefone único | ✅ method=phone, confidence=1.0, reply reescrita "Pamela, vou verificar." |
+| telefone multi-match | ✅ multi_match=true, bloco pede endereço/ponto |
+| telefone inexistente | ✅ bloco PENDENTE permite pedir CPF 1x |
+| identificado tenta pedir CPF | ✅ violação `pede_cpf` detectada e reescrita |
+| cliente já enviou CPF | ✅ cpf_confirmed=true, bloco bloqueia repetição |
+| cliente responde "sim" | ✅ bloco instrui CONTINUE o fluxo |
+
+### Arquitetura (3 camadas de defesa)
+1. Webhook resolve `link_phone_to_subscriber` e persiste em `wa_conversations.identity`
+2. System prompt da Isabella ganha bloco com regras DURAS por cenário
+3. Pós-processamento `rewrite_if_violates` elimina sentenças com CPF antes do envio
+
+Toda reescrita auditada em `ai_evaluations` com `kind=ANTI_CPF_BLOCK`.
+
+### Relatórios
+- `/app/docs/RELATORIO_IDENTIFICACAO_AUTOMATICA.md`
+- `/app/docs/RELATORIO_IDENTIFICACAO_AUTOMATICA.json`
+
 ## 🏗️ OPERAÇÃO COLOSSO — LOUSA AUTÔNOMA + ÁLVARO COMANDANTE + SMART FIELD V2 ✅ (10/02/2026)
 
 **Ordem CTO**: transformar a Lousa em COO Digital 24/7. Diretor de Operações

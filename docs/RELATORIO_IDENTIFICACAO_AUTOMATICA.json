@@ -1,0 +1,110 @@
+{
+  "ts": "2026-06-10T03:49:38.196977+00:00",
+  "company_id": "co-id-auto",
+  "cenario_1_unique": {
+    "link_subscriber_id": "sub-uniq-001",
+    "link_subscriber_name": "Pamela Souza",
+    "block_excerpt": "=== IDENTIFICAÇÃO AUTOMÁTICA — REGRA ABSOLUTA ===\nO cliente JÁ FOI IDENTIFICADO automaticamente pelo telefone:\n  • Nome: Pamela Souza\n  • Plano: Fibra 600MB\n  • subscriber_id: sub-uniq-001\n\nPROIBIDO:\n  • Pedir CPF · titular · cadastro · contrato\n  • Dizer 'preciso localizar seu cadastro' ou 'não enc",
+    "violation_detected": [
+      "pede_cpf_simples"
+    ],
+    "rewritten_reply": "Pamela, vou verificar.",
+    "identity_persisted": {
+      "cpf_confirmed": false,
+      "identification_confidence": 1.0,
+      "identification_method": "phone",
+      "identity_updated_at": "2026-06-10T03:49:39.576508+00:00",
+      "multi_match": false,
+      "normalized_phone": "5511990000001",
+      "phone": "5511990000001",
+      "subscriber_id": "sub-uniq-001",
+      "subscriber_name": "Pamela Souza"
+    },
+    "expected": {
+      "link_subscriber_id_match": true,
+      "block_must_contain_PROHIBITED_keyword": true,
+      "violation_count_>=_1": true,
+      "rewritten_has_no_cpf": true,
+      "identity_method_is_phone": true
+    }
+  },
+  "cenario_2_multi": {
+    "link_conflict": true,
+    "link_count": 2,
+    "block_excerpt": "=== IDENTIFICAÇÃO AUTOMÁTICA — MULTI-MATCH ===\nEste telefone está em 2 cadastros: João Silva, Maria Silva.\nPROIBIDO: pedir CPF de imediato.\nOBRIGATÓRIO: pergunte sobre QUAL ENDEREÇO/PONTO o cliente fala.\nExemplo: 'Encontrei mais de um cadastro nesse telefone. Você fala sobre qual endereço/ponto?'\n",
+    "identity_persisted": {
+      "cpf_confirmed": false,
+      "identification_confidence": 0.5,
+      "identification_method": "phone_multi",
+      "identity_updated_at": "2026-06-10T03:49:39.579328+00:00",
+      "multi_match": true,
+      "normalized_phone": "5511990000002",
+      "phone": "5511990000002",
+      "subscriber_id": null,
+      "subscriber_name": null
+    },
+    "expected": {
+      "conflict_true": true,
+      "block_says_qual_endereco": true,
+      "block_NOT_says_PROIBIDO_pedir_CPF_imediato": true,
+      "identity_multi_match_true": true
+    }
+  },
+  "cenario_3_unknown": {
+    "link": null,
+    "block_excerpt": "=== IDENTIFICAÇÃO PENDENTE ===\nEste telefone NÃO está em nenhum cadastro. Você pode pedir CPF ou\nnome do titular UMA ÚNICA VEZ. Depois NÃO repita.\n",
+    "violations": [
+      "pede_cpf_simples"
+    ],
+    "rewritten_equals_original": true,
+    "expected": {
+      "link_is_none": true,
+      "block_mentions_pendente": true,
+      "rewrite_does_not_strip_when_no_subscriber": true
+    }
+  },
+  "cenario_4_no_repeat": {
+    "violations_before": [
+      "pede_cpf"
+    ],
+    "reply_before": "Pamela, vou verificar. Mas antes preciso do CPF para confirmar seu cadastro.",
+    "reply_after_rewrite": "Pamela, vou verificar.",
+    "block_excerpt": "=== IDENTIFICAÇÃO AUTOMÁTICA — REGRA ABSOLUTA ===\nO cliente JÁ FOI IDENTIFICADO automaticamente pelo telefone:\n  • Nome: Pamela Souza\n  • Plano: Fibra 600MB\n  • subscriber_id: sub-uniq-001\n\nPROIBIDO:\n  • Pedir CPF · titular · cadastro · contrato\n  • Dizer 'preciso localizar seu cadastro' ou 'não enc",
+    "expected": {
+      "violation_detected": true,
+      "rewrite_eliminated_cpf": true,
+      "block_says_sim_significa_confirmacao": true
+    }
+  },
+  "cenario_5_cpf_ja_enviado": {
+    "block_excerpt": "=== CPF JÁ INFORMADO PELO CLIENTE ===\nO cliente já enviou um CPF em alguma mensagem anterior\ndesta conversa. PROIBIDO pedir o CPF novamente. Use o\nque ele já enviou. Se não localizou, peça apenas o\nendereço/ponto.\n",
+    "identity_persisted": {
+      "cpf_confirmed": true,
+      "identification_confidence": 0.7,
+      "identification_method": "cpf",
+      "identity_updated_at": "2026-06-10T03:49:39.586579+00:00",
+      "multi_match": false,
+      "normalized_phone": "5511990000004",
+      "phone": "5511990000004",
+      "subscriber_id": null,
+      "subscriber_name": null
+    },
+    "expected": {
+      "block_says_cpf_ja_informado": true,
+      "identity_cpf_confirmed_true": true
+    }
+  },
+  "cenario_6_sim_continua": {
+    "block_excerpt": "=== IDENTIFICAÇÃO AUTOMÁTICA — REGRA ABSOLUTA ===\nO cliente JÁ FOI IDENTIFICADO automaticamente pelo telefone:\n  • Nome: Pamela Souza\n  • Plano: Fibra 600MB\n  • subscriber_id: sub-uniq-001\n\nPROIBIDO:\n  • Pedir CPF · titular · cadastro · contrato\n  • Dizer 'preciso localizar seu cadastro' ou 'não encontrei seu cadastro'\n  • Reiniciar a conversa após o cliente confirmar com 'sim', 'ok',\n    'obrigad",
+    "expected": {
+      "block_orients_continue_flow": true,
+      "block_lista_palavras_neutras": true
+    }
+  },
+  "summary": {
+    "total_checks": 19,
+    "passed": 19,
+    "failed": 0,
+    "failed_list": []
+  }
+}
