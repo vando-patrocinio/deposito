@@ -4643,6 +4643,8 @@ function SmartOltDetailBlock({ ls, ticket }) {
   const [savingGps, setSavingGps] = React.useState(false);
   const [gpsMsg, setGpsMsg] = React.useState(null);
   const [pushBusy, setPushBusy] = React.useState(false);
+  // iter232 — botão "Abrir ONT" (substitui acesso direto à SmartOLT)
+  const [ontBusy, setOntBusy] = React.useState(false);
   // iter180 — designação manual da CTO (quando porta existe mas nome não)
   const [ctoEditOpen, setCtoEditOpen] = React.useState(false);
   const [ctoQuery, setCtoQuery] = React.useState("");
@@ -4998,17 +5000,37 @@ function SmartOltDetailBlock({ ls, ticket }) {
           gridTemplateColumns: "1fr 1fr", gap: 6,
         }}>
           <button
-            onClick={() => setShowGpsPicker(true)}
-            disabled={savingGps}
-            data-testid="lousa-cto-gps-btn"
+            onClick={async () => {
+              if (!ticket?.id) return;
+              setOntBusy(true); setGpsMsg(null);
+              try {
+                const r = await api._client.post(
+                  `/lousa/tickets/${ticket.id}/onu-bridge`);
+                const path = r.data?.redirect_path;
+                if (!path) throw new Error("Sem URL de redirecionamento");
+                const base = (process.env.REACT_APP_BACKEND_URL || "").replace(/\/$/, "");
+                const url = `${base}${path}`;
+                window.open(url, "_blank", "noopener,noreferrer");
+                setGpsMsg({ kind: "ok", text: "ONT aberta em nova aba (link válido por 30min)." });
+              } catch (e) {
+                setGpsMsg({
+                  kind: "err",
+                  text: e?.response?.data?.detail || e.message || "Falha ao abrir ONT",
+                });
+              } finally { setOntBusy(false); }
+            }}
+            disabled={ontBusy}
+            data-testid="lousa-open-ont-btn"
             style={{
               padding: "7px 8px", border: 0,
-              background: "linear-gradient(135deg,#8b5cf6,#6366f1)",
+              background: ontBusy
+                ? "#94a3b8"
+                : "linear-gradient(135deg,#0ea5e9,#06b6d4)",
               color: "#fff", borderRadius: 8, fontSize: 11, fontWeight: 600,
-              cursor: savingGps ? "wait" : "pointer",
+              cursor: ontBusy ? "wait" : "pointer",
               display: "inline-flex", justifyContent: "center", alignItems: "center", gap: 4,
             }}>
-            📍 {savingGps ? "Salvando..." : "GPS"}
+            🔧 {ontBusy ? "Abrindo..." : "Abrir ONT"}
           </button>
           <button
             onClick={async () => {

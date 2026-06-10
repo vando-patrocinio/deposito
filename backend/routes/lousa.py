@@ -4079,6 +4079,8 @@ async def public_finalize_ticket(ticket_id: str, payload: PublicFinalizeIn,
     # Só faz sentido pra clientes mapeados no SmartOLT.
     if is_smartolt_client:
         await _capture_signal_snapshot(ticket_id, company_id, "close")
+    # iter232 — Revoga tokens de bridge da ONT (técnico não acessa mais SmartOLT)
+    await _revoke_onu_bridge_tokens_for_ticket(ticket_id, "OS finalizada")
     coll = await db.collaborators.find_one({"id": cid}, {"_id": 0, "name": 1})
     coll_name = (coll or {}).get("name", "Técnico")
     # Persiste auditoria global da troca de equipamento + notifica gestor.
@@ -4406,6 +4408,8 @@ async def finalize_ticket(ticket_id: str, payload: FinalizeIn, user: dict = Depe
     # Quality notes — snapshot do sinal NO FECHAMENTO (apenas SmartOLT-mapped)
     if is_smartolt_client:
         await _capture_signal_snapshot(ticket_id, company_id, "close")
+    # iter232 — Revoga tokens de bridge da ONT (técnico não acessa mais SmartOLT)
+    await _revoke_onu_bridge_tokens_for_ticket(ticket_id, "OS finalizada")
     # Auditoria de troca de equipamento
     if equipment_swap:
         await _persist_equipment_swap(
@@ -8201,4 +8205,191 @@ async def save_ticket_ping_auto(ticket_id: str, payload: TicketPingAutoIn,
     )
     return {"ok": True, "ping_auto": ping_doc,
              "ping_inconsistente": payload.loss_pct > 30}
+
+
+# =============================================================================
+# ONU Bridge — botão "Abrir ONT" no app do colaborador (iter232)
+# =============================================================================
+# Substitui o acesso direto ao painel SmartOLT. Técnico só consegue abrir a ONT
+# do cliente enquanto a OS dele estiver aberta. Backend gera link único
+# (token UUID, TTL 30min, revogado no fechamento da OS) que faz 302 redirect
+# para `https://{subdomain}.smartolt.com/onu/view/{external_id}`.
+#
+# Política: técnico NUNCA vê a URL final da SmartOLT — só recebe o link
+# `/api/lousa/onu-bridge/redirect/{token}` que ele abre no navegador.
+
+_ONU_BRIDGE_TTL_MIN = 30
+
+
+@router.post("/lousa/tickets/{ticket_id}/onu-bridge")
+async def issue_onu_bridge_token(ticket_id: str,
+                                       user: dict = Depends(get_current_user)):
+    """Gera um link único pro técnico abrir a ONT do cliente desta OS.
+
+    Regras de aceite:
+      • OS deve existir, estar atribuída ao colaborador chamador e estar ABERTA
+        (status diferente de closed/concluida/finalizado).
+      • O subscriber da OS precisa ter ONU vinculada (smartolt_onu_sn ou
+        smartolt_onu_external_id direto na ONU registrada).
+    """
+    cid = user.get("company_id")
+    if not cid:
+        raise HTTPException(403, "company_id ausente")
+    tk = await db.tickets.find_one(
+        {"id": ticket_id, "company_id": cid}, {"_id": 0})
+    if not tk:
+        raise HTTPException(404, "OS não encontrada")
+    if (tk.get("status") or "").lower() in ("closed", "resolved",
+                                                 "concluida", "finalizado"):
+        raise HTTPException(409, "OS já está fechada — acesso à ONT bloqueado")
+
+    # Só o técnico assignado pode emitir (ou gestor)
+    user_id = user.get("id") or user.get("user_id")
+    role = (user.get("role") or "").lower()
+    assigned = tk.get("assigned_to") or tk.get("collaborator_id")
+    if role not in ("gestor", "admin", "owner") and assigned and assigned != user_id:
+        raise HTTPException(403, "OS atribuída a outro técnico")
+
+    # Resolve ONU external_id via subscriber
+    sub_id = tk.get("subscriber_id") or tk.get("client_id")
+    if not sub_id:
+        raise HTTPException(412, "OS sem subscriber vinculado")
+    sub = await db.subscribers.find_one(
+        {"$or": [{"id": sub_id}, {"_id": sub_id}],
+         "company_id": cid},
+        {"_id": 0, "smartolt_onu_sn": 1, "smartolt_onu_external_id": 1,
+         "name": 1}) or {}
+    onu_external_id = sub.get("smartolt_onu_external_id")
+    onu_sn = sub.get("smartolt_onu_sn")
+    onu_doc = None
+    if onu_sn and not onu_external_id:
+        onu_doc = await db.smartolt_onus.find_one(
+            {"company_id": cid, "sn": onu_sn},
+            {"_id": 0, "unique_external_id": 1, "sn": 1})
+        if onu_doc:
+            onu_external_id = onu_doc.get("unique_external_id")
+    if not onu_external_id:
+        raise HTTPException(412, "ONU não vinculada a este cliente no SmartOLT")
+
+    # SmartOLT subdomain
+    cfg = await db.smartolt_config.find_one(
+        {"company_id": cid}, {"_id": 0, "subdomain": 1}) or {}
+    subdomain = (cfg.get("subdomain") or "").strip().lower()
+    if not subdomain:
+        raise HTTPException(412, "SmartOLT não configurado pra esta empresa")
+
+    # Gera token único — UUID v4 + persistência. TTL 30min.
+    token = uuid.uuid4().hex
+    now = datetime.now(timezone.utc)
+    expires_at = (now + timedelta(minutes=_ONU_BRIDGE_TTL_MIN)).isoformat()
+    target_url = f"https://{subdomain}.smartolt.com/onu/view/{onu_external_id}"
+    await db.onu_bridge_tokens.insert_one({
+        "token": token,
+        "company_id": cid,
+        "ticket_id": ticket_id,
+        "subscriber_id": sub_id,
+        "onu_external_id": onu_external_id,
+        "target_url": target_url,
+        "issued_to_user_id": user_id,
+        "issued_to_user_name": user.get("name") or user.get("email"),
+        "issued_at": now.isoformat(),
+        "expires_at": expires_at,
+        "used_at": None,
+        "revoked": False,
+        "revoke_reason": None,
+    })
+
+    # Auditoria
+    await db.audit_log.insert_one({
+        "id": f"audit-{uuid.uuid4().hex[:12]}",
+        "company_id": cid, "kind": "ONU_BRIDGE_ISSUED",
+        "ticket_id": ticket_id, "subscriber_id": sub_id,
+        "user_id": user_id, "onu_external_id": onu_external_id,
+        "created_at": now.isoformat(),
+    })
+
+    # URL pública (relativa ao backend público)
+    redirect_path = f"/api/lousa/onu-bridge/redirect/{token}"
+    return {
+        "ok": True,
+        "token": token,
+        "redirect_path": redirect_path,
+        "expires_at": expires_at,
+        "expires_in_minutes": _ONU_BRIDGE_TTL_MIN,
+        "subscriber_name": sub.get("name"),
+        "onu_sn": onu_sn,
+    }
+
+
+@router.get("/lousa/onu-bridge/redirect/{token}")
+async def redirect_onu_bridge(token: str):
+    """Endpoint público (sem auth — o token É a auth). Faz 302 redirect pra
+    URL real da SmartOLT depois de validar token + OS aberta + não revogado."""
+    from fastapi.responses import HTMLResponse, RedirectResponse
+
+    def _deny(msg: str, code: int = 403) -> HTMLResponse:
+        html = f"""<!doctype html><html><head><meta charset="utf-8">
+<title>Acesso negado</title><meta name="viewport" content="width=device-width">
+<style>body{{font-family:system-ui;background:#0f172a;color:#e2e8f0;
+text-align:center;padding:40px 20px}}.box{{background:#1e293b;border-radius:12px;
+padding:32px;max-width:380px;margin:auto;border:2px solid #ef4444}}
+h1{{color:#ef4444;margin:0 0 12px;font-size:18px}}
+p{{color:#cbd5e1;font-size:14px;line-height:1.5}}</style></head><body>
+<div class="box"><h1>🔒 Acesso à ONT bloqueado</h1>
+<p>{msg}</p>
+<p style="margin-top:16px;font-size:12px;color:#64748b">
+Volte ao app e abra um novo link a partir da OS aberta.</p></div></body></html>"""
+        return HTMLResponse(html, status_code=code)
+
+    rec = await db.onu_bridge_tokens.find_one({"token": token})
+    if not rec:
+        return _deny("Link inválido ou expirado.", 404)
+    if rec.get("revoked"):
+        reason = rec.get("revoke_reason") or "OS encerrada"
+        return _deny(f"Link revogado: {reason}", 410)
+    try:
+        exp = datetime.fromisoformat(rec["expires_at"])
+    except Exception:
+        exp = datetime.now(timezone.utc) - timedelta(seconds=1)
+    if datetime.now(timezone.utc) > exp:
+        return _deny("Link expirou (validade 30min). Gere um novo no app.", 410)
+
+    # Re-valida OS aberta no momento do clique
+    tk = await db.tickets.find_one(
+        {"id": rec["ticket_id"], "company_id": rec["company_id"]},
+        {"_id": 0, "status": 1}) or {}
+    if (tk.get("status") or "").lower() in ("closed", "resolved",
+                                                 "concluida", "finalizado"):
+        await db.onu_bridge_tokens.update_one(
+            {"token": token},
+            {"$set": {"revoked": True, "revoke_reason": "OS fechada",
+                       "revoked_at": now_iso()}})
+        return _deny("A OS foi fechada — acesso revogado.", 410)
+
+    # Marca uso + audit + 302
+    await db.onu_bridge_tokens.update_one(
+        {"token": token}, {"$set": {"used_at": now_iso()}})
+    await db.audit_log.insert_one({
+        "id": f"audit-{uuid.uuid4().hex[:12]}",
+        "company_id": rec["company_id"], "kind": "ONU_BRIDGE_REDIRECT",
+        "ticket_id": rec["ticket_id"], "user_id": rec.get("issued_to_user_id"),
+        "onu_external_id": rec["onu_external_id"],
+        "created_at": now_iso(),
+    })
+    return RedirectResponse(url=rec["target_url"], status_code=302)
+
+
+async def _revoke_onu_bridge_tokens_for_ticket(ticket_id: str,
+                                                    reason: str) -> int:
+    """Revoga todos os tokens da OS quando ela é fechada/cancelada.
+    Retorna a quantidade afetada."""
+    try:
+        res = await db.onu_bridge_tokens.update_many(
+            {"ticket_id": ticket_id, "revoked": False},
+            {"$set": {"revoked": True, "revoke_reason": reason,
+                       "revoked_at": now_iso()}})
+        return res.modified_count
+    except Exception as e:
+        logger.warning("[onu_bridge] revoke falhou ticket=%s: %s", ticket_id, e)
+        return 0
 
