@@ -1,79 +1,76 @@
 {
   "phone_alvo": "+5521998176526",
   "tenant": "co-demo",
-  "executado_em": "2026-06-10T00:03:54.344230+00:00",
+  "executado_em": "2026-06-10T01:15:45.625332+00:00",
   "rounds": [
-    {
-      "size": 100,
-      "tag": "qinj100",
-      "inject_wall_s": 30.32,
-      "inject_rps": 3.3,
-      "http_status": {
-        "-1": 100
-      },
-      "duplicates": 0,
-      "errors": 100,
-      "latency_avg": 30223.2,
-      "latency_p50": 30252.5,
-      "latency_p95": 30256.0,
-      "latency_p99": 30256.6,
-      "latency_max": 30256.6
-    },
     {
       "size": 500,
       "tag": "qinj500",
-      "inject_wall_s": 89.61,
-      "inject_rps": 5.58,
+      "inject_wall_s": 12.74,
+      "inject_rps": 39.25,
       "http_status": {
-        "-1": 400,
-        "502": 1,
-        "200": 99
+        "200": 500
       },
       "duplicates": 0,
-      "errors": 400,
-      "latency_avg": 30014.1,
-      "latency_p50": 30177.1,
-      "latency_p95": 30483.5,
-      "latency_p99": 30487.6,
-      "latency_max": 30498.7
+      "errors": 0,
+      "latency_avg": 4423.7,
+      "latency_p50": 3905.8,
+      "latency_p95": 9589.7,
+      "latency_p99": 10746.9,
+      "latency_max": 11460.2
     },
     {
       "size": 1000,
       "tag": "qinj1000",
-      "inject_wall_s": 57.02,
-      "inject_rps": 17.54,
+      "inject_wall_s": 47.66,
+      "inject_rps": 20.98,
       "http_status": {
-        "200": 804,
-        "502": 8,
-        "-1": 187,
-        "503": 1
+        "200": 962,
+        "-1": 34,
+        "429": 4
       },
       "duplicates": 0,
-      "errors": 187,
-      "latency_avg": 11040.4,
-      "latency_p50": 6724.4,
-      "latency_p95": 36535.4,
-      "latency_p99": 38440.3,
-      "latency_max": 38573.4
+      "errors": 34,
+      "latency_avg": 5708.4,
+      "latency_p50": 2816.8,
+      "latency_p95": 26069.6,
+      "latency_p99": 35473.2,
+      "latency_max": 37819.0
     },
     {
       "size": 5000,
       "tag": "qinj5000",
-      "inject_wall_s": 418.17,
-      "inject_rps": 11.96,
+      "inject_wall_s": 100.84,
+      "inject_rps": 49.58,
       "http_status": {
-        "200": 3457,
-        "502": 16,
-        "-1": 1399,
-        "429": 128
+        "200": 4221,
+        "-1": 84,
+        "429": 695
       },
       "duplicates": 0,
-      "errors": 1399,
-      "latency_avg": 15967.9,
-      "latency_p50": 11032.3,
-      "latency_p95": 35285.3,
-      "latency_p99": 36500.4,
-      "latency_max": 39765.1
+      "errors": 84,
+      "latency_avg": 3924.1,
+      "latency_p50": 2260.1,
+      "latency_p95": 11980.7,
+      "latency_p99": 33499.3,
+      "latency_max": 47291.0
+    },
+    {
+      "size": 10000,
+      "tag": "qinj10000",
+      "inject_wall_s": 276.53,
+      "inject_rps": 36.16,
+      "http_status": {
+        "200": 9288,
+        "429": 712
+      },
+      "duplicates": 0,
+      "errors": 0,
+      "latency_avg": 5363.0,
+      "latency_p50": 4631.3,
+      "latency_p95": 12168.9,
+      "latency_p99": 17389.1,
+      "latency_max": 30200.4
     }
   ]
 }

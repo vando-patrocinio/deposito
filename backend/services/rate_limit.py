@@ -45,7 +45,8 @@ _LIMITS = {
     # Secretaria IA — proteção contra abuso de LLM custos
     "secretaria_ask": f"{30 * _MULT}/minute",
     # Webhooks — protege contra flood (Twilio, Meta retry burst)
-    "webhook_inbound": f"{120 * _MULT}/minute",
+    # OPERAÇÃO ESCALA HTTP: subida para 10.000 base (em DEV vira 100k/min, em PROD 10k/min)
+    "webhook_inbound": f"{10000 * _MULT}/minute",
     # QR Code do cliente — protege contra brute-force de tokens (iter215be)
     "qr_resolve": f"{30 * _MULT}/minute",
     "qr_issue": f"{20 * _MULT}/minute",

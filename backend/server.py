@@ -706,6 +706,34 @@ async def _startup() -> None:
         )
     except Exception as e:
         logger.warning("[startup] não foi possível gravar owner_fingerprint: %s", e)
+
+    # ─── OPERAÇÃO ESCALA HTTP: SCHEDULER LEADER LOCK ───
+    # Quando rodando com uvicorn --workers N, somente o leader executa
+    # APScheduler e background tasks (evita N× duplicação de jobs).
+    try:
+        from services.scheduler_lock import try_acquire_leader, renew_leader
+        _is_leader = await try_acquire_leader()
+    except Exception as _e:
+        logger.warning("[startup] scheduler_lock falhou (%s) — assumindo leader p/ não quebrar", _e)
+        _is_leader = True
+
+    if not _is_leader:
+        logger.info("[startup] FOLLOWER worker (pid=%s) — schedulers e background tasks DESATIVADOS", os.getpid())
+        return
+
+    logger.info("[startup] LEADER worker (pid=%s) — iniciando schedulers e background tasks", os.getpid())
+
+    # Renew loop em background pra manter o lock
+    async def _renew_lock_loop():
+        import asyncio as _a
+        while True:
+            await _a.sleep(20)
+            try:
+                await renew_leader()
+            except Exception:
+                pass
+    asyncio.create_task(_renew_lock_loop(), name="scheduler-lock-renew")
+
     scheduler.start()
     scheduler.add_job(monthly_email_job, CronTrigger(day="last", hour=23, minute=30),
                       id="monthly_email", replace_existing=True)
