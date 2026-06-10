@@ -129,6 +129,21 @@ async def send_text(*, company_id: str, to: str,
     """Envia texto via Baileys. Retorna {ok, id|reason}."""
     start = time.time()
 
+    # OPERAÇÃO 110% — modo fake: grava em wa_fake_outbox.
+    if os.environ.get("SMARTPROV_TRANSPORT_FAKE") == "1":
+        msg_id = f"fake-{uuid.uuid4().hex[:12]}"
+        try:
+            await db.wa_fake_outbox.insert_one({
+                "id": msg_id, "company_id": company_id,
+                "to": to, "text": text,
+                "created_at": datetime.now(timezone.utc).isoformat(),
+            })
+        except Exception:
+            pass
+        await _record_metric(company_id, True,
+                              int((time.time() - start) * 1000), "fake_ok")
+        return {"ok": True, "id": msg_id, "fake": True}
+
     if is_breaker_open(company_id):
         await _record_metric(company_id, False, 0, "breaker_open")
         return {"ok": False, "reason": "breaker_open"}

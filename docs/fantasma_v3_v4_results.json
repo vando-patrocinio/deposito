@@ -1,0 +1,57 @@
+{
+  "v3": {
+    "seeded": {
+      "events": 7205,
+      "invoices": 400,
+      "tickets": 300,
+      "incidents": 5,
+      "repairs": 80,
+      "installs": 100,
+      "withdrawals": 50,
+      "opps": 400,
+      "clusters": 8
+    },
+    "motor_ia_decisions": 1,
+    "motor_ia_actions": 1,
+    "actions_dispatched": 0,
+    "actions_blocked": 0,
+    "wa_fake_outbox": 0,
+    "truck_roll_decisions": 0,
+    "smart_repairs_avoided": 0,
+    "smart_repairs_escalated": 0,
+    "incidents_open": 5,
+    "revenue_autonoma_BRL": 0,
+    "nervoso_pct": 97.37,
+    "nervoso_level": "VERDE",
+    "autonomy_score": 0.0,
+    "autonomy_class": "ASSISTIDO"
+  },
+  "v4": {
+    "seeded": {
+      "events": 36025,
+      "invoices": 2000,
+      "tickets": 1500,
+      "incidents": 25,
+      "repairs": 400,
+      "installs": 500,
+      "withdrawals": 250,
+      "opps": 2000,
+      "clusters": 41
+    },
+    "motor_ia_decisions": 1,
+    "motor_ia_actions": 1,
+    "actions_dispatched": 0,
+    "actions_blocked": 0,
+    "wa_fake_outbox": 0,
+    "truck_roll_decisions": 0,
+    "smart_repairs_avoided": 0,
+    "smart_repairs_escalated": 0,
+    "incidents_open": 25,
+    "revenue_autonoma_BRL": 0,
+    "nervoso_pct": 97.37,
+    "nervoso_level": "VERDE",
+    "autonomy_score": 0.0,
+    "autonomy_class": "ASSISTIDO"
+  },
+  "ts": "2026-06-10T02:03:10.962052+00:00"
+}

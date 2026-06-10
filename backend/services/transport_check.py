@@ -15,6 +15,21 @@ from database import db
 
 async def wa_status(company_id: str) -> Dict[str, Any]:
     """Status do canal WhatsApp por empresa."""
+    # OPERAÇÃO 110%: fallback de transporte para ambiente sem WA real.
+    # Se SMARTPROV_TRANSPORT_FAKE=1, simulamos canal OPEN — outbound é
+    # gravado em `wa_fake_outbox` em vez de enviado pelo Twilio.
+    if os.environ.get("SMARTPROV_TRANSPORT_FAKE") == "1":
+        return {
+            "company_id":        company_id,
+            "checked_at":        datetime.now(timezone.utc).isoformat(),
+            "can_send":          True,
+            "session_status":    "fake-open",
+            "sidecar_error":     None,
+            "checks":            {"fake_mode": True},
+            "blockers":          [],
+            "status":            "OPEN",
+        }
+
     has_token = bool(os.environ.get("WA_SIDECAR_TOKEN"))
     has_url = bool(os.environ.get("BAILEYS_SIDECAR_URL"))
     has_phone = bool(os.environ.get("PRESIDENTE_IA_GESTOR_PHONE"))
