@@ -26,6 +26,7 @@ log = logging.getLogger("ponto.isabella_commanders_worker")
 
 SCAN_INTERVAL_SEC = 30 * 60
 COUNCIL_HOUR_UTC = 12  # ~09h America/Sao_Paulo
+EXPERIENCE_HOUR_UTC = 10  # ~07h America/Sao_Paulo
 
 
 async def _active_companies() -> list[str]:
@@ -61,6 +62,7 @@ async def isabella_commanders_worker() -> None:
         pass
     log.info("[commanders_worker] iniciado (a cada %ss)", SCAN_INTERVAL_SEC)
     last_council_day: str | None = None
+    last_experience_day: str | None = None
     while True:
         try:
             companies = await _active_companies()
@@ -69,6 +71,27 @@ async def isabella_commanders_worker() -> None:
                     await _run_scans_for(cid)
                 except Exception as e:
                     log.warning("[commanders_worker] scan %s: %s", cid, e)
+            now = datetime.now(timezone.utc)
+            today = now.strftime("%Y-%m-%d")
+            # Experience Commander — varredura diária de
+            # aniversários / level-ups / indicações / incidentes resolvidos
+            if now.hour >= EXPERIENCE_HOUR_UTC and last_experience_day != today:
+                try:
+                    from services import isabella_experience as exp_eng
+                    for cid in companies:
+                        try:
+                            r = await exp_eng.scan_company(cid)
+                            if (r.get("totals") or {}).get("total", 0):
+                                log.info(
+                                    "[commanders_worker] experience %s: %s",
+                                    cid, r["totals"])
+                        except Exception as e:
+                            log.warning(
+                                "[commanders_worker] experience %s: %s",
+                                cid, e)
+                    last_experience_day = today
+                except Exception as e:
+                    log.warning("[commanders_worker] experience scan: %s", e)
             # Resolução de outcomes (job diário)
             try:
                 r = await outcome_eng.resolve_due()
@@ -79,8 +102,6 @@ async def isabella_commanders_worker() -> None:
             except Exception as e:
                 log.warning("[commanders_worker] resolve_due: %s", e)
             # Reunião do conselho 1x por dia
-            now = datetime.now(timezone.utc)
-            today = now.strftime("%Y-%m-%d")
             if now.hour >= COUNCIL_HOUR_UTC and last_council_day != today:
                 for cid in companies:
                     try:
