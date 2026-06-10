@@ -1020,6 +1020,10 @@ async def _startup() -> None:
     # SmartOLT) com Claude Sonnet 4.6 e atualiza estoque do técnico.
     from services.sn_photo_worker import sn_photo_worker
     asyncio.create_task(sn_photo_worker())
+    # Isabella Incident Commander — varredura preditiva de incidentes
+    # coletivos (CTO/bairro/ONU) a cada 15 min sobre dados reais.
+    from services.isabella_incident import isabella_incident_worker
+    asyncio.create_task(isabella_incident_worker())
     # NOTE: o worker da isabella_queue foi SEPARADO em processo dedicado
     # (programa supervisor `isabella-worker`). NÃO inicialize aqui — webhook
     # HTTP deve ficar isolado do processamento LLM/Twilio.

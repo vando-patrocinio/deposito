@@ -1938,6 +1938,32 @@ async def create_ticket(payload: TicketIn, user: dict = Depends(require_role("ge
     if not coll:
         raise HTTPException(404, "Colaborador não encontrado")
 
+    # ISABELLA INCIDENT COMMANDER — trava reparos individuais quando há
+    # incidente coletivo ABERTO cobrindo a CTO/bairro do cliente. O cliente
+    # é AGRUPADO no incidente (a OS coletiva resolve a causa na origem).
+    if payload.type == "reparo":
+        try:
+            from services.isabella_incident import incident_block_for_new_repair
+            _inc = await incident_block_for_new_repair(
+                coll.get("company_id") or DEMO_COMPANY_ID,
+                payload.client_name, payload.pppoe_user, payload.neighborhood)
+        except Exception as _e:
+            logger.warning("[lousa] incident guard fail: %s", _e)
+            _inc = None
+        if _inc:
+            _sc = _inc.get("scope") or {}
+            raise HTTPException(409, {
+                "code": "COLLECTIVE_INCIDENT_OPEN",
+                "incident_id": _inc["id"],
+                "collective_ticket_id": _inc.get("collective_ticket_id"),
+                "message": (
+                    f"Isabella detectou incidente coletivo ABERTO em "
+                    f"{_sc.get('cto_name') or _sc.get('cto_id') or _sc.get('neighborhood')}"
+                    f" ({_inc.get('kind_label') or _inc['kind']}). O cliente foi "
+                    f"AGRUPADO ao incidente — trate a causa na OS coletiva em vez "
+                    f"de abrir reparo individual."),
+            })
+
     # Geocode do endereço (best-effort) para futuras cercas dinâmicas
     lat, lng = None, None
     try:

@@ -47,6 +47,101 @@ function timeAgo(iso) {
   } catch { return "—"; }
 }
 
+/* ISABELLA INCIDENT COMMANDER — incidentes coletivos preditivos */
+function IsabellaIncidents() {
+  const [data, setData] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState(null);
+
+  const load = useCallback(() => {
+    api.isabellaIncidents("open").then(setData).catch((e) => setErr(e?.response?.data?.detail || e.message));
+  }, []);
+  useEffect(() => { load(); }, [load]);
+
+  const scan = async () => {
+    setBusy(true); setErr(null);
+    try {
+      await api.isabellaIncidentsScan();
+      load();
+    } catch (e) { setErr(e?.response?.data?.detail || e.message); }
+    finally { setBusy(false); }
+  };
+  const act = async (fn) => {
+    try { await fn(); load(); } catch (e) { setErr(e?.response?.data?.detail || e.message); }
+  };
+
+  const items = data?.items || [];
+  return (
+    <div style={card} data-testid="isabella-incidents">
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10, flexWrap: "wrap", gap: 8 }}>
+        <div>
+          <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: 1.2, color: "white", background: "#b91c1c", padding: "4px 8px", borderRadius: 6, textTransform: "uppercase" }}>
+            Isabella Incident Commander
+          </span>
+          <span style={{ fontSize: 11, color: "#64748b", marginLeft: 8 }}>
+            detecta a falha coletiva antes do cliente reclamar (varredura automática a cada 15 min)
+          </span>
+        </div>
+        <button data-testid="incident-scan-btn" onClick={scan} disabled={busy}
+          style={{ height: 36, padding: "0 14px", borderRadius: 10, border: 0, background: "#b91c1c", color: "white", fontWeight: 700, fontSize: 12, cursor: "pointer", opacity: busy ? 0.6 : 1 }}>
+          {busy ? "Varrendo rede…" : "Varrer agora (8 regras)"}
+        </button>
+      </div>
+
+      {err && <div style={{ fontSize: 12, color: "#b91c1c", marginBottom: 8 }}>{String(err)}</div>}
+
+      {items.length === 0 && (
+        <div data-testid="incident-empty" style={{ fontSize: 12, color: "#64748b" }}>
+          Nenhum incidente coletivo aberto. A Isabella segue monitorando CTOs, bairros e ONUs.
+        </div>
+      )}
+
+      {items.map((i) => {
+        const sc = i.scope || {};
+        const where = sc.cto_name || sc.cto_id || sc.neighborhood || i.scope_id;
+        return (
+          <div key={i.id} data-testid={`incident-row-${i.id}`}
+            style={{ border: `1.5px solid ${i.status === "confirmed" ? "#fecaca" : "#fcd34d"}`, background: i.status === "confirmed" ? "#fef2f2" : "#fffbeb", borderRadius: 12, padding: 12, marginBottom: 10 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
+              <div style={{ fontWeight: 800, fontSize: 13, color: "#0f172a" }}>
+                {i.kind_label || i.kind} · {where}
+                <span style={{ marginLeft: 8, fontSize: 10, fontWeight: 800, padding: "2px 8px", borderRadius: 999,
+                  background: i.status === "confirmed" ? "#b91c1c" : "#b45309", color: "white", textTransform: "uppercase" }}>
+                  {i.status === "confirmed" ? "confirmado" : "previsto"} · {i.probability}%
+                </span>
+              </div>
+              <div style={{ display: "flex", gap: 6 }}>
+                {i.status === "predicted" && (
+                  <button data-testid={`incident-confirm-${i.id}`} onClick={() => act(() => api.isabellaIncidentConfirm(i.id))}
+                    style={{ height: 28, padding: "0 10px", borderRadius: 8, border: "1px solid #fecaca", background: "white", color: "#b91c1c", fontWeight: 700, fontSize: 11, cursor: "pointer" }}>
+                    Confirmar
+                  </button>
+                )}
+                <button data-testid={`incident-resolve-${i.id}`} onClick={() => act(() => api.isabellaIncidentResolve(i.id))}
+                  style={{ height: 28, padding: "0 10px", borderRadius: 8, border: "1px solid #86efac", background: "white", color: "#065f46", fontWeight: 700, fontSize: 11, cursor: "pointer" }}>
+                  Resolver
+                </button>
+              </div>
+            </div>
+            <div style={{ display: "flex", gap: 16, flexWrap: "wrap", marginTop: 8, fontSize: 11, color: "#475569" }}>
+              <span><strong style={{ color: "#0f172a" }}>{i.evidence_count}</strong> ocorrências</span>
+              <span><strong style={{ color: "#0f172a" }}>~{i.affected_clients_estimated}</strong> clientes na área</span>
+              <span>criticidade <strong style={{ color: i.criticality_score >= 80 ? "#b91c1c" : "#b45309" }}>{i.criticality_score}/100</strong></span>
+              <span>churn: <strong style={{ color: "#b91c1c" }}>{i.churn_risk?.clients_at_risk}</strong> clientes (R$ {(i.churn_risk?.annual_revenue_at_risk_brl || 0).toFixed(2)}/ano)</span>
+              <span>receita mensal em risco: <strong>R$ {(i.financial_impact?.monthly_revenue_at_risk_brl || 0).toFixed(2)}</strong></span>
+            </div>
+            <div style={{ fontSize: 11, color: "#334155", marginTop: 6 }}>
+              <strong>Recomendação Isabella:</strong> {i.recommendation}
+              {i.collective_ticket_id && <span style={{ color: "#64748b" }}> · OS coletiva: {i.collective_ticket_id}</span>}
+              {(i.grouped_clients || []).length > 0 && <span style={{ color: "#b91c1c" }}> · {i.grouped_clients.length} reparo(s) individual(is) agrupado(s)</span>}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 /* ISABELLA FIELD PRESIDENT — governança da Lousa + indicadores p/ Presidente IA */
 function IsabellaGovernance() {
   const [summary, setSummary] = useState(null);
@@ -213,6 +308,8 @@ export default function FieldOpsManagerPanel() {
         <Kpi title="Retiradas pendentes" value={c.retiradas_pendentes} />
         <Kpi title="Truck-roll evitado (30d)" value={data.truck_roll_avoidance_30d} />
       </div>
+
+      <IsabellaIncidents />
 
       <IsabellaGovernance />
 

@@ -269,6 +269,11 @@ export const api = {
   isabellaOsBrief: (id, cid) => client.get(`/field/isabella/os/${id}/brief`, { params: cid ? { cid } : {} }).then((r) => r.data),
   isabellaLousaAnalysis: () => client.get("/field/isabella/lousa-analysis").then((r) => r.data),
   isabellaPresidentSummary: () => client.get("/field/isabella/president-summary").then((r) => r.data),
+  isabellaIncidentsScan: () => client.post("/field/isabella/incidents/scan").then((r) => r.data),
+  isabellaIncidents: (status) => client.get("/field/isabella/incidents", { params: { status: status || "open" } }).then((r) => r.data),
+  isabellaIncidentConfirm: (id) => client.post(`/field/isabella/incidents/${id}/confirm`).then((r) => r.data),
+  isabellaIncidentResolve: (id) => client.post(`/field/isabella/incidents/${id}/resolve`).then((r) => r.data),
+  isabellaNetworkFeed: () => client.get("/field/isabella/incidents/network-feed").then((r) => r.data),
 
   lousaByCollaborator: (cid, opts = {}) => {
     const params = opts.adminTest ? { admin_test: 1 } : {};

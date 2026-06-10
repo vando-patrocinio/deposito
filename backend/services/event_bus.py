@@ -116,6 +116,13 @@ class EventType:
     FIELD_ISABELLA_PRIORITY_CHANGED = "field.isabella.priority.changed"
     FIELD_ISABELLA_ROOT_CAUSE_DETECTED = "field.isabella.root_cause.detected"
     FIELD_ISABELLA_TRUCK_ROLL_AVOIDED = "field.isabella.truck_roll_avoided"
+    # Isabella Incident Commander — detecção preditiva (06/2026)
+    INCIDENT_PREDICTED = "incident.predicted"
+    INCIDENT_CONFIRMED = "incident.confirmed"
+    INCIDENT_CTO_CLUSTER = "incident.cto.cluster"
+    INCIDENT_NEIGHBORHOOD_CLUSTER = "incident.neighborhood.cluster"
+    INCIDENT_CHURN_RISK = "incident.churn.risk"
+    INCIDENT_MASS_REPAIR = "incident.mass.repair"
 
 
 SEVERITY = ("baixa", "media", "alta", "critica")

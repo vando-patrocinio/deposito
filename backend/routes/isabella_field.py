@@ -78,4 +78,120 @@ async def isabella_president_summary(request: Request,
     if not _is_privileged(user):
         raise HTTPException(403, "Acesso restrito a gestor/administrador")
     company = _company_of(user)
-    return await isa.president_summary(company)
+    summary = await isa.president_summary(company)
+    # Incident Commander — visão de incidentes p/ Presidente IA
+    from services import isabella_incident as inc_svc
+    open_incs = await __import__("database").db.isabella_incidents.find(
+        {"company_id": company,
+         "status": {"$in": ["predicted", "confirmed"]}},
+        {"_id": 0, "evidence": 0}).sort("criticality_score", -1).to_list(50)
+    summary["incidents"] = {
+        "open": len(open_incs),
+        "confirmed": sum(1 for i in open_incs if i["status"] == "confirmed"),
+        "predicted": sum(1 for i in open_incs if i["status"] == "predicted"),
+        "monthly_revenue_at_risk_brl": round(sum(
+            (i.get("financial_impact") or {}).get(
+                "monthly_revenue_at_risk_brl") or 0 for i in open_incs), 2),
+        "clients_at_churn_risk": sum(
+            (i.get("churn_risk") or {}).get("clients_at_risk") or 0
+            for i in open_incs),
+        "top": open_incs[:5],
+    }
+    return summary
+
+
+# ===========================================================================
+# ISABELLA INCIDENT COMMANDER — detecção preditiva de incidentes coletivos
+# ===========================================================================
+@router.post("/incidents/scan")
+@limiter.limit(get_limit("field_action"))
+async def isabella_incidents_scan(request: Request,
+                                  user: dict = Depends(get_current_user)):
+    """Varredura completa das 8 regras de detecção (também roda automática
+    a cada 15 min no worker)."""
+    if not _is_privileged(user):
+        raise HTTPException(403, "Acesso restrito a gestor/administrador")
+    company = _company_of(user)
+    from services.isabella_incident import detect_company
+    result = await detect_company(company)
+    await _audit(company, "ISABELLA_INCIDENT_SCAN", user,
+                 user.get("collaborator_id") or "-",
+                 new=len(result["new_incidents"]),
+                 updated=len(result["updated_incidents"]))
+    return result
+
+
+@router.get("/incidents")
+@limiter.limit(get_limit("field_read"))
+async def isabella_incidents_list(request: Request, status: str = "open",
+                                  user: dict = Depends(get_current_user)):
+    if not _is_privileged(user):
+        raise HTTPException(403, "Acesso restrito a gestor/administrador")
+    company = _company_of(user)
+    from database import db
+    q = {"company_id": company}
+    if status == "open":
+        q["status"] = {"$in": ["predicted", "confirmed"]}
+    items = await db.isabella_incidents.find(
+        q, {"_id": 0, "evidence": 0}).sort(
+        [("criticality_score", -1), ("created_at", -1)]).to_list(100)
+    return {"items": items, "count": len(items)}
+
+
+@router.post("/incidents/{incident_id}/confirm")
+@limiter.limit(get_limit("field_action"))
+async def isabella_incident_confirm(incident_id: str, request: Request,
+                                    user: dict = Depends(get_current_user)):
+    if not _is_privileged(user):
+        raise HTTPException(403, "Acesso restrito a gestor/administrador")
+    company = _company_of(user)
+    from database import db
+    from services.event_bus import EventType, emit_event
+    inc = await db.isabella_incidents.find_one(
+        {"id": incident_id, "company_id": company}, {"_id": 0, "evidence": 0})
+    if not inc:
+        raise HTTPException(404, "Incidente não encontrado")
+    await db.isabella_incidents.update_one(
+        {"id": incident_id},
+        {"$set": {"status": "confirmed", "confirmed_by": user.get("email"),
+                  "updated_at": __import__("core").now_iso()}})
+    await emit_event(EventType.INCIDENT_CONFIRMED, company_id=company,
+                     source="isabella_incident", severity="alta",
+                     payload={"incident_id": incident_id,
+                              "kind": inc["kind"], "scope": inc["scope"],
+                              "confirmed_by": user.get("email")})
+    await _audit(company, "ISABELLA_INCIDENT_CONFIRMED", user,
+                 user.get("collaborator_id") or "-", incident_id=incident_id)
+    return {"ok": True, "status": "confirmed"}
+
+
+@router.post("/incidents/{incident_id}/resolve")
+@limiter.limit(get_limit("field_action"))
+async def isabella_incident_resolve(incident_id: str, request: Request,
+                                    user: dict = Depends(get_current_user)):
+    if not _is_privileged(user):
+        raise HTTPException(403, "Acesso restrito a gestor/administrador")
+    company = _company_of(user)
+    from database import db
+    res = await db.isabella_incidents.update_one(
+        {"id": incident_id, "company_id": company},
+        {"$set": {"status": "resolved", "resolved_by": user.get("email"),
+                  "resolved_at": __import__("core").now_iso(),
+                  "updated_at": __import__("core").now_iso()}})
+    if not res.matched_count:
+        raise HTTPException(404, "Incidente não encontrado")
+    await _audit(company, "ISABELLA_INCIDENT_RESOLVED", user,
+                 user.get("collaborator_id") or "-", incident_id=incident_id)
+    return {"ok": True, "status": "resolved"}
+
+
+@router.get("/incidents/network-feed")
+@limiter.limit(get_limit("field_read"))
+async def isabella_network_feed(request: Request,
+                                user: dict = Depends(get_current_user)):
+    """Feed para a Rede IA: CTOs/regiões/ONUs suspeitas + tendência."""
+    if not _is_privileged(user):
+        raise HTTPException(403, "Acesso restrito a gestor/administrador")
+    company = _company_of(user)
+    from services.isabella_incident import network_feed
+    return await network_feed(company)
