@@ -526,8 +526,63 @@ async def _generate_and_send_twilio_reply(
         return None
     if not reply_text:
         return None
-    # GUARDIÃO ANTI-CPF — pós-processa reply para eliminar pedidos
-    # de CPF/cadastro quando o cliente JÁ foi identificado pelo telefone.
+    # AGENDA NA LOUSA — detecta confirmação de janela proposta pela Isabella
+    # em turn anterior e cria OS automaticamente.
+    try:
+        from services.isabella_lousa_scheduler import (
+            classify_intent, confirm_and_create_os, propose_window
+        )
+        user_low = (user_text or "").lower().strip()
+        # Confirmação típica
+        is_confirm = bool(re.match(r"^(sim|pode|ok|t[aá]\s+bom|combinado|"
+                                    r"aceito|confirmo|isso|fechado)\b",
+                                    user_low))
+        if is_confirm and link_for_guard and link_for_guard.get("subscriber_id"):
+            # Recupera última proposta de janela do mesmo phone (busca em
+            # ai_evaluations.kind=ISABELLA_WINDOW_PROPOSED)
+            last_prop = await db.ai_evaluations.find_one(
+                {"company_id": cid, "phone": phone,
+                 "kind": "ISABELLA_WINDOW_PROPOSED"},
+                {"_id": 0}, sort=[("created_at", -1)])
+            if last_prop and last_prop.get("proposal", {}).get("slot"):
+                created = await confirm_and_create_os(
+                    company_id=cid,
+                    subscriber_id=link_for_guard["subscriber_id"],
+                    phone=phone, user_text=user_text,
+                    proposal=last_prop["proposal"],
+                    confirmation_text=user_text)
+                if created.get("customer_message"):
+                    reply_text = created["customer_message"]
+        # Se ainda não temos reply (primeira ocorrência) e intenção é reparo
+        # com subscriber identificado, propõe janela e PERSISTE a proposta
+        if (not reply_text or "PLANO_DE_ACAO" not in reply_text) \
+                and link_for_guard and link_for_guard.get("subscriber_id"):
+            intent = classify_intent(user_text)
+            if intent in ("reparo", "instalacao", "retirada", "troca_equipamento"):
+                prop = await propose_window(
+                    cid, link_for_guard["subscriber_id"], user_text)
+                if prop.get("slot") and prop.get("proposal_text"):
+                    # Persiste proposta para o turn seguinte poder confirmar
+                    try:
+                        await db.ai_evaluations.insert_one({
+                            "id": f"win-{uuid.uuid4().hex[:10]}",
+                            "company_id": cid, "phone": phone,
+                            "kind": "ISABELLA_WINDOW_PROPOSED",
+                            "subscriber_id": link_for_guard["subscriber_id"],
+                            "proposal": prop,
+                            "user_text": user_text[:300],
+                            "created_at": now_iso(),
+                        })
+                    except Exception:
+                        pass
+                    # Se a LLM já não propôs janela, anexa ao final
+                    if "agendar" not in (reply_text or "").lower():
+                        sub_name = (link_for_guard.get("subscriber_name") or "").split(" ")[0] or "cliente"
+                        reply_text = (
+                            f"{sub_name}, " + prop["proposal_text"]
+                        )
+    except Exception as e:
+        logger.warning("[twilio] isabella_lousa_scheduler falhou: %s", e)
     try:
         from services.anti_cpf_guardian import rewrite_if_violates, detect_violations
         violations = detect_violations(reply_text)

@@ -1,0 +1,94 @@
+{
+  "ts": "2026-06-10T03:58:14.012604+00:00",
+  "subscriber_id": "sub-test-62fa195c",
+  "phone": "5521998176526",
+  "results": {
+    "1_problema_remoto": {
+      "action": "NO_OS",
+      "intent": "duvida_simples",
+      "rationale": "intenção não exige visita técnica"
+    },
+    "2_incidente_coletivo": {
+      "action": "ESCALATE_COLLECTIVE",
+      "intent": "reparo",
+      "decision": "INCIDENTE_COLETIVO",
+      "rationale": "incidente coletivo ativo: collective_outage / high · ⚠️ 3 tickets em 30 dias → problema crônico",
+      "expected_escalate": true
+    },
+    "3_reparo_individual": {
+      "action": "DISPATCH",
+      "proposal_has_slot": true,
+      "proposal_text": "Consigo agendar uma visita para hoje, das 12h às 13h. Pode ter alguém no local nesse período?",
+      "expected_dispatch_or_preventiva": true
+    },
+    "4_pede_melhor_horario": {
+      "proposal_text": "Consigo agendar uma visita para hoje, das 12h às 13h. Pode ter alguém no local nesse período?",
+      "window_label": "12h às 13h",
+      "expected_window_in_18h": true
+    },
+    "5_horario_ocupado": {
+      "first_collaborator": "col-mural-0-68a1de",
+      "alternative_collaborator": "col-atlaz-inbox",
+      "different_collaborator": true
+    },
+    "6_tecnico_indisponivel_fallback": {
+      "slot_found_via_fallback": true,
+      "fallback_collaborator": "col-mural-0-68a1de"
+    },
+    "7_os_aparece_na_lousa": {
+      "ticket_id": "tkt-b2fed45848",
+      "origin": "isabella",
+      "in_db": true,
+      "status": "aberta",
+      "type": "reparo",
+      "priority": "normal",
+      "scheduled_time": "2026-06-10T11:00",
+      "assigned_collaborator_id": "col-mural-0-68a1de",
+      "expected_origin_isabella": true
+    },
+    "8_os_na_lousa_mobile": {
+      "mobile_count": 1,
+      "mobile_sample_first": {
+        "id": "tkt-b2fed45848",
+        "client_snapshot": {
+          "name": "Cliente Teste Evolução Final V2",
+          "address": "—",
+          "neighborhood": "",
+          "phone": "5521998176526",
+          "latitude": null,
+          "longitude": null,
+          "relato": "sem internet de novo",
+          "pppoe_user": "",
+          "subscriber_id": "sub-test-62fa195c",
+          "test_history": []
+        },
+        "type": "reparo",
+        "scheduled_time": "2026-06-10T11:00",
+        "isabella_obs_tecnico": "Diagnóstico Isabella: —. Truck Roll: DISPATCH (0.6). Intenção: reparo."
+      },
+      "has_obs_tecnico": true
+    },
+    "9_os_finalizada": {
+      "ticket_id": "tkt-b2fed45848",
+      "marked_concluida": true
+    },
+    "10_followup": {
+      "open_tickets_after_finalize": 0,
+      "open_tickets_after_new_call": 1,
+      "expected_increases": true
+    }
+  },
+  "expectations": {
+    "isabella_nao_abre_sem_diagnostico": true,
+    "incidente_coletivo_escala": true,
+    "reparo_gera_dispatch": true,
+    "os_persistida_em_db": true,
+    "os_tem_origin_isabella": true,
+    "lousa_mobile_recebe": true,
+    "obs_tecnico_clara": true,
+    "fallback_tecnico_funciona": true,
+    "followup_aumenta": true
+  },
+  "passed": 9,
+  "total": 9
+}

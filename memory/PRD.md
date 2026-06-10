@@ -2,6 +2,48 @@
 
 > Documento vivo. Atualizado a cada sprint.
 
+## 📅 OPERAÇÃO ISABELLA AGENDA NA LOUSA ✅ (10/02/2026)
+
+**Ordem CTO**: Isabella precisa agendar OS reais na Lousa, com bolha
+visível ao gestor e ao técnico na Mobile, sem duplicidade, sem horários
+impossíveis, com diagnóstico real.
+
+### Entregas
+- `services/isabella_lousa_scheduler.py` (285 LoC) — pipeline completo
+- `routes/isabella_lousa.py` — 4 endpoints `/api/isabella-lousa/*`
+- `routes/whatsapp_twilio.py` — propõe janela + confirma + cria OS
+- `scripts/test_isabella_lousa.py` — 10 cenários reais (phone 21998176526)
+
+### Critérios — 10/10 ✅ · Cenários — 9/9 ✅
+| Cenário | Status |
+|---|---|
+| 1 problema remoto financeiro | ✅ NO_OS |
+| 2 incidente coletivo | ✅ ESCALATE_COLLECTIVE |
+| 3 reparo individual | ✅ DISPATCH + slot "12h às 13h" |
+| 4-5 horários | ✅ proposta com janela + fallback técnico |
+| 6 técnico indisponível | ✅ fallback funciona |
+| 7 OS na Lousa | ✅ tkt-b2fed45848 com origin=isabella |
+| 8 Lousa Mobile | ✅ ticket visível filtrando por collaborator_id |
+| 9 OS finalizada | ✅ status=concluida |
+| 10 follow-up | ✅ count sobe 0→1 |
+
+### Pipeline
+1. `classify_intent` (8 intents) · 2. `decide_action` (NO_OS/DISPATCH/ESCALATE/ASK)
+3. `find_available_slot` (técnico de menor carga · horários livres)
+4. `propose_window` (mensagem proposta + slot)
+5. Persistência da proposta em `ai_evaluations.kind=ISABELLA_WINDOW_PROPOSED`
+6. Detecção de confirmação no próximo turn → `confirm_and_create_os`
+7. `db.tickets.insert` com `origin=isabella`, `isabella_obs_tecnico`, log
+8. `followup_open_tickets_by_isabella` para acompanhamento
+
+### Endpoints
+- `GET /api/isabella-lousa/decide` · `POST /api/isabella-lousa/propose-window`
+- `POST /api/isabella-lousa/confirm-create-os` · `GET /api/isabella-lousa/follow-up`
+
+### Relatórios
+- `/app/docs/RELATORIO_ISABELLA_LOUSA.md` (executivo)
+- `/app/docs/RELATORIO_ISABELLA_LOUSA.json` (raw 10 cenários)
+
 ## 🆔 OPERAÇÃO IDENTIFICAÇÃO AUTOMÁTICA DO ASSINANTE ✅ (10/02/2026)
 
 **Ordem CTO**: Isabella não pode mais pedir CPF quando o telefone já existe
