@@ -402,16 +402,17 @@ async def webhook(request: Request):
     except Exception as e:
         logger.warning("[twilio] wa_conversations upsert falhou: %s", e)
 
-    # Agenda processamento LLM + Twilio Send via asyncio.create_task.
-    # NUNCA bloqueia o handler — Twilio recebe 200 em <300ms.
-    # asyncio.create_task ao invés de FastAPI BackgroundTasks pois slowapi
-    # interfere com a injeção de BackgroundTasks no slot do request.
-    asyncio.create_task(
-        _generate_and_send_twilio_reply(
+    # Enfileira em isabella_queue (worker pool dedicado consome).
+    # Webhook NUNCA chama LLM ou Twilio diretamente — só persiste e enfileira.
+    try:
+        from services.isabella_queue import enqueue_job
+        await enqueue_job(
             cid=cid, phone=phone, user_text=text,
             subscriber_id=subscriber_id, subscriber_ctx=subscriber_ctx,
+            channel="twilio", message_sid=message_sid,
         )
-    )
+    except Exception as e:
+        logger.warning("[twilio] enqueue falhou: %s", e)
     return {"ok": True, "queued": True, "message_sid": message_sid}
 
 

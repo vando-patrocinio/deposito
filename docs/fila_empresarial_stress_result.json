@@ -1,0 +1,31 @@
+{
+  "phone_alvo": "+5521998176526",
+  "tenant": "co-demo",
+  "executado_em": "2026-06-09T23:39:23.872683+00:00",
+  "rounds": [
+    {
+      "size": 100,
+      "round_tag": "qstress100",
+      "inject_wall_s": 1.38,
+      "inject_throughput_rps": 72.53,
+      "drain_wall_s": 90.12,
+      "drain_throughput_rps": 0.52,
+      "http_status": {
+        "200": 100
+      },
+      "duplicates_returned": 0,
+      "latency_ms_avg": 1188.6,
+      "latency_ms_p50": 1196.0,
+      "latency_ms_p95": 1305.5,
+      "latency_ms_p99": 1315.3,
+      "latency_ms_max": 1315.3,
+      "inbound_persisted": 100,
+      "inbound_loss": 0,
+      "queue_done": 47,
+      "queue_failed": 0,
+      "queue_queued_remaining": 28,
+      "queue_processing_remaining": 25,
+      "processed_pct": 47.0
+    }
+  ]
+}

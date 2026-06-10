@@ -986,6 +986,12 @@ async def _startup() -> None:
     # SmartOLT) com Claude Sonnet 4.6 e atualiza estoque do técnico.
     from services.sn_photo_worker import sn_photo_worker
     asyncio.create_task(sn_photo_worker())
+    # OPERAÇÃO FILA EMPRESARIAL — Isabella worker pool
+    try:
+        from services.isabella_queue import start_workers as _iq_start
+        await _iq_start()
+    except Exception as e:
+        logger.exception("[startup] isabella_queue start falhou: %s", e)
     logger.info("Scheduler iniciado.")
 
 
@@ -994,6 +1000,11 @@ async def _shutdown() -> None:
     scheduler.shutdown(wait=False)
     routes_atlaz.stop_worker()
     routes_mass_messaging.stop_worker()
+    try:
+        from services.isabella_queue import stop_workers as _iq_stop
+        await _iq_stop()
+    except Exception:
+        pass
     client.close()
 
 
