@@ -652,8 +652,9 @@ async def _generate_and_send_twilio_reply(
             isabella_reply=reply_text,
             context_used=orchestrated if 'orchestrated' in dir() else "",
         )
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning("[twilio] register_followup falhou phone=%s: %s",
+                        phone, e)
     return reply_text
 
 
