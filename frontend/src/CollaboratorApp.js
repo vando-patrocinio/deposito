@@ -598,13 +598,10 @@ function CollaboratorAppInner({ mobile = false, forcedCollabId = null, onLogout 
     );
   }
 
-  if (!collabs.length) {
-    return (
-      <div style={{ padding: 24, color: "#64748b" }}>
-        Nenhum colaborador cadastrado. Cadastre na aba <strong>Cadastro</strong> primeiro.
-      </div>
-    );
-  }
+  // collabId veio do link (?cid=) mas a lista de colaboradores não carregou
+  // (ex.: sem JWT o GET /api/collaborators retorna 401 e collabs=[]).
+  // Segue para a home mesmo assim — todo o app usa `collab?.` com fallback
+  // e o Smart Field Ops exige login JWT próprio quando necessário.
 
   return (
     <div data-testid={isAdminTest ? "admin-test-mode-root" : undefined}

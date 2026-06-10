@@ -498,7 +498,7 @@ export default function FieldOps({ collabId, onBack, onOpenLousa }) {
           O Smart Field Ops usa a autenticação oficial do SmartProv (JWT).
           Entre com seu e-mail e senha de colaborador para continuar.
         </div>
-        <button style={darkBtn} data-testid="field-ops-go-login" onClick={() => { window.localStorage.removeItem("ponto_collab_id"); window.location.href = window.location.pathname; }}>
+        <button style={darkBtn} data-testid="field-ops-go-login" onClick={() => { window.localStorage.removeItem("ponto_collab_id"); window.location.href = "/login"; }}>
           Ir para o login
         </button>
         <button style={{ ...softBtn, marginTop: 8 }} onClick={onBack} data-testid="field-ops-back-login">Voltar</button>

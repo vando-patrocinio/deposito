@@ -102,7 +102,7 @@ export default function FieldOpsManagerPanel() {
   const er = data.equipment_returns || {};
 
   return (
-    <div data-testid="field-ops-admin-panel" style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+    <div data-testid="field-ops-admin-panel" style={{ display: "flex", flexDirection: "column", gap: 14, paddingBottom: 140 }}>
       <div>
         <h2 style={{ margin: 0, fontSize: 20, fontWeight: 800, color: "#0f172a" }}>Field Ops — Operação de Campo</h2>
         <div style={{ fontSize: 12, color: "#64748b", marginTop: 2 }}>

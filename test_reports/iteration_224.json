@@ -1,0 +1,71 @@
+{
+  "summary": "Reteste do fluxo MOBILE do TÉCNICO em Smart Field Ops após remoção do empty-guard 'Nenhum colaborador cadastrado' (iteration_223). RESULTADO: o empty-guard REALMENTE foi removido (CollaboratorApp.js linha 600 só comenta o caminho ?cid sem JWT — segue para a home), mas o fluxo do técnico continua INACESSÍVEL via UI em ambos os cenários do review. CAUSA RAIZ NOVA: a home do colaborador (linha 742) é renderizada por `screen === 'home' && today && (...)`. Sem `today` truthy, NENHUM dos cartões/botões da home — incluindo `[data-testid=open-field-ops-btn-primary]` e a versão alternativa — aparece. O state `today` é populado pela função `refresh()` (linhas 283-295) que usa `Promise.all([api.todayStatus(cid), api.listGeofences(cid), api.listCollaborators()])` SEM try/catch — basta UM dos três endpoints falhar para o Promise.all rejeitar e `setToday(t)` nunca ser chamado. Pelos logs de rede capturados: /api/collaborators retorna 403 ('Você não tem permissão'), /api/collaborators/col-demo-001/today retorna 403 e /api/collaborators/col-demo-001/geofences retorna 403 para o role 'colaborador' — todos rejeitam, today fica null, a home renderiza só o header ('OLÁ — 16:12') e o botão Smart Field Ops nunca aparece. Resultado prático: 0 de 7 passos do review puderam ser exercitados pela UI mobile.",
+  "backend_issues": {
+    "critical": [
+      {"endpoint": "GET /api/collaborators/{cid}/today", "issue": "Retorna 403 'Você não tem permissão para acessar este recurso.' quando chamado pelo próprio colaborador dono do cid (token colaborador@empresa.com com collaborator_id=col-demo-001 acessando col-demo-001/today). Deveria permitir que o colaborador veja o próprio status. /api/auth/me confirma o vínculo, mas o endpoint nega.", "priority": "HIGH"},
+      {"endpoint": "GET /api/collaborators/{cid}/geofences", "issue": "Mesmo problema: 403 para o role 'colaborador' acessando o próprio cid.", "priority": "HIGH"},
+      {"endpoint": "GET /api/collaborators", "issue": "Retorna 403 para role 'colaborador' (provavelmente intencional, é só admin). PORÉM o frontend chama esse endpoint em `refresh()` no Promise.all, e a falha aqui derruba toda a inicialização da home.", "priority": "MEDIUM"}
+    ],
+    "minor": [
+      {"endpoint": "GET /api/today/col-demo-001", "issue": "404 Not Found. Esse path antigo provavelmente foi removido, mas vale conferir se não ficou alguma referência legada."},
+      {"endpoint": "POST /api/tech-tracking/public/ping/col-demo-001", "issue": "Retorna 422 (payload inválido) — confirme schema esperado vs. payload do frontend de tracking ao vivo."},
+      {"endpoint": "GET /api/saas/me, /api/settings, /api/locations, /api/pracas", "issue": "Todos retornam 403 para colaborador. Avaliar se devem retornar 200 com payload limitado ao invés de bloquear o role inteiro (causa toasts 'Acesso negado' poluindo a UI)."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {
+        "component": "CollaboratorApp.js (função refresh + home gating)",
+        "issue": "A home do técnico é gateada por `screen === 'home' && today && (...)` (linha 742). Sem `today` truthy NADA do conteúdo aparece — nem o caminho clock_in_enabled=false (screen-home-no-clock) que tem o botão Smart Field Ops. O `today` é setado dentro de `Promise.all([todayStatus, listGeofences, listCollaborators])` SEM try/catch (linhas 286-295). Como /api/collaborators e /api/collaborators/{cid}/today retornam 403 para o role colaborador, o Promise.all rejeita inteiro e setToday nunca é chamado.",
+        "selector": "[data-testid=screen-home-no-clock] / [data-testid=open-field-ops-btn-primary]",
+        "priority": "CRITICAL"
+      },
+      {
+        "component": "CollaboratorApp.js home screen-home-no-clock",
+        "issue": "Mesmo que o today carregue, o branch screen-home-no-clock depende de `collab?.clock_in_enabled !== false`. Como /api/collaborators dá 403, `collabs=[]` e `collab` é undefined → `undefined !== false` é true → cai no branch 'clockEnabled=true' (normal) ao invés do externo. Isso pode esconder o botão Smart Field Ops em outro cenário ainda mais raro mas vale defender o caminho.",
+        "selector": "[data-testid=open-field-ops-btn-primary]",
+        "priority": "HIGH"
+      },
+      {
+        "component": "App overlay - runtime errors",
+        "issue": "Stack do react-error-overlay sobrepondo a UI no preview ('Uncaught runtime errors: Request failed with status code 403, at async Promise.all (index 1), at async refresh ...'). Em produção esse overlay não vai aparecer, mas em dev/preview cobre toda a tela. Confirma a hipótese da Promise.all rejeitando."
+      },
+      {
+        "component": "Toast queue (Acesso negado)",
+        "issue": "Inúmeros toasts 'Acesso negado / Você não tem permissão para acessar este recurso.' (vistos ~12 toasts simultâneos na captura mobile) — sinal de que MUITOS endpoints estão sendo chamados na carga inicial sem o role correto. Considerar suprimir toast para 403 silencioso quando o role do user não permite (apenas log)."
+      }
+    ],
+    "integration_issues": [
+      {
+        "flow": "Smart Field Ops mobile — login JWT + abrir field-dashboard + OS start/signal/block + Estoque + Frota",
+        "issue": "0 de 7 passos do review foram alcançados via UI. O botão `[data-testid=open-field-ops-btn-primary]` nunca renderizou no DOM tanto sem JWT quanto com JWT (token colaborador injetado em localStorage 'ponto_token'). Sem o botão não há como navegar até field-dashboard.",
+        "affected_selectors": ["open-field-ops-btn-primary", "open-field-ops-btn", "field-ops-login-required", "field-dashboard", "field-os-card-*", "field-action-start", "field-action-signal", "field-action-block", "field-tab-estoque", "estoque-open-return", "return-mac", "return-submit", "field-tab-frota", "frota-submit"]
+      }
+    ],
+    "design_issues": []
+  },
+  "test_report_links": [],
+  "action_items": [
+    "CRÍTICO: Em /app/frontend/src/CollaboratorApp.js linha 284-295, trocar `Promise.all` por `Promise.allSettled` OU encapsular cada chamada em try/catch individual. Garantir que `setToday(t || {})` seja chamado mesmo se as outras chamadas falharem. Sugestão: const [t,f,cs] = await Promise.allSettled([...]); setToday(t.status==='fulfilled' ? t.value : { date: new Date().toISOString().slice(0,10), records: [], next_expected: null }); setFences(f.status==='fulfilled' ? f.value : []); setCollabs(cs.status==='fulfilled' ? cs.value : []).",
+    "CRÍTICO: Em /app/backend/routes (não consegui localizar o ficheiro exato do /collaborators/{cid}/today), liberar acesso ao próprio cid quando token.collaborator_id == cid. Hoje retorna 403 mesmo para o dono.",
+    "ALTA: Adicionar fallback no gate da home (linha 742): trocar `screen === 'home' && today && (...)` por `screen === 'home' && (...)` — usar today com optional chaining onde necessário (já está em vários lugares com `today?.records`).",
+    "ALTA: Quando `collabs=[]` por 403, fabricar `collab` placeholder a partir do JWT (`{ id: collabId, name: auth.user.name, clock_in_enabled: false }`) — para que screen-home-no-clock renderize corretamente o caminho externo. /api/auth/me já retorna name + collaborator_id, dá pra usar como fonte.",
+    "MÉDIA: Suprimir toast 'Acesso negado' para 403 em endpoints chamados na inicialização — usar console.warn ao invés de toast para não poluir UX.",
+    "Após os fixes, retestar TUDO de novo: (1) /?cid=col-demo-001 mobile SEM JWT → home + open-field-ops-btn-primary → field-ops-login-required; (2) COM JWT colaborador@empresa.com → field-dashboard com OS de hoje → start/signal/block/estoque/frota."
+  ],
+  "critical_code_review_comments": [
+    "CollaboratorApp.js refresh() (l.284): Promise.all sem try/catch é um anti-pattern para inicialização — UM 403 derruba TODA a home. Padrão correto é Promise.allSettled + setState com fallback por item.",
+    "CollaboratorApp.js linha 742: o gating `&& today &&` torna a página 'tela em branco' silenciosa quando o /today falha — comportamento muito ruim para troubleshoot em produção. Melhor sempre renderizar a casca da home e mostrar erro inline.",
+    "Backend /api/collaborators/{cid}/today: o role 'colaborador' deveria ter acesso ao próprio cid (token.collaborator_id == cid). Bloquear o dono é regressão de permissão.",
+    "FIX da iteration_223 (remoção do empty-guard) ESTÁ aplicado e correto (CollaboratorApp.js l.601-605 só comentário, sem return). Mas é insuficiente — destrava o caminho mas o gate de `today` continua bloqueando.",
+    "Vários endpoints (/api/settings, /api/locations, /api/pracas, /api/saas/me) retornam 403 para colaborador. Avaliar arquitetura: colaborador deveria receber 200 + dados limitados, não 403."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "skipped (foco frontend conforme review)", "frontend": "0/7 passos do review exercitados — fluxo mobile do técnico continua INACESSÍVEL via UI"},
+  "test_credentials": "colaborador@empresa.com / 123456 — autentica via POST /api/auth/login OK (200, retorna access_token JWT, user.role=colaborador, user.collaborator_id=col-demo-001, company_id=co-demo). PORÉM token não dá acesso aos endpoints do próprio cid (403 em /collaborators/{cid}/today, /geofences, etc).",
+  "seed_data_creation": "Nenhum dado de seed criado. Nenhum toggle alterado. Nenhuma OS modificada (não consegui chegar até elas).",
+  "retest_needed": true,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "RCA confirmada e diferente da iteration_223. A remoção do empty-guard está OK no código. O bloqueador NOVO é o `today` permanecendo null porque `refresh()` usa Promise.all com 3 chamadas que retornam 403 para role colaborador. Resolver primeiro o frontend (Promise.allSettled + remover o gate `&& today`) E o backend (liberar /collaborators/{cid}/today para o próprio dono) antes de retestar. Após fix, o fluxo do review (sem JWT → field-ops-login-required; com JWT → field-dashboard → start/signal/block/estoque/frota) deve funcionar. Manter geolocation fake -22.8/-43.3 e viewport 390x844. Use page.request.post (não urllib) para o login API — o ambiente bloqueia urllib com 403 mas aceita page.request.",
+  "rca of the issue": "Reprodução: 1) Login OK: curl -X POST /api/auth/login → 200 + JWT. 2) Injeta token em localStorage 'ponto_token' antes de navegar (page.add_init_script). 3) goto /?cid=col-demo-001 viewport 390x844. 4) Observa via page.on('response'): /api/collaborators → 403, /api/collaborators/col-demo-001/today → 403, /api/collaborators/col-demo-001/geofences → 403. 5) react-error-overlay mostra stack 'AxiosError: Request failed with status code 403 at async Promise.all (index 1) at async refresh'. 6) body.innerText = 'OLÁ — 16:12' apenas (header) — corpo da home não renderizou. 7) [data-testid=open-field-ops-btn-primary] e [data-testid=open-field-ops-btn] AUSENTES do DOM. Mitigação completa: (a) refresh() usar Promise.allSettled e setar today/fences/collabs individualmente; (b) gate da home dropar a checagem `&& today` (usar optional chaining nos consumidores); (c) backend /api/collaborators/{cid}/today permitir self-access (token.collaborator_id == cid); (d) opcional: fabricar collab placeholder a partir de /api/auth/me quando /api/collaborators dá 403."
+}
