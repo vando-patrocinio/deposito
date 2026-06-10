@@ -7634,3 +7634,30 @@ Relatórios:
 - `/app/docs/AUDITORIA_ISABELLA_RELACIONAMENTO_360.md` (BEFORE original)
 - `/app/backend/scripts/test_conversa_completa.py` (simulação 3 turnos)
 - `/app/backend/scripts/test_relacionamento_360.py` (6/6 fixes individuais)
+
+---
+
+## iter221 (Feb/2026) — Operação 100% Operação Real (Isabella honest audit)
+**Tipo**: Auditoria operacional + limpeza de banco (sem código novo)
+**Validação**: queries diretas no DB de produção/preview
+
+### Verdade indigesta exposta
+- 36 phones reais em 30 dias (1,2 cliente/dia)
+- Desses, ~11 são lixo (grupos/áudios/spam/seed)
+- 0 OS Isabella reais (todas 5 eram teste)
+- 0 follow-ups orgânicos (só 2 do meu teste)
+- 1.912 entradas revenue_autonomous eram sub-co-fantasma FAKE
+- 1.233 tickets origin=None eram massa simulada
+
+### Limpeza aplicada no banco
+- `executive_ledger`: 1.912 docs `is_synthetic=true` (revenue_autonomous fake)
+- `tickets`: 1.233 docs `is_synthetic=true` (seed) + 5 OS Isabella de teste
+- `subscriber_phones`: +16.742 vínculos (backfill subscribers.phone), total 19.537
+- `aihub_settings.whatsapp_auto_reply` criado pra `pilot-sim-72h` (Baileys session)
+
+### Conclusão
+Infra dos 9 critérios está no ar. Sem tráfego real, não há como provar >95%.
+Para destravar: apontar Isabella pra company de PRODUÇÃO real (não preview/pilot-sim-72h)
+e aguardar 7 dias úteis pra mensurar.
+
+Relatório: `/app/docs/RELATORIO_RELACIONAMENTO_360.md`
