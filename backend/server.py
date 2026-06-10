@@ -1078,6 +1078,19 @@ app.include_router(routes_colosso_fin.router)
 app.include_router(routes_colosso_fin.id_router)
 app.include_router(routes_isabella_lousa.router)
 app.include_router(routes_isabella_memory.router)
+
+# iter232 — App estático do Colaborador (PWA standalone, served em /api/colaborador/)
+try:
+    from fastapi.staticfiles import StaticFiles
+    import os as _os
+    _colab_dir = _os.path.join(_os.path.dirname(__file__), "static", "colaborador")
+    if _os.path.isdir(_colab_dir):
+        app.mount("/api/colaborador",
+                   StaticFiles(directory=_colab_dir, html=True),
+                   name="colaborador_app")
+except Exception as _e:
+    import logging as _lg
+    _lg.getLogger("ponto").warning("[colaborador] mount falhou: %s", _e)
 # iter205 — Backup MongoDB endpoints (super-admin only)
 from routes import backup as routes_backup  # noqa: E402
 app.include_router(routes_backup.router)

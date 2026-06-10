@@ -48,6 +48,7 @@ PUBLIC_PATHS: List[str] = [
     "/api/q/",   # short links /api/q/<token>
     "/api/r/",   # redirect short links
     "/api/lousa/onu-bridge/redirect/",  # iter232 — token na URL é a auth
+    "/api/colaborador/",  # iter232 — app PWA estático do colaborador
     "/api/public/smartprov-ai-center",  # FASE 9 — landing pública V5.0
     "/docs", "/redoc", "/openapi.json",
 ]
