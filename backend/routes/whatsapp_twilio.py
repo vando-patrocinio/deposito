@@ -509,6 +509,17 @@ async def _generate_and_send_twilio_reply(
         "subscriber_id": subscriber_id,
         "created_at": now_iso(),
     })
+    # Isabella CEO Follow-up: registra outcome em ai_evaluations
+    try:
+        from services.isabella_ceo_followup import register_followup
+        await register_followup(
+            company_id=cid, subscriber_id=subscriber_id,
+            phone=phone, user_text=user_text,
+            isabella_reply=reply_text,
+            context_used=orchestrated if 'orchestrated' in dir() else "",
+        )
+    except Exception:
+        pass
     return reply_text
 
 
