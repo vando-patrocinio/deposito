@@ -22,6 +22,7 @@ from services import isabella_outcome_engine as outcome_eng
 from services import isabella_learning as learning_eng
 from services import isabella_executive_memory as memory_eng
 from services import isabella_execution_score as exec_score
+from services import isabella_audit as audit_eng
 from services.rate_limit import get_limit, limiter
 from routes.field_ops import _company_of, _is_privileged
 
@@ -469,3 +470,50 @@ async def council_precision(request: Request,
             "roi_real_total_brl": real,
             "council_precision_rate": precision,
             "latest_meetings": minutes[:5]}
+
+
+# ---------------------------------------------------------------------------
+# Governance — Learning report, Precision audit, AutoExecute readiness
+# ---------------------------------------------------------------------------
+@router.get("/learning/report")
+@limiter.limit(get_limit("isabella_read"))
+async def learning_report_endpoint(request: Request,
+                                      days: int = 90,
+                                      cid: Optional[str] = None,
+                                      user: dict = Depends(get_current_user)):
+    company = _company_or_param(user, cid)
+    return await audit_eng.learning_report(company, days=days)
+
+
+@router.get("/learning/auto-execute-ready")
+@limiter.limit(get_limit("isabella_read"))
+async def auto_execute_ready_endpoint(request: Request,
+                                          days: int = 90,
+                                          cid: Optional[str] = None,
+                                          user: dict = Depends(get_current_user)):
+    company = _company_or_param(user, cid)
+    return await audit_eng.auto_execute_ready(company, days=days)
+
+
+@router.post("/precision/run")
+@limiter.limit(get_limit("isabella_write"))
+async def precision_audit_run_endpoint(request: Request,
+                                          days: int = 30,
+                                          cid: Optional[str] = None,
+                                          user: dict = Depends(get_current_user)):
+    _require_priv(user)
+    company = _company_or_param(user, cid)
+    return await audit_eng.precision_audit_run(company, days=days)
+
+
+@router.get("/precision/history")
+@limiter.limit(get_limit("isabella_read"))
+async def precision_audit_history_endpoint(request: Request,
+                                              limit: int = 30,
+                                              cid: Optional[str] = None,
+                                              user: dict = Depends(get_current_user)):
+    company = _company_or_param(user, cid)
+    return {"company_id": company,
+            "items": await audit_eng.precision_audit_history(
+                company, limit=limit)}
+

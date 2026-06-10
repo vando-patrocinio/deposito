@@ -1029,6 +1029,12 @@ async def _startup() -> None:
     # — varredura unificada a cada 30 min + reunião diária do conselho.
     from services.isabella_commanders_worker import isabella_commanders_worker
     asyncio.create_task(isabella_commanders_worker())
+    # Migração one-shot — unifica OpenRouter keys em motor_ia_config
+    try:
+        from services.openrouter_unify_migration import run_once as _ourun
+        asyncio.create_task(_ourun())
+    except Exception as e:
+        logger.warning("[startup] openrouter_unify: %s", e)
     # NOTE: o worker da isabella_queue foi SEPARADO em processo dedicado
     # (programa supervisor `isabella-worker`). NÃO inicialize aqui — webhook
     # HTTP deve ficar isolado do processamento LLM/Twilio.

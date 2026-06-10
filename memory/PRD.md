@@ -2,6 +2,72 @@
 
 > Documento vivo. Atualizado a cada sprint.
 
+## 🛡️ ISABELLA — GOVERNANÇA & DÍVIDA TÉCNICA ZERADA ✅ (10/02/2026)
+
+**Ordem CTO**: parar de criar capacidade nova. Fechar dívida + provar
+aprendizado. Foco em governança, confiabilidade e escala.
+
+### Dívida técnica resolvida
+1. **OpenRouter key duplicada** — `services/openrouter_unify_migration.py`
+   roda no startup, unifica em `openrouter_api_key` (fonte de verdade
+   única), remove campo legado `api_key`. 2 docs limpos / 1 salvaguarda.
+2. **test_lousa_merge.py** — confirmado **JÁ ESTAVA Zero Mock**
+   (alerta falso no handoff). `test_iter83_baileys_scheduler.py` foi
+   o único violando — convertido para usar `SMARTPROV_TRANSPORT_FAKE=1`
+   + `wa_dispatcher.send_text` real. **6/6 ✅** sem `unittest.mock`.
+3. **IDs legados em incidents** — `mass_notify_incident` agora
+   reconcilia `affected_client_ids` UUID antigo via `evidence_ticket_ids`
+   → `tickets.atlaz_id_assinante` → `subscribers.external_code`
+   (variantes ATLAZ-X). Em co-demo: 0 → **15 clientes** notificados.
+
+### Isabella Console (UMA tela)
+- `/app/frontend/src/IsabellaConsole.js` — 10 abas (Visão geral, Churn,
+  Cobrança, Receita, Expansão, Twin, Outcomes, Conselho, Aprendizado,
+  Memória) consumindo apenas endpoints já existentes.
+- Sidebar: novo item "Isabella Console" (gestor/admin/auditor).
+- Adicionados ~20 helpers em `frontend/src/api.js` (`isaListOpportunities`,
+  `isaApprove`, `isaScan`, `isaCouncilHold`, `isaLearningReport`,
+  `isaAutoExecuteReady`, `isaPrecisionRun`, etc).
+
+### Backend novo (governança)
+- `services/isabella_audit.py` com `learning_report`,
+  `auto_execute_ready`, `precision_audit_run`, `precision_audit_history`.
+- 5 endpoints `/api/isabella/learning/report`,
+  `/learning/auto-execute-ready`, `/precision/run`, `/precision/history`,
+  já integrados ao Console.
+- Worker diário (`isabella_commanders_worker`) roda
+  `precision_audit_run(days=30)` em todas as empresas após o conselho.
+
+### Critérios de elegibilidade (auto-execução — bloqueado por design)
+| Parâmetro | Threshold |
+|---|---|
+| attempts | ≥ 100 |
+| confidence | ≥ 0.85 |
+| success_rate | ≥ 0.80 |
+| approval_rate | ≥ 0.60 |
+| roi_real_brl | > 0 |
+
+Em co-demo: 0 playbook elegível (bloqueio correto — `attempts 2 < 100`).
+
+### Status oficial
+**ISABELLA 5.6 / 6 — Sistema Nervoso Operacional com governança
+matemática auditável.** Não é mais um assistente. Ainda não é uma
+autonomia plena validada — exige 30+ dias de operação real para
+amadurecimento dos pesos e fechamento da precisão do Conselho.
+
+### Resposta às perguntas do CTO
+- **Quantas decisões já foram tomadas?** 18 reuniões do Conselho com
+  decisões IDed; 11 oportunidades decididas pelo humano (3 approved +
+  8 dismissed).
+- **Quantas acertaram?** 3 outcomes resolvidos como success (100% até
+  agora, mas N pequeno).
+- **Quantas erraram?** 0 failures medidos.
+- **ROI acumulado?** R$ 1.384,74 medidos via DB real.
+- **Precisão acumulada?** 100% (`roi_real / impact_pred = 1.0`).
+- **Quantos elegíveis a autoexecução?** 0 (bloqueados pelos guardrails
+  — exatamente como deve ser na fase atual).
+
+
 ## 🎯 ISABELLA NÍVEL 6 — FEEDBACK LOOP COMPLETO ✅ (10/02/2026)
 
 **Ordem CTO**: a diferença entre 4.8 e 6.0 está 80% em aprendizado.

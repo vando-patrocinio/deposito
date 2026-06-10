@@ -1990,4 +1990,70 @@ export const api = {
     client.get(`/sales/cold-leads`, { params: { min_days, max_days } }).then((r) => r.data),
   salesReactivate: (phones, message) =>
     client.post(`/sales/reactivate`, { phones, message }).then((r) => r.data),
+
+  // ── Isabella Commanders & Governance ─────────────────────────────────────
+  isaListOpportunities: (params = {}) =>
+    client.get(`/isabella/opportunities`, { params }).then((r) => r.data),
+  isaKpis: () =>
+    client.get(`/isabella/opportunities/kpis`).then((r) => r.data),
+  isaApprove: (oppId, notes) =>
+    client.post(`/isabella/opportunities/${oppId}/approve`,
+                  { notes }).then((r) => r.data),
+  isaDismiss: (oppId, reason) =>
+    client.post(`/isabella/opportunities/${oppId}/dismiss`,
+                  { reason }).then((r) => r.data),
+  isaExecuted: (oppId, result) =>
+    client.post(`/isabella/opportunities/${oppId}/executed`,
+                  { result }).then((r) => r.data),
+  isaScan: (kind) =>
+    client.post(`/isabella/${kind}/scan`).then((r) => r.data),
+  isaScanAll: () =>
+    client.post(`/isabella/all/scan`).then((r) => r.data),
+  isaCouncilLatest: () =>
+    client.get(`/isabella/council/latest`).then((r) => r.data),
+  isaCouncilHold: () =>
+    client.post(`/isabella/council/hold`).then((r) => r.data),
+  isaCouncilPrecision: (days = 90) =>
+    client.get(`/isabella/council/precision`, { params: { days } })
+      .then((r) => r.data),
+  isaOutcomes: (params = {}) =>
+    client.get(`/isabella/outcomes`, { params }).then((r) => r.data),
+  isaOutcomeStats: (days = 90) =>
+    client.get(`/isabella/outcomes/stats`, { params: { days } })
+      .then((r) => r.data),
+  isaResolveOutcomes: (force = false) =>
+    client.post(`/isabella/outcomes/resolve`, null,
+                  { params: { force } }).then((r) => r.data),
+  isaLearningWeights: (kind = "", limit = 50) =>
+    client.get(`/isabella/learning/weights`,
+                 { params: { kind, limit } }).then((r) => r.data),
+  isaLearningReport: (days = 90) =>
+    client.get(`/isabella/learning/report`, { params: { days } })
+      .then((r) => r.data),
+  isaAutoExecuteReady: (days = 90) =>
+    client.get(`/isabella/learning/auto-execute-ready`,
+                 { params: { days } }).then((r) => r.data),
+  isaPolicies: (only_active = true) =>
+    client.get(`/isabella/memory/policies`,
+                 { params: { only_active } }).then((r) => r.data),
+  isaAddPolicy: (payload) =>
+    client.post(`/isabella/memory/policies`, payload).then((r) => r.data),
+  isaDeactivatePolicy: (id) =>
+    client.post(`/isabella/memory/policies/${id}/deactivate`)
+      .then((r) => r.data),
+  isaMemorySuggestions: (days = 30, threshold = 3) =>
+    client.get(`/isabella/memory/suggestions`,
+                 { params: { days, threshold } }).then((r) => r.data),
+  isaExecutionScore: (days = 30) =>
+    client.get(`/isabella/execution-score`, { params: { days } })
+      .then((r) => r.data),
+  isaPrecisionRun: (days = 30) =>
+    client.post(`/isabella/precision/run`, null,
+                  { params: { days } }).then((r) => r.data),
+  isaPrecisionHistory: (limit = 30) =>
+    client.get(`/isabella/precision/history`, { params: { limit } })
+      .then((r) => r.data),
+  isaIncidentNotify: (incidentId, payload) =>
+    client.post(`/isabella/incidents/${incidentId}/notify`, payload)
+      .then((r) => r.data),
 };

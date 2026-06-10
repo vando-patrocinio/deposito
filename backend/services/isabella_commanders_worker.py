@@ -88,6 +88,13 @@ async def isabella_commanders_worker() -> None:
                     except Exception as e:
                         log.warning("[commanders_worker] council %s: %s",
                                      cid, e)
+                # Auditoria de precisão (mesma janela diária)
+                try:
+                    from services import isabella_audit as audit_eng
+                    for cid in companies:
+                        await audit_eng.precision_audit_run(cid, days=30)
+                except Exception as e:
+                    log.warning("[commanders_worker] precision_audit: %s", e)
                 last_council_day = today
             # Expira oportunidades antigas
             try:

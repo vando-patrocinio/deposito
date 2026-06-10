@@ -638,6 +638,68 @@ async def mass_notify_incident(company: str, incident_id: str, *,
          "phone": {"$nin": [None, ""]}},
         {"_id": 0, "id": 1, "name": 1, "phone": 1}).to_list(5000)
 
+    # Reconciliação para IDs legados: alguns incidentes guardaram
+    # `affected_client_ids` como `tickets.client_id` (UUID antigo) em vez
+    # de `subscribers.id`. Resolvemos via tickets → cto_ports → subscribers.
+    found_ids = {s["id"] for s in subs}
+    missing = [cid for cid in affected_ids if cid not in found_ids]
+    if missing:
+        # Tenta resolver via evidence_ticket_ids armazenados no incidente
+        ev_ticket_ids = inc.get("evidence_ticket_ids") or []
+        if ev_ticket_ids:
+            tk = await db.tickets.find(
+                {"company_id": company, "id": {"$in": ev_ticket_ids}},
+                {"_id": 0, "client_snapshot": 1,
+                 "atlaz_id_assinante": 1}).to_list(5000)
+            atlaz_ids: List[Any] = []
+            phones_in_ticket: List[Dict[str, Any]] = []
+            for t in tk:
+                if t.get("atlaz_id_assinante"):
+                    atlaz_ids.append(t["atlaz_id_assinante"])
+                cs = t.get("client_snapshot") or {}
+                if cs.get("phone"):
+                    phones_in_ticket.append({
+                        "id": f"legacy-{uuid.uuid4().hex[:8]}",
+                        "name": cs.get("name") or "cliente",
+                        "phone": cs["phone"]})
+            # Subscribers via atlaz_id_assinante (str/int normalizados)
+            if atlaz_ids:
+                str_ids = [str(a) for a in atlaz_ids]
+                int_ids = []
+                for a in atlaz_ids:
+                    try:
+                        int_ids.append(int(a))
+                    except (TypeError, ValueError):
+                        pass
+                ext_codes = list({s for s in (
+                    [str(a) for a in atlaz_ids]
+                    + [f"ATLAZ-{a}" for a in atlaz_ids])})
+                extra_subs = await db.subscribers.find(
+                    {"company_id": company,
+                     "external_code": {"$in": ext_codes},
+                     "phone": {"$nin": [None, ""]}},
+                    {"_id": 0, "id": 1, "name": 1, "phone": 1}
+                ).to_list(5000)
+                for es in extra_subs:
+                    if es["id"] not in found_ids:
+                        subs.append(es)
+                        found_ids.add(es["id"])
+            # Fallback final: telefones recuperados do client_snapshot
+            for p in phones_in_ticket:
+                if p["id"] not in found_ids:
+                    subs.append(p)
+                    found_ids.add(p["id"])
+    # Deduplica por telefone
+    seen_phones = set()
+    dedup: List[Dict[str, Any]] = []
+    for s in subs:
+        ph = s.get("phone")
+        if not ph or ph in seen_phones:
+            continue
+        seen_phones.add(ph)
+        dedup.append(s)
+    subs = dedup
+
     where = (inc.get("scope") or {}).get("cto_name") \
             or (inc.get("scope") or {}).get("neighborhood") \
             or inc.get("scope_id") or "sua região"

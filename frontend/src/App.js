@@ -92,6 +92,7 @@ import DialogHost from "@/dialog";
 import DialogHistoryPanel from "@/DialogHistoryPanel";
 import LousaAdminPanel from "@/LousaAdminPanel";
 import FieldOpsManagerPanel from "@/FieldOpsManagerPanel";
+import IsabellaConsole from "@/IsabellaConsole";
 import EstoquePanel from "@/EstoquePanel";
 import PropostasPanel from "@/PropostasPanel";
 import CentralComprasPanel from "@/CentralComprasPanel";
@@ -214,6 +215,8 @@ const NAV_GROUPS = [
       { id: "dashboard", icon: BarChart3, label: "Painel", roles: ["gestor", "auditor", "administrador"] },
       { id: "lousa", icon: Layout, label: "Chamados", roles: ["administrador"] },
       { id: "field-ops", icon: Layout, label: "Field Ops (Campo)",
+        roles: ["gestor", "administrador", "auditor"] },
+      { id: "isabella-console", icon: Layout, label: "Isabella Console",
         roles: ["gestor", "administrador", "auditor"] },
       { id: "estoque", icon: Boxes, label: "Estoque", roles: ["gestor", "administrador"] },
       { id: "projects", icon: Trello, label: "Acompanhamento",
@@ -1236,6 +1239,7 @@ function AppContent() {
           {view === "dashboard" && <DashboardPanel />}
           {view === "lousa" && <LousaAdminPanel systemStatus={systemStatus} currentUser={user} />}
           {view === "field-ops" && <FieldOpsManagerPanel />}
+          {view === "isabella-console" && <IsabellaConsole />}
           {view === "estoque" && <EstoquePanel currentUser={user} />}
           {view === "central-compras" && <CentralComprasPanel currentUser={user} />}
           {view === "projects" && <ProjectsPanel currentUser={user} />}
