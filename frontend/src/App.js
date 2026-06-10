@@ -91,6 +91,7 @@ import ErrorBoundary from "@/ErrorBoundary";
 import DialogHost from "@/dialog";
 import DialogHistoryPanel from "@/DialogHistoryPanel";
 import LousaAdminPanel from "@/LousaAdminPanel";
+import FieldOpsManagerPanel from "@/FieldOpsManagerPanel";
 import EstoquePanel from "@/EstoquePanel";
 import PropostasPanel from "@/PropostasPanel";
 import CentralComprasPanel from "@/CentralComprasPanel";
@@ -212,6 +213,8 @@ const NAV_GROUPS = [
     items: [
       { id: "dashboard", icon: BarChart3, label: "Painel", roles: ["gestor", "auditor", "administrador"] },
       { id: "lousa", icon: Layout, label: "Chamados", roles: ["administrador"] },
+      { id: "field-ops", icon: Layout, label: "Field Ops (Campo)",
+        roles: ["gestor", "administrador", "auditor"] },
       { id: "estoque", icon: Boxes, label: "Estoque", roles: ["gestor", "administrador"] },
       { id: "projects", icon: Trello, label: "Acompanhamento",
         roles: ["gestor", "administrador", "auditor"] },
@@ -1232,6 +1235,7 @@ function AppContent() {
           <>
           {view === "dashboard" && <DashboardPanel />}
           {view === "lousa" && <LousaAdminPanel systemStatus={systemStatus} currentUser={user} />}
+          {view === "field-ops" && <FieldOpsManagerPanel />}
           {view === "estoque" && <EstoquePanel currentUser={user} />}
           {view === "central-compras" && <CentralComprasPanel currentUser={user} />}
           {view === "projects" && <ProjectsPanel currentUser={user} />}

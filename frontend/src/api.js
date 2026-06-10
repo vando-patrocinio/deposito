@@ -239,6 +239,28 @@ export const api = {
   saasBulkDeleteCompanies: (ids) => client.post(`/saas/admin/companies/bulk-delete`, { ids }).then((r) => r.data),
 
   // ============== LOUSA (notas de serviço) ==============
+  // ========= Smart Field Ops — ponte oficial App ↔ SmartProv (JWT) =========
+  fieldMe: (cid) => client.get("/field/me", { params: cid ? { cid } : {} }).then((r) => r.data),
+  fieldDashboard: (cid) => client.get("/field/dashboard", { params: cid ? { cid } : {} }).then((r) => r.data),
+  fieldOsToday: (cid) => client.get("/field/os/today", { params: cid ? { cid } : {} }).then((r) => r.data),
+  fieldOsDetail: (id, cid) => client.get(`/field/os/${id}`, { params: cid ? { cid } : {} }).then((r) => r.data),
+  fieldOsStart: (id, body) => client.post(`/field/os/${id}/start`, body || {}).then((r) => r.data),
+  fieldOsArrive: (id, body) => client.post(`/field/os/${id}/arrive`, body).then((r) => r.data),
+  fieldOsPhoto: (id, body) => client.post(`/field/os/${id}/photo`, body).then((r) => r.data),
+  fieldOsSignalTest: (id, body) => client.post(`/field/os/${id}/signal-test`, body).then((r) => r.data),
+  fieldOsMaterialUsed: (id, body) => client.post(`/field/os/${id}/material-used`, body).then((r) => r.data),
+  fieldOsFinish: (id, body) => client.post(`/field/os/${id}/finish`, body).then((r) => r.data),
+  fieldOsReschedule: (id, body) => client.post(`/field/os/${id}/reschedule`, body).then((r) => r.data),
+  fieldOsBlockReason: (id, body) => client.post(`/field/os/${id}/block-reason`, body).then((r) => r.data),
+  fieldStockMe: (cid) => client.get("/field/stock/me", { params: cid ? { cid } : {} }).then((r) => r.data),
+  fieldMaterialsCatalog: () => client.get("/field/materials/catalog").then((r) => r.data),
+  fieldVehicleStatus: (cid) => client.get("/field/vehicle/status", { params: cid ? { cid } : {} }).then((r) => r.data),
+  fieldVehicleInspection: (body) => client.post("/field/vehicle/inspection", body).then((r) => r.data),
+  fieldEquipmentReturn: (body) => client.post("/field/equipment/return", body).then((r) => r.data),
+  fieldSettings: () => client.get("/field/settings").then((r) => r.data),
+  fieldSettingsUpdate: (body) => client.put("/field/settings", body).then((r) => r.data),
+  fieldAdminOverview: () => client.get("/field/admin/overview").then((r) => r.data),
+
   lousaByCollaborator: (cid, opts = {}) => {
     const params = opts.adminTest ? { admin_test: 1 } : {};
     return client.get(`/lousa/by-collaborator/${cid}`, { params }).then((r) => r.data);

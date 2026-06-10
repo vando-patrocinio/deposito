@@ -6,6 +6,7 @@ import CadastroCTOWizard from "@/CadastroCTOWizard";
 import ErrorBoundary from "@/ErrorBoundary";
 import QrScanner from "@/QrScanner";
 import RedeIaMapMobile from "@/RedeIaMapMobile";
+import FieldOps from "@/FieldOps";
 import MyAssetsModal from "@/MyAssetsModal";
 import MyHoleritesModal from "@/MyHoleritesModal";
 import PWAInstallPrompt from "@/PWAInstallPrompt";
@@ -775,6 +776,22 @@ function CollaboratorAppInner({ mobile = false, forcedCollabId = null, onLogout 
                   </button>
 
                   <button
+                    data-testid="open-field-ops-btn-primary"
+                    onClick={() => setScreen("field-ops")}
+                    style={{
+                      width: "100%", height: 52, borderRadius: 12,
+                      border: "1px solid #e2e8f0",
+                      background: "white",
+                      color: "#0f172a", fontWeight: 700, fontSize: 14,
+                      marginBottom: 10,
+                      cursor: "pointer", letterSpacing: 0.2,
+                      display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 8,
+                    }}
+                  >
+                    <Icon name="shield" /> Smart Field Ops
+                  </button>
+
+                  <button
                     data-testid="open-cadastro-rede-btn"
                     onClick={() => setScreen("cto-cadastro")}
                     style={{
@@ -916,6 +933,23 @@ function CollaboratorAppInner({ mobile = false, forcedCollabId = null, onLogout 
                 }}
               >
                 <Icon name="clipboard" /> Lousa de Serviços
+              </button>
+
+              <button
+                data-testid="open-field-ops-btn"
+                onClick={() => setScreen("field-ops")}
+                style={{
+                  width: "100%", height: 48, marginTop: 6, marginBottom: 4,
+                  background: "white",
+                  border: "1px solid #e2e8f0",
+                  borderRadius: 12,
+                  color: "#0f172a",
+                  fontWeight: 600, fontSize: 14,
+                  cursor: "pointer",
+                  display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 8,
+                }}
+              >
+                <Icon name="shield" /> Smart Field Ops
               </button>
 
               <button

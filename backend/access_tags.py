@@ -36,6 +36,7 @@ TAGS: List[Dict] = [
     # ============================== Operação ==============================
     {"key": "dashboard",         "label": "Painel Executivo",         "icon": "🏠", "category": "Operação"},
     {"key": "lousa",             "label": "Chamados (Lousa)",         "icon": "📋", "category": "Operação"},
+    {"key": "field-ops",         "label": "Field Ops (Campo)",        "icon": "🛠️", "category": "Operação"},
     {"key": "estoque",           "label": "Estoque",                  "icon": "📦", "category": "Operação"},
     {"key": "projects",          "label": "Acompanhamento",           "icon": "📅", "category": "Operação"},
     {"key": "central-compras",   "label": "Central de Compras",       "icon": "🛒", "category": "Operação"},
@@ -133,7 +134,7 @@ DEFAULT_TAGS_BY_ROLE: Dict[str, List[str]] = {
     "administrador": list(ALL_TAG_KEYS),
     "gestor": [
         # Operação (gestor padrão)
-        "dashboard", "lousa", "estoque", "projects", "central-compras",
+        "dashboard", "lousa", "field-ops", "estoque", "projects", "central-compras",
         "radius", "contracts", "payments", "site", "balanco",
         # Frota e Projetos
         "fleet", "fleet-tracking", "security-home", "projetos", "propostas",

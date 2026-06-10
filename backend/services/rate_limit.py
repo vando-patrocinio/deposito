@@ -55,6 +55,9 @@ _LIMITS = {
     "audit_lgpd_report": f"{20 * _MULT}/minute",
     # Estrategista IA — não queimar saldo
     "estrategista_generate": f"{5 * _MULT}/minute",
+    # Smart Field Ops — App Colaborador ↔ SmartProv
+    "field_read": f"{240 * _MULT}/minute",
+    "field_action": f"{60 * _MULT}/minute",
     # Default fallback
     "default": f"{100 * _MULT}/minute",
 }

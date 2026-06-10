@@ -94,6 +94,18 @@ class EventType:
     TECHNICIAN_LATE = "TECHNICIAN_LATE"
     # Data Quality
     DATA_QUALITY_RECOVERY = "DATA_QUALITY_RECOVERY"
+    # Smart Field Ops — ponte App Colaborador ↔ SmartProv (06/2026)
+    FIELD_OS_STARTED = "field.os.started"
+    FIELD_OS_ARRIVED = "field.os.arrived"
+    FIELD_PHOTO_UPLOADED = "field.photo.uploaded"
+    FIELD_SIGNAL_REGISTERED = "field.signal.registered"
+    FIELD_MATERIAL_USED = "field.material.used"
+    FIELD_OS_FINISHED = "field.os.finished"
+    FIELD_OS_RESCHEDULED = "field.os.rescheduled"
+    FIELD_OS_BLOCKED = "field.os.blocked"
+    FIELD_VEHICLE_INSPECTION_DONE = "field.vehicle.inspection.done"
+    FIELD_EQUIPMENT_RETURNED = "field.equipment.returned"
+    FIELD_STOCK_UPDATED = "field.stock.updated"
 
 
 SEVERITY = ("baixa", "media", "alta", "critica")

@@ -1,0 +1,57 @@
+{
+  "summary": "Validação FRONTEND E2E do Smart Field Ops. Painel do gestor funcionando (KPIs, tabela de técnicos, retiradas, toggles). REGRESSÃO BLOQUEANTE: o app do técnico NÃO renderiza a tela do Smart Field Ops — clicar no botão 'Smart Field Ops' (open-field-ops-btn / open-field-ops-btn-primary) chama setScreen('field-ops') mas o CollaboratorApp NÃO possui nenhum branch JSX `{screen === 'field-ops' && <FieldOps .../>}`, então a área de conteúdo fica em branco. Todo o fluxo do técnico (dashboard, OS detail, ações start/arrive/photo/signal/material/reschedule/block, abas estoque, frota) ficou inacessível pela UI. Lousa continua funcionando normalmente (regressão OK). Tela de login do técnico (screen-collab-login) também está bloqueada: sem JWT, o backend devolve 401 em /api/collaborators e o app trava em 'Nenhum colaborador cadastrado' antes mesmo de renderizar o CollabLoginScreen.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {
+        "component": "CollaboratorApp.js",
+        "issue": "Tela Smart Field Ops nunca renderiza. Botão 'open-field-ops-btn'/'open-field-ops-btn-primary' faz setScreen('field-ops') (linhas 780 e 940), mas não há nenhum `{screen === 'field-ops' && <FieldOps ... />}` no JSX. Resultado: ao clicar, o app fica em branco (sem field-ops-screen, sem field-dashboard, sem field-ops-login-required). Bloqueia 100% do fluxo do técnico.",
+        "selector": "[data-testid=open-field-ops-btn-primary] / [data-testid=open-field-ops-btn]",
+        "priority": "CRITICAL"
+      },
+      {
+        "component": "CollaboratorApp.js (CollabLoginScreen)",
+        "issue": "Sem JWT, GET /api/collaborators retorna 401 e collabs=[]; o componente bate em `if (!collabs.length) return 'Nenhum colaborador cadastrado'` (linha 578) ANTES do branch que renderiza CollabLoginScreen (linha 590). A tela screen-collab-login fica inalcançável para um técnico que abre a URL sem ?cid= e sem token — ele nunca consegue logar pelo app.",
+        "selector": "[data-testid=screen-collab-login]",
+        "priority": "HIGH"
+      },
+      {
+        "component": "FieldOpsManagerPanel — tabela field-admin-techs",
+        "issue": "Carlos Almeida aparece na tabela mas a coluna 'OS Ativa' está vazia ('—'), enquanto o request esperava 'Carlos Almeida com OS ativa'. Pode ser apenas dado demo (3 OS pendentes mas não iniciadas), porém vale conferir o seed de col-demo-001.",
+        "selector": "[data-testid=field-admin-tech-col-demo-001]",
+        "priority": "LOW"
+      }
+    ],
+    "integration_issues": [
+      {
+        "flow": "Smart Field Ops (técnico)",
+        "issue": "Fluxo completamente bloqueado por causa do bug acima — não foi possível testar: dashboard, OS detail, field-action-start, field-action-arrive, field-action-photo, field-action-signal, field-action-material, field-action-reschedule, field-action-block, tab estoque + estoque-open-return, tab frota + form de vistoria, retiradas R$.",
+        "affected_selectors": ["field-dashboard", "field-os-card-*", "field-os-detail", "field-action-*", "field-estoque-screen", "field-frota-screen"]
+      }
+    ],
+    "design_issues": []
+  },
+  "test_report_links": [],
+  "action_items": [
+    "FIX CRÍTICO: em /app/frontend/src/CollaboratorApp.js adicionar branch JSX para o screen 'field-ops', algo como `{screen === 'field-ops' && <FieldOps collabId={collabId} onBack={() => setScreen('home')} onOpenLousa={() => setScreen('lousa')} />}` dentro do contêiner principal de telas (próximo às outras linhas `screen === 'lousa'`, `screen === 'history'` etc.). Sem isso o componente FieldOps importado nunca aparece em tela.",
+    "FIX login: garantir que CollabLoginScreen seja renderizada mesmo quando GET /api/collaborators falha por 401 / collabs=[]. Sugestão: inverter a ordem dos returns (renderizar login ANTES do guard `!collabs.length`) ou tornar o endpoint /api/collaborators tolerante a leitura pública mínima para a tela de login.",
+    "Após o fix, retestar com viewport mobile 390x844: login técnico → Smart Field Ops → dashboard com 3 OS → abrir OS → iniciar → registrar sinal (-21.5) → bloquear (motivo) → tabs estoque (retirada AA:BB:CC:11:22:33) e frota (validar submit disabled sem fotos).",
+    "Conferir seed col-demo-001 para garantir que 'Carlos Almeida com OS ativa' apareça na tabela do gestor (hoje só mostra 3 OS pendentes, sem ativa)."
+  ],
+  "critical_code_review_comments": [
+    "CollaboratorApp.js: FieldOps importado mas nunca renderizado — provavelmente esquecido em um merge.",
+    "CollaboratorApp.js: lógica de early-return em `if (!collabs.length)` antes do branch de login derruba a UX para usuários novos/deslogados. Tem que mover ou condicionar.",
+    "FieldOpsManagerPanel: Toggle component aceita click mesmo durante chamada PUT — sem feedback de loading nem disabled durante a request (consigo clicar 5 vezes seguidas e disparar 5 PUTs)."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "skipped (já validado 13/13 zero-mock)", "frontend": "≈35% — Painel gestor OK + regressão Lousa OK; fluxo do técnico 0% (bloqueado)"},
+  "test_credentials": "admin@empresa.com / 123456 (OK). colaborador@empresa.com / 123456 NÃO testado porque tela de login do colaborador é inalcançável (ver bug acima).",
+  "seed_data_creation": "Nada criado. Toggles foram resetados via PUT /api/field/settings com {vehicle_inspection_required:false, gps_required:false, block_material_without_stock:false} ao final. Verificado: 200 OK.",
+  "retest_needed": true,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Após o fix do branch `screen === 'field-ops'` em CollaboratorApp.js, refazer todo o fluxo do técnico em viewport mobile 390x844. Sugestão: usar admin logado + ?cid=col-demo-001 (modo gestor — aparece banner 'Você está vendo o app de Carlos Almeida (modo gestor)'). Atenção: esse modo é read_only — ações como field-action-start devem retornar 403/banner readonly. Para testar ações reais, é preciso login JWT direto do técnico (que hoje está bloqueado por outro bug — endpoint /api/collaborators 401 antes do login). Geolocation fake: lat -22.8 lng -43.3 com context.grant_permissions(['geolocation']). Toggles do gestor já estão desligados.",
+  "rca of the issue": "Em /app/frontend/src/CollaboratorApp.js, linha 9 importa `FieldOps` e linhas 780/940 fazem `setScreen('field-ops')` quando o usuário clica nos botões 'Smart Field Ops'. Porém, ao revisar todas as ocorrências de `screen === ` no arquivo (linhas 743, 1035, 1039, 1057, 1075, 1111, 1143, 1153, 1175, 1193) não existe nenhum branch JSX para `screen === 'field-ops'`. Logo, o estado da tela muda mas o React não renderiza nada — o conteúdo principal fica vazio (apenas o header do colaborador e o footer permanecem). Reprodução: 1) login admin em /login; 2) viewport 390x844; 3) abrir /?cid=col-demo-001; 4) clicar [data-testid=open-field-ops-btn-primary]; 5) observar que [data-testid=field-ops-screen] e [data-testid=field-dashboard] NÃO existem no DOM. Mitigação: adicionar `{screen === 'field-ops' && <FieldOps collabId={collabId} onBack={() => setScreen('home')} onOpenLousa={() => setScreen('lousa')} />}` no JSX principal, mesmo padrão dos outros screens. Bug secundário (login do colaborador): mover o `if (!collabs.length) return ...` para depois do `if (!collabId) return <CollabLoginScreen ...>`."
+}
