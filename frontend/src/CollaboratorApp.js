@@ -280,17 +280,29 @@ function CollaboratorAppInner({ mobile = false, forcedCollabId = null, onLogout 
     api.listPracas().then(setPracas).catch(() => setPracas([]));
   }, [forcedCollabId]);
 
-  // Atualiza today + fences + colaborador (avatar) ao trocar colaborador
+  // Atualiza today + fences + colaborador (avatar) ao trocar colaborador.
+  // Smart Field Ops: o app NUNCA pode morrer por 401/403 em um dos
+  // endpoints (role colaborador não enxerga /api/collaborators). Cada
+  // chamada é tolerante a falha — sem dados de ponto a home ainda renderiza
+  // e o módulo Field Ops usa a camada própria /api/field/* (JWT).
   async function refresh(cid = collabId) {
     if (!cid) return;
     const [t, f, cs] = await Promise.all([
-      api.todayStatus(cid),
-      api.listGeofences(cid),
-      api.listCollaborators(),
+      api.todayStatus(cid, { silent: true })
+        .catch(() => ({ date: null, records: [], next_expected: "Entrada" })),
+      api.listGeofences(cid, { silent: true }).catch(() => []),
+      api.listCollaborators({ silent: true }).catch(() => null),
     ]);
+    let list = cs;
+    if (!Array.isArray(list)) {
+      // Sem permissão p/ listar todos — resolve o PRÓPRIO colaborador via
+      // camada oficial Field Ops (mantém nome/cargo/clock na home).
+      const me = await api.fieldMe(cid).catch(() => null);
+      list = me?.collaborator ? [me.collaborator] : [];
+    }
     setToday(t);
     setFences(f);
-    setCollabs(cs);  // pega avatar_data_url atualizado da 1ª selfie válida
+    if (list.length) setCollabs(list);  // avatar_data_url da 1ª selfie válida
     loadLousaSummary(cid);
   }
   useEffect(() => {

@@ -30,6 +30,9 @@ client.interceptors.response.use(
   (r) => r,
   (err) => {
     if (typeof window === "undefined") return Promise.reject(err);
+    // Chamadas marcadas como silent (best-effort) não disparam eventos
+    // globais de sessão/toast — quem chamou trata o erro localmente.
+    if (err?.config?.silent) return Promise.reject(err);
     const status = err?.response?.status;
     const url = err?.config?.url || "";
     const detail = err?.response?.data?.detail;
@@ -101,7 +104,7 @@ export const api = {
 
 
   // Colaboradores
-  listCollaborators: () => client.get("/collaborators").then((r) => r.data),
+  listCollaborators: (cfg) => client.get("/collaborators", cfg).then((r) => r.data),
   getCollaborator: (id) => client.get(`/collaborators/${id}`).then((r) => r.data),
   createCollaborator: (data) => client.post("/collaborators", data).then((r) => r.data),
   updateCollaborator: (id, data) => client.put(`/collaborators/${id}`, data).then((r) => r.data),
@@ -109,7 +112,7 @@ export const api = {
   // resetCollaboratorFace movido para baixo (com suporte a resetDevice)
 
   // Cercas
-  listGeofences: (cid) => client.get(`/collaborators/${cid}/geofences`).then((r) => r.data),
+  listGeofences: (cid, cfg) => client.get(`/collaborators/${cid}/geofences`, cfg).then((r) => r.data),
   createGeofence: (cid, data) => client.post(`/collaborators/${cid}/geofences`, data).then((r) => r.data),
   updateGeofence: (gid, data) => client.put(`/geofences/${gid}`, data).then((r) => r.data),
   deleteGeofence: (gid) => client.delete(`/geofences/${gid}`).then((r) => r.data),
