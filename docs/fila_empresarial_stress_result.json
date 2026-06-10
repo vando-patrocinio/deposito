@@ -1,31 +1,31 @@
 {
   "phone_alvo": "+5521998176526",
   "tenant": "co-demo",
-  "executado_em": "2026-06-09T23:39:23.872683+00:00",
+  "executado_em": "2026-06-10T00:42:36.391181+00:00",
   "rounds": [
     {
-      "size": 100,
-      "round_tag": "qstress100",
-      "inject_wall_s": 1.38,
-      "inject_throughput_rps": 72.53,
-      "drain_wall_s": 90.12,
-      "drain_throughput_rps": 0.52,
+      "size": 1000,
+      "round_tag": "qstress1000",
+      "inject_wall_s": 13.49,
+      "inject_throughput_rps": 74.11,
+      "drain_wall_s": 715.42,
+      "drain_throughput_rps": 1.4,
       "http_status": {
-        "200": 100
+        "200": 1000
       },
       "duplicates_returned": 0,
-      "latency_ms_avg": 1188.6,
-      "latency_ms_p50": 1196.0,
-      "latency_ms_p95": 1305.5,
-      "latency_ms_p99": 1315.3,
-      "latency_ms_max": 1315.3,
-      "inbound_persisted": 100,
+      "latency_ms_avg": 1272.2,
+      "latency_ms_p50": 1277.5,
+      "latency_ms_p95": 1475.3,
+      "latency_ms_p99": 1607.7,
+      "latency_ms_max": 2987.7,
+      "inbound_persisted": 1000,
       "inbound_loss": 0,
-      "queue_done": 47,
+      "queue_done": 1000,
       "queue_failed": 0,
-      "queue_queued_remaining": 28,
-      "queue_processing_remaining": 25,
-      "processed_pct": 47.0
+      "queue_queued_remaining": 0,
+      "queue_processing_remaining": 0,
+      "processed_pct": 100.0
     }
   ]
 }
