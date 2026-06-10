@@ -1,0 +1,490 @@
+{
+  "ts": "2026-06-10T03:39:28.632523+00:00",
+  "tenant": "co-colosso",
+  "fase1_smoke": {
+    "id": "directive-e2c36001cb",
+    "company_id": "co-demo",
+    "date": "2026-06-10",
+    "created_at": "2026-06-10T03:39:34.242347+00:00",
+    "kind": "LOUSA_DAILY_DIRECTIVE",
+    "directives": [
+      {
+        "kind": "ENFORCE_PREVENTIVE_RATIO",
+        "missing_preventive": 50,
+        "current_ratio": 0.0,
+        "target_ratio": 0.25,
+        "action": "criar 50 preventivas a partir de CTOs/ONUs degradadas"
+      },
+      {
+        "kind": "ATTACK_INCIDENTS",
+        "open_incidents": 11,
+        "action": "concentrar técnicos em incidentes coletivos abertos antes de chamados individuais"
+      }
+    ],
+    "kpis": {
+      "open_repairs": 116,
+      "open_installs": 0,
+      "preventive_24h": 0,
+      "repairs_24h": 200,
+      "preventive_ratio_actual": 0.0,
+      "preventive_ratio_target": 0.25,
+      "preventive_deficit": 50,
+      "open_incidents": 11,
+      "ctos_critical": 0,
+      "onus_recurrent": 0
+    }
+  },
+  "fase5_empresa_fantasma": {
+    "seed": {
+      "subs": 10000,
+      "ctos": 500,
+      "techs": 100,
+      "onus": 10000,
+      "tickets": 1232,
+      "repairs": 200,
+      "incidents": 10
+    },
+    "preventive_created_in_simulation": 0,
+    "truck_roll_distribution": {
+      "DISPATCH": 381,
+      "DO_NOT_DISPATCH": 438,
+      "PREVENTIVA": 3,
+      "INCIDENTE_COLETIVO": 78
+    },
+    "answers": {
+      "1_visitas_evitadas": 516,
+      "2_preventivas_criadas": 67,
+      "3_incidentes_previstos": 24,
+      "4_combustivel_economizado_brl": 11145.6,
+      "5_patrimonio_recuperado_brl": 13920.0,
+      "6_tempo_operacional_economizado_horas": 774.0,
+      "7_roi_operacional_pct": 73.7
+    },
+    "ts": "2026-06-10T03:40:48.997105+00:00"
+  },
+  "fase2_truck_roll": {
+    "distribution": {
+      "DISPATCH": 81,
+      "DO_NOT_DISPATCH": 80,
+      "PREVENTIVA": 1,
+      "INCIDENTE_COLETIVO": 18,
+      "UNKNOWN": 0
+    },
+    "samples": [
+      {
+        "decision": "DISPATCH",
+        "rationale": "—"
+      },
+      {
+        "decision": "DO_NOT_DISPATCH",
+        "rationale": "ONU online, sinal -25.0 dBm · tente reset remoto ou orientação de reinício de modem"
+      },
+      {
+        "decision": "INCIDENTE_COLETIVO",
+        "rationale": "8/20 vizinhos da CTO offline (40%)"
+      },
+      {
+        "decision": "PREVENTIVA",
+        "rationale": "ONU online + 3 tickets em 30d → preventiva técnica de causa-raiz · ⚠️ 3 tickets em 30 dias → problema crônico"
+      }
+    ]
+  },
+  "fase3_coo_pipeline": {
+    "daily_directive": {
+      "id": "directive-40016a473b",
+      "company_id": "co-colosso",
+      "date": "2026-06-10",
+      "created_at": "2026-06-10T03:41:01.811843+00:00",
+      "kind": "LOUSA_DAILY_DIRECTIVE",
+      "directives": [
+        {
+          "kind": "FREEZE_CTO_DEGRADED",
+          "ctos": [
+            null,
+            null,
+            null,
+            null,
+            null
+          ],
+          "action": "congelar instalações nas CTOs críticas até reparo de causa-raiz"
+        }
+      ],
+      "kpis": {
+        "open_repairs": 105,
+        "open_installs": 0,
+        "preventive_24h": 25,
+        "repairs_24h": 27,
+        "preventive_ratio_actual": 0.926,
+        "preventive_ratio_target": 0.25,
+        "preventive_deficit": 0,
+        "open_incidents": 0,
+        "ctos_critical": 10,
+        "onus_recurrent": 0
+      }
+    },
+    "enforce_preventive": {
+      "repairs_24h": 27,
+      "preventive_24h_before": 25,
+      "target": 7,
+      "deficit": 0,
+      "created": 0,
+      "preventive_24h_after": 25,
+      "sample": [],
+      "ratio_after": 0.926,
+      "ts": "2026-06-10T03:41:01.814570+00:00"
+    },
+    "plan_field_day": {
+      "technicians_used": 93,
+      "total_jobs_planned": 105,
+      "total_clusters": 93,
+      "estimated_drive_savings_min": 180
+    },
+    "technician_scores": {
+      "company_id": "co-colosso",
+      "window_days": 30,
+      "scored": 50,
+      "ts": "2026-06-10T03:41:01.891506+00:00",
+      "sample_top5": [
+        {
+          "id": "tech-score-2396b05a",
+          "company_id": "co-colosso",
+          "kind": "TECHNICIAN_SCORE",
+          "technician_id": "_no_tech",
+          "window_days": 30,
+          "score": 72,
+          "metrics": {
+            "total_jobs": 24,
+            "completed": 0,
+            "reopened_or_repeat": 0,
+            "preventive": 24,
+            "avg_duration_h": null,
+            "unique_subscribers": 0
+          },
+          "computed_at": "2026-06-10T03:41:01.891008+00:00"
+        },
+        {
+          "id": "tech-score-e2ed93cd",
+          "company_id": "co-colosso",
+          "kind": "TECHNICIAN_SCORE",
+          "technician_id": "tech-cls-0013",
+          "window_days": 30,
+          "score": 71,
+          "metrics": {
+            "total_jobs": 1,
+            "completed": 1,
+            "reopened_or_repeat": 0,
+            "preventive": 1,
+            "avg_duration_h": 2.0,
+            "unique_subscribers": 1
+          },
+          "computed_at": "2026-06-10T03:41:01.881535+00:00"
+        },
+        {
+          "id": "tech-score-3530dcc8",
+          "company_id": "co-colosso",
+          "kind": "TECHNICIAN_SCORE",
+          "technician_id": "tech-cls-0002",
+          "window_days": 30,
+          "score": 70,
+          "metrics": {
+            "total_jobs": 1,
+            "completed": 1,
+            "reopened_or_repeat": 0,
+            "preventive": 0,
+            "avg_duration_h": 2.0,
+            "unique_subscribers": 1
+          },
+          "computed_at": "2026-06-10T03:41:01.879961+00:00"
+        },
+        {
+          "id": "tech-score-03ad9132",
+          "company_id": "co-colosso",
+          "kind": "TECHNICIAN_SCORE",
+          "technician_id": "tech-cls-0040",
+          "window_days": 30,
+          "score": 70,
+          "metrics": {
+            "total_jobs": 1,
+            "completed": 1,
+            "reopened_or_repeat": 0,
+            "preventive": 0,
+            "avg_duration_h": 3.0,
+            "unique_subscribers": 1
+          },
+          "computed_at": "2026-06-10T03:41:01.882297+00:00"
+        },
+        {
+          "id": "tech-score-b35b050b",
+          "company_id": "co-colosso",
+          "kind": "TECHNICIAN_SCORE",
+          "technician_id": "tech-cls-0017",
+          "window_days": 30,
+          "score": 70,
+          "metrics": {
+            "total_jobs": 1,
+            "completed": 1,
+            "reopened_or_repeat": 0,
+            "preventive": 0,
+            "avg_duration_h": 3.0,
+            "unique_subscribers": 1
+          },
+          "computed_at": "2026-06-10T03:41:01.884587+00:00"
+        }
+      ]
+    },
+    "operational_council": {
+      "top_10_causes": [
+        {
+          "cause": "CTO degradada (Álvaro) — health<70",
+          "count": 24
+        },
+        {
+          "cause": "sinal baixo -28dBm",
+          "count": 5
+        },
+        {
+          "cause": "conector solto",
+          "count": 5
+        },
+        {
+          "cause": "splitter ruim",
+          "count": 3
+        },
+        {
+          "cause": "ONU queimada",
+          "count": 2
+        }
+      ],
+      "top_10_ctos": [
+        {
+          "cto": "cto-cls-0181",
+          "count": 1
+        },
+        {
+          "cto": "cto-cls-0441",
+          "count": 1
+        },
+        {
+          "cto": "cto-cls-0118",
+          "count": 1
+        },
+        {
+          "cto": "cto-cls-0146",
+          "count": 1
+        },
+        {
+          "cto": "cto-cls-0111",
+          "count": 1
+        }
+      ],
+      "top_10_neighborhoods": [
+        {
+          "neighborhood": "Bairro-16",
+          "count": 2
+        },
+        {
+          "neighborhood": "Bairro-31",
+          "count": 1
+        },
+        {
+          "neighborhood": "Bairro-08",
+          "count": 1
+        },
+        {
+          "neighborhood": "Bairro-42",
+          "count": 1
+        },
+        {
+          "neighborhood": "Bairro-46",
+          "count": 1
+        }
+      ],
+      "top_10_materials": [
+        {
+          "material": "fusão fibra",
+          "count": 6
+        },
+        {
+          "material": "ONU reserva",
+          "count": 4
+        },
+        {
+          "material": "conector SC",
+          "count": 1
+        }
+      ],
+      "top_10_efficient_technicians": [
+        {
+          "technician": "_no_tech",
+          "score": 72,
+          "metrics": {
+            "total_jobs": 24,
+            "completed": 0,
+            "reopened_or_repeat": 0,
+            "preventive": 24,
+            "avg_duration_h": null,
+            "unique_subscribers": 0
+          }
+        },
+        {
+          "technician": "tech-cls-0013",
+          "score": 71,
+          "metrics": {
+            "total_jobs": 1,
+            "completed": 1,
+            "reopened_or_repeat": 0,
+            "preventive": 1,
+            "avg_duration_h": 2.0,
+            "unique_subscribers": 1
+          }
+        },
+        {
+          "technician": "tech-cls-0002",
+          "score": 70,
+          "metrics": {
+            "total_jobs": 1,
+            "completed": 1,
+            "reopened_or_repeat": 0,
+            "preventive": 0,
+            "avg_duration_h": 2.0,
+            "unique_subscribers": 1
+          }
+        },
+        {
+          "technician": "tech-cls-0017",
+          "score": 70,
+          "metrics": {
+            "total_jobs": 1,
+            "completed": 1,
+            "reopened_or_repeat": 0,
+            "preventive": 0,
+            "avg_duration_h": 3.0,
+            "unique_subscribers": 1
+          }
+        },
+        {
+          "technician": "tech-cls-0040",
+          "score": 70,
+          "metrics": {
+            "total_jobs": 1,
+            "completed": 1,
+            "reopened_or_repeat": 0,
+            "preventive": 0,
+            "avg_duration_h": 3.0,
+            "unique_subscribers": 1
+          }
+        }
+      ],
+      "top_10_rework_technicians": [
+        {
+          "technician": "tech-cls-0036",
+          "rework": 2
+        },
+        {
+          "technician": "tech-cls-0072",
+          "rework": 2
+        },
+        {
+          "technician": "tech-cls-0096",
+          "rework": 1
+        }
+      ]
+    },
+    "os_learning_sample": {
+      "id": "os-eval-dd8679a0aa",
+      "company_id": "co-colosso",
+      "kind": "OS_LEARNING",
+      "ticket_id": "rep-1e7e0941d3",
+      "subscriber_id": "sub-cls-003882",
+      "technician_id": "tech-cls-0030",
+      "resolveu": true,
+      "retornou": false,
+      "cliente_satisfeito": null,
+      "material_correto": true,
+      "visita_evitavel": false,
+      "tempo_correto": false,
+      "computed_at": "2026-06-10T03:41:01.904478+00:00"
+    },
+    "alvaro_commander": {
+      "company_id": "co-colosso",
+      "actions_taken": 0,
+      "actions": [],
+      "ts": "2026-06-10T03:41:10.885756+00:00"
+    }
+  },
+  "fase4_smart_field": {
+    "os_context_sample": {
+      "ticket_id": "rep-f1fe45d538",
+      "probable_cause": [
+        "verificar sintomas reportados pelo cliente"
+      ],
+      "materials_predicted": [],
+      "photos_required": [
+        "foto do modem/ONU ligada",
+        "foto do conector da fibra no modem",
+        "foto do display/sinal da OLT (após teste)"
+      ],
+      "diagnostic": {
+        "truck_roll_decision": null,
+        "truck_roll_confidence": null,
+        "rationale": null,
+        "signals": null
+      },
+      "history_count": 0,
+      "client_name": "Cliente 002153"
+    },
+    "stock_chain_sample": {
+      "equipment_id": "eqp-test-eaa0cd",
+      "transitions": [
+        {
+          "stage": "COMPRA",
+          "ts": "2026-06-10T03:41:10.910741+00:00"
+        },
+        {
+          "stage": "RECEBIMENTO",
+          "ts": "2026-06-10T03:41:10.914024+00:00"
+        },
+        {
+          "stage": "ESTOQUE_CENTRAL",
+          "ts": "2026-06-10T03:41:10.917132+00:00"
+        },
+        {
+          "stage": "ESTOQUE_TECNICO",
+          "ts": "2026-06-10T03:41:10.920191+00:00"
+        },
+        {
+          "stage": "CLIENTE",
+          "ts": "2026-06-10T03:41:10.923192+00:00"
+        },
+        {
+          "stage": "RETIRADA",
+          "ts": "2026-06-10T03:41:10.926228+00:00"
+        },
+        {
+          "stage": "TESTE",
+          "ts": "2026-06-10T03:41:10.929324+00:00"
+        },
+        {
+          "stage": "REAPROVEITAMENTO",
+          "ts": "2026-06-10T03:41:10.932375+00:00"
+        }
+      ]
+    },
+    "stock_health": {
+      "company_id": "co-colosso",
+      "by_stage": {
+        "COMPRA": 0,
+        "RECEBIMENTO": 0,
+        "ESTOQUE_CENTRAL": 0,
+        "ESTOQUE_TECNICO": 0,
+        "CLIENTE": 184,
+        "RETIRADA": 0,
+        "TESTE": 0,
+        "REAPROVEITAMENTO": 117
+      },
+      "stuck_in_test_7d_plus": 0,
+      "pending_recovery": 0,
+      "ts": "2026-06-10T03:41:10.984694+00:00"
+    }
+  }
+}

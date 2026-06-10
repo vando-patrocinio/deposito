@@ -109,29 +109,41 @@ async def evaluate(company_id: str, subscriber_id: str) -> Dict[str, Any]:
     rationale: list[str] = []
 
     if s_inc:
-        decision = "ESCALATE_COLLECTIVE"
+        decision = "INCIDENTE_COLETIVO"
         confidence = 0.9
         rationale.append(f"incidente coletivo ativo: {s_inc.get('type')} / {s_inc.get('severity')}")
     elif s_cto.get("off_pct") and s_cto["off_pct"] > 30:
-        decision = "ESCALATE_COLLECTIVE"
+        decision = "INCIDENTE_COLETIVO"
         confidence = 0.85
         rationale.append(f"{s_cto['off']}/{s_cto['total']} vizinhos da CTO offline "
                           f"({s_cto['off_pct']:.0f}%)")
     elif s_onu["online"] is True and (s_onu["rx_power"] is None or s_onu["rx_power"] >= -25):
-        decision = "DO_NOT_DISPATCH"
-        confidence = 0.8
-        rationale.append(
-            f"ONU online, sinal {s_onu['rx_power']:.1f} dBm" if s_onu["rx_power"] is not None
-            else "ONU online, sinal OK")
-        rationale.append("tente reset remoto ou orientação de reinício de modem")
+        # Online + sinal OK → 3+ tickets crônicos = PREVENTIVA, senão DO_NOT_DISPATCH
+        if s_tic >= 3:
+            decision = "PREVENTIVA"
+            confidence = 0.85
+            rationale.append(f"ONU online + {s_tic} tickets em 30d → preventiva técnica de causa-raiz")
+        else:
+            decision = "DO_NOT_DISPATCH"
+            confidence = 0.8
+            rationale.append(
+                f"ONU online, sinal {s_onu['rx_power']:.1f} dBm" if s_onu["rx_power"] is not None
+                else "ONU online, sinal OK")
+            rationale.append("tente reset remoto ou orientação de reinício de modem")
     elif s_onu["online"] is False:
         decision = "DISPATCH"
         confidence = 0.7
         rationale.append("ONU offline e CTO saudável — provável problema individual")
     elif s_onu["rx_power"] is not None and s_onu["rx_power"] < -27:
-        decision = "DISPATCH"
-        confidence = 0.75
-        rationale.append(f"sinal baixo: {s_onu['rx_power']:.1f} dBm — visita necessária")
+        # Sinal degradado mas ONU pode estar online → PREVENTIVA antes do cliente reclamar
+        if s_tic >= 2 or (s_onu["rx_power"] < -28):
+            decision = "PREVENTIVA"
+            confidence = 0.8
+            rationale.append(f"sinal {s_onu['rx_power']:.1f} dBm — preventiva antes da pane")
+        else:
+            decision = "DISPATCH"
+            confidence = 0.75
+            rationale.append(f"sinal baixo: {s_onu['rx_power']:.1f} dBm — visita necessária")
 
     if s_tic >= 3:
         rationale.append(f"⚠️ {s_tic} tickets em 30 dias → problema crônico")
