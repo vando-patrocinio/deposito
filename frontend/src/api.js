@@ -122,7 +122,7 @@ export const api = {
   geocodeSearch: (q, limit = 5) => client.get(`/geocode/search`, { params: { q, limit } }).then((r) => r.data),
 
   // Pontos
-  todayStatus: (cid) => client.get(`/collaborators/${cid}/today`).then((r) => r.data),
+  todayStatus: (cid, cfg) => client.get(`/collaborators/${cid}/today`, cfg).then((r) => r.data),
   createClockRecord: (data) => client.post("/clock-records", data).then((r) => r.data),
   listClockRecords: (params = {}) => client.get("/clock-records", { params }).then((r) => r.data),
   getClockRecord: (rid) => client.get(`/clock-records/${rid}`).then((r) => r.data),
@@ -156,14 +156,14 @@ export const api = {
   deleteClockRecord: (rid, reason) => client.delete(`/clock-records/${rid}`, { params: { reason } }).then((r) => r.data),
 
   // Settings
-  getSettings: () => client.get("/settings").then((r) => r.data),
+  getSettings: (cfg) => client.get("/settings", cfg).then((r) => r.data),
   updateSettings: (data) => client.put("/settings", data).then((r) => r.data),
 
   // Email
   testEmail: (to, subject) => client.post("/email/test", { to, subject }).then((r) => r.data),
 
   // Praças (cidade/estado + feriados municipais/estaduais)
-  listPracas: () => client.get("/pracas").then((r) => r.data),
+  listPracas: (cfg) => client.get("/pracas", cfg).then((r) => r.data),
   createPraca: (data) => client.post("/pracas", data).then((r) => r.data),
   updatePraca: (id, data) => client.put(`/pracas/${id}`, data).then((r) => r.data),
   deletePraca: (id) => client.delete(`/pracas/${id}`).then((r) => r.data),

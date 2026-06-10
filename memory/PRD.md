@@ -1404,3 +1404,47 @@ WhatsApp Baileys continua **BLOQUEADO** por credenciais ausentes:
 46 ações represadas no DB aguardando QR scan. Atual `recurrence_score`
 e `triage` geram DecisionV5 mas as ações operacionais (open_technical_
 ticket, notify_manager) só viram envio real quando o WA destravar.
+
+---
+
+## SMART FIELD OPS — App Colaborador Externo ↔ SmartProv (10/06/2026) ✅
+
+**Ordem CTO**: o App é a mão, o SmartProv é o cérebro. Zero sistema paralelo.
+
+### Implementado
+- **Backend** `routes/field_ops.py` — camada oficial `/api/field/*` (19 rotas):
+  me, dashboard, os/today, os/{id}, start, arrive, photo, signal-test,
+  material-used, finish, reschedule, block-reason, stock/me, materials/catalog,
+  vehicle/inspection, vehicle/status, equipment/return, settings (GET/PUT),
+  admin/overview. JWT + RBAC + company_id + ownership (cross→404) + rate limit
+  (slowapi field_read/field_action) + audit_log + 11 eventos `field.*` no
+  event_bus (Presidente IA). start/finish DELEGAM para lousa.public_open/
+  public_finalize (todas as travas herdadas: ponto, checklist, foto, CTO/porta).
+- **Toggles por empresa** (aihub_settings key=field_ops_toggles, defaults OFF):
+  vehicle_inspection_required (vistoria semanal KM+4 fotos bloqueia OS),
+  gps_required, block_material_without_stock, equipment_default_cost (R$250).
+- **Retirada financeira**: equipment/return devolve ONT ao estoque do técnico,
+  libera porta CTO, grava field_equipment_returns (value_recovered/value_lost),
+  notifica financeiro em perda.
+- **Frontend técnico** (dentro do CollaboratorApp, visual SmartProv):
+  FieldOps.js (dashboard Hoje/OS detail/ações com modais), FieldOpsFrota.js
+  (vistoria), FieldOpsEstoque.js (estoque + retirada). Botão "Smart Field Ops"
+  no home (ambas variantes). Exige JWT (tela login-required sem token).
+- **Painel gestor**: FieldOpsManagerPanel.js — sidebar "Field Ops (Campo)"
+  (tag field-ops): KPIs, técnicos (GPS/estoque/frota/produtividade), atrasadas,
+  retiradas+impacto 30d, Truck Roll Avoidance, toggles.
+- **Robustez CollaboratorApp**: refresh() tolerante a 401/403 (config silent
+  no axios + fallback via /api/field/me); login renderiza antes do guard.
+- **Docs**: /app/docs/SMART_FIELD_OPS_CONNECTION.md (contrato completo).
+- **Testes**: scripts/test_field_ops.py — 13/13 zero-mock (ownership, cross-
+  company, 401, checklist/foto/GPS/frota bloqueiam, estoque baixa, retirada
+  devolve+impacto, Lousa atualiza, eventos, auditoria). Frontend E2E validado
+  em 3 iterações do testing agent (iteration_222/223/224/225 — 7/7 final).
+- Fixtures demo: col-demo-001 (Carlos Almeida) vinculado a
+  colaborador@empresa.com com 3 OS de hoje.
+
+### Pendências conhecidas (baixa prioridade)
+- Self-access de role colaborador a /api/collaborators/{cid}/today|geofences
+  (RBAC nega; UI tolera — ponto fica vazio p/ logins de técnico via JWT).
+- Race ocasional no 1º clique do botão Smart Field Ops (retry resolve).
+- PRD.md > 700 linhas — dividir em PRD/CHANGELOG/ROADMAP.

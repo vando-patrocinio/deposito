@@ -277,7 +277,7 @@ function CollaboratorAppInner({ mobile = false, forcedCollabId = null, onLogout 
       // listCollaborators pode falhar em ambiente público — mantém forcedCollabId
       if (forcedCollabId) setCollabId(forcedCollabId);
     });
-    api.listPracas().then(setPracas).catch(() => setPracas([]));
+    api.listPracas({ silent: true }).then(setPracas).catch(() => setPracas([]));
   }, [forcedCollabId]);
 
   // Atualiza today + fences + colaborador (avatar) ao trocar colaborador.
@@ -315,7 +315,7 @@ function CollaboratorAppInner({ mobile = false, forcedCollabId = null, onLogout 
   // Tracking ao vivo: envia GPS ao backend enquanto o app está aberto
   const [pingIntervalSec, setPingIntervalSec] = useState(15);
   useEffect(() => {
-    api.getSettings().then((s) => {
+    api.getSettings({ silent: true }).then((s) => {
       if (s?.location_ping_interval_sec) setPingIntervalSec(Number(s.location_ping_interval_sec));
     }).catch(() => {});
   }, []);
