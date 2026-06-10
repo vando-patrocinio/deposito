@@ -3,6 +3,12 @@
 Lê as últimas N mensagens da conversa em `aihub_wa_messages` e devolve
 uma lista de turns no formato OpenAI ChatML, com truncate inteligente por
 tokens (~4 caracteres por token) pra não estourar o limite do modelo.
+
+CORREÇÃO 2026-02-10: o algoritmo antigo iterava do mais antigo pro mais
+recente e dava `break` ao estourar o budget — fazendo a Isabella esquecer
+exatamente as mensagens MAIS RECENTES (as que importam). Agora iteramos
+do mais recente pro mais antigo, acumulamos enquanto cabe no budget e
+revertemos no final pra entregar em ordem cronológica.
 """
 from __future__ import annotations
 
@@ -13,12 +19,10 @@ from database import db
 
 logger = logging.getLogger("ponto.ai_history")
 
-# Limite default (100 mensagens) — usuário pediu janela maior pra IA entender
-# conversas longas. Cap por orçamento de tokens evita estourar a janela do LLM.
-# 5000 tokens deixa margem segura (~15%) considerando que ~4 chars/token
-# subestima ligeiramente PT-BR vs tiktoken cl100k.
-DEFAULT_HISTORY_LIMIT = 100
-DEFAULT_TOKEN_BUDGET = 5000  # ~20KB de texto — sobra espaço pro system prompt
+# Janela ampliada: 200 mensagens é o teto físico de busca. O corte real é
+# por orçamento de tokens (~6000) — garante ~30-40 turnos de conversa ativa.
+DEFAULT_HISTORY_LIMIT = 200
+DEFAULT_TOKEN_BUDGET = 6000  # ~24KB de texto — sobra espaço pro system prompt
 
 
 def _approx_tokens(text: str) -> int:
@@ -34,7 +38,8 @@ async def fetch_history_turns(company_id: str, phone: str,
                                  token_budget: int = DEFAULT_TOKEN_BUDGET,
                                  exclude_msg_id: str | None = None) -> List[dict]:
     """Retorna histórico no formato [{role: 'user'|'assistant', content: '...'}, ...]
-    do mais antigo pro mais recente, truncado pelo orçamento de tokens.
+    do mais antigo pro mais recente, garantindo que as mensagens MAIS
+    RECENTES sempre entrem (descarta as mais antigas se exceder o budget).
 
     Respeita `wa_conversations.context_reset_at` — quando o gestor zera
     o contexto pra teste, msgs anteriores ao reset NÃO entram no histórico
@@ -54,15 +59,15 @@ async def fetch_history_turns(company_id: str, phone: str,
     except Exception as e:
         logger.info("[ai_history] reset_at lookup skip: %s", e)
 
+    # Busca DESC (mais recentes primeiro) — vamos preservar essas
     docs = await db.aihub_wa_messages.find(
         q,
         {"_id": 0, "id": 1, "direction": 1, "text": 1, "auto_reply": 1,
          "is_correction": 1, "created_at": 1, "is_internal_note": 1},
     ).sort("created_at", -1).limit(limit).to_list(limit)
-    # Reverte para ordem cronológica
-    docs.reverse()
 
-    turns: List[dict] = []
+    # Itera do mais recente pro mais antigo, acumulando enquanto cabe
+    turns_desc: List[dict] = []
     used_tokens = 0
     for d in docs:
         if exclude_msg_id and d.get("id") == exclude_msg_id:
@@ -72,16 +77,16 @@ async def fetch_history_turns(company_id: str, phone: str,
         text = (d.get("text") or "").strip()
         if not text:
             continue
-        role = "assistant" if d.get("direction") == "outbound" else "user"
         t = _approx_tokens(text)
-        used_tokens += t
-        turns.append({"role": role, "content": text})
-        if used_tokens >= token_budget:
-            # Corta os mais antigos primeiro (FIFO)
-            while turns and used_tokens > token_budget:
-                first = turns.pop(0)
-                used_tokens -= _approx_tokens(first["content"])
+        if used_tokens + t > token_budget and turns_desc:
+            # Já temos contexto suficiente — corta as mais antigas
             break
+        role = "assistant" if d.get("direction") == "outbound" else "user"
+        turns_desc.append({"role": role, "content": text})
+        used_tokens += t
+
+    # Inverte para ordem cronológica (oldest → newest)
+    turns = list(reversed(turns_desc))
 
     # Consolida turns consecutivos do mesmo role (LLMs preferem alternância)
     consolidated: List[dict] = []

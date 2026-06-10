@@ -493,6 +493,16 @@ async def _generate_and_send_twilio_reply(
             sys_prompt += "\n\n" + mem_block
     except Exception as e:
         logger.warning("[twilio] short_term_memory inject falhou: %s", e)
+
+    # MEMÓRIA DE LONGO PRAZO — Operação Memória Total (15/30/60 dias)
+    try:
+        from services.long_term_memory import build_long_term_block
+        lt_block = await build_long_term_block(
+            company_id=cid, phone=phone, subscriber_id=subscriber_id)
+        if lt_block:
+            sys_prompt += "\n\n" + lt_block
+    except Exception as e:
+        logger.warning("[twilio] long_term_memory inject falhou: %s", e)
     # Memória de correções (Edit & Teach)
     try:
         from routes.ai_corrections import (fetch_recent_for_prompt,

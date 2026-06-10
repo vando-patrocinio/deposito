@@ -7492,3 +7492,29 @@ A iter213 foi parcial — corrigiu o filtro de tipos, mas o real bug era esse. A
 ### `/app/frontend/src/CollaboratorApp.js`
 - Wiring: `<LousaMobile onOpenRedeMap={() => setScreen("rede-map")} ... />`
 - Reutiliza a tela `rede-map` já registrada (que abre `RedeIaMapMobile.js` com auto-GPS e sync do mapa interativo)
+
+---
+
+## iter217 (Feb/2026) — Operação Memória Total (Isabella)
+**Tipo**: Bug Fix P0 (Isabella esquecia contexto curto E longo prazo)
+**Validação**: 4 testes Zero-Mocks em DB real (`scripts/test_memory_pipeline.py`) ✓
+
+### Bugs eliminados
+1. **`services/ai_history.py`** — algoritmo de truncate iterava do mais antigo
+   pro mais recente e dava `break` ao estourar budget, descartando justamente
+   as últimas mensagens. Reescrito: agora itera newest→oldest, acumula até o
+   budget, reverte pra ordem cronológica. Garante que o turno atual SEMPRE
+   chega ao LLM. Janela 100 → 200 msgs.
+2. **`services/long_term_memory.py`** (NOVO) — antes não existia retrieval de
+   15/30/60 dias. Agora consulta 5 collections reais (`aihub_wa_messages`,
+   `ai_evaluations`, `tickets`, `executive_ledger`, `subscribers`) por janela
+   cronológica e devolve bloco compacto pro system prompt.
+3. **`routes/whatsapp_twilio.py`** — injeta o bloco long-term logo após o
+   short-term, antes das correções e do contexto orquestrado.
+
+### Resultado
+Isabella nunca mais perde o fio da conversa atual. Quando o cliente menciona
+algo de 20/40 dias atrás, ela já tem o histórico (OS, NPS, eventos
+financeiros) no contexto do prompt.
+
+Relatório completo: `/app/docs/RELATORIO_MEMORIA_TOTAL.md`
