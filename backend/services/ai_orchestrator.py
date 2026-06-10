@@ -333,6 +333,31 @@ async def _customer_profile_context(company_id: str, phone: str,
 
     if len(lines) == 1:
         return ""
+    # Scores comportamentais para Isabella priorizar internamente
+    try:
+        scores = []
+        if sub.get("churn_score") is not None:
+            scores.append(f"churn={sub['churn_score']:.2f}")
+        if sub.get("retention_score") is not None:
+            scores.append(f"retention={sub['retention_score']:.2f}")
+        if sub.get("referral_score") is not None:
+            scores.append(f"referral={sub['referral_score']:.2f}")
+        if sub.get("collection_score") is not None:
+            scores.append(f"collection={sub['collection_score']:.2f}")
+        if scores:
+            lines.append("Scores internos (NÃO mostrar ao cliente): " + " · ".join(scores))
+    except Exception:
+        pass
+    # Diretrizes Isabella ÚNICA (anti-transferência)
+    lines.append(
+        "DIRETRIZES OBRIGATÓRIAS:\n"
+        "  • Você é Isabella. NUNCA diga 'vou transferir', 'aguarde o setor',\n"
+        "    'vou encaminhar'. Resolva você mesma usando o contexto acima.\n"
+        "  • Resolva o problema PRIMEIRO. Recomende produto Universo Ligo só\n"
+        "    DEPOIS, apenas se fizer sentido (no máximo 1 sugestão).\n"
+        "  • Nunca cite Álvaro, Rede IA, Presidente IA ou Sistema Nervoso.\n"
+        "    Toda inteligência interna é SUA."
+    )
     return "\n".join(lines)
 
 
