@@ -105,34 +105,52 @@ def _decisions(top: List[Dict[str, Any]],
                 dun: Dict[str, Any],
                 rev: Dict[str, Any],
                 inc: Dict[str, Any]) -> List[Dict[str, Any]]:
-    """Decisões executivas geradas pelo Conselho — não executa, apenas pauta."""
+    """Decisões executivas geradas pelo Conselho — não executa, apenas pauta.
+    Cada decisão tem `id` único e `predicted_outcome_brl` para comparar
+    contra a realidade (precisão do conselho)."""
     out: List[Dict[str, Any]] = []
     if inc["critical"] >= 1:
-        out.append({"priority": "P0",
+        out.append({"id": f"dec-{uuid.uuid4().hex[:10]}",
+                      "priority": "P0",
                       "title": f"Tratar {inc['critical']} incidentes críticos abertos",
                       "owner": "Field President",
-                      "rationale": "Risco massivo de churn coletivo"})
+                      "rationale": "Risco massivo de churn coletivo",
+                      "predicted_outcome_brl": 0.0,
+                      "domain": "incident"})
     if churn["critical"] >= 1:
-        out.append({"priority": "P0",
+        out.append({"id": f"dec-{uuid.uuid4().hex[:10]}",
+                      "priority": "P0",
                       "title": f"Acionar retenção em {churn['critical']} clientes alto risco",
                       "owner": "Churn Commander",
-                      "rationale": f"R$ {churn['impact_12m_brl']:.0f} de LTV em risco"})
+                      "rationale": f"R$ {churn['impact_12m_brl']:.0f} de LTV em risco",
+                      "predicted_outcome_brl": churn["impact_12m_brl"],
+                      "domain": "churn"})
     if dun["total_due_brl"] >= 500:
-        out.append({"priority": "P1",
+        out.append({"id": f"dec-{uuid.uuid4().hex[:10]}",
+                      "priority": "P1",
                       "title": f"Recuperar R$ {dun['total_due_brl']:.0f} em inadimplência",
                       "owner": "Dunning Commander",
-                      "rationale": f"{dun['n']} contas em régua autônoma"})
+                      "rationale": f"{dun['n']} contas em régua autônoma",
+                      "predicted_outcome_brl": dun["total_due_brl"],
+                      "domain": "dunning"})
     if (rev.get("revenue_impact_brl", 0) + rev.get("expansion_impact_brl", 0)) >= 100:
-        out.append({"priority": "P1",
+        out.append({"id": f"dec-{uuid.uuid4().hex[:10]}",
+                      "priority": "P1",
                       "title": f"Capturar R$ {rev.get('revenue_impact_brl', 0):.0f} em upsell "
                                f"+ R$ {rev.get('expansion_impact_brl', 0):.0f} em expansão",
                       "owner": "Revenue + Expansion Commanders",
-                      "rationale": "Oportunidades pendentes com aprovação humana"})
+                      "rationale": "Oportunidades pendentes com aprovação humana",
+                      "predicted_outcome_brl": rev.get("revenue_impact_brl", 0)
+                                                + rev.get("expansion_impact_brl", 0),
+                      "domain": "revenue"})
     if not out:
-        out.append({"priority": "P2",
+        out.append({"id": f"dec-{uuid.uuid4().hex[:10]}",
+                      "priority": "P2",
                       "title": "Operação saudável — manter cadência de varredura",
                       "owner": "Conselho IA",
-                      "rationale": "Nenhum alerta acima do threshold"})
+                      "rationale": "Nenhum alerta acima do threshold",
+                      "predicted_outcome_brl": 0.0,
+                      "domain": "ops"})
     return out
 
 

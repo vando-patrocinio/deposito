@@ -18,6 +18,9 @@ from services import (isabella_churn, isabella_conselho, isabella_dunning,
                         isabella_expansion, isabella_revenue, isabella_twin)
 from services.isabella_opportunities import (ensure_indexes as opp_indexes,
                                                 expire_old)
+from services import isabella_outcome_engine as outcome_eng
+from services import isabella_learning as learning_eng
+from services import isabella_executive_memory as memory_eng
 
 log = logging.getLogger("ponto.isabella_commanders_worker")
 
@@ -51,6 +54,9 @@ async def isabella_commanders_worker() -> None:
     await asyncio.sleep(75)  # boot
     try:
         await opp_indexes()
+        await outcome_eng.ensure_indexes()
+        await learning_eng.ensure_indexes()
+        await memory_eng.ensure_indexes()
     except Exception:
         pass
     log.info("[commanders_worker] iniciado (a cada %ss)", SCAN_INTERVAL_SEC)
@@ -63,6 +69,15 @@ async def isabella_commanders_worker() -> None:
                     await _run_scans_for(cid)
                 except Exception as e:
                     log.warning("[commanders_worker] scan %s: %s", cid, e)
+            # Resolução de outcomes (job diário)
+            try:
+                r = await outcome_eng.resolve_due()
+                if r.get("resolved", 0):
+                    log.info("[commanders_worker] outcomes resolvidos: %s",
+                              {k: r[k] for k in ("resolved", "success",
+                                                  "failure", "inconclusive")})
+            except Exception as e:
+                log.warning("[commanders_worker] resolve_due: %s", e)
             # Reunião do conselho 1x por dia
             now = datetime.now(timezone.utc)
             today = now.strftime("%Y-%m-%d")

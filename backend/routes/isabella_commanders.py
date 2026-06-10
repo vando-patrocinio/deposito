@@ -18,6 +18,10 @@ from services.isabella_opportunities import (
 from services import (isabella_churn, isabella_dunning, isabella_revenue,
                        isabella_twin, isabella_expansion, isabella_conselho)
 from services import isabella_incident
+from services import isabella_outcome_engine as outcome_eng
+from services import isabella_learning as learning_eng
+from services import isabella_executive_memory as memory_eng
+from services import isabella_execution_score as exec_score
 from services.rate_limit import get_limit, limiter
 from routes.field_ops import _company_of, _is_privileged
 
@@ -94,6 +98,19 @@ async def approve_opp(opp_id: str, request: Request,
     actor = user.get("email") or user.get("id")
     updated = await update_status(opp_id, company, status="approved",
                                     actor=actor)
+    # Fecha o loop de aprendizado: abre outcome + conta tentativa
+    try:
+        await outcome_eng.open_outcome(opp, actor=actor)
+        await learning_eng.record_attempt(
+            company_id=company,
+            kind=opp.get("kind"),
+            subkind=opp.get("subkind") or "",
+            playbook=(opp.get("recommended_action") or {}).get("playbook")
+                      or (opp.get("recommended_action") or {}).get("type")
+                      or "")
+    except Exception as e:
+        logging.getLogger("ponto.isabella_commanders").warning(
+            "outcome/learning hook: %s", e)
     await emit_event(EventType.OPPORTUNITY_APPROVED,
                       company_id=company, source="isabella_commanders",
                       severity="media",
@@ -130,9 +147,17 @@ async def mark_executed(opp_id: str, request: Request,
     """Marca como executada (ex: disparo WA realizado, OS criada)."""
     _require_priv(user)
     company = _company_or_param(user, cid)
+    opp = await get_opportunity(opp_id, company)
+    if not opp:
+        raise HTTPException(404, "oportunidade não encontrada")
     actor = user.get("email") or user.get("id")
     updated = await update_status(opp_id, company, status="executed",
                                     actor=actor, result=result)
+    # Garante que outcome existe (caso tenha pulado approve)
+    try:
+        await outcome_eng.open_outcome(opp, actor=actor)
+    except Exception:
+        pass
     await emit_event(EventType.OPPORTUNITY_EXECUTED,
                       company_id=company, source="isabella_commanders",
                       severity="media",
@@ -277,3 +302,170 @@ async def incident_mass_notify(incident_id: str, request: Request,
     return await isabella_incident.mass_notify_incident(
         company, incident_id, phase=phase,
         custom_text=custom_text, actor=actor)
+
+
+
+# ---------------------------------------------------------------------------
+# Learning loop — Outcome / Weights / Memory / Execution Score
+# ---------------------------------------------------------------------------
+@router.get("/outcomes")
+@limiter.limit(get_limit("isabella_read"))
+async def outcomes_list(request: Request,
+                          kind: Optional[str] = None,
+                          result: Optional[str] = None,
+                          cid: Optional[str] = None,
+                          limit: int = 100,
+                          user: dict = Depends(get_current_user)):
+    from database import db
+    company = _company_or_param(user, cid)
+    q: Dict[str, Any] = {"company_id": company}
+    if kind:
+        q["kind"] = kind
+    if result:
+        q["result"] = result
+    items = await db.isabella_outcomes.find(q, {"_id": 0}) \
+        .sort("created_at", -1).limit(min(limit, 500)) \
+        .to_list(min(limit, 500))
+    return {"company_id": company, "items": items}
+
+
+@router.get("/outcomes/stats")
+@limiter.limit(get_limit("isabella_read"))
+async def outcomes_stats(request: Request,
+                          days: int = 90,
+                          cid: Optional[str] = None,
+                          user: dict = Depends(get_current_user)):
+    company = _company_or_param(user, cid)
+    return await outcome_eng.stats(company, days=days)
+
+
+@router.post("/outcomes/resolve")
+@limiter.limit(get_limit("isabella_write"))
+async def outcomes_resolve(request: Request,
+                            force: bool = False,
+                            user: dict = Depends(get_current_user)):
+    _require_priv(user)
+    return await outcome_eng.resolve_due(force=force)
+
+
+@router.get("/learning/weights")
+@limiter.limit(get_limit("isabella_read"))
+async def learning_weights(request: Request,
+                            kind: Optional[str] = None,
+                            limit: int = 50,
+                            cid: Optional[str] = None,
+                            user: dict = Depends(get_current_user)):
+    company = _company_or_param(user, cid)
+    return {"company_id": company,
+            "items": await learning_eng.top_playbooks(
+                company, kind=kind, limit=min(limit, 200))}
+
+
+@router.get("/memory/policies")
+@limiter.limit(get_limit("isabella_read"))
+async def memory_list(request: Request,
+                       only_active: bool = True,
+                       cid: Optional[str] = None,
+                       user: dict = Depends(get_current_user)):
+    company = _company_or_param(user, cid)
+    return {"company_id": company,
+            "items": await memory_eng.list_policies(
+                company, only_active=only_active)}
+
+
+@router.post("/memory/policies")
+@limiter.limit(get_limit("isabella_write"))
+async def memory_add(request: Request,
+                      payload: Dict[str, Any] = Body(...),
+                      cid: Optional[str] = None,
+                      user: dict = Depends(get_current_user)):
+    _require_priv(user)
+    company = _company_or_param(user, cid)
+    actor = user.get("email") or user.get("id")
+    try:
+        return await memory_eng.add_policy(
+            company_id=company,
+            scope=payload["scope"],
+            action=payload["action"],
+            condition=payload.get("condition") or {},
+            decided_by=actor,
+            reason=payload.get("reason") or "",
+            kind=payload.get("kind"),
+            subkind=payload.get("subkind"),
+            playbook=payload.get("playbook"),
+            expires_at=payload.get("expires_at"))
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+
+
+@router.post("/memory/policies/{policy_id}/deactivate")
+@limiter.limit(get_limit("isabella_write"))
+async def memory_deactivate(policy_id: str, request: Request,
+                              cid: Optional[str] = None,
+                              user: dict = Depends(get_current_user)):
+    _require_priv(user)
+    company = _company_or_param(user, cid)
+    actor = user.get("email") or user.get("id")
+    r = await memory_eng.deactivate(company, policy_id, actor)
+    if not r:
+        raise HTTPException(404, "policy não encontrada")
+    return r
+
+
+@router.get("/memory/suggestions")
+@limiter.limit(get_limit("isabella_read"))
+async def memory_suggestions(request: Request,
+                              days: int = 30,
+                              threshold: int = 3,
+                              cid: Optional[str] = None,
+                              user: dict = Depends(get_current_user)):
+    """Sugestões de políticas detectadas em padrões de dismiss."""
+    company = _company_or_param(user, cid)
+    return {"company_id": company,
+            "suggestions": await memory_eng.learn_from_dismissals(
+                company, days=days, threshold=threshold)}
+
+
+@router.get("/execution-score")
+@limiter.limit(get_limit("isabella_read"))
+async def execution_score_endpoint(request: Request,
+                                     days: int = 30,
+                                     cid: Optional[str] = None,
+                                     user: dict = Depends(get_current_user)):
+    company = _company_or_param(user, cid)
+    return await exec_score.compute(company, days=days)
+
+
+@router.get("/council/precision")
+@limiter.limit(get_limit("isabella_read"))
+async def council_precision(request: Request,
+                              days: int = 90,
+                              cid: Optional[str] = None,
+                              user: dict = Depends(get_current_user)):
+    """Precisão histórica das decisões do Conselho."""
+    from database import db
+    company = _company_or_param(user, cid)
+    from datetime import datetime, timedelta, timezone
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+    minutes = await db.isabella_council_minutes.find(
+        {"company_id": company, "held_at": {"$gte": cutoff}},
+        {"_id": 0, "id": 1, "held_at": 1, "financial_summary": 1,
+         "decisions": 1}).sort("held_at", -1).to_list(200)
+    if not minutes:
+        return {"company_id": company, "window_days": days, "meetings": 0}
+    # Precisão = ROI real (do execution_score recente) /
+    # somatório previsto nas atas
+    score = await exec_score.compute(company, days=days)
+    total_predicted = sum(
+        float((m.get("financial_summary") or {})
+              .get("revenue_potential_brl", 0) or 0)
+        for m in minutes)
+    real = float(score.get("roi_real_brl_total") or 0)
+    precision = round(real / max(total_predicted, 1), 4)
+    return {"company_id": company,
+            "window_days": days,
+            "meetings": len(minutes),
+            "total_predicted_brl": round(total_predicted, 2),
+            "roi_real_total_brl": real,
+            "council_precision_rate": precision,
+            "latest_meetings": minutes[:5]}
