@@ -1,0 +1,50 @@
+{
+  "tenant": "co-fantasma-test",
+  "seeded": {
+    "events": 7911,
+    "invoices": 400,
+    "tickets": 300,
+    "incidents": 5,
+    "repairs": 80,
+    "installs": 100,
+    "withdrawals": 50
+  },
+  "results": {
+    "isabella": {
+      "wa_in": 245,
+      "wa_out": 243,
+      "resolution_pct": 99.2,
+      "upgrades": 30,
+      "retencoes": 25,
+      "cobrancas": 400
+    },
+    "alvaro": {
+      "detectadas": 169,
+      "antes_cliente": 89,
+      "antecip_pct": 52.7
+    },
+    "sfo": {
+      "repairs": 80,
+      "avoided": 33,
+      "tra_pct": 41.2,
+      "withdrawals": 50,
+      "asset_recovered": 44
+    },
+    "nervoso": {
+      "coverage_pct": 100.0,
+      "level": "VERDE",
+      "total_events": 7911
+    },
+    "truck_guard": {
+      "decisions": {
+        "DO_NOT_DISPATCH": 0,
+        "DISPATCH": 31,
+        "ESCALATE_COLLECTIVE": 19,
+        "UNKNOWN": 0
+      },
+      "avoid_pct": 0.0,
+      "escalate_pct": 38.0
+    }
+  },
+  "ts": "2026-06-10T01:42:14.238396+00:00"
+}
