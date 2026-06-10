@@ -467,6 +467,7 @@ async def _generate_and_send_twilio_reply(
     # Resolve identidade real do telefone (mesma lógica do webhook).
     link_for_guard = None
     history_inbound: list[str] = []
+    short_term_analysis: dict = {}
     try:
         from phone_normalizer import link_phone_to_subscriber
         link_for_guard = await link_phone_to_subscriber(phone, cid)
@@ -479,6 +480,19 @@ async def _generate_and_send_twilio_reply(
             link_for_guard, history_inbound=history_inbound)
     except Exception as e:
         logger.warning("[twilio] anti_cpf_guardian inject falhou: %s", e)
+
+    # MEMÓRIA DE CURTO PRAZO — Operação Memória Obrigatória
+    try:
+        from services.short_term_memory_guard import (
+            analyze_short_term_context, inject_memory_block,
+        )
+        short_term_analysis = await analyze_short_term_context(
+            company_id=cid, phone=phone, user_text=user_text)
+        mem_block = inject_memory_block(short_term_analysis)
+        if mem_block:
+            sys_prompt += "\n\n" + mem_block
+    except Exception as e:
+        logger.warning("[twilio] short_term_memory inject falhou: %s", e)
     # Memória de correções (Edit & Teach)
     try:
         from routes.ai_corrections import (fetch_recent_for_prompt,

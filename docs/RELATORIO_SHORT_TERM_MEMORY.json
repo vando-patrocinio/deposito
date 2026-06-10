@@ -1,0 +1,156 @@
+{
+  "ts": "2026-06-10T04:38:21.568315+00:00",
+  "company": "co-mem-test",
+  "passed": 11,
+  "total": 11,
+  "ai_evaluations_logged": 10,
+  "context_recovered_logged": 10,
+  "context_error_logged": 10,
+  "results": [
+    {
+      "answer": "Quero",
+      "is_short": true,
+      "open_topic": "reparo",
+      "last_q_detected": true,
+      "block_excerpt": "=== MEMÓRIA DE CURTO PRAZO (OBRIGATÓRIO) ===\nSUA ÚLTIMA PERGUNTA foi: \"Quer que eu resolva por aqui agora ou prefere agendar atendente às 08:00?\"\nAnte",
+      "rewritten": "Entendi!",
+      "context_recovered": true,
+      "context_error": true,
+      "violations": [
+        "commercial_intent_on_short_reply"
+      ],
+      "pass": true
+    },
+    {
+      "answer": "Sim",
+      "is_short": true,
+      "open_topic": "reparo",
+      "last_q_detected": true,
+      "block_excerpt": "=== MEMÓRIA DE CURTO PRAZO (OBRIGATÓRIO) ===\nSUA ÚLTIMA PERGUNTA foi: \"Quer que eu resolva por aqui agora ou prefere agendar atendente às 08:00?\"\nAnte",
+      "rewritten": "Entendi!",
+      "context_recovered": true,
+      "context_error": true,
+      "violations": [
+        "commercial_intent_on_short_reply"
+      ],
+      "pass": true
+    },
+    {
+      "answer": "Pode",
+      "is_short": true,
+      "open_topic": "reparo",
+      "last_q_detected": true,
+      "block_excerpt": "=== MEMÓRIA DE CURTO PRAZO (OBRIGATÓRIO) ===\nSUA ÚLTIMA PERGUNTA foi: \"Quer que eu resolva por aqui agora ou prefere agendar atendente às 08:00?\"\nAnte",
+      "rewritten": "Entendi!",
+      "context_recovered": true,
+      "context_error": true,
+      "violations": [
+        "commercial_intent_on_short_reply"
+      ],
+      "pass": true
+    },
+    {
+      "answer": "Ok",
+      "is_short": true,
+      "open_topic": "reparo",
+      "last_q_detected": true,
+      "block_excerpt": "=== MEMÓRIA DE CURTO PRAZO (OBRIGATÓRIO) ===\nSUA ÚLTIMA PERGUNTA foi: \"Quer que eu resolva por aqui agora ou prefere agendar atendente às 08:00?\"\nAnte",
+      "rewritten": "Entendi!",
+      "context_recovered": true,
+      "context_error": true,
+      "violations": [
+        "commercial_intent_on_short_reply"
+      ],
+      "pass": true
+    },
+    {
+      "answer": "Amanhã",
+      "is_short": true,
+      "open_topic": "reparo",
+      "last_q_detected": true,
+      "block_excerpt": "=== MEMÓRIA DE CURTO PRAZO (OBRIGATÓRIO) ===\nSUA ÚLTIMA PERGUNTA foi: \"Quer que eu resolva por aqui agora ou prefere agendar atendente às 08:00?\"\nAnte",
+      "rewritten": "Entendi!",
+      "context_recovered": true,
+      "context_error": true,
+      "violations": [
+        "commercial_intent_on_short_reply"
+      ],
+      "pass": true
+    },
+    {
+      "answer": "Agora",
+      "is_short": true,
+      "open_topic": "reparo",
+      "last_q_detected": true,
+      "block_excerpt": "=== MEMÓRIA DE CURTO PRAZO (OBRIGATÓRIO) ===\nSUA ÚLTIMA PERGUNTA foi: \"Quer que eu resolva por aqui agora ou prefere agendar atendente às 08:00?\"\nAnte",
+      "rewritten": "Entendi!",
+      "context_recovered": true,
+      "context_error": true,
+      "violations": [
+        "commercial_intent_on_short_reply"
+      ],
+      "pass": true
+    },
+    {
+      "answer": "Isso",
+      "is_short": true,
+      "open_topic": "reparo",
+      "last_q_detected": true,
+      "block_excerpt": "=== MEMÓRIA DE CURTO PRAZO (OBRIGATÓRIO) ===\nSUA ÚLTIMA PERGUNTA foi: \"Quer que eu resolva por aqui agora ou prefere agendar atendente às 08:00?\"\nAnte",
+      "rewritten": "Entendi!",
+      "context_recovered": true,
+      "context_error": true,
+      "violations": [
+        "commercial_intent_on_short_reply"
+      ],
+      "pass": true
+    },
+    {
+      "answer": "Ela",
+      "is_short": true,
+      "open_topic": "reparo",
+      "last_q_detected": true,
+      "block_excerpt": "=== MEMÓRIA DE CURTO PRAZO (OBRIGATÓRIO) ===\nSUA ÚLTIMA PERGUNTA foi: \"Quer que eu resolva por aqui agora ou prefere agendar atendente às 08:00?\"\nAnte",
+      "rewritten": "Entendi!",
+      "context_recovered": true,
+      "context_error": true,
+      "violations": [
+        "commercial_intent_on_short_reply"
+      ],
+      "pass": true
+    },
+    {
+      "answer": "Confirmo",
+      "is_short": true,
+      "open_topic": "reparo",
+      "last_q_detected": true,
+      "block_excerpt": "=== MEMÓRIA DE CURTO PRAZO (OBRIGATÓRIO) ===\nSUA ÚLTIMA PERGUNTA foi: \"Quer que eu resolva por aqui agora ou prefere agendar atendente às 08:00?\"\nAnte",
+      "rewritten": "Entendi!",
+      "context_recovered": true,
+      "context_error": true,
+      "violations": [
+        "commercial_intent_on_short_reply"
+      ],
+      "pass": true
+    },
+    {
+      "answer": "Certo",
+      "is_short": true,
+      "open_topic": "reparo",
+      "last_q_detected": true,
+      "block_excerpt": "=== MEMÓRIA DE CURTO PRAZO (OBRIGATÓRIO) ===\nSUA ÚLTIMA PERGUNTA foi: \"Quer que eu resolva por aqui agora ou prefere agendar atendente às 08:00?\"\nAnte",
+      "rewritten": "Entendi!",
+      "context_recovered": true,
+      "context_error": true,
+      "violations": [
+        "commercial_intent_on_short_reply"
+      ],
+      "pass": true
+    }
+  ],
+  "correction_test": {
+    "is_correction": true,
+    "block_excerpt": "=== MEMÓRIA DE CURTO PRAZO (OBRIGATÓRIO) ===\nSUA ÚLTIMA PERGUNTA foi: \"Aproveitando, quer conhecer o PlayHub?\"\nAntes de responder, releia essa pergunta.\nPRIORIDADE MÁXIMA: a resposta atual do cliente ",
+    "pass": true
+  }
+}

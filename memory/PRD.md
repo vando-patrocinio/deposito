@@ -2,6 +2,52 @@
 
 > Documento vivo. Atualizado a cada sprint.
 
+## 🧠 OPERAÇÃO MEMÓRIA DE CURTO PRAZO OBRIGATÓRIA ✅ (10/02/2026)
+
+**Ordem CTO**: Isabella estava perdendo contexto imediato — cliente
+respondia "Quero" e Isabella abria fluxo comercial. Bug fatal para
+percepção de inteligência. Resolvido em 3 camadas.
+
+### Entregas
+- `services/short_term_memory_guard.py` (170 LoC) — `analyze_short_term_context` ·
+  `inject_memory_block` · `enforce_memory_on_reply` · `log_memory_event`
+- `routes/whatsapp_twilio.py` — injeta bloco antes do LLM e reescreve
+  reply depois (remove sentenças comerciais quando há resposta curta /
+  assunto aberto / correção do cliente)
+- `scripts/test_short_term_memory.py` — 11 cenários
+- Bug fix: linha 672 tinha `r.get("/messages")` truncado quebrando o
+  backend; removido.
+
+### Critérios — 11/11 ✅
+| Palavra | Recovered | Reply final |
+|---|---|---|
+| Quero · Sim · Pode · Ok · Amanhã · Agora · Isso · Ela · Confirmo · Certo | ✅ | "Entendi!" (PlayHub/Ligo Security/upgrade/chip 5G removidos) |
+| Correção do cliente | ✅ | bloco "CORRIGIU VOCÊ" injetado |
+
+### Mecânica
+1. Lê últimas 6 mensagens (3 isabella + 3 cliente) de `aihub_wa_messages`
+2. Detecta: last_isabella_question · is_short_reply · open_topic
+   (reparo/cobrança/cancelamento/agendamento/OS) · is_correction
+3. **Injeta no prompt** 4 blocos quando aplicáveis:
+   - "MEMÓRIA DE CURTO PRAZO" (com a pergunta literal da Isabella)
+   - "RESPOSTA CURTA DETECTADA" (proíbe abrir comercial)
+   - "ASSUNTO ABERTO" (resolver antes de propor venda)
+   - "CLIENTE CORRIGIU VOCÊ" (modelo de reconciliação)
+4. **Pós-processa reply**: regex `COMMERCIAL_FORBIDDEN` (playhub, ligo
+   security, ligo móvel, chip 5g, upgrade, combo, indique-e-ganhe) →
+   se aparece em contexto protegido, **remove sentenças** e reconecta
+   à última pergunta da Isabella
+5. **Audita** em `ai_evaluations.kind=SHORT_TERM_MEMORY` com
+   `context_recovered=true` ou `context_error=true`
+
+### Evidência
+- 10 entries `kind=SHORT_TERM_MEMORY` gravadas no co-mem-test
+- Reply LLM "malcomportada" `"Aproveitando, posso te apresentar o PlayHub?..."` → reescrita para `"Entendi!"` em 10/10 testes
+- Lint advisory 0
+
+### Relatório
+- `/app/docs/RELATORIO_SHORT_TERM_MEMORY.json`
+
 ## 💸 OPERAÇÃO REGISTRO AUTOMÁTICO DE ATRIBUIÇÃO ✅ (10/02/2026)
 
 **Ordem CTO**: dinheiro não pode depender de botão. Cada ação operacional
