@@ -168,4 +168,14 @@ async def evaluate(company_id: str, subscriber_id: str) -> Dict[str, Any]:
         await db.truck_roll_decisions.insert_one(result.copy())
     except Exception as e:
         logger.warning("[truck_roll_guard] persist falhou: %s", e)
+    # Hook financeiro automático: R$ no executive_ledger quando a decisão
+    # evita visita (DO_NOT_DISPATCH ou PREVENTIVA).
+    if decision in ("DO_NOT_DISPATCH", "PREVENTIVA"):
+        try:
+            from services.presidente_financeiro import attribute_truck_roll_avoided
+            await attribute_truck_roll_avoided(
+                company_id, subscriber_id,
+                decision=decision, source="truck_roll_guard")
+        except Exception as e:
+            logger.info("[truck_roll_guard] ledger hook skip: %s", e)
     return result

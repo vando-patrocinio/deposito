@@ -188,6 +188,16 @@ async def track_equipment_stage(*, company_id: str, equipment_id: str,
                       "updated_at": _now_iso()}}, upsert=True)
     except Exception:
         pass
+    # Hook financeiro: REAPROVEITAMENTO → R$ 120 patrimônio recuperado
+    if stage == "REAPROVEITAMENTO":
+        try:
+            from services.presidente_financeiro import attribute_reuse
+            await attribute_reuse(
+                company_id, equipment_id,
+                subscriber_id=subscriber_id,
+                meta={"serial": serial, "technician_id": technician_id})
+        except Exception:
+            pass
     return doc
 
 

@@ -215,6 +215,18 @@ async def enforce_preventive_ratio(company_id: str,
                     await db.smart_repairs.insert_one(doc)
                     created += 1
                     sample.append({"id": tid, "reason": doc["reason"]})
+                    # Hook financeiro: PREVENTIVE_AVOIDED_VISIT (pending)
+                    try:
+                        from services.presidente_financeiro import attribute_preventive
+                        await attribute_preventive(
+                            company_id, tid,
+                            subscriber_id=onu.get("subscriber_id"),
+                            status="pending_confirmation",
+                            meta={"source": "enforce_preventive_ratio",
+                                  "cto_id": onu.get("cto_id"),
+                                  "olt_name": onu.get("olt_name")})
+                    except Exception:
+                        pass
                 except Exception:
                     pass
     return {
@@ -682,6 +694,16 @@ async def alvaro_command_loop(company_id: str,
                 {"$setOnInsert": doc}, upsert=True)
             if r.upserted_id:
                 actions.append({"kind": "PREVENTIVE_CTO", "cto_id": cto_id, "ticket_id": tid})
+                # Hook financeiro
+                try:
+                    from services.presidente_financeiro import attribute_preventive
+                    await attribute_preventive(
+                        company_id, tid,
+                        status="pending_confirmation",
+                        meta={"source": "alvaro_commander_cto",
+                              "cto_id": cto_id})
+                except Exception:
+                    pass
     except Exception as e:
         actions.append({"kind": "PREVENTIVE_CTO_ERROR", "error": str(e)})
 
@@ -713,6 +735,16 @@ async def alvaro_command_loop(company_id: str,
             if r.upserted_id:
                 actions.append({"kind": "PREVENTIVE_ONU",
                                 "subscriber_id": sid, "ticket_id": tid})
+                # Hook financeiro
+                try:
+                    from services.presidente_financeiro import attribute_preventive
+                    await attribute_preventive(
+                        company_id, tid,
+                        subscriber_id=sid,
+                        status="pending_confirmation",
+                        meta={"source": "alvaro_commander_onu"})
+                except Exception:
+                    pass
     except Exception as e:
         actions.append({"kind": "PREVENTIVE_ONU_ERROR", "error": str(e)})
 
@@ -722,12 +754,32 @@ async def alvaro_command_loop(company_id: str,
                 {"company_id": company_id,
                  "status": {"$in": ["open", "OPEN"]},
                  "severity": {"$in": ["high", "alta", "critical"]}},
-                {"_id": 0, "id": 1, "type": 1, "title": 1}).limit(max_actions // 4):
+                {"_id": 0, "id": 1, "type": 1, "title": 1,
+                 "cto_id": 1, "olt_name": 1}).limit(max_actions // 4):
             await db.incidents.update_one(
                 {"id": inc["id"], "company_id": company_id},
                 {"$set": {"status": "escalated", "escalated_by": "alvaro_commander",
                           "escalated_at": _iso()}})
             actions.append({"kind": "ESCALATE_INCIDENT", "incident_id": inc["id"]})
+            # Hook financeiro: ALVARO_INCIDENT_DETECTED + ALVARO_CLIENTS_PROTECTED
+            try:
+                clients = await db.subscribers.count_documents({
+                    "company_id": company_id,
+                    "$or": [{"cto_id": inc.get("cto_id")},
+                             {"olt_name": inc.get("olt_name")}]})
+                pipe = [{"$match": {"company_id": company_id,
+                                       "plan_price": {"$gt": 0}}},
+                         {"$group": {"_id": None, "avg": {"$avg": "$plan_price"}}}]
+                avg_doc = await db.subscribers.aggregate(pipe).to_list(1)
+                avg = float((avg_doc[0]["avg"] if avg_doc else 90.0) or 90.0)
+                if clients > 0:
+                    from services.presidente_financeiro import attribute_incident_protection
+                    await attribute_incident_protection(
+                        company_id, inc["id"],
+                        clients_affected=clients, ticket_avg_brl=avg,
+                        source="alvaro")
+            except Exception:
+                pass
     except Exception:
         pass
 

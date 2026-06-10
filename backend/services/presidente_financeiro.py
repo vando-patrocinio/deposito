@@ -1,23 +1,49 @@
 """OPERAÇÃO PRESIDENTE FINANCEIRO — sequência COLOSSO.
 
 Atribui R$ confirmado ao `executive_ledger` para cada ação operacional
-autônoma:
+autônoma. Existem dois modos de atribuição:
 
-  • PREVENTIVA criada → R$ 80 (visita corretiva evitada por preventiva)
-  • REAPROVEITAMENTO (estágio TESTE→REAPROVEITAMENTO) → R$ 120/ONU
-  • INCIDENTE escalado pelo Álvaro → clientes_afetados × ticket × 30%
-  • OS sem retorno em 30d → ticket_mensal × meses_protegidos
-  • DO_NOT_DISPATCH (Truck Roll) → R$ 80 (visita evitada)
+  • TEMPO REAL — chamada por hook no fluxo operacional (idempotente).
+  • BATCH — `run_attribution_cycle` reconcilia o que escapou (varredura).
 
-Sem novas coleções. Tudo em `executive_ledger` (mesma estrutura que já
-recebe ações do Presidente IA).
+CATEGORIAS:
+  • PREVENTIVE_AVOIDED_VISIT       → preventiva criada (pending → confirmed
+                                     quando OS fecha sem retorno em 30d)
+  • EQUIPMENT_REUSED               → ONU/equipamento em REAPROVEITAMENTO
+  • TRUCK_ROLL_AVOIDED             → DO_NOT_DISPATCH / PREVENTIVA
+  • INCIDENT_REVENUE_PROTECTED     → incidente coletivo escalado
+  • OS_NO_RETURN_30D               → reparo resolvido sem retorno 30d
+  • ISABELLA_OS_CREATED            → OS criada pela Isabella (pending)
+  • ISABELLA_OS_RESOLVED           → OS Isabella resolvida (confirmed)
+  • ISABELLA_TRUCK_ROLL_BLOCKED    → Isabella decidiu não despachar
+  • ALVARO_INCIDENT_DETECTED       → Álvaro detectou incidente coletivo
+  • ALVARO_CLIENTS_PROTECTED       → clientes protegidos por ação Álvaro
+
+IDEMPOTÊNCIA:
+  Chave única upsert = (company_id, action_id, kind).
+  Reexecução não duplica.
+
+FÓRMULAS:
+  • visita evitada              = R$ 80
+  • equipamento reaproveitado   = R$ 120
+  • incidente protegido         = clientes × ticket médio × 30%
+  • OS sem retorno 30d          = ticket mensal × meses_protegidos
+  • TRG bloqueado               = R$ 80
+  • cliente protegido (Álvaro)  = ticket médio × 30%
+
+STATUS:
+  • pending_confirmation        — valor estimado, falta confirmação operacional
+  • confirmed                   — valor confirmado por evento factual
 """
 from __future__ import annotations
+import logging
 import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 
 from database import db
+
+logger = logging.getLogger("presidente_financeiro")
 
 
 # Valores de referência (configuráveis via env quando preciso)
@@ -33,17 +59,26 @@ def _now_iso() -> str:
 
 async def _record_ledger(*, company_id: str, action_id: str, kind: str,
                             expected_brl: float, actual_brl: float,
-                            evidence: Dict[str, Any]) -> Dict[str, Any]:
+                            evidence: Dict[str, Any],
+                            status: str = "confirmed",
+                            subscriber_id: Optional[str] = None
+                            ) -> Dict[str, Any]:
     """Idempotente por (company_id, action_id, kind). Persiste no
     executive_ledger reutilizando o schema existente.
+
+    Status:
+      • "pending_confirmation" — valor estimado (será confirmado por evento)
+      • "confirmed"            — valor factual confirmado por evento
     """
     doc = {
         "id": f"led-{uuid.uuid4().hex[:10]}",
         "company_id": company_id,
         "action_id": action_id,
         "kind": kind,
+        "status": status,
         "category": "PRESIDENTE_FINANCEIRO",
         "source": "lousa_coo",
+        "subscriber_id": subscriber_id,
         "expected_brl": round(expected_brl, 2),
         "valor_confirmado_brl": round(actual_brl, 2),
         "actual_BRL": round(actual_brl, 2),
@@ -52,73 +87,189 @@ async def _record_ledger(*, company_id: str, action_id: str, kind: str,
         "created_at": _now_iso(),
     }
     try:
-        # Idempotência: upsert por action_id + kind + company
         await db.executive_ledger.update_one(
             {"company_id": company_id, "action_id": action_id, "kind": kind},
             {"$setOnInsert": doc},
             upsert=True)
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning("[ledger] persist falhou (%s): %s", action_id, e)
     return doc
+
+
+async def confirm_ledger_entry(company_id: str, action_id: str,
+                                  kind: str, *, actual_brl: Optional[float] = None,
+                                  extra_evidence: Optional[Dict[str, Any]] = None
+                                  ) -> bool:
+    """Promove um pending → confirmed (idempotente: nunca degrada
+    confirmed → pending)."""
+    update_set: Dict[str, Any] = {"status": "confirmed",
+                                     "confirmed_at": _now_iso()}
+    if actual_brl is not None:
+        update_set["valor_confirmado_brl"] = round(actual_brl, 2)
+        update_set["actual_BRL"] = round(actual_brl, 2)
+    if extra_evidence:
+        for k, v in extra_evidence.items():
+            update_set[f"evidence.{k}"] = v
+    try:
+        r = await db.executive_ledger.update_one(
+            {"company_id": company_id, "action_id": action_id, "kind": kind,
+             "status": {"$ne": "confirmed"}},
+            {"$set": update_set})
+        return r.modified_count > 0
+    except Exception:
+        return False
 
 
 async def attribute_preventive(company_id: str, ticket_id: str,
                                   *, value_brl: float = VAL_PREVENTIVA_BRL,
+                                  subscriber_id: Optional[str] = None,
+                                  status: str = "pending_confirmation",
                                   meta: Optional[Dict[str, Any]] = None
                                   ) -> Dict[str, Any]:
-    """Cada preventiva criada → registra R$ visita corretiva evitada."""
+    """Preventiva criada → R$ visita corretiva evitada (PENDING).
+    Confirma quando OS preventiva fechar sem retorno em 30d.
+    """
     return await _record_ledger(
         company_id=company_id,
         action_id=f"preventive::{ticket_id}",
         kind="PREVENTIVE_AVOIDED_VISIT",
+        status=status,
+        subscriber_id=subscriber_id,
         expected_brl=value_brl, actual_brl=value_brl,
-        evidence={"ticket_id": ticket_id, "rule": "1 preventiva = 1 visita evitada",
+        evidence={"ticket_id": ticket_id,
+                  "formula": "R$ 80 por visita corretiva evitada",
                   **(meta or {})})
 
 
 async def attribute_reuse(company_id: str, equipment_id: str,
                             *, value_brl: float = VAL_REAPROVEITAMENTO_BRL,
+                            subscriber_id: Optional[str] = None,
                             meta: Optional[Dict[str, Any]] = None
                             ) -> Dict[str, Any]:
-    """Cada equipamento que entra em REAPROVEITAMENTO → R$ patrimônio."""
+    """Equipamento em REAPROVEITAMENTO → R$ patrimônio (CONFIRMED)."""
     return await _record_ledger(
         company_id=company_id,
         action_id=f"reuse::{equipment_id}",
         kind="EQUIPMENT_REUSED",
+        status="confirmed",
+        subscriber_id=subscriber_id,
         expected_brl=value_brl, actual_brl=value_brl,
         evidence={"equipment_id": equipment_id,
-                  "rule": "1 reaproveitamento = 1 ONU resgatada",
+                  "formula": "R$ 120 por ONU/equipamento reaproveitado",
                   **(meta or {})})
 
 
 async def attribute_truck_roll_avoided(company_id: str, subscriber_id: str,
-                                           *, value_brl: float = VAL_TRUCK_ROLL_AVOIDED_BRL
+                                           *, value_brl: float = VAL_TRUCK_ROLL_AVOIDED_BRL,
+                                           decision: str = "DO_NOT_DISPATCH",
+                                           source: str = "truck_roll_guard"
                                            ) -> Dict[str, Any]:
-    """Truck Roll Guard = DO_NOT_DISPATCH → visita evitada."""
+    """Truck Roll Guard = DO_NOT_DISPATCH / PREVENTIVA → visita evitada.
+
+    Kind:
+      • TRUCK_ROLL_AVOIDED         — origem truck_roll_guard
+      • ISABELLA_TRUCK_ROLL_BLOCKED — origem isabella_lousa_scheduler (NO_OS)
+    """
+    kind = ("ISABELLA_TRUCK_ROLL_BLOCKED"
+            if source == "isabella" else "TRUCK_ROLL_AVOIDED")
+    today = datetime.now(timezone.utc).date().isoformat()
     return await _record_ledger(
         company_id=company_id,
-        action_id=f"trg::{subscriber_id}::{datetime.now(timezone.utc).date().isoformat()}",
-        kind="TRUCK_ROLL_AVOIDED",
+        action_id=f"{kind.lower()}::{subscriber_id}::{today}",
+        kind=kind,
+        status="confirmed",
+        subscriber_id=subscriber_id,
         expected_brl=value_brl, actual_brl=value_brl,
         evidence={"subscriber_id": subscriber_id,
-                  "rule": "DO_NOT_DISPATCH (Truck Roll Guard)"})
+                  "decision": decision,
+                  "formula": "R$ 80 por visita evitada"})
 
 
 async def attribute_incident_protection(company_id: str, incident_id: str,
                                             *, clients_affected: int,
                                             ticket_avg_brl: float,
+                                            source: str = "alvaro"
                                             ) -> Dict[str, Any]:
-    """Incidente escalado → protege 30% da receita dos clientes afetados."""
+    """Incidente escalado → protege 30% da receita dos clientes afetados.
+
+    Kind:
+      • INCIDENT_REVENUE_PROTECTED  — receita protegida
+      • ALVARO_INCIDENT_DETECTED    — detecção autônoma (Álvaro)
+      • ALVARO_CLIENTS_PROTECTED    — agregado clientes
+    """
     revenue = round(clients_affected * ticket_avg_brl * PCT_INCIDENT_REVENUE_PROTECTION, 2)
-    return await _record_ledger(
+    rec_inc = await _record_ledger(
         company_id=company_id,
         action_id=f"incident::{incident_id}",
         kind="INCIDENT_REVENUE_PROTECTED",
+        status="confirmed",
         expected_brl=revenue, actual_brl=revenue,
         evidence={"incident_id": incident_id,
                   "clients_affected": clients_affected,
                   "ticket_avg_brl": ticket_avg_brl,
-                  "rule": f"{int(PCT_INCIDENT_REVENUE_PROTECTION*100)}% × clientes × ticket"})
+                  "formula": f"clientes × ticket × {int(PCT_INCIDENT_REVENUE_PROTECTION*100)}%"})
+    if source == "alvaro":
+        await _record_ledger(
+            company_id=company_id,
+            action_id=f"alvaro_incident::{incident_id}",
+            kind="ALVARO_INCIDENT_DETECTED",
+            status="confirmed",
+            expected_brl=0.0, actual_brl=0.0,
+            evidence={"incident_id": incident_id,
+                      "formula": "evento puro, valor financeiro em INCIDENT_REVENUE_PROTECTED"})
+        await _record_ledger(
+            company_id=company_id,
+            action_id=f"alvaro_clients::{incident_id}",
+            kind="ALVARO_CLIENTS_PROTECTED",
+            status="confirmed",
+            expected_brl=revenue, actual_brl=revenue,
+            evidence={"incident_id": incident_id,
+                      "clients_affected": clients_affected,
+                      "formula": f"ticket médio × {int(PCT_INCIDENT_REVENUE_PROTECTION*100)}% × n clientes"})
+    return rec_inc
+
+
+async def attribute_isabella_os(company_id: str, ticket_id: str,
+                                    *, subscriber_id: str,
+                                    status: str = "pending_confirmation",
+                                    value_brl: float = VAL_TRUCK_ROLL_AVOIDED_BRL,
+                                    extra: Optional[Dict[str, Any]] = None
+                                    ) -> Dict[str, Any]:
+    """OS criada pela Isabella → ISABELLA_OS_CREATED (pending).
+    Confirma como ISABELLA_OS_RESOLVED quando OS fechar com sucesso.
+    """
+    return await _record_ledger(
+        company_id=company_id,
+        action_id=f"isabella_os::{ticket_id}",
+        kind="ISABELLA_OS_CREATED",
+        status=status,
+        subscriber_id=subscriber_id,
+        expected_brl=value_brl, actual_brl=value_brl,
+        evidence={"ticket_id": ticket_id,
+                  "formula": "estimativa R$ 80 por OS Isabella validada",
+                  **(extra or {})})
+
+
+async def attribute_isabella_os_resolved(company_id: str, ticket_id: str,
+                                              *, subscriber_id: str,
+                                              value_brl: float = VAL_TRUCK_ROLL_AVOIDED_BRL
+                                              ) -> Dict[str, Any]:
+    """Conclui o ciclo da Isabella: registra ISABELLA_OS_RESOLVED +
+    confirma o ISABELLA_OS_CREATED correspondente."""
+    rec = await _record_ledger(
+        company_id=company_id,
+        action_id=f"isabella_os_resolved::{ticket_id}",
+        kind="ISABELLA_OS_RESOLVED",
+        status="confirmed",
+        subscriber_id=subscriber_id,
+        expected_brl=value_brl, actual_brl=value_brl,
+        evidence={"ticket_id": ticket_id,
+                  "formula": "R$ 80 por OS Isabella resolvida sem retrabalho"})
+    await confirm_ledger_entry(company_id, f"isabella_os::{ticket_id}",
+                                 "ISABELLA_OS_CREATED",
+                                 actual_brl=value_brl,
+                                 extra_evidence={"resolved_ticket_id": ticket_id})
+    return rec
 
 
 async def attribute_os_no_return_30d(company_id: str, ticket_id: str,
@@ -132,9 +283,11 @@ async def attribute_os_no_return_30d(company_id: str, ticket_id: str,
         company_id=company_id,
         action_id=f"os_noret::{ticket_id}",
         kind="OS_NO_RETURN_30D",
+        status="confirmed",
+        subscriber_id=subscriber_id,
         expected_brl=value, actual_brl=value,
         evidence={"ticket_id": ticket_id, "subscriber_id": subscriber_id,
-                  "rule": "ticket × meses sem retorno"})
+                  "formula": "ticket × meses sem retorno"})
 
 
 # ---------------------------------------------------------------------------

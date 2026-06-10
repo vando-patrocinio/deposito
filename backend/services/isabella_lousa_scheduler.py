@@ -56,8 +56,9 @@ INTENT_PATTERNS: List[tuple] = [
         r"\b(quero\s+cancelar|estou\s+pensando\s+em\s+sair|caro\s+demais)\b",
         re.IGNORECASE)),
     ("reparo", re.compile(
-        r"\b(sem\s+internet|caiu|offline|lento|lerdo|wifi|"
-        r"sinal|fibra|modem|roteador|onu|n[ãa]o\s+funciona)\b",
+        r"\b(sem\s+internet|caiu|offline|lento|lerdo|lerda|lenta|wifi|"
+        r"sinal|fibra|modem|roteador|onu|n[ãa]o\s+funciona|"
+        r"travand|congestion)\b",
         re.IGNORECASE)),
 ]
 
@@ -105,6 +106,18 @@ async def decide_action(company_id: str, subscriber_id: Optional[str],
         action = "DISPATCH"
     else:
         action = "DISPATCH"
+
+    # Hook financeiro: Isabella decidiu não despachar → bloqueio confirmado
+    if action == "NO_OS" and subscriber_id:
+        try:
+            from services.presidente_financeiro import attribute_truck_roll_avoided
+            await attribute_truck_roll_avoided(
+                company_id, subscriber_id,
+                decision=decision, source="isabella")
+        except Exception as e:
+            import logging
+            logging.getLogger("isabella_lousa_scheduler").warning(
+                "[isabella] hook truck_roll_blocked falhou: %s", e)
 
     return {
         "action": action, "intent": intent,
@@ -353,6 +366,16 @@ async def confirm_and_create_os(*, company_id: str,
     }
     await db.tickets.insert_one(doc)
 
+    # Hook financeiro: ISABELLA_OS_CREATED (pending — confirma quando OS resolver)
+    try:
+        from services.presidente_financeiro import attribute_isabella_os
+        await attribute_isabella_os(
+            company_id, tid, subscriber_id=subscriber_id or "—",
+            status="pending_confirmation",
+            extra={"intent": intent, "decision": decision.get("decision")})
+    except Exception:
+        pass
+
     # Log
     try:
         await db.ticket_logs.insert_one({
@@ -397,3 +420,24 @@ async def followup_open_tickets_by_isabella(company_id: str,
     async for t in db.tickets.find(q, {"_id": 0}).sort("created_at", -1).limit(50):
         out.append(t)
     return out
+
+
+async def mark_isabella_os_resolved(company_id: str, ticket_id: str
+                                       ) -> Dict[str, Any]:
+    """Quando OS criada pela Isabella é fechada → registra resolução +
+    confirma pending_confirmation no ledger.
+    """
+    tk = await db.tickets.find_one(
+        {"id": ticket_id, "company_id": company_id, "origin": "isabella"},
+        {"_id": 0, "client_snapshot": 1, "client_id": 1})
+    if not tk:
+        return {"error": "ticket isabella não encontrado"}
+    sub_id = ((tk.get("client_snapshot") or {}).get("subscriber_id")
+              or tk.get("client_id"))
+    try:
+        from services.presidente_financeiro import attribute_isabella_os_resolved
+        rec = await attribute_isabella_os_resolved(
+            company_id, ticket_id, subscriber_id=sub_id or "—")
+        return {"ledger": rec.get("id"), "confirmed": True}
+    except Exception as e:
+        return {"error": str(e)}

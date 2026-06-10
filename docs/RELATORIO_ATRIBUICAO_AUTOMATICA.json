@@ -1,0 +1,140 @@
+{
+  "ts": "2026-06-10T04:23:22.706031+00:00",
+  "tenant": "co-attribution-test",
+  "passed": 8,
+  "total": 8,
+  "ledger_before": 0,
+  "ledger_after_hooks": 10,
+  "auto_attributed": 10,
+  "pending": 2,
+  "confirmed": 8,
+  "kind_breakdown": [
+    {
+      "kind": "TRUCK_ROLL_AVOIDED",
+      "count": 1,
+      "valor_brl": 80.0
+    },
+    {
+      "kind": "INCIDENT_REVENUE_PROTECTED",
+      "count": 1,
+      "valor_brl": 899.1
+    },
+    {
+      "kind": "ISABELLA_OS_CREATED",
+      "count": 1,
+      "valor_brl": 80.0
+    },
+    {
+      "kind": "ISABELLA_TRUCK_ROLL_BLOCKED",
+      "count": 1,
+      "valor_brl": 80.0
+    },
+    {
+      "kind": "ALVARO_INCIDENT_DETECTED",
+      "count": 1,
+      "valor_brl": 0.0
+    },
+    {
+      "kind": "ALVARO_CLIENTS_PROTECTED",
+      "count": 1,
+      "valor_brl": 899.1
+    },
+    {
+      "kind": "EQUIPMENT_REUSED",
+      "count": 1,
+      "valor_brl": 120.0
+    },
+    {
+      "kind": "PREVENTIVE_AVOIDED_VISIT",
+      "count": 2,
+      "valor_brl": 160.0
+    },
+    {
+      "kind": "ISABELLA_OS_RESOLVED",
+      "count": 1,
+      "valor_brl": 80.0
+    }
+  ],
+  "batch_reconciliation": {
+    "delta": 0,
+    "total_brl_attributed": 1379.1
+  },
+  "results": {
+    "1_truck_roll_guard": {
+      "decision": "DO_NOT_DISPATCH",
+      "ledger": {
+        "status": "confirmed",
+        "valor_confirmado_brl": 80.0
+      },
+      "pass": true
+    },
+    "2_equipment_reused": {
+      "ledger": {
+        "status": "confirmed",
+        "valor_confirmado_brl": 120.0
+      },
+      "pass": true
+    },
+    "3_incident_alvaro": {
+      "incident_ledger_brl": 899.1,
+      "alvaro_ledger": true,
+      "clients_protected_brl": 899.1,
+      "pass": true
+    },
+    "4_isabella_os_created": {
+      "ticket_id": "tkt-75a7cdb5c8",
+      "ledger": {
+        "status": "pending_confirmation",
+        "valor_confirmado_brl": 80.0
+      },
+      "is_pending": true,
+      "pass": true
+    },
+    "5_isabella_os_resolved": {
+      "created_now_confirmed": true,
+      "resolved_ledger": {
+        "status": "confirmed",
+        "valor_confirmado_brl": 80.0
+      },
+      "pass": true
+    },
+    "6_isabella_truck_roll_blocked": {
+      "decision_action": "NO_OS",
+      "ledger": {
+        "status": "confirmed",
+        "valor_confirmado_brl": 80.0
+      },
+      "pass": true
+    },
+    "7_preventive_avoided_visit": {
+      "enforce_result": {
+        "repairs_24h": 12,
+        "preventive_24h_before": 0,
+        "target": 3,
+        "deficit": 3,
+        "created": 2,
+        "preventive_24h_after": 2,
+        "sample": [
+          {
+            "id": "prev-943ea816d3",
+            "reason": "sinal degradado -30 dBm"
+          },
+          {
+            "id": "prev-3c7631e43a",
+            "reason": "sinal degradado -29 dBm"
+          }
+        ],
+        "ratio_after": 0.167,
+        "ts": "2026-06-10T04:23:22.677822+00:00"
+      },
+      "ledger_count": 2,
+      "pass": true
+    },
+    "8_idempotente": {
+      "before_reexec": 8,
+      "after_reexec": 8,
+      "delta": 0,
+      "pass": true
+    }
+  }
+}

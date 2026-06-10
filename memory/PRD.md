@@ -2,6 +2,51 @@
 
 > Documento vivo. Atualizado a cada sprint.
 
+## 💸 OPERAÇÃO REGISTRO AUTOMÁTICO DE ATRIBUIÇÃO ✅ (10/02/2026)
+
+**Ordem CTO**: dinheiro não pode depender de botão. Cada ação operacional
+relevante registra R$ no `executive_ledger` AUTOMATICAMENTE no momento que
+acontece. Batch `run-attribution` vira apenas reconciliação.
+
+### Entregas
+- `services/presidente_financeiro.py` — + status pending/confirmed · +
+  `confirm_ledger_entry` · + 5 categorias (ISABELLA_OS_CREATED/RESOLVED ·
+  ISABELLA_TRUCK_ROLL_BLOCKED · ALVARO_INCIDENT_DETECTED · ALVARO_CLIENTS_PROTECTED)
+- **5 hooks plugados em tempo real**:
+  - `truck_roll_guard.evaluate` (DO_NOT_DISPATCH/PREVENTIVA → TRUCK_ROLL_AVOIDED)
+  - `lousa_coo.enforce_preventive_ratio` (PREVENTIVE_AVOIDED_VISIT pending)
+  - `lousa_coo.alvaro_command_loop` (PREVENTIVE_AVOIDED_VISIT + 3 categorias incidente)
+  - `smart_field_v2.track_equipment_stage(REAPROVEITAMENTO)` (EQUIPMENT_REUSED)
+  - `isabella_lousa_scheduler.confirm_and_create_os` + `decide_action(NO_OS)`
+- `scripts/test_atribuicao_automatica.py` — 8 cenários reais
+
+### Critérios — 6/6 ✅ · Cenários — 8/8 ✅
+| Sinal | Antes | Depois |
+|---|--:|--:|
+| Ledger entries criadas pelos hooks | 0 | **10** |
+| pending_confirmation / confirmed | 0 / 0 | **2 / 8** |
+| Batch delta após hooks | depende dele | **0** |
+| Idempotência (re-execução) | ? | ✅ delta=0 |
+
+### Fórmulas confirmadas
+- visita evitada = R$ 80 · equipamento reaproveitado = R$ 120
+- incidente = clientes × ticket × 30%
+- OS sem retorno 30d = ticket × meses
+- ISABELLA_OS = R$ 80 (pending até resolver)
+
+### Chave idempotente
+`(company_id, action_id, kind)` upsert com `$setOnInsert`. Re-execução
+nunca duplica.
+
+### Próxima operação recomendada
+**OPERAÇÃO LEDGER VITALIDADE 24/7** — APScheduler diário rodando
+`run_attribution_cycle(window_days=1)` exclusivamente para
+OS_NO_RETURN_30D (único kind dependente de relógio). Restante 100% real-time.
+
+### Relatórios
+- `/app/docs/RELATORIO_ATRIBUICAO_AUTOMATICA.md` (executivo)
+- `/app/docs/RELATORIO_ATRIBUICAO_AUTOMATICA.json` (raw 8 cenários)
+
 ## 📊 OPERAÇÃO ISABELLA LOUSA METRICS ✅ (10/02/2026)
 
 **Ordem CTO**: endpoint único `GET /api/isabella-lousa/metrics?days=N` que
