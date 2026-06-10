@@ -135,15 +135,21 @@ def _classify_outcome(reply: str) -> str:
     return "ACOMPANHAMENTO"
 
 
-def _infer_nps(user_text: str, prev_user_texts: Optional[List[str]] = None
-               ) -> Tuple[int, str]:
+def _infer_nps(user_text: str, prev_user_texts: Optional[List[str]] = None,
+                isabella_reply: Optional[str] = None,
+                outcome: Optional[str] = None) -> Tuple[int, str]:
     """NPS invisível (0-10) + motivo curto.
 
-    Base: análise sentiment da MENSAGEM do cliente.
-    + 7 default → ajusta com sinais positivos/negativos.
-    Penaliza fortemente palavras de cancelamento/procon.
+    Versão V3 (2026-02 — Operação Relacionamento 360°):
+    - Não mais penaliza "contato recorrente" cegamente: cliente recorrente
+      pode estar bem-atendido (e merece NPS alto se a Isabella acolhe).
+    - Aplica BONUS quando outcome é RESOLVIDO/RETENCAO/VENDA/PLANO_DE_ACAO.
+    - Aplica BONUS quando a resposta da Isabella demonstra acolhimento
+      explícito ("sei que é chato", "vou cuidar pessoalmente", "imagino o
+      aperto", etc).
     """
     text = user_text or ""
+    reply = isabella_reply or ""
     score = 7
     motivo_parts: List[str] = []
 
@@ -162,10 +168,21 @@ def _infer_nps(user_text: str, prev_user_texts: Optional[List[str]] = None
         if neg:
             motivo_parts.append(f"{neg} sinal(is) negativo(s)")
 
-    # Repetição (cliente já reclamou várias vezes) reduz NPS
-    if prev_user_texts and len(prev_user_texts) >= 3:
-        score -= 1
-        motivo_parts.append("contato recorrente")
+    # BONUS por outcome positivo da Isabella (V3)
+    if outcome in ("RESOLVIDO", "VENDA"):
+        score += 2
+        motivo_parts.append(f"outcome {outcome}")
+    elif outcome in ("RETENCAO", "PLANO_DE_ACAO"):
+        score += 1
+        motivo_parts.append(f"outcome {outcome}")
+
+    # BONUS por acolhimento explícito na resposta (V3)
+    if re.search(r"\b(sei que é (chato|cansativo|incômodo)|imagino|"
+                  r"vou cuidar pessoalmente|deixa\s+(comigo|com a gente)|"
+                  r"vou resolver|pode contar comigo)\b",
+                  reply, re.IGNORECASE):
+        score += 1
+        motivo_parts.append("acolhimento explícito")
 
     # Saudação pura sem queixa → neutro 7
     if not pos and not neg and len(text.strip()) < 20:
@@ -414,7 +431,9 @@ async def register_followup(
     except Exception:
         prev_user_texts = []
 
-    nps_score, nps_motivo = _infer_nps(user_text, prev_user_texts)
+    nps_score, nps_motivo = _infer_nps(user_text, prev_user_texts,
+                                            isabella_reply=reply,
+                                            outcome=outcome)
 
     # Memória Operacional
     memory = _extract_operational_memory(user_text, reply, outcome)

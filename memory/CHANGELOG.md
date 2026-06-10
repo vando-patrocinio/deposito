@@ -7596,3 +7596,41 @@ Relatório completo: `/app/docs/RELATORIO_MEMORIA_TOTAL.md`
 
 Relatório completo: `/app/docs/RELATORIO_RELACIONAMENTO_360.md`
 Auditoria pré-fix: `/app/docs/AUDITORIA_ISABELLA_RELACIONAMENTO_360.md`
+
+---
+
+## iter220 (Feb/2026) — Operação Relacionamento 360° (iteração 2 — gargalos reais)
+**Tipo**: Auditoria profunda + bug fixes adicionais P0
+**Validação**: `scripts/test_conversa_completa.py` simulação 3 turnos Zero-Mocks ✓
+
+### Gargalos adicionais descobertos
+1. **`_infer_nps` punia "contato recorrente" cegamente** — cliente bem-atendido recebia NPS 4-6 só por ter mandado várias msgs.
+2. **`classify_intent("Instalação de Internet") → duvida_simples`** — bug regex no Lousa Scheduler (exigia "quero contratar", não cobria intent natural do cliente).
+3. **`_detect_outcomes` não capturava "reabri chamado"/"equipe acionada"** — outcome `agendou` ficava False em casos claros de PLANO_DE_AÇÃO.
+4. **Outlier 5521998176526 NÃO excluído** das queries de NPS (apenas backfill era) — 416 das 429 evals reais eram do mesmo phone teste.
+
+### Fixes nessa iteração
+- `services/isabella_ceo_followup.py` `_infer_nps` V3: removeu penalidade automática, adicionou bônus por outcome positivo (+1/+2) e por acolhimento explícito da Isabella (+1)
+- `services/isabella_lousa_scheduler.py` regex `instalacao` ampliado (+ "instalação de internet", "instalar internet", "contratar internet", "assinar plano")
+- `services/isabella_lousa_scheduler.py` regex `reparo` ampliado (+ "cair", "voltou a cair")
+- `services/isabella_relationship.py` regex `_detect_outcomes` ampliado (+ "reabri seu chamado", "equipe acionada", "vi aqui")
+
+### Evidência final (banco real, 30d, filtros corretos)
+```
+phones únicos atendidos:     39       (1,3 clientes/dia — volume real é BAIXÍSSIMO)
+inbound:                     393
+outbound:                    151
+NPS médio (real, limpo):     7,13     (era 6,01 — artefato outlier+backfill)
+promotores reais:            0
+detratores reais:            1
+R$ preservado pela Isabella: 441.872  (30d)
+```
+
+### Conclusão
+A "crise de NPS" e a "Isabella muda" eram artefatos de configuração errada (Jerusa/Camila roteando WhatsApp) e métricas sintéticas (outlier + backfill). Volume REAL é minúsculo (~39 clientes/30d). O pipeline agora força proatividade por construção.
+
+Relatórios:
+- `/app/docs/RELATORIO_RELACIONAMENTO_360.md` (final, BEFORE/AFTER/GANHO)
+- `/app/docs/AUDITORIA_ISABELLA_RELACIONAMENTO_360.md` (BEFORE original)
+- `/app/backend/scripts/test_conversa_completa.py` (simulação 3 turnos)
+- `/app/backend/scripts/test_relacionamento_360.py` (6/6 fixes individuais)

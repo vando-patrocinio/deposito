@@ -35,11 +35,14 @@ OUTCOME_KEYWORDS: Dict[str, List[str]] = {
                 r"\bpedido confirmado", r"\bvenda\s+fechada"],
     "reteve": [r"\bfic(ou|a)?\s+conosco", r"\breconsidera", r"\bn[ãa]o cancelou"],
     "cobrou": [r"\b2[ªa]?\s*via", r"\bpix", r"\bboleto", r"\bnegoci"],
-    "agendou": [r"\bagendei\b", r"\bvisita\s+marcada", r"\bjanela\s+\d+h"],
+    "agendou": [r"\bagendei\b", r"\bvisita\s+marcada", r"\bjanela\s+\d+h",
+                  r"\bequipe\s+(t[ée]cnica\s+)?(j[áa]\s+)?(foi|est[áa])\s+acionada",
+                  r"\breabri\s+(seu|o)\s+chamado"],
     "problema_tecnico": [r"\bonu", r"\bsinal", r"\bsem internet", r"\bcaiu",
                           r"\blentid"],
     "avisou_proativo": [r"\bvi\s+que", r"\bidentifiquei", r"\bdetectei",
-                         r"\bj[áa]\s+abri\s+chamado"],
+                         r"\bj[áa]\s+abri\s+chamado", r"\bvi\s+aqui\b",
+                         r"\bj[áa]\s+reabri"],
 }
 
 OUTCOME_NPS_HINTS = {

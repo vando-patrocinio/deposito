@@ -39,7 +39,9 @@ INTENT_PATTERNS: List[tuple] = [
         r"todo\s+(bairro|mundo))\b", re.IGNORECASE)),
     ("instalacao", re.compile(
         r"\b(quero\s+contratar|nova\s+instala|primeira\s+vez|"
-        r"sou\s+novo|querer\s+(instalar|assinar))\b", re.IGNORECASE)),
+        r"sou\s+novo|querer\s+(instalar|assinar)|"
+        r"instala[çc][ãa]o\s+(de\s+)?internet|instalar\s+internet|"
+        r"contratar\s+internet|assinar\s+plano)\b", re.IGNORECASE)),
     ("retirada", re.compile(
         r"\b(cancelar|encerrar|tirar\s+o\s+(plano|servi[çc]o)|"
         r"devolver\s+(o\s+)?equipamento)\b", re.IGNORECASE)),
@@ -56,9 +58,9 @@ INTENT_PATTERNS: List[tuple] = [
         r"\b(quero\s+cancelar|estou\s+pensando\s+em\s+sair|caro\s+demais)\b",
         re.IGNORECASE)),
     ("reparo", re.compile(
-        r"\b(sem\s+internet|caiu|offline|lento|lerdo|lerda|lenta|wifi|"
+        r"\b(sem\s+internet|caiu|cair|offline|lento|lerdo|lerda|lenta|wifi|"
         r"sinal|fibra|modem|roteador|onu|n[ãa]o\s+funciona|"
-        r"travand|congestion)\b",
+        r"travand|congestion|voltou\s+a\s+(cair|funcionar\s+mal))\b",
         re.IGNORECASE)),
 ]
 
