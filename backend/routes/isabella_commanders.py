@@ -36,8 +36,10 @@ def _require_priv(user: dict) -> None:
 
 
 def _company_or_param(user: dict, cid: Optional[str]) -> str:
-    if cid and (is_super_admin(user) or _is_privileged(user)):
+    if cid and is_super_admin(user):
         return cid
+    if cid and cid != _company_of(user):
+        raise HTTPException(403, "acesso negado a outra empresa")
     return _company_of(user)
 
 

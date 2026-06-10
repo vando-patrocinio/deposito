@@ -20,8 +20,11 @@ router = APIRouter(tags=["universo_ligo"])
 
 
 def _company(user: dict, cid: Optional[str]) -> str:
-    if cid and _is_privileged(user):
+    from core import is_super_admin
+    if cid and is_super_admin(user):
         return cid
+    if cid and cid != _company_of(user):
+        raise HTTPException(403, "acesso negado a outra empresa")
     return _company_of(user)
 
 
@@ -62,7 +65,10 @@ async def score(subscriber_id: str, request: Request,
                   cid: Optional[str] = None,
                   user: dict = Depends(get_current_user)):
     company = _company(user, cid)
-    return await ul.get_or_compute(company, subscriber_id, force=force)
+    try:
+        return await ul.get_or_compute(company, subscriber_id, force=force)
+    except ValueError as e:
+        raise HTTPException(404, str(e))
 
 
 @router.get("/api/universo-ligo/levels")
