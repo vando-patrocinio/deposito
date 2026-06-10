@@ -575,15 +575,9 @@ function CollaboratorAppInner({ mobile = false, forcedCollabId = null, onLogout 
   const softCard = { ...appCard, background: "#f8fafc", boxShadow: "none", border: "1px solid #eef2f7" };
   const sectionLabel = { fontSize: 10, fontWeight: 700, color: "#64748b", letterSpacing: 1, textTransform: "uppercase" };
 
-  if (!collabs.length) {
-    return (
-      <div style={{ padding: 24, color: "#64748b" }}>
-        Nenhum colaborador cadastrado. Cadastre na aba <strong>Cadastro</strong> primeiro.
-      </div>
-    );
-  }
-
-  // App acessado sem ?cid= no link → mostra tela de LOGIN (email/senha).
+  // App acessado sem ?cid= no link → mostra tela de LOGIN (email/senha)
+  // ANTES de qualquer guard de lista (sem JWT, /api/collaborators retorna
+  // 401 e collabs=[] — o técnico precisa conseguir logar mesmo assim).
   // Se o usuário logar com sucesso, o token JWT é persistido e o collab
   // associado ao user é resolvido automaticamente.
   // ADMIN tem fluxo separado (seleção manual abaixo).
@@ -601,6 +595,14 @@ function CollaboratorAppInner({ mobile = false, forcedCollabId = null, onLogout 
           />
         </Wrapper>
       </>
+    );
+  }
+
+  if (!collabs.length) {
+    return (
+      <div style={{ padding: 24, color: "#64748b" }}>
+        Nenhum colaborador cadastrado. Cadastre na aba <strong>Cadastro</strong> primeiro.
+      </div>
     );
   }
 
@@ -1138,6 +1140,14 @@ function CollaboratorAppInner({ mobile = false, forcedCollabId = null, onLogout 
                 </div>
               ))}
             </div>
+          )}
+
+          {screen === "field-ops" && (
+            <ErrorBoundary name="field-ops" variant="fullscreen">
+              <FieldOps collabId={collabId}
+                        onBack={() => setScreen("home")}
+                        onOpenLousa={() => setScreen("lousa")} />
+            </ErrorBoundary>
           )}
 
           {screen === "lousa" && (

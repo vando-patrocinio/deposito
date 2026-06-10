@@ -47,10 +47,12 @@ function timeAgo(iso) {
   } catch { return "—"; }
 }
 
-function Toggle({ checked, onChange, testId }) {
+function Toggle({ checked, onChange, testId, disabled }) {
   return (
-    <button data-testid={testId} onClick={() => onChange(!checked)}
-      style={{ width: 42, height: 24, borderRadius: 999, border: 0, cursor: "pointer",
+    <button data-testid={testId} disabled={disabled}
+      onClick={() => !disabled && onChange(!checked)}
+      style={{ width: 42, height: 24, borderRadius: 999, border: 0,
+        cursor: disabled ? "wait" : "pointer", opacity: disabled ? 0.5 : 1,
         background: checked ? "#0f172a" : "#e2e8f0", position: "relative", transition: "background .15s" }}>
       <span style={{ position: "absolute", top: 3, left: checked ? 21 : 3, width: 18, height: 18,
         borderRadius: "50%", background: "white", transition: "left .15s" }} />
@@ -209,7 +211,7 @@ export default function FieldOpsManagerPanel() {
               <div style={{ fontSize: 13, fontWeight: 700, color: "#0f172a" }}>Vistoria semanal da frota obrigatória</div>
               <div style={{ fontSize: 11, color: "#64748b" }}>Bloqueia abertura de OS se a vistoria (KM + 4 fotos) estiver pendente há mais de {tg.vehicle_inspection_max_age_days} dias.</div>
             </div>
-            <Toggle testId="toggle-vehicle-inspection" checked={!!tg.vehicle_inspection_required}
+            <Toggle testId="toggle-vehicle-inspection" checked={!!tg.vehicle_inspection_required} disabled={saving}
               onChange={(v) => saveToggle({ vehicle_inspection_required: v })} />
           </div>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
@@ -217,7 +219,7 @@ export default function FieldOpsManagerPanel() {
               <div style={{ fontSize: 13, fontWeight: 700, color: "#0f172a" }}>GPS obrigatório</div>
               <div style={{ fontSize: 11, color: "#64748b" }}>Bloqueia iniciar/finalizar OS sem localização do aparelho.</div>
             </div>
-            <Toggle testId="toggle-gps-required" checked={!!tg.gps_required}
+            <Toggle testId="toggle-gps-required" checked={!!tg.gps_required} disabled={saving}
               onChange={(v) => saveToggle({ gps_required: v })} />
           </div>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
@@ -225,7 +227,7 @@ export default function FieldOpsManagerPanel() {
               <div style={{ fontSize: 13, fontWeight: 700, color: "#0f172a" }}>Bloquear material sem estoque</div>
               <div style={{ fontSize: 11, color: "#64748b" }}>Quando desligado, permite saldo negativo (visibilidade de quebra — padrão SmartProv).</div>
             </div>
-            <Toggle testId="toggle-block-material" checked={!!tg.block_material_without_stock}
+            <Toggle testId="toggle-block-material" checked={!!tg.block_material_without_stock} disabled={saving}
               onChange={(v) => saveToggle({ block_material_without_stock: v })} />
           </div>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>

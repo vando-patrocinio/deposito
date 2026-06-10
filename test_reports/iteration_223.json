@@ -1,0 +1,56 @@
+{
+  "summary": "Reteste do Smart Field Ops após correções dos 3 bugs do iteration_222. FIX1 (branch field-ops em CollaboratorApp.js linha 1145) e FIX3 (disabled={saving} nos toggles do FieldOpsManagerPanel) estão APLICADOS no código. FIX2 (CollabLoginScreen antes do empty-guard em CollaboratorApp.js linha 584) também está aplicado. PORÉM, o fluxo UX testado via Playwright revelou UMA REGRESSÃO REMANESCENTE: ao abrir /?cid=col-demo-001 em mobile 390x844 SEM JWT, o app NÃO renderiza nem a home do técnico nem o field-ops-login-required — fica preso em 'Nenhum colaborador cadastrado. Cadastre na aba Cadastro primeiro.' Isso acontece porque o FIX2 só inverte a ordem quando !collabId; quando collabId vem do query string ?cid=, o early-return de login é pulado e o empty-guard (collabs.length===0) volta a bloquear. Resultado: o cenário descrito no review ('Sem JWT deve mostrar field-ops-login-required') está QUEBRADO. FIX1 não pôde ser exercitado por UI nesta condição. Login do técnico via /?sem-cid também não foi exercitado porque o ambiente de preview cai no /landing público antes do CollaboratorApp em mobile sem cookie/cid (auto-login demo + roteamento da landing). Painel gestor renderizou corretamente em desktop com admin (field-ops-admin-panel encontrado, toggles presentes com data-testid corretos), mas a verificação UX de 'disabled durante PUT' foi inconclusiva: o clique no toggle-gps-required não disparou PUT /api/field/settings (provavelmente NEO chat overlay sobrepondo + toggle fora do viewport). Código de FIX3 está correto via inspeção estática.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [
+      {
+        "component": "CollaboratorApp.js (empty-guard com ?cid)",
+        "issue": "Quando o usuário abre /?cid=col-demo-001 SEM JWT (cookie limpo), o app cai em 'Nenhum colaborador cadastrado. Cadastre na aba Cadastro primeiro.' antes de renderizar a home com o botão Smart Field Ops. Causa: linha 584 só renderiza CollabLoginScreen quando !collabId; com cid vindo da URL, collabId está setado, então o guard `if (!collabs.length)` da linha 601 bate ANTES da home. O cenário descrito no review ('Sem JWT mostra field-ops-login-required') fica inalcançável.",
+        "selector": "[data-testid=field-ops-login-required] / [data-testid=open-field-ops-btn-primary]",
+        "priority": "HIGH"
+      },
+      {
+        "component": "CollaboratorApp.js / SmartProvLanding routing",
+        "issue": "Em mobile 390x844 SEM cookie de admin e SEM ?cid, a raiz `/` renderiza a Landing pública (SmartProv) ao invés do CollaboratorApp+CollabLoginScreen. Isso impede que um técnico abra a URL crua do preview e faça login (precisa de /app ou alguma rota explícita). O fluxo FIX2 descrito no review ('abrir raiz em mobile sem token → screen-collab-login') NÃO acontece via UI nas condições atuais de preview.",
+        "selector": "[data-testid=screen-collab-login]",
+        "priority": "MEDIUM"
+      },
+      {
+        "component": "FieldOpsManagerPanel (NEO chat overlay no desktop)",
+        "issue": "NEO chat (Orquestrador IA) fica fixo no canto inferior direito sobrepondo o cartão 'Regras de bloqueio' onde estão os toggles toggle-gps-required / toggle-vehicle-inspection / toggle-block-material. Em viewport 1920x1080, o toggle fica em y≈1010+ e parcialmente coberto pelo widget — em testes Playwright o clique force=True foi feito mas NENHUM PUT /api/field/settings foi disparado (request count = 0 após 5 cliques rápidos). Pode ser apenas problema de visibilidade do clique automatizado, mas vale conferir se o NEO está bloqueando interação real do gestor.",
+        "selector": "[data-testid=toggle-gps-required]",
+        "priority": "LOW"
+      }
+    ],
+    "integration_issues": [
+      {
+        "flow": "Smart Field Ops (técnico) — login + dashboard + ações + estoque + frota",
+        "issue": "Não foi possível exercitar pela UI nenhum dos passos do fluxo do técnico (FieldDashboard, OS detail, field-action-start/signal/block, tab estoque retirada, tab frota) porque os dois entry-points UX descritos no review (login mobile sem cid + acesso direto com ?cid) estão bloqueados pelos bugs acima. A presença do código (branch field-ops na linha 1145, login antes do guard na 584) foi VERIFICADA por inspeção estática.",
+        "affected_selectors": ["screen-collab-login", "open-field-ops-btn-primary", "field-ops-screen", "field-dashboard", "field-os-card-*", "field-action-start", "field-action-signal", "field-action-block", "field-tab-estoque", "estoque-open-return", "field-tab-frota", "frota-submit"]
+      }
+    ],
+    "design_issues": [
+      {"screen": "Field Ops manager panel (desktop)", "issues": ["NEO chat overlay cobrindo card de toggles na área inferior direita — atrapalha visualização e possivelmente interação dos toggles de Regras de bloqueio."]}
+    ]
+  },
+  "test_report_links": [],
+  "action_items": [
+    "FIX adicional necessário em CollaboratorApp.js: tratar o caso 'collabId setado via ?cid + collabs vazio (401)' renderizando a home (com o botão Smart Field Ops) ao invés de cair no 'Nenhum colaborador cadastrado'. Sugestão: trocar o guard da linha 601 para `if (!collabId && !collabs.length)` OU permitir prosseguir quando collabId está presente mesmo com collabs=[] (fabricar um placeholder { id: collabId, name: 'Carregando…' }).",
+    "Considerar uma rota dedicada para o app do colaborador (ex: /collab ou /tecnico) que sempre rende re CollaboratorApp em mobile, contornando a landing pública em /. Isso destrava o fluxo FIX2 ('abrir raiz mobile sem token → screen-collab-login').",
+    "Re-validar UX do toggle-gps-required quando NEO chat estiver visível: o widget de IA pode estar sobrepondo cliques reais do gestor no card 'Regras de bloqueio'. Ajustar z-index ou padding-bottom do container.",
+    "Após os fixes, retestar: (a) /?cid=col-demo-001 mobile sem JWT → home + Smart Field Ops btn → field-ops-login-required; (b) login técnico via tela própria com colaborador@empresa.com/123456 → Carlos Almeida no dashboard."
+  ],
+  "critical_code_review_comments": [
+    "CollaboratorApp.js: o FIX2 (login antes do empty-guard) só cobre o caso !collabId. O caminho com ?cid + sem JWT continua quebrado pelo mesmo guard — o conserto está pela metade.",
+    "Toggle component em FieldOpsManagerPanel.js usa `cursor: disabled ? 'wait' : 'pointer'` e `opacity: disabled ? 0.5 : 1` — bom para feedback visual durante o saving. Código de FIX3 está correto (linha 50-58 + 214/222/230).",
+    "Branch field-ops em CollaboratorApp.js linha 1145 está dentro de um ErrorBoundary nomeado 'field-ops' variant='fullscreen' — bom isolamento."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "skipped (já 13/13 zero-mock no iteration anterior)", "frontend": "≈30% — FIX1/FIX2/FIX3 presentes no código mas FIX2 incompleto para o caminho ?cid; fluxo do técnico ainda inacessível via UI no cenário descrito"},
+  "test_credentials": "admin@empresa.com/123456 funcionou (/login + sidebar Field Ops). colaborador@empresa.com/123456 NÃO testado via UI porque screen-collab-login ficou inalcançável tanto via /?cid=col-demo-001 (cai em 'Nenhum colaborador cadastrado') quanto via / mobile (cai na Landing pública).",
+  "seed_data_creation": "Nenhum. Nada foi alterado em /api/field/settings (toggles continuam OFF como no iteration_222). Cookies foram limpos repetidamente entre testes para reproduzir o cenário sem-JWT.",
+  "retest_needed": true,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "FIX2 foi aplicado parcialmente — só funciona para !collabId. O caminho recomendado no review (/?cid=col-demo-001 mobile sem JWT → field-ops-login-required) continua quebrado porque o empty-guard `if (!collabs.length)` na linha 601 do CollaboratorApp.js bloqueia antes da home renderizar. Sugerir ao main agent: trocar o empty-guard para `if (!collabId && !collabs.length)`. Adicionalmente, em ambiente de preview o auto-login demo + landing pública em mobile / dificultam testar o login técnico via UI — usar viewport mobile 390x844 + limpar cookies + ir para alguma rota que force CollaboratorApp. Painel admin gestor foi acessível normal via /login + sidebar 'Field Ops (Campo)'. NEO chat overlay pode estar atrapalhando cliques nos toggles em desktop — verificar.",
+  "rca of the issue": "Arquivo /app/frontend/src/CollaboratorApp.js: linha 584 `if (!collabId) return <CollabLoginScreen .../>` resolve apenas o caso sem cid. Linha 601 `if (!collabs.length) return <Nenhum colaborador cadastrado>` ainda bate quando: (a) ?cid=col-demo-001 é passado, (b) GET /api/collaborators retorna 401 sem JWT, (c) collabs=[]. Reprodução: 1) Playwright clear_cookies + clear localStorage; 2) goto /?cid=col-demo-001 viewport 390x844; 3) observa body='Nenhum colaborador cadastrado…'; 4) [data-testid=open-field-ops-btn-primary] não está no DOM; 5) [data-testid=field-ops-login-required] também não. Mitigação no main agent: alterar a linha 601 para `if (!collabId && !collabs.length)` OU criar um collab placeholder quando collabId vem da URL mas a lista veio vazia por 401, permitindo a home renderizar e o botão Smart Field Ops aparecer. Branch field-ops da linha 1145 (FIX1) já está pronto e funcionará assim que a home renderizar."
+}
