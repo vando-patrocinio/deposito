@@ -1,0 +1,109 @@
+{
+  "results": [
+    {
+      "tenant": "co-fantasma-v3",
+      "subscribers": 2000,
+      "outreach_sent": 4121,
+      "total_converted": 432,
+      "conversion_pct": 10.5,
+      "revenue_autonoma_BRL": 186807.2,
+      "by_kind": {
+        "collection": {
+          "label": "Cobran\u00e7a",
+          "rate": "35%",
+          "converted": 140,
+          "revenue_BRL": 12586.0
+        },
+        "retention": {
+          "label": "Reten\u00e7\u00e3o",
+          "rate": "22%",
+          "converted": 42,
+          "revenue_BRL": 22654.8
+        },
+        "upgrade": {
+          "label": "Upgrade",
+          "rate": "8%",
+          "converted": 12,
+          "revenue_BRL": 8640.0
+        },
+        "referral": {
+          "label": "Indica\u00e7\u00e3o",
+          "rate": "12%",
+          "converted": 130,
+          "revenue_BRL": 93496.0
+        },
+        "playhub": {
+          "label": "PlayHub",
+          "rate": "5%",
+          "converted": 42,
+          "revenue_BRL": 15069.6
+        },
+        "security": {
+          "label": "Security",
+          "rate": "4%",
+          "converted": 23,
+          "revenue_BRL": 13772.4
+        },
+        "ligo_movel": {
+          "label": "Ligo M\u00f3vel",
+          "rate": "6%",
+          "converted": 43,
+          "revenue_BRL": 20588.4
+        }
+      }
+    },
+    {
+      "tenant": "co-fantasma-v4",
+      "subscribers": 10000,
+      "outreach_sent": 11414,
+      "total_converted": 1480,
+      "conversion_pct": 13.0,
+      "revenue_autonoma_BRL": 527830.7,
+      "by_kind": {
+        "collection": {
+          "label": "Cobran\u00e7a",
+          "rate": "35%",
+          "converted": 709,
+          "revenue_BRL": 63739.1
+        },
+        "retention": {
+          "label": "Reten\u00e7\u00e3o",
+          "rate": "22%",
+          "converted": 134,
+          "revenue_BRL": 72279.6
+        },
+        "upgrade": {
+          "label": "Upgrade",
+          "rate": "8%",
+          "converted": 34,
+          "revenue_BRL": 24480.0
+        },
+        "referral": {
+          "label": "Indica\u00e7\u00e3o",
+          "rate": "12%",
+          "converted": 339,
+          "revenue_BRL": 243808.8
+        },
+        "playhub": {
+          "label": "PlayHub",
+          "rate": "5%",
+          "converted": 99,
+          "revenue_BRL": 35521.2
+        },
+        "security": {
+          "label": "Security",
+          "rate": "4%",
+          "converted": 75,
+          "revenue_BRL": 44910.0
+        },
+        "ligo_movel": {
+          "label": "Ligo M\u00f3vel",
+          "rate": "6%",
+          "converted": 90,
+          "revenue_BRL": 43092.0
+        }
+      }
+    }
+  ],
+  "ts": "2026-06-10T02:11:18.508545+00:00"
+}
