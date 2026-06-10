@@ -6,7 +6,9 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from core import require_role
+from rbac import require_roles
 from services import isabella_lousa_scheduler as ils
+from services import isabella_lousa_metrics as ilm
 
 router = APIRouter(prefix="/api/isabella-lousa", tags=["isabella-lousa"])
 
@@ -59,3 +61,16 @@ async def decide(user_text: str, subscriber_id: Optional[str] = None,
                     user: dict = Depends(require_role("gestor"))):
     cid = user.get("company_id")
     return await ils.decide_action(cid, subscriber_id, user_text)
+
+
+@router.get("/metrics")
+async def metrics(days: int = 7,
+                     user: dict = Depends(require_roles(
+                         "administrador", "gestor", "auditor"))):
+    """KPIs das OS criadas pela Isabella na Lousa.
+
+    Aceita admin/gestor/auditor. Lê APENAS coleções existentes.
+    """
+    cid = user.get("company_id")
+    days = max(1, min(days, 90))
+    return await ilm.isabella_lousa_metrics(cid, days=days)

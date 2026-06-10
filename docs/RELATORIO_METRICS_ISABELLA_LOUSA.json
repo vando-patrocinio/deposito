@@ -1,0 +1,64 @@
+{
+  "payload": {
+    "company_id": "co-demo",
+    "window_days": 30,
+    "computed_at": "2026-06-10T04:10:24.574643+00:00",
+    "total_os_isabella": 4,
+    "os_agendadas": 1,
+    "os_finalizadas": 3,
+    "os_canceladas": 0,
+    "os_reagendadas": 0,
+    "tempo_medio_proposta_confirmacao_s": null,
+    "tempo_medio_criacao_fechamento_s": 15.6,
+    "taxa_primeiro_contato_resolvido_pct": 0.0,
+    "taxa_reagendamento_pct": 0.0,
+    "nps_medio_inferido": 5.9,
+    "nps_samples": 36,
+    "premium_repair_count": 33,
+    "truck_roll_decisions": {
+      "DO_NOT_DISPATCH": 0,
+      "DISPATCH": 15,
+      "ESCALATE_COLLECTIVE": 1,
+      "PREVENTIVA": 0
+    },
+    "top_5_motivos_os": [
+      {
+        "motivo": "sem internet de novo",
+        "count": 3
+      },
+      {
+        "motivo": "sem internet ainda",
+        "count": 1
+      }
+    ],
+    "top_5_tecnicos_por_os_isabella": [
+      {
+        "collaborator_id": "col-mural-0-68a1de",
+        "name": "Alpha Tech",
+        "count": 4
+      }
+    ],
+    "os_sem_followup": 0,
+    "os_duplicadas_bloqueadas": 0,
+    "economia_estimativa_brl": 80.0,
+    "health_signals": {
+      "first_contact_ok": 0.0,
+      "reschedule_bad": 1.0,
+      "nps_ok": 0.59,
+      "followup_ok": 1.0
+    },
+    "status_geral": "AMARELO"
+  },
+  "checks": {
+    "all_required_keys_present": true,
+    "truck_roll_has_3_buckets": true,
+    "status_geral_valid": true,
+    "totals_consistent": true,
+    "top_5_lists": true,
+    "economia_numerica": true,
+    "read_only_no_side_effect": true
+  },
+  "passed": 7,
+  "total": 7,
+  "ts": "2026-06-10T04:10:24.578218+00:00"
+}

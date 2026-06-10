@@ -2,6 +2,46 @@
 
 > Documento vivo. Atualizado a cada sprint.
 
+## 📊 OPERAÇÃO ISABELLA LOUSA METRICS ✅ (10/02/2026)
+
+**Ordem CTO**: endpoint único `GET /api/isabella-lousa/metrics?days=N` que
+mostra se as OS criadas pela Isabella estão gerando resultado real.
+Read-only · zero coleção nova · zero dashboard novo · admin/gestor/auditor.
+
+### Entregas
+- `services/isabella_lousa_metrics.py` (240 LoC) — agrega 18 KPIs
+- `routes/isabella_lousa.py` — endpoint `/metrics` com RBAC admin/gestor/auditor
+- `scripts/test_isabella_lousa_metrics.py` — 7 asserts (inclui read-only)
+
+### KPIs retornados (18)
+total_os_isabella · os_{agendadas/finalizadas/canceladas/reagendadas} ·
+tempo_medio_{proposta_confirmacao,criacao_fechamento}_s ·
+taxa_primeiro_contato_resolvido_pct · taxa_reagendamento_pct ·
+nps_medio_inferido · premium_repair_count ·
+truck_roll_decisions{DO_NOT_DISPATCH,DISPATCH,ESCALATE_COLLECTIVE,PREVENTIVA} ·
+top_5_motivos_os · top_5_tecnicos_por_os_isabella ·
+os_sem_followup · os_duplicadas_bloqueadas ·
+economia_estimativa_brl · status_geral
+
+### Status geral
+Média de 4 sinais (first_contact · reschedule · nps · followup):
+- ≥ 0.70 → 🟢 VERDE
+- ≥ 0.45 → 🟡 AMARELO
+- < 0.45 → 🔴 VERMELHO
+
+### Validação HTTP (admin@empresa.com · co-demo · days=30)
+`http=200 time=0.180s` → 4 OS Isabella · NPS 5.9 (36 amostras) ·
+status_geral=AMARELO (média 0.65). Diagnóstico: falta executar
+`register_os_learning` em massa nas OS já fechadas.
+
+### Critérios — 8/8 ✅
+endpoint 200 · dados reais · read-only · não toca Lousa · não toca Isabella ·
+não toca Mobile · teste automatizado · payload real documentado.
+
+### Relatórios
+- `/app/docs/RELATORIO_METRICS_ISABELLA_LOUSA.md` (executivo)
+- `/app/docs/RELATORIO_METRICS_ISABELLA_LOUSA.json` (payload + checks)
+
 ## 💰 OPERAÇÃO PRESIDENTE FINANCEIRO + IDENTIDADE 360° ✅ (10/02/2026)
 
 **Ordem CTO**: (a) atribuir R$ confirmado ao `executive_ledger` para cada
