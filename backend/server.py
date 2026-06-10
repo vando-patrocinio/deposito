@@ -117,6 +117,7 @@ from routes import (
     isabella_field as routes_isabella_field,
     isabella_commanders as routes_isabella_commanders,
     universo_ligo as routes_universo_ligo,
+    shield as routes_shield,
     whatsapp_twilio as routes_whatsapp_twilio,
     pdf_reports as routes_pdf_reports,
     whatsapp_meta as routes_whatsapp_meta,
@@ -1036,6 +1037,20 @@ async def _startup() -> None:
         asyncio.create_task(_ourun())
     except Exception as e:
         logger.warning("[startup] openrouter_unify: %s", e)
+    # Shield indexes (audit chain / event signing anti-replay / observ.)
+    try:
+        from services.audit_chain import ensure_indexes as _aci
+        from services.event_signing import ensure_indexes as _esi
+        from services.observability import ensure_indexes as _oi
+        from services.shield_daily_audit import (
+            ensure_indexes as _sda_idx, register_scheduler as _sda_reg)
+        asyncio.create_task(_aci())
+        asyncio.create_task(_esi())
+        asyncio.create_task(_oi())
+        asyncio.create_task(_sda_idx())
+        _sda_reg(scheduler)
+    except Exception as e:
+        logger.warning("[startup] shield indexes: %s", e)
     # NOTE: o worker da isabella_queue foi SEPARADO em processo dedicado
     # (programa supervisor `isabella-worker`). NÃO inicialize aqui — webhook
     # HTTP deve ficar isolado do processamento LLM/Twilio.
@@ -1249,6 +1264,7 @@ app.include_router(routes_field_ops.router)
 app.include_router(routes_isabella_field.router)
 app.include_router(routes_isabella_commanders.router)
 app.include_router(routes_universo_ligo.router)
+app.include_router(routes_shield.router)
 app.include_router(routes_whatsapp_twilio.router)
 app.include_router(routes_whatsapp_meta.router)
 app.include_router(routes_holerite.router)
@@ -1350,6 +1366,8 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
 
 
 app.add_middleware(SecurityHeadersMiddleware)
+from services.observability import MetricsMiddleware as _ShieldObsMW
+app.add_middleware(_ShieldObsMW)
 
 
 # ============================================================

@@ -81,19 +81,75 @@ async def set_secret(name: str, value: str,
             "updated_at": doc["updated_at"]}
 
 
-async def get_secret(name: str, scope: str = "global") -> Optional[str]:
-    """Descriptografa segredo. Retorna None se não existe ou Fernet ausente."""
+async def get_secret(name: str, scope: str = "global",
+                       *, accessed_by: str = "system",
+                       purpose: Optional[str] = None) -> Optional[str]:
+    """Descriptografa segredo. Retorna None se não existe ou Fernet ausente.
+    Registra auditoria do acesso em `secrets_access_log`."""
     f = _get_fernet()
     if not f:
         return None
     doc = await db[COLLECTION].find_one({"name": name, "scope": scope})
     if not doc or not doc.get("ciphertext"):
+        await db.secrets_access_log.insert_one({
+            "id": f"sal-{uuid.uuid4().hex[:12]}",
+            "ts": _now(), "name": name, "scope": scope,
+            "accessed_by": accessed_by, "purpose": purpose,
+            "result": "not_found"})
         return None
     try:
-        return f.decrypt(doc["ciphertext"].encode()).decode()
+        plain = f.decrypt(doc["ciphertext"].encode()).decode()
+        await db.secrets_access_log.insert_one({
+            "id": f"sal-{uuid.uuid4().hex[:12]}",
+            "ts": _now(), "name": name, "scope": scope,
+            "accessed_by": accessed_by, "purpose": purpose,
+            "version": doc.get("version", 1), "result": "ok"})
+        return plain
     except Exception as e:  # noqa: BLE001
         logger.error("[vault] decrypt fail name=%s: %r", name, e)
+        await db.secrets_access_log.insert_one({
+            "id": f"sal-{uuid.uuid4().hex[:12]}",
+            "ts": _now(), "name": name, "scope": scope,
+            "accessed_by": accessed_by, "purpose": purpose,
+            "result": "decrypt_error"})
         return None
+
+
+async def access_log(name: Optional[str] = None, *,
+                       limit: int = 100) -> Dict[str, Any]:
+    q: Dict[str, Any] = {}
+    if name:
+        q["name"] = name
+    items = await db.secrets_access_log.find(q, {"_id": 0}) \
+        .sort("ts", -1).limit(min(limit, 500)) \
+        .to_list(min(limit, 500))
+    return {"count": len(items), "items": items}
+
+
+async def rotate_secret(name: str, *, new_value: str,
+                          scope: str = "global",
+                          rotated_by: str = "system") -> Dict[str, Any]:
+    """Rotaciona um segredo bumpando a versão e registrando audit."""
+    f = _get_fernet()
+    if not f:
+        return {"ok": False, "reason": "vault_unavailable"}
+    prev = await db[COLLECTION].find_one({"name": name, "scope": scope})
+    old_version = (prev or {}).get("version", 0)
+    ct = f.encrypt(new_value.encode()).decode()
+    await db[COLLECTION].update_one(
+        {"name": name, "scope": scope},
+        {"$set": {"ciphertext": ct,
+                   "version": old_version + 1,
+                   "updated_at": _now(),
+                   "updated_by": rotated_by}},
+        upsert=True)
+    await db.secrets_access_log.insert_one({
+        "id": f"sal-{uuid.uuid4().hex[:12]}",
+        "ts": _now(), "name": name, "scope": scope,
+        "accessed_by": rotated_by, "purpose": "rotation",
+        "result": "rotated",
+        "from_version": old_version, "to_version": old_version + 1})
+    return {"ok": True, "version": old_version + 1}
 
 
 async def list_secrets(scope: Optional[str] = None) -> Dict[str, Any]:
