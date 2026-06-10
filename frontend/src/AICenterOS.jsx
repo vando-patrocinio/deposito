@@ -17,6 +17,7 @@ import DataQualityPanel from "@/DataQualityPanel";
 import NervousSystemPanel from "@/NervousSystemPanel";
 import SmartOLTTwinPanel from "@/SmartOLTTwinPanel";
 import IsabellaPanel from "@/IsabellaPanel";
+import IsabellaMemoryInspector from "@/IsabellaMemoryInspector";
 import KnowledgeGraphPanel from "@/KnowledgeGraphPanel";
 import AlvaroPanel from "@/AlvaroDirectorPanel";
 import MultiTenantPanel from "@/MultiTenantPanel";
@@ -39,6 +40,7 @@ const TABS = [
   { id: "war-room",    label: "Sala de Guerra",      icon: "⚔️" },
   { id: "revenue",     label: "RevenueOps IA",       icon: "💰" },
   { id: "isabella",    label: "Isabella IA",         icon: "👩‍💼" },
+  { id: "isabella-memory", label: "Memória Isabella", icon: "🧠" },
   { id: "alvaro",      label: "Álvaro Diretor",      icon: "👨‍💼" },
   { id: "kg",          label: "Knowledge Graph",     icon: "🧬" },
   { id: "dq",          label: "Data Quality",        icon: "🩺" },
@@ -517,6 +519,7 @@ export default function AICenterOS() {
       case "war-room":    return <WarRoomTab />;
       case "revenue":     return <RevenueOpsPanel />;
       case "isabella":    return <IsabellaPanel />;
+      case "isabella-memory": return <IsabellaMemoryInspector />;
       case "alvaro":      return <AlvaroPanel />;
       case "kg":          return <KnowledgeGraphPanel />;
       case "dq":          return <DataQualityPanel />;

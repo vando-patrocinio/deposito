@@ -523,10 +523,10 @@ async def _generate_and_send_twilio_reply(
             sys_prompt += "\n\n" + orchestrated
     except Exception:
         pass
-    # Histórico de conversa (janela 100, truncate por tokens)
+    # Histórico de conversa (janela 200 msgs / 6k tokens — corrigido em Feb/2026)
     try:
         from services.ai_history import fetch_history_turns
-        history_turns = await fetch_history_turns(cid, phone, limit=100,
+        history_turns = await fetch_history_turns(cid, phone, limit=200,
                                                     token_budget=6000)
     except Exception:
         history_turns = []

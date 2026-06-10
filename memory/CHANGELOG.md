@@ -7518,3 +7518,34 @@ algo de 20/40 dias atrás, ela já tem o histórico (OS, NPS, eventos
 financeiros) no contexto do prompt.
 
 Relatório completo: `/app/docs/RELATORIO_MEMORIA_TOTAL.md`
+
+---
+
+## iter218 (Feb/2026) — Dashboard Memória da Isabella (Inspector)
+**Tipo**: Feature de auditoria executiva
+**Validação**: backend curl ✓ + screenshot E2E ✓ (8 blocos, 26 turns renderizados)
+
+### Backend
+- `services/long_term_memory.py` — funções públicas `summarize_subscriber_history`, `inject_long_term_block`, `build_long_term_block` (já existiam, reutilizadas).
+- `routes/isabella_memory_inspector.py` (NOVO):
+  - `GET /api/isabella/memory/preview?phone=...&user_text=...`
+    Reproduz a montagem completa do system_prompt + history_turns
+    (mesmas chamadas usadas em `whatsapp_twilio._generate_isabella_reply`).
+    Retorna lista de blocos com chars/tokens estimados + payload total.
+  - `GET /api/isabella/memory/recent-phones?limit=N` — atalhos.
+- `server.py` — registrado o router novo.
+
+### Frontend
+- `IsabellaMemoryInspector.jsx` (NOVO):
+  - Input de telefone + texto simulado + lista de phones recentes.
+  - KPI bar (phone, subscriber, blocos, turns, chars).
+  - Grid 2 colunas: blocos expansíveis (com cores por tipo) + history
+    turns estilo chat.
+  - Botão "Copiar prompt completo" pra auditoria offline.
+- `AICenterOS.jsx` — nova aba "🧠 Memória Isabella" entre Isabella IA
+  e Álvaro Diretor.
+
+### Como acessar
+1. Login admin → menu lateral "AI Center · OS"
+2. Sidebar interna → "🧠 Memória Isabella"
+3. Clica num phone recente (ou digita) → "🔍 Inspecionar"

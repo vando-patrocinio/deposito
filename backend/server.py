@@ -84,6 +84,7 @@ from routes import (
     colosso as routes_colosso,
     colosso_financeiro as routes_colosso_fin,
     isabella_lousa as routes_isabella_lousa,
+    isabella_memory_inspector as routes_isabella_memory,
     plans as routes_plans,
     voice as routes_voice,
     whatsapp_baileys as routes_wa_baileys,
@@ -1076,6 +1077,7 @@ app.include_router(routes_colosso.router)
 app.include_router(routes_colosso_fin.router)
 app.include_router(routes_colosso_fin.id_router)
 app.include_router(routes_isabella_lousa.router)
+app.include_router(routes_isabella_memory.router)
 # iter205 — Backup MongoDB endpoints (super-admin only)
 from routes import backup as routes_backup  # noqa: E402
 app.include_router(routes_backup.router)
