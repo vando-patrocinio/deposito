@@ -1,0 +1,64 @@
+{
+  "ts": "2026-06-10T04:04:16.806532+00:00",
+  "presidente_financeiro": {
+    "preventive": 67,
+    "reuse": 117,
+    "truck_roll": 522,
+    "incident": 10,
+    "os_no_return": 72,
+    "total_brl_attributed": 468673.8,
+    "ts": "2026-06-10T04:04:17.775979+00:00",
+    "company_id": "co-colosso",
+    "ledger_breakdown": [
+      {
+        "kind": "PREVENTIVE_AVOIDED_VISIT",
+        "count": 67,
+        "valor_brl": 5360.0
+      },
+      {
+        "kind": "TRUCK_ROLL_AVOIDED",
+        "count": 147,
+        "valor_brl": 11760.0
+      },
+      {
+        "kind": "EQUIPMENT_REUSED",
+        "count": 117,
+        "valor_brl": 14040.0
+      },
+      {
+        "kind": "INCIDENT_REVENUE_PROTECTED",
+        "count": 10,
+        "valor_brl": 397461.0
+      },
+      {
+        "kind": "OS_NO_RETURN_30D",
+        "count": 72,
+        "valor_brl": 10052.8
+      }
+    ]
+  },
+  "identity_360": {
+    "phone": "5521998176526",
+    "company": "co-demo",
+    "cold_ms": 2269,
+    "hot_ms": 0,
+    "subscriber_id": "sub-89c314c0d98f",
+    "subscriber_name": "PAMELA NERY TESTE LIGO",
+    "addresses_count": 1,
+    "equipment_count": 0,
+    "has_invoice": false,
+    "tickets_count": 0,
+    "block_excerpt": "=== IDENTIDADE 360° DO CLIENTE ===\nNome: PAMELA NERY TESTE LIGO\nPlano: ? (R$ 99.90/mês)\nStatus: ATIVO\nEndereços cadastrados (1):\n• # RIO_800MB_WIFI6_S/FIDELIDADE_2026* RUA PORTO PRÍNCIPE\n(timing: 2269ms · cached=False)",
+    "cached_on_second_call": true
+  },
+  "expectations": {
+    "attribution_persisted": true,
+    "ledger_has_kinds": true,
+    "identity_under_200ms_hot": true,
+    "identity_under_500ms_cold": false,
+    "identity_cached_second_call": true,
+    "block_has_content": true
+  },
+  "passed": 5,
+  "total": 6
+}

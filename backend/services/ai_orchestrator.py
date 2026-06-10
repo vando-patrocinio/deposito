@@ -81,6 +81,16 @@ async def build_orchestrated_context(company_id: str, phone: str,
     except Exception as e:
         logger.info("[orchestrator] premium_repair skip: %s", e)
 
+    # 1f) IDENTIDADE 360° — endereço · equipamentos · última fatura · OS
+    try:
+        from services.identity_360 import identity_360, format_for_isabella
+        ident = await identity_360(company_id, phone)
+        b = format_for_isabella(ident)
+        if b:
+            blocks.append(b)
+    except Exception as e:
+        logger.info("[orchestrator] identity_360 skip: %s", e)
+
     # 2) Coach IA — script do setor + tom de voz
     try:
         b = await _coach_ia_context(company_id, user_text)
