@@ -604,6 +604,106 @@ async def network_feed(company: str) -> dict:
             "incidents": incs[:30], "generated_at": _now_iso()}
 
 
+# ---------------------------------------------------------------------------
+# Mass-notify clientes agrupados (CTO 02/2026)
+# ---------------------------------------------------------------------------
+async def mass_notify_incident(company: str, incident_id: str, *,
+                                phase: str = "update",
+                                custom_text: Optional[str] = None,
+                                actor: Optional[str] = None) -> Dict[str, Any]:
+    """Dispara WhatsApp a todos os clientes agrupados em um incidente.
+
+    `phase` controla template:
+      • opened    → comunica detecção e ação
+      • update    → atualiza status (em atendimento)
+      • resolved  → comunica resolução + cortesia/pedido de desculpa
+      • custom    → usa `custom_text`
+    """
+    from services.wa_dispatcher import send_text
+    inc = await db.isabella_incidents.find_one(
+        {"id": incident_id, "company_id": company}, {"_id": 0})
+    if not inc:
+        return {"ok": False, "reason": "not_found"}
+
+    affected_ids = set(inc.get("affected_client_ids") or [])
+    for g in (inc.get("grouped_clients") or []):
+        if g.get("client_id"):
+            affected_ids.add(g["client_id"])
+    if not affected_ids:
+        return {"ok": True, "sent": 0, "skipped": 0,
+                "reason": "no_affected_clients"}
+
+    subs = await db.subscribers.find(
+        {"company_id": company, "id": {"$in": list(affected_ids)},
+         "phone": {"$nin": [None, ""]}},
+        {"_id": 0, "id": 1, "name": 1, "phone": 1}).to_list(5000)
+
+    where = (inc.get("scope") or {}).get("cto_name") \
+            or (inc.get("scope") or {}).get("neighborhood") \
+            or inc.get("scope_id") or "sua região"
+
+    base_msgs = {
+        "opened": (
+            "Olá {nome}, é a {empresa}. Identificamos uma instabilidade na "
+            "região de {where} e nossa equipe já está atuando. "
+            "Você será atualizado em breve. — Isabella, Atendimento."),
+        "update": (
+            "Olá {nome}, segue atualização: equipe técnica trabalhando "
+            "no incidente que afeta {where}. Previsão de retorno em breve."),
+        "resolved": (
+            "Olá {nome}, o incidente que afetou {where} foi resolvido. "
+            "Caso ainda perceba instabilidade, responda esta mensagem com "
+            "‘OFF’ que abrimos visita prioritária. Obrigado pela paciência."),
+    }
+    template = custom_text or base_msgs.get(phase) or base_msgs["update"]
+    company_doc = await db.companies.find_one({"id": company},
+                                               {"_id": 0, "name": 1})
+    company_name = (company_doc or {}).get("name") or "Ligo"
+
+    sent, skipped = 0, 0
+    log_items: List[Dict[str, Any]] = []
+    for s in subs:
+        phone = s.get("phone")
+        if not phone:
+            skipped += 1
+            continue
+        text = template.format(
+            nome=(s.get("name") or "cliente").split(" ")[0].title(),
+            empresa=company_name, where=where)
+        r = await send_text(company_id=company, to=phone, text=text)
+        if r.get("ok"):
+            sent += 1
+        else:
+            skipped += 1
+        log_items.append({"client_id": s["id"],
+                            "phone": phone,
+                            "ok": bool(r.get("ok")),
+                            "reason": r.get("reason")})
+
+    # registro auditável
+    notify_doc = {
+        "id": f"incnotify-{uuid.uuid4().hex[:10]}",
+        "company_id": company,
+        "incident_id": incident_id,
+        "phase": phase,
+        "sent": sent, "skipped": skipped,
+        "actor": actor,
+        "items": log_items[:200],
+        "created_at": _now_iso(),
+    }
+    await db.isabella_incident_notifications.insert_one(dict(notify_doc))
+    await db.isabella_incidents.update_one(
+        {"id": incident_id},
+        {"$push": {"mass_notifications": {
+            "phase": phase, "sent": sent, "skipped": skipped,
+            "actor": actor, "at": _now_iso()}}})
+    await _emit(EventType.INCIDENT_MASS_NOTIFY, company, {
+        "incident_id": incident_id, "phase": phase,
+        "sent": sent, "skipped": skipped})
+    notify_doc.pop("_id", None)
+    return {"ok": True, **notify_doc}
+
+
 async def isabella_incident_worker() -> None:
     """Varredura automática a cada 15 min em empresas com reparos recentes."""
     await asyncio.sleep(60)  # deixa o boot terminar

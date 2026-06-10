@@ -58,6 +58,9 @@ _LIMITS = {
     # Smart Field Ops — App Colaborador ↔ SmartProv
     "field_read": f"{240 * _MULT}/minute",
     "field_action": f"{60 * _MULT}/minute",
+    # Isabella Commanders — Churn/Dunning/Revenue/Twin/Expansion/Conselho
+    "isabella_read": f"{240 * _MULT}/minute",
+    "isabella_write": f"{60 * _MULT}/minute",
     # Default fallback
     "default": f"{100 * _MULT}/minute",
 }

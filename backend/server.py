@@ -115,6 +115,7 @@ from routes import (
     vehicle_checklist as routes_vehicle_checklist,
     field_ops as routes_field_ops,
     isabella_field as routes_isabella_field,
+    isabella_commanders as routes_isabella_commanders,
     whatsapp_twilio as routes_whatsapp_twilio,
     pdf_reports as routes_pdf_reports,
     whatsapp_meta as routes_whatsapp_meta,
@@ -1024,6 +1025,10 @@ async def _startup() -> None:
     # coletivos (CTO/bairro/ONU) a cada 15 min sobre dados reais.
     from services.isabella_incident import isabella_incident_worker
     asyncio.create_task(isabella_incident_worker())
+    # Isabella Commanders (Churn/Dunning/Revenue/Twin/Expansion + Conselho)
+    # — varredura unificada a cada 30 min + reunião diária do conselho.
+    from services.isabella_commanders_worker import isabella_commanders_worker
+    asyncio.create_task(isabella_commanders_worker())
     # NOTE: o worker da isabella_queue foi SEPARADO em processo dedicado
     # (programa supervisor `isabella-worker`). NÃO inicialize aqui — webhook
     # HTTP deve ficar isolado do processamento LLM/Twilio.
@@ -1235,6 +1240,7 @@ app.include_router(routes_collab_assets.router)
 app.include_router(routes_vehicle_checklist.router)
 app.include_router(routes_field_ops.router)
 app.include_router(routes_isabella_field.router)
+app.include_router(routes_isabella_commanders.router)
 app.include_router(routes_whatsapp_twilio.router)
 app.include_router(routes_whatsapp_meta.router)
 app.include_router(routes_holerite.router)

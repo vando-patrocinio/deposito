@@ -1,0 +1,84 @@
+"""ISABELLA COMMANDERS WORKER — varredura agendada autônoma.
+
+Executa em background:
+  • A cada 30 min: scan dos 5 Commanders (Churn/Dunning/Revenue/Twin/Expansion)
+  • Diariamente às 09h (UTC-3 ~ 12h UTC): reunião do Conselho Executivo IA
+  • A cada 60 min: expira oportunidades antigas (status='expired')
+
+Tolerante a falhas: catch global por loop, log e retoma na próxima iteração.
+"""
+from __future__ import annotations
+
+import asyncio
+import logging
+from datetime import datetime, timezone
+
+from database import db
+from services import (isabella_churn, isabella_conselho, isabella_dunning,
+                        isabella_expansion, isabella_revenue, isabella_twin)
+from services.isabella_opportunities import (ensure_indexes as opp_indexes,
+                                                expire_old)
+
+log = logging.getLogger("ponto.isabella_commanders_worker")
+
+SCAN_INTERVAL_SEC = 30 * 60
+COUNCIL_HOUR_UTC = 12  # ~09h America/Sao_Paulo
+
+
+async def _active_companies() -> list[str]:
+    cids = await db.companies.distinct("id")
+    return [c for c in cids if c]
+
+
+async def _run_scans_for(company_id: str) -> dict:
+    out = {"company_id": company_id}
+    for name, fn in (("churn", isabella_churn.scan_company),
+                       ("dunning", isabella_dunning.scan_company),
+                       ("revenue", isabella_revenue.scan_company),
+                       ("twin", isabella_twin.scan_company),
+                       ("expansion", isabella_expansion.scan_company)):
+        try:
+            out[name] = await fn(company_id)
+        except Exception as e:
+            log.warning("[commanders_worker] %s/%s falhou: %s",
+                        company_id, name, e)
+            out[name] = {"error": str(e)}
+    return out
+
+
+async def isabella_commanders_worker() -> None:
+    """Loop autônomo dos Commanders."""
+    await asyncio.sleep(75)  # boot
+    try:
+        await opp_indexes()
+    except Exception:
+        pass
+    log.info("[commanders_worker] iniciado (a cada %ss)", SCAN_INTERVAL_SEC)
+    last_council_day: str | None = None
+    while True:
+        try:
+            companies = await _active_companies()
+            for cid in companies:
+                try:
+                    await _run_scans_for(cid)
+                except Exception as e:
+                    log.warning("[commanders_worker] scan %s: %s", cid, e)
+            # Reunião do conselho 1x por dia
+            now = datetime.now(timezone.utc)
+            today = now.strftime("%Y-%m-%d")
+            if now.hour >= COUNCIL_HOUR_UTC and last_council_day != today:
+                for cid in companies:
+                    try:
+                        await isabella_conselho.hold_meeting(cid)
+                    except Exception as e:
+                        log.warning("[commanders_worker] council %s: %s",
+                                     cid, e)
+                last_council_day = today
+            # Expira oportunidades antigas
+            try:
+                await expire_old()
+            except Exception:
+                pass
+        except Exception as e:
+            log.exception("[commanders_worker] loop: %s", e)
+        await asyncio.sleep(SCAN_INTERVAL_SEC)

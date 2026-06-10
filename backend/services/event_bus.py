@@ -123,6 +123,20 @@ class EventType:
     INCIDENT_NEIGHBORHOOD_CLUSTER = "incident.neighborhood.cluster"
     INCIDENT_CHURN_RISK = "incident.churn.risk"
     INCIDENT_MASS_REPAIR = "incident.mass.repair"
+    INCIDENT_MASS_NOTIFY = "incident.mass.notify"
+    # Isabella Commanders — opportunities pipeline (02/2026)
+    OPPORTUNITY_CREATED = "opportunity.created"
+    OPPORTUNITY_APPROVED = "opportunity.approved"
+    OPPORTUNITY_DISMISSED = "opportunity.dismissed"
+    OPPORTUNITY_EXECUTED = "opportunity.executed"
+    OPPORTUNITY_EXPIRED = "opportunity.expired"
+    # Churn / Dunning / Revenue / Twin / Expansion / Council
+    CHURN_RISK_SCORED = "churn.risk.scored"
+    DUNNING_STEP_RECOMMENDED = "dunning.step.recommended"
+    REVENUE_OPPORTUNITY_DETECTED = "revenue.opportunity.detected"
+    TWIN_FAILURE_PREDICTED = "twin.failure.predicted"
+    EXPANSION_AREA_RECOMMENDED = "expansion.area.recommended"
+    COUNCIL_MEETING_HELD = "council.meeting.held"
 
 
 SEVERITY = ("baixa", "media", "alta", "critica")

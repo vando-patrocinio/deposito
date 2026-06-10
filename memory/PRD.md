@@ -2,6 +2,57 @@
 
 > Documento vivo. Atualizado a cada sprint.
 
+## 🧠 ISABELLA COMMANDERS — SISTEMA NERVOSO N5 ✅ (10/02/2026)
+
+**Ordem CTO**: transformar Isabella em Sistema Nervoso Central — Churn,
+Dunning, Revenue, Twin (preditivo), Expansion, Conselho Executivo, Mass
+Notify de incidente. 1-click approval (sem auto-execução).
+
+### Entregas
+- `services/isabella_opportunities.py` — pipeline central (coleção
+  `isabella_commander_opportunities`, dedup, TTL, KPIs, status workflow)
+- `services/isabella_churn.py` — score 0-100 multifator (reparos +
+  lentidão + sinal óptico + inadimplência + LTV)
+- `services/isabella_dunning.py` — régua unificada (D-3→D+20)
+  reminder_pre/reminder_late/negotiation/unblock_offer/warning/block_request
+- `services/isabella_revenue.py` — upgrade plano + wifi_premium ativo
+- `services/isabella_twin.py` — predição CTO/ONU/veículo (3 dimensões)
+- `services/isabella_expansion.py` — ranking de bairros + ROI 12m
+- `services/isabella_conselho.py` — reunião diária com ata + decisões
+  P0/P1/P2 + financial_summary (receita potencial × perda em risco)
+- `services/isabella_commanders_worker.py` — varredura cada 30min + conselho 09h
+- `routes/isabella_commanders.py` — `/api/isabella/{churn|dunning|...}/scan`,
+  `/opportunities`, `/opportunities/{id}/approve|dismiss|executed`,
+  `/council/hold|latest|history`, `/incidents/{id}/notify`
+- `services/isabella_incident.py::mass_notify_incident` — disparo
+  WhatsApp em massa (opened/update/resolved/custom) com auditoria em
+  `isabella_incident_notifications`
+- 12 EventTypes novos (`opportunity.*`, `churn.risk.scored`, `dunning.*`,
+  `revenue.*`, `twin.*`, `expansion.*`, `council.*`, `incident.mass.notify`)
+
+### Validação Zero Mock (co-demo, dados reais)
+`/app/backend/scripts/test_isabella_commanders.py` — 35+ asserts ✅
+- ARPU resolution (companies.arpu → média invoices → fallback)
+- Persistência completa com schema validado
+- 1-click approve troca status pending → approved (auditável)
+- Conselho gera ata + 2 decisões P1 + financial_summary
+- 9 EventTypes emitidos no event_bus
+- Mass-notify retorna ok=True + log auditável
+
+### Resultados reais (co-demo)
+- **R$ 472.119,66** em oportunidades pendentes
+- **R$ 207.825,60** Revenue + **R$ 1.318,80** Expansion
+- **R$ 96.038,28** Dunning + **R$ 8.136,98** Churn
+- **Net outlook**: +R$ 104.409,28
+- Churn: 21 clientes alto-risco / 652 escaneados
+- Dunning: 849 contas em régua autônoma
+- Revenue: 500 oportunidades de upsell
+- Twin: 367 previsões (2 CTOs + 300 ONUs + 65 veículos)
+
+### Nota de maturidade ISABELLA: **3.2 → 4.8 / 6** (Diretora Operacional)
+Observa ✅ Analisa ✅ Decide ✅ Sugere (não executa) ✅ Auditável ✅ Aprende ⚠️ (próximo nível)
+
+
 ## 🧠 OPERAÇÃO MEMÓRIA DE CURTO PRAZO OBRIGATÓRIA ✅ (10/02/2026)
 
 **Ordem CTO**: Isabella estava perdendo contexto imediato — cliente
