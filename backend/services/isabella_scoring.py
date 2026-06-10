@@ -350,15 +350,23 @@ async def where_to_sell(company_id: str) -> Dict[str, Any]:
 
 
 async def run_playbooks(company_id: str) -> Dict[str, Any]:
-    """Gera oportunidades automáticas baseadas nos thresholds."""
+    """Gera oportunidades automáticas baseadas nos thresholds.
+
+    Operação Isabella Evolução Final V2 (CTO 02/2026):
+      • Threshold único e baixo (>=55 na escala 0-100, equivale a 0.55)
+        para coletar mais aprendizado. Mantém quality_tier para priorização.
+    """
+    import os
     from services.event_emitters import emit_business
     created = Counter()
+    # Threshold global Evolução Final V2 (default 55 = "score >= 0.55")
+    th = float(os.environ.get("ISABELLA_OPP_MIN_SCORE", "55"))
 
     cur = db.motor_ia_subscriber_scores.find({"company_id": company_id})
     async for s in cur:
         sid = s["subscriber_id"]
         # upgrade
-        if s["upgrade_score"] >= 80:
+        if s["upgrade_score"] >= th:
             doc = {
                 "id": f"opp-up-{uuid.uuid4().hex[:10]}",
                 "company_id": company_id,
@@ -385,7 +393,7 @@ async def run_playbooks(company_id: str) -> Dict[str, Any]:
                     source="isabella_playbook",
                 )
         # referral
-        if s["referral_score"] >= 85:
+        if s["referral_score"] >= th:
             doc = {
                 "id": f"opp-rf-{uuid.uuid4().hex[:10]}",
                 "company_id": company_id,
@@ -403,7 +411,7 @@ async def run_playbooks(company_id: str) -> Dict[str, Any]:
             if r.upserted_id:
                 created["campaign.referral"] += 1
         # collection
-        if s["collection_score"] >= 75:
+        if s["collection_score"] >= th:
             doc = {
                 "id": f"opp-cc-{uuid.uuid4().hex[:10]}",
                 "company_id": company_id,
@@ -421,7 +429,7 @@ async def run_playbooks(company_id: str) -> Dict[str, Any]:
             if r.upserted_id:
                 created["operacao_tese_candidate"] += 1
         # churn → retention
-        if s["churn_score"] >= 70:
+        if s["churn_score"] >= th:
             doc = {
                 "id": f"opp-rt-{uuid.uuid4().hex[:10]}",
                 "company_id": company_id,

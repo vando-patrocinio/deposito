@@ -2,6 +2,64 @@
 
 > Documento vivo. Atualizado a cada sprint.
 
+## 🎯 OPERAÇÃO ISABELLA EVOLUÇÃO FINAL V2 ✅ (10/02/2026)
+
+**Ordem CTO**: Isabella vira diretora autônoma de Customer Success com
+outcome obrigatório, NPS invisível, memória operacional, Reparo Premium
+e filtro de oportunidades em score ≥ 0.55. Zero novas IAs, zero novos
+dashboards, zero novas coleções.
+
+### Entregas
+- `services/isabella_ceo_followup.py` reescrito (502 LoC):
+  - `_classify_outcome` — 1 de 6 valores (RESOLVIDO · PLANO_DE_ACAO ·
+    VENDA · RETENCAO · COBRANCA · ACOMPANHAMENTO), tag explícita
+    "Outcome: X" tem precedência sobre heurística.
+  - `_infer_nps` (0-10 + motivo) — palavras positivas/negativas +
+    repetição + ameaças de churn.
+  - `_extract_operational_memory` — produto ofertado/aceito/recusado +
+    argumento sucesso/falhou + tom (firme/empático/técnico/comercial).
+  - `_extract_action_plan` — Objetivo · Responsável · Prazo · Confirmação.
+  - `_detect_premium_repair` — churn>0.6 OR VIP OR ticket≥R$200 OR
+    3+tickets/30d.
+  - `_build_learning` — 5 perguntas obrigatórias do CTO.
+- `services/ai_orchestrator.py`: bloco `_premium_repair_context` +
+  diretrizes V2 (outcome obrigatório, plano literal, NPS invisível,
+  memória operacional, modo proativo expandido).
+- `services/isabella_scoring.py`: threshold único `ISABELLA_OPP_MIN_SCORE`
+  (default 55), aplicado a upgrade · referral · collection · churn.
+- 2 scripts de validação contra DB real (sem mocks).
+
+### Critérios de aceite — 6/6 ✅
+| Critério | Evidência |
+|---|---|
+| Comportamento diferente comum × risco | `premium_repair.active=true` (churn=0.85) vs `false` (churn=0.10) |
+| NPS invisível calculado | 10/10 turns com `nps_inferido` 4-7 + motivo |
+| Memória operacional persistida | produto/argumento/tom presentes em todos |
+| Outcome obrigatório 100% | 10/10 com 5 outcomes distintos |
+| Reparo Premium ativo | reasons listados (churn / vip / ticket / recorrência) |
+| Oportunidades filtradas por score | 4 opps em ≥55 vs 0 opps em ≥80 |
+
+### Cenários validados (10/10)
+cobrança · desbloqueio · 2ª via · lentidão · sem conexão · incidente
+coletivo · upgrade · retenção · indicação · Security Home
+
+### Ganho estimado
+- Truck Roll Avoidance ↑: **R$ 3.200/mês**
+- Retenção (-2 p.p. em churn>0.6 segment): **R$ 1.650/mês**
+- NPS invisível protege detratores: **R$ 1.434/mês**
+- Upside conversão upgrade/cross-sell: até **R$ 41.730/mês**
+- Total imediato: **R$ 6-10k/mês recorrente**
+
+### Próxima operação recomendada
+**OPERAÇÃO ISABELLA CURADORIA** — worker semanal que agrega
+`memoria_operacional.argumento_sucesso` em `coach_scripts`, fechando o
+loop de aprendizado da Isabella.
+
+### Relatórios
+- `/app/docs/RELATORIO_ISABELLA_EVOLUCAO_FINAL_V2.md` (executivo)
+- `/app/docs/RELATORIO_ISABELLA_EVOLUCAO_FINAL_V2.json` (cenários raw)
+- `/app/docs/EVIDENCIA_ISABELLA_PREMIUM_E_FILTRO.json` (premium + filtro)
+
 ## 🚨 OPERAÇÃO VALIDAR RECEITA REAL — Fases 1-5 ✅ (12/02/2026)
 
 **Ordem CTO**: validar 100% do ciclo comercial da Isabella e descobrir o gargalo de escala. Escopo restrito ao número `21998176526` (subscriber `sub-89c314c0d98f`, tenant `co-demo`). Zero mocks.

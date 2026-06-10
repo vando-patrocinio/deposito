@@ -73,6 +73,14 @@ async def build_orchestrated_context(company_id: str, phone: str,
     except Exception as e:
         logger.info("[orchestrator] truck_roll_guard skip: %s", e)
 
+    # 1e) REPARO PREMIUM — Evolução Final V2
+    try:
+        b = await _premium_repair_context(company_id, phone, subscriber_id)
+        if b:
+            blocks.append(b)
+    except Exception as e:
+        logger.info("[orchestrator] premium_repair skip: %s", e)
+
     # 2) Coach IA — script do setor + tom de voz
     try:
         b = await _coach_ia_context(company_id, user_text)
@@ -348,9 +356,9 @@ async def _customer_profile_context(company_id: str, phone: str,
             lines.append("Scores internos (NÃO mostrar ao cliente): " + " · ".join(scores))
     except Exception:
         pass
-    # Diretrizes Isabella ÚNICA + CEO DO CLIENTE
+    # Diretrizes Isabella ÚNICA + CEO DO CLIENTE + EVOLUÇÃO FINAL V2
     lines.append(
-        "DIRETRIZES OBRIGATÓRIAS (Isabella CEO do Cliente):\n"
+        "DIRETRIZES OBRIGATÓRIAS (Isabella CEO do Cliente — Evolução Final V2):\n"
         "\n"
         "1. POSSE DA CONVERSA\n"
         "   • Você é Isabella. Você é DONA do problema do cliente.\n"
@@ -358,13 +366,23 @@ async def _customer_profile_context(company_id: str, phone: str,
         "   • Nunca cite Álvaro, Rede IA, Presidente IA, Sistema Nervoso,\n"
         "     SmartOLT Twin ou Truck Roll Guard. Toda inteligência é SUA.\n"
         "\n"
-        "2. FORMATO OBRIGATÓRIO DE RESPOSTA\n"
-        "   Toda resposta deve fechar com UM dos dois:\n"
-        "     ✓ RESOLVIDO  → quando você resolveu de fato\n"
-        "     ✓ PLANO DE AÇÃO → quando depende de etapa futura\n"
-        "   Nunca apenas 'resposta solta'.\n"
+        "2. OUTCOME OBRIGATÓRIO (toda resposta deve terminar com UM):\n"
+        "   ✓ RESOLVIDO       → problema resolvido nesta interação\n"
+        "   ✓ PLANO_DE_ACAO   → próximo passo definido (Objetivo · Responsável · Prazo · Confirmação)\n"
+        "   ✓ VENDA           → upgrade/combo aceito agora\n"
+        "   ✓ RETENCAO        → cliente desistiu de cancelar\n"
+        "   ✓ COBRANCA        → cobrança encaminhada (2ª via, parcelamento, pix)\n"
+        "   ✓ ACOMPANHAMENTO  → seguirei acompanhando até estabilizar\n"
+        "   Nunca finalize a resposta sem fechar com um destes.\n"
         "\n"
-        "3. MODO TÉCNICO (quando há sinal de problema na rede)\n"
+        "3. PLANO DE AÇÃO ESTRUTURADO (quando PLANO_DE_ACAO)\n"
+        "   Use SEMPRE este formato literal no final da resposta:\n"
+        "     • Objetivo: <o que vai acontecer>\n"
+        "     • Responsável: <quem executa: técnico/financeiro/eu mesma>\n"
+        "     • Prazo: <quando: hoje 14h / amanhã / em 24h>\n"
+        "     • Confirmação: <como o cliente saberá que foi feito>\n"
+        "\n"
+        "4. MODO TÉCNICO (quando há sinal de problema na rede)\n"
         "   Responda em 4 pontos:\n"
         "     a) O que aconteceu (use o contexto técnico acima)\n"
         "     b) O que está sendo feito\n"
@@ -372,18 +390,28 @@ async def _customer_profile_context(company_id: str, phone: str,
         "     d) Como evitar novamente\n"
         "   Use os dados de ONU/CTO/vizinhos. Proibido CHUTAR. Proibido INVENTAR.\n"
         "\n"
-        "4. MODO COMERCIAL\n"
+        "5. MODO COMERCIAL\n"
         "   • Resolva o problema PRIMEIRO.\n"
-        "   • Avalie no máximo 1 oportunidade do Universo Ligo.\n"
-        "   • Use os Scores acima para escolher: maior score = maior prioridade.\n"
-        "   • Nunca empurre. Recomende com motivo claro.\n"
+        "   • Avalie no máximo 1 oferta do Universo Ligo.\n"
+        "   • Use os Scores para priorizar (maior score = maior prioridade).\n"
+        "   • Recomende com motivo claro. Nunca empurre.\n"
         "\n"
-        "5. MODO PROATIVO\n"
+        "6. MODO PROATIVO\n"
         "   • Se há incidente coletivo ativo, AVISE antes do cliente reclamar.\n"
-        "   • Se score de churn > 0.6, foque em retenção (gere valor antes de desconto).\n"
-        "   • Se score de collection > 0.6, ofereça parcelamento ou 2ª via.\n"
+        "   • Se churn_score > 0.6, foque em retenção (gere valor antes de desconto).\n"
+        "   • Se collection_score > 0.6, ofereça parcelamento ou 2ª via.\n"
         "\n"
-        "6. PERGUNTA INTERNA OBRIGATÓRIA\n"
+        "7. NPS INVISÍVEL\n"
+        "   • NÃO peça nota ao cliente. Nunca.\n"
+        "   • Identifique o tom dele (palavras, repetição, ameaças)\n"
+        "     e ajuste sua resposta para virar promotor (NPS≥9).\n"
+        "\n"
+        "8. MEMÓRIA OPERACIONAL\n"
+        "   • Quando ofertar produto, indique no texto qual produto e\n"
+        "     qual o argumento (combo, segurança família, produtividade etc).\n"
+        "   • Isso permite registrar o que converte vs o que falha.\n"
+        "\n"
+        "9. PERGUNTA INTERNA OBRIGATÓRIA\n"
         "   Antes de enviar, pergunte a si mesma:\n"
         "   'O que eu faria se este cliente fosse meu?'\n"
         "   Se a resposta não trata o cliente como dono, reescreva."
@@ -504,6 +532,86 @@ async def _truck_roll_guard_context(company_id: str, phone: str,
         if sub.get("cto_id"):
             off = await db.subscribers.count_documents({
                 "company_id": company_id, "cto_id": sub["cto_id"],
+
+
+async def _premium_repair_context(company_id: str, phone: str,
+                                    subscriber_id: Optional[str]) -> str:
+    """REPARO PREMIUM — Evolução Final V2.
+
+    Ativa quando: churn_score>0.6 OU vip OU 3+ tickets em 30d OU ticket>=R$200.
+    Quando ativo, dá ordens claras à Isabella para mudar o comportamento.
+    """
+    sub = None
+    if subscriber_id:
+        sub = await db.subscribers.find_one(
+            {"id": subscriber_id},
+            {"_id": 0, "churn_score": 1, "vip": 1, "tier": 1, "name": 1,
+             "monthly_value": 1, "plan_value": 1, "plan_price": 1, "plan_name": 1})
+    if not sub and phone:
+        digits = "".join(c for c in (phone or "") if c.isdigit())
+        sub = await db.subscribers.find_one(
+            {"company_id": company_id, "phones": {"$in": [digits]}},
+            {"_id": 0, "id": 1, "churn_score": 1, "vip": 1, "tier": 1,
+             "name": 1, "monthly_value": 1, "plan_value": 1, "plan_price": 1,
+             "plan_name": 1})
+    if not sub:
+        return ""
+
+    reasons: list[str] = []
+    # Churn
+    try:
+        churn = float(sub.get("churn_score") or 0)
+        if churn > 1:
+            churn = churn / 100.0
+        if churn > 0.6:
+            reasons.append(f"churn_score={churn:.2f}")
+    except Exception:
+        pass
+    # VIP/tier
+    tier = (sub.get("tier") or "").lower()
+    if sub.get("vip") is True or tier in ("vip", "premium", "platinum"):
+        reasons.append(f"VIP({tier or 'flag'})")
+    # Ticket alto
+    try:
+        ticket = float(sub.get("monthly_value") or sub.get("plan_value") or sub.get("plan_price") or 0)
+        if ticket >= 200:
+            reasons.append(f"ticket=R${ticket:.0f}")
+    except Exception:
+        pass
+    # Recorrência 30d
+    try:
+        from datetime import datetime, timedelta, timezone as _tz
+        cutoff = (datetime.now(_tz.utc) - timedelta(days=30)).isoformat()
+        n = await db.tickets.count_documents({
+            "company_id": company_id,
+            "$or": [
+                {"client_id": sub.get("id") or subscriber_id},
+                {"subscriber_id": sub.get("id") or subscriber_id},
+                {"client_snapshot.id": sub.get("id") or subscriber_id},
+            ],
+            "created_at": {"$gte": cutoff},
+        })
+        if n >= 3:
+            reasons.append(f"tickets_30d={n}")
+    except Exception:
+        pass
+
+    if not reasons:
+        return ""
+
+    return (
+        "=== REPARO PREMIUM ATIVO ===\n"
+        f"Motivos: {' · '.join(reasons)}\n"
+        "PRIORIDADE MÁXIMA. Comportamento OBRIGATÓRIO:\n"
+        "  • Assuma a responsabilidade explicitamente ('Eu vou cuidar disso pessoalmente').\n"
+        "  • Diagnóstico detalhado — cite ONU/CTO/vizinhos por nome.\n"
+        "  • Próximos passos numerados (1., 2., 3.) com prazo em horas.\n"
+        "  • NÃO repita perguntas que o cliente já respondeu nesta sessão.\n"
+        "  • Reduza atrito: ofereça soluções antes de pedir confirmações.\n"
+        "  • Encerre SEMPRE com PLANO_DE_ACAO completo (Objetivo · Responsável · Prazo · Confirmação).\n"
+    )
+
+
                 "status": "OFFLINE"})
             tot = await db.subscribers.count_documents({
                 "company_id": company_id, "cto_id": sub["cto_id"]})

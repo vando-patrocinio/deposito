@@ -1,0 +1,455 @@
+{
+  "company_id": "co-demo",
+  "subscriber_id": "sub-test-62fa195c",
+  "scenarios_run": 10,
+  "scenarios_pass": 10,
+  "scenarios_fail": 0,
+  "outcomes_observed": [
+    "ACOMPANHAMENTO",
+    "COBRANCA",
+    "PLANO_DE_ACAO",
+    "RESOLVIDO",
+    "RETENCAO"
+  ],
+  "before": {
+    "ai_evaluations_total": 26,
+    "ai_evaluations_with_outcome": 26
+  },
+  "after": {
+    "ai_evaluations_total": 36,
+    "ai_evaluations_with_outcome": 36
+  },
+  "results": [
+    {
+      "scenario": "cobranca",
+      "expected_outcome": "COBRANCA",
+      "got_outcome": "COBRANCA",
+      "nps_inferido": 6,
+      "nps_motivo": "contato recorrente",
+      "memoria_operacional": {
+        "produto_ofertado": null,
+        "produto_aceito": null,
+        "produto_recusado": null,
+        "argumento_sucesso": null,
+        "argumento_falhou": null,
+        "tom_utilizado": [
+          "empático"
+        ]
+      },
+      "premium_repair": {
+        "active": true,
+        "reasons": [
+          "churn=0.72"
+        ]
+      },
+      "plano_acao": null,
+      "aprendizado": {
+        "cliente_satisfeito": false,
+        "houve_venda": false,
+        "houve_retencao": false,
+        "o_que_funcionou": [],
+        "o_que_nao_funcionou": []
+      },
+      "eval_id": "eval-91e541c66c",
+      "checks": {
+        "outcome_present": true,
+        "outcome_match": true,
+        "nps_in_range": true,
+        "memoria_present": true,
+        "premium_calculated": true,
+        "aprendizado_complete": true
+      },
+      "pass": true
+    },
+    {
+      "scenario": "desbloqueio",
+      "expected_outcome": "RESOLVIDO",
+      "got_outcome": "RESOLVIDO",
+      "nps_inferido": 6,
+      "nps_motivo": "contato recorrente",
+      "memoria_operacional": {
+        "produto_ofertado": null,
+        "produto_aceito": null,
+        "produto_recusado": null,
+        "argumento_sucesso": null,
+        "argumento_falhou": null,
+        "tom_utilizado": [
+          "empático"
+        ]
+      },
+      "premium_repair": {
+        "active": true,
+        "reasons": [
+          "churn=0.72"
+        ]
+      },
+      "plano_acao": null,
+      "aprendizado": {
+        "cliente_satisfeito": false,
+        "houve_venda": false,
+        "houve_retencao": false,
+        "o_que_funcionou": [],
+        "o_que_nao_funcionou": []
+      },
+      "eval_id": "eval-e0ddcac297",
+      "checks": {
+        "outcome_present": true,
+        "outcome_match": true,
+        "nps_in_range": true,
+        "memoria_present": true,
+        "premium_calculated": true,
+        "aprendizado_complete": true
+      },
+      "pass": true
+    },
+    {
+      "scenario": "segunda_via",
+      "expected_outcome": "COBRANCA",
+      "got_outcome": "COBRANCA",
+      "nps_inferido": 6,
+      "nps_motivo": "contato recorrente",
+      "memoria_operacional": {
+        "produto_ofertado": null,
+        "produto_aceito": null,
+        "produto_recusado": null,
+        "argumento_sucesso": null,
+        "argumento_falhou": null,
+        "tom_utilizado": [
+          "neutro"
+        ]
+      },
+      "premium_repair": {
+        "active": true,
+        "reasons": [
+          "churn=0.72"
+        ]
+      },
+      "plano_acao": null,
+      "aprendizado": {
+        "cliente_satisfeito": false,
+        "houve_venda": false,
+        "houve_retencao": false,
+        "o_que_funcionou": [],
+        "o_que_nao_funcionou": []
+      },
+      "eval_id": "eval-9c398f28cb",
+      "checks": {
+        "outcome_present": true,
+        "outcome_match": true,
+        "nps_in_range": true,
+        "memoria_present": true,
+        "premium_calculated": true,
+        "aprendizado_complete": true
+      },
+      "pass": true
+    },
+    {
+      "scenario": "lentidao",
+      "expected_outcome": "PLANO_DE_ACAO",
+      "got_outcome": "PLANO_DE_ACAO",
+      "nps_inferido": 6,
+      "nps_motivo": "contato recorrente",
+      "memoria_operacional": {
+        "produto_ofertado": null,
+        "produto_aceito": null,
+        "produto_recusado": null,
+        "argumento_sucesso": null,
+        "argumento_falhou": null,
+        "tom_utilizado": [
+          "empático",
+          "técnico"
+        ]
+      },
+      "premium_repair": {
+        "active": true,
+        "reasons": [
+          "churn=0.72"
+        ]
+      },
+      "plano_acao": {
+        "objetivo": "restaurar velocidade plena",
+        "responsavel": "equipe técnica",
+        "prazo": "amanhã 09h",
+        "confirmacao": "técnico ligará 30 min antes"
+      },
+      "aprendizado": {
+        "cliente_satisfeito": false,
+        "houve_venda": false,
+        "houve_retencao": false,
+        "o_que_funcionou": [],
+        "o_que_nao_funcionou": []
+      },
+      "eval_id": "eval-e9d5ab20fc",
+      "checks": {
+        "outcome_present": true,
+        "outcome_match": true,
+        "nps_in_range": true,
+        "memoria_present": true,
+        "premium_calculated": true,
+        "aprendizado_complete": true
+      },
+      "pass": true
+    },
+    {
+      "scenario": "sem_conexao",
+      "expected_outcome": "PLANO_DE_ACAO",
+      "got_outcome": "PLANO_DE_ACAO",
+      "nps_inferido": 4,
+      "nps_motivo": "1 sinal(is) negativo(s); contato recorrente",
+      "memoria_operacional": {
+        "produto_ofertado": null,
+        "produto_aceito": null,
+        "produto_recusado": null,
+        "argumento_sucesso": null,
+        "argumento_falhou": null,
+        "tom_utilizado": [
+          "empático",
+          "técnico"
+        ]
+      },
+      "premium_repair": {
+        "active": true,
+        "reasons": [
+          "churn=0.72"
+        ]
+      },
+      "plano_acao": {
+        "objetivo": "substituir splitter da cto",
+        "responsavel": "equipe técnica",
+        "prazo": "hoje em 4h",
+        "confirmacao": "te aviso quando normalizar"
+      },
+      "aprendizado": {
+        "cliente_satisfeito": false,
+        "houve_venda": false,
+        "houve_retencao": false,
+        "o_que_funcionou": [],
+        "o_que_nao_funcionou": []
+      },
+      "eval_id": "eval-44e37b8cf2",
+      "checks": {
+        "outcome_present": true,
+        "outcome_match": true,
+        "nps_in_range": true,
+        "memoria_present": true,
+        "premium_calculated": true,
+        "aprendizado_complete": true
+      },
+      "pass": true
+    },
+    {
+      "scenario": "incidente_coletivo",
+      "expected_outcome": "ACOMPANHAMENTO",
+      "got_outcome": "ACOMPANHAMENTO",
+      "nps_inferido": 6,
+      "nps_motivo": "contato recorrente",
+      "memoria_operacional": {
+        "produto_ofertado": null,
+        "produto_aceito": null,
+        "produto_recusado": null,
+        "argumento_sucesso": null,
+        "argumento_falhou": null,
+        "tom_utilizado": [
+          "neutro"
+        ]
+      },
+      "premium_repair": {
+        "active": true,
+        "reasons": [
+          "churn=0.72"
+        ]
+      },
+      "plano_acao": null,
+      "aprendizado": {
+        "cliente_satisfeito": false,
+        "houve_venda": false,
+        "houve_retencao": false,
+        "o_que_funcionou": [],
+        "o_que_nao_funcionou": [
+          "acompanhamento sem resolução clara"
+        ]
+      },
+      "eval_id": "eval-c20cf36c3e",
+      "checks": {
+        "outcome_present": true,
+        "outcome_match": true,
+        "nps_in_range": true,
+        "memoria_present": true,
+        "premium_calculated": true,
+        "aprendizado_complete": true
+      },
+      "pass": true
+    },
+    {
+      "scenario": "upgrade",
+      "expected_outcome": "PLANO_DE_ACAO",
+      "got_outcome": "PLANO_DE_ACAO",
+      "nps_inferido": 7,
+      "nps_motivo": "1 sinal(is) positivo(s); contato recorrente",
+      "memoria_operacional": {
+        "produto_ofertado": "playhub",
+        "produto_aceito": null,
+        "produto_recusado": null,
+        "argumento_sucesso": null,
+        "argumento_falhou": null,
+        "tom_utilizado": [
+          "comercial"
+        ]
+      },
+      "premium_repair": {
+        "active": true,
+        "reasons": [
+          "churn=0.72"
+        ]
+      },
+      "plano_acao": null,
+      "aprendizado": {
+        "cliente_satisfeito": true,
+        "houve_venda": false,
+        "houve_retencao": false,
+        "o_que_funcionou": [],
+        "o_que_nao_funcionou": []
+      },
+      "eval_id": "eval-080568cd4e",
+      "checks": {
+        "outcome_present": true,
+        "outcome_match": true,
+        "nps_in_range": true,
+        "memoria_present": true,
+        "premium_calculated": true,
+        "aprendizado_complete": true
+      },
+      "pass": true
+    },
+    {
+      "scenario": "retencao",
+      "expected_outcome": "RETENCAO",
+      "got_outcome": "RETENCAO",
+      "nps_inferido": 4,
+      "nps_motivo": "1 sinal(is) negativo(s); contato recorrente",
+      "memoria_operacional": {
+        "produto_ofertado": "playhub",
+        "produto_aceito": "playhub",
+        "produto_recusado": null,
+        "argumento_sucesso": "combo_desconto",
+        "argumento_falhou": null,
+        "tom_utilizado": [
+          "empático",
+          "comercial"
+        ]
+      },
+      "premium_repair": {
+        "active": true,
+        "reasons": [
+          "churn=0.72"
+        ]
+      },
+      "plano_acao": null,
+      "aprendizado": {
+        "cliente_satisfeito": false,
+        "houve_venda": true,
+        "houve_retencao": true,
+        "o_que_funcionou": [
+          "argumento combo_desconto",
+          "oferta playhub"
+        ],
+        "o_que_nao_funcionou": []
+      },
+      "eval_id": "eval-8f7e933502",
+      "checks": {
+        "outcome_present": true,
+        "outcome_match": true,
+        "nps_in_range": true,
+        "memoria_present": true,
+        "premium_calculated": true,
+        "aprendizado_complete": true
+      },
+      "pass": true
+    },
+    {
+      "scenario": "indicacao",
+      "expected_outcome": "ACOMPANHAMENTO",
+      "got_outcome": "ACOMPANHAMENTO",
+      "nps_inferido": 6,
+      "nps_motivo": "contato recorrente",
+      "memoria_operacional": {
+        "produto_ofertado": "indique_ganhe",
+        "produto_aceito": null,
+        "produto_recusado": null,
+        "argumento_sucesso": null,
+        "argumento_falhou": null,
+        "tom_utilizado": [
+          "comercial"
+        ]
+      },
+      "premium_repair": {
+        "active": true,
+        "reasons": [
+          "churn=0.72"
+        ]
+      },
+      "plano_acao": null,
+      "aprendizado": {
+        "cliente_satisfeito": false,
+        "houve_venda": false,
+        "houve_retencao": false,
+        "o_que_funcionou": [],
+        "o_que_nao_funcionou": [
+          "acompanhamento sem resolução clara"
+        ]
+      },
+      "eval_id": "eval-6767cf7891",
+      "checks": {
+        "outcome_present": true,
+        "outcome_match": true,
+        "nps_in_range": true,
+        "memoria_present": true,
+        "premium_calculated": true,
+        "aprendizado_complete": true
+      },
+      "pass": true
+    },
+    {
+      "scenario": "security_home",
+      "expected_outcome": "PLANO_DE_ACAO",
+      "got_outcome": "PLANO_DE_ACAO",
+      "nps_inferido": 6,
+      "nps_motivo": "contato recorrente",
+      "memoria_operacional": {
+        "produto_ofertado": "ligo_security",
+        "produto_aceito": null,
+        "produto_recusado": null,
+        "argumento_sucesso": null,
+        "argumento_falhou": null,
+        "tom_utilizado": [
+          "comercial"
+        ]
+      },
+      "premium_repair": {
+        "active": true,
+        "reasons": [
+          "churn=0.72"
+        ]
+      },
+      "plano_acao": null,
+      "aprendizado": {
+        "cliente_satisfeito": false,
+        "houve_venda": false,
+        "houve_retencao": false,
+        "o_que_funcionou": [],
+        "o_que_nao_funcionou": []
+      },
+      "eval_id": "eval-ff99e9a9d0",
+      "checks": {
+        "outcome_present": true,
+        "outcome_match": true,
+        "nps_in_range": true,
+        "memoria_present": true,
+        "premium_calculated": true,
+        "aprendizado_complete": true
+      },
+      "pass": true
+    }
+  ],
+  "ts": "2026-06-10T03:03:51.365514+00:00"
+}
