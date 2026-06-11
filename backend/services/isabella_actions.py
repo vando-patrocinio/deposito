@@ -49,6 +49,12 @@ _CHAMADO_RX = re.compile(
     re.IGNORECASE)
 
 
+# Slots horários DENTRO de cada janela (1h por bolha).
+WINDOW_SLOTS = {
+    "manha": [9, 10, 11],     # 09h, 10h, 11h
+    "tarde": [13, 14, 15, 16, 17],
+}
+
 WINDOWS = {
     "manha": (time(9, 0), "09h–12h"),
     "tarde": (time(13, 0), "13h–18h"),
@@ -59,39 +65,89 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-async def _pick_default_collaborator(company_id: str) -> Optional[str]:
-    """Escolhe o técnico que recebe a bolha quando Isabella agenda.
-    Heurística: collaborator da empresa com MENOS bolhas pendentes hoje.
-    Fallback: primeiro collaborator ativo da empresa.
+SALA_COLLABORATOR_ID = "col-sala"
+
+
+async def _ensure_sala(company_id: str) -> str:
+    """Garante que existe a Lousa virtual SALA para o tenant.
+    Idempotente. Retorna o collaborator_id da SALA."""
+    sid = SALA_COLLABORATOR_ID
+    existing = await db.collaborators.find_one(
+        {"id": sid, "company_id": company_id}, {"_id": 0, "id": 1})
+    if existing:
+        return sid
+    # Outro tenant tem? Cria uma SALA com id distinto.
+    other = await db.collaborators.find_one({"id": sid}, {"_id": 0, "company_id": 1})
+    if other:
+        sid = f"col-sala-{company_id}"
+        existing = await db.collaborators.find_one(
+            {"id": sid}, {"_id": 0})
+        if existing:
+            return sid
+    await db.collaborators.insert_one({
+        "id": sid,
+        "name": "SALA",
+        "cpf": f"SALA-VIRTUAL-{company_id}",
+        "email": "", "phone": "",
+        "role": "sala",
+        "company_id": company_id,
+        "company": "",
+        "schedule": {}, "overtime_policy": {},
+        "city": "", "state": "", "praca_id": None,
+        "is_test_mode": False,
+        "is_virtual": True,
+        "virtual_kind": "sala_atendimento",
+        "description": ("Lousa virtual SALA. Recebe agendamentos da "
+                          "Isabella. Atendimento especializado distribui "
+                          "para técnicos."),
+        "atlaz_synced": False,
+        "created_at": _now_iso(), "updated_at": _now_iso(),
+        "clock_in_enabled": False,
+        "active": True,
+    })
+    log.info("[isabella_actions] SALA criada para %s (id=%s)",
+              company_id, sid)
+    return sid
+
+
+async def _pick_vacant_slot(*, company_id: str, sala_id: str,
+                                 date_iso: str, window: str
+                                 ) -> Optional[int]:
+    """Retorna a próxima HORA cheia LIVRE dentro da janela.
+
+    Slot = 1 hora cravada (ex.: manha → 09h, 10h, 11h).
+    Considera apenas bolhas ATIVAS da SALA naquele dia.
+    Retorna None se TODOS os slots da janela estiverem ocupados.
     """
-    today = (datetime.now(timezone.utc).strftime("%Y-%m-%d"))
-    # candidatos = colaboradores ativos da empresa
-    try:
-        cands = []
-        async for c in db.collaborators.find(
-                {"company_id": company_id,
-                 "$or": [{"clock_in_enabled": True},
-                         {"clock_in_enabled": {"$exists": False}}]},
-                {"_id": 0, "id": 1, "name": 1}):
-            cands.append(c)
-        if not cands:
-            return None
-        # contagem de pendentes por candidato
-        scored = []
-        for c in cands:
-            n = await db.tickets.count_documents({
-                "company_id": company_id,
-                "assigned_collaborator_id": c["id"],
-                "status": {"$in": ["pendente", "aberta",
-                                      "aguardando_atendimento"]},
-                "scheduled_time": {"$regex": f"^{today}"},
-            })
-            scored.append((n, c["id"]))
-        scored.sort()
-        return scored[0][1]
-    except Exception as e:
-        log.warning("[isabella_actions] pick collaborator falhou: %s", e)
+    slots = WINDOW_SLOTS.get(window) or []
+    if not slots:
         return None
+    # Bolhas atuais da SALA naquele dia (active)
+    cursor = db.tickets.find({
+        "company_id": company_id,
+        "assigned_collaborator_id": sala_id,
+        "status": {"$in": ["pendente", "aberta", "aguardando_atendimento"]},
+        "scheduled_time": {"$regex": f"^{date_iso}"},
+    }, {"_id": 0, "scheduled_time": 1})
+    occupied: set = set()
+    async for t in cursor:
+        st = t.get("scheduled_time") or ""
+        # extrai HH do "YYYY-MM-DDTHH:MM:SS..."
+        try:
+            hh = int(st.split("T", 1)[1][:2])
+            occupied.add(hh)
+        except Exception:
+            continue
+    for h in slots:
+        if h not in occupied:
+            return h
+    return None
+
+
+async def _pick_default_collaborator(company_id: str) -> Optional[str]:
+    """Mantido por compatibilidade. Isabella SEMPRE roteia para SALA
+    agora — esta função retorna SALA."""
+    return await _ensure_sala(company_id)
 
 
 async def _create_visit_ticket(*, company_id: str, phone: str,
@@ -100,20 +156,34 @@ async def _create_visit_ticket(*, company_id: str, phone: str,
                                   date_iso: str,
                                   window: str,
                                   motivo: str) -> Dict[str, Any]:
-    win_time, win_label = WINDOWS.get(window, WINDOWS["manha"])
-    scheduled = f"{date_iso}T{win_time.strftime('%H:%M:%S')}+00:00"
+    _, win_label = WINDOWS.get(window, WINDOWS["manha"])
+    # SALA: roteia toda bolha da Isabella aqui.
+    sala_id = await _ensure_sala(company_id)
+    # Slot vago DENTRO da janela
+    hour = await _pick_vacant_slot(
+        company_id=company_id, sala_id=sala_id,
+        date_iso=date_iso, window=window)
+    if hour is None:
+        # Janela cheia — sinaliza ao chamador (humanizer responde ao cliente).
+        log.warning("[isabella_actions] janela cheia %s %s %s",
+                      date_iso, window, company_id)
+        return {"window_full": True,
+                  "window": window, "window_label": win_label,
+                  "scheduled_date": date_iso,
+                  "br_date": _format_br_date(date_iso)}
+
+    scheduled = f"{date_iso}T{hour:02d}:00:00+00:00"
+    slot_label = f"{hour:02d}h"
     ticket_id = f"tkt-{uuid.uuid4().hex[:10]}"
     short = f"TK-{uuid.uuid4().hex[:7].upper()}"
-    assigned = await _pick_default_collaborator(company_id)
-    # próxima posição na fila do técnico, se houver
-    next_pos = 0
-    if assigned:
-        last = await db.tickets.find(
-            {"assigned_collaborator_id": assigned,
-             "status": {"$in": ["pendente", "aberta",
-                                  "aguardando_atendimento"]}},
-            {"_id": 0, "position": 1}).sort("position", -1).to_list(1)
-        next_pos = ((last[0].get("position") or 0) + 1) if last else 0
+
+    # próxima posição na fila da SALA
+    last = await db.tickets.find(
+        {"assigned_collaborator_id": sala_id,
+         "status": {"$in": ["pendente", "aberta",
+                              "aguardando_atendimento"]}},
+        {"_id": 0, "position": 1}).sort("position", -1).to_list(1)
+    next_pos = ((last[0].get("position") or 0) + 1) if last else 0
 
     ticket = {
         "id": ticket_id,
@@ -138,16 +208,17 @@ async def _create_visit_ticket(*, company_id: str, phone: str,
         "scheduled_time": scheduled,
         "scheduled_window": window,
         "scheduled_window_label": win_label,
+        "scheduled_slot_label": slot_label,
         "scheduled_date": date_iso,
         "position": next_pos,
         "status": "pendente",
-        "assigned_collaborator_id": assigned,
+        "assigned_collaborator_id": sala_id,
         "phone": phone,
         "subscriber_id": subscriber_id,
         "subscriber_name": subscriber_name,
         "source": "isabella_whatsapp",
         "auto_created_by_isabella": True,
-        "needs_assignment_review": assigned is None,
+        "needs_assignment_review": True,  # SALA exige distribuição
         "opened_at": None, "closed_at": None, "closed_by": None,
         "close_location": None, "outcome": None,
         "whatsapp_status": "nao_enviado",
@@ -169,17 +240,21 @@ async def _create_visit_ticket(*, company_id: str, phone: str,
             payload={"ticket_id": ticket_id, "short_id": short,
                        "type": "visita_tecnica",
                        "scheduled_date": date_iso,
-                       "assigned_collaborator_id": assigned},
+                       "scheduled_hour": hour,
+                       "queue": "SALA"},
         )
     except Exception:
         pass
-    log.info("[isabella_actions] visita criada ticket=%s short=%s phone=%s "
-              "date=%s window=%s assigned=%s", ticket_id, short, phone,
-              date_iso, window, assigned)
+    log.info("[isabella_actions] visita SALA ticket=%s short=%s phone=%s "
+              "date=%s slot=%s window=%s", ticket_id, short, phone,
+              date_iso, slot_label, window)
     return {"ticket_id": ticket_id, "short_id": short,
             "scheduled_date": date_iso, "window": window,
             "window_label": win_label,
-            "assigned_collaborator_id": assigned,
+            "slot_label": slot_label,
+            "hour": hour,
+            "assigned_collaborator_id": sala_id,
+            "queue": "SALA",
             "br_date": _format_br_date(date_iso)}
 
 
@@ -294,9 +369,17 @@ async def execute_action_markers(*, reply_text: str,
                 subscriber_id=subscriber_id,
                 subscriber_name=subscriber_name,
                 date_iso=date_iso, window=window, motivo=motivo)
+            if result.get("window_full"):
+                actions_done.append({"type": "schedule_visit_failed",
+                                        "reason": "window_full",
+                                        **result})
+                return (f"A janela {result['window_label']} de "
+                         f"{result['br_date']} está cheia. "
+                         f"Posso te encaixar em outra janela?")
             actions_done.append({"type": "schedule_visit", **result})
-            return (f"Marquei pra {result['br_date']} entre "
-                     f"{result['window_label']} — protocolo "
+            return (f"Marquei pra {result['br_date']} às "
+                     f"{result['slot_label']} (janela "
+                     f"{result['window_label']}) — protocolo "
                      f"{result['short_id']}.")
         except Exception as e:
             log.error("[isabella_actions] AGENDAR_VISITA falhou: %s", e)
@@ -352,15 +435,26 @@ PARA AGENDAR UMA VISITA TÉCNICA:
 Emita o marcador no FIM da sua resposta:
   [AGENDAR_VISITA data=YYYY-MM-DD janela=manha motivo="descrição curta"]
 
-Janelas válidas: manha (09h-12h) ou tarde (13h-18h)
+Janelas válidas (PERÍODOS, NÃO HORÁRIOS FIXOS):
+  manha → o sistema vai colocar a bolha em um slot LIVRE entre 09h, 10h ou 11h
+  tarde → o sistema vai colocar a bolha em um slot LIVRE entre 13h e 17h
+
+REGRA CRÍTICA: você NUNCA escolhe a hora exata. Você OFERECE a janela
+(manhã/tarde). O sistema valida a SALA e devolve a hora cravada DENTRO
+da janela. Se a janela inteira estiver lotada, o sistema avisa e você
+oferece outra janela.
+
+A bolha é roteada para a Lousa SALA (atendimento especializado distribui
+para o técnico depois). Você NÃO precisa escolher técnico.
 
 Exemplo:
   Cliente: "Pode marcar pra amanhã manhã"
-  Sua resposta: "Beleza, amanhã manhã. [AGENDAR_VISITA data=2026-02-11 janela=manha motivo=\"sinal não vinculado\"]"
+  Sua resposta: "Beleza, amanhã pela manhã. [AGENDAR_VISITA data=2026-02-11 janela=manha motivo=\"sinal não vinculado\"]"
 
-O sistema vai SUBSTITUIR o marcador por "Marquei pra 11/02 entre 09h-12h
-— protocolo TK-ABC123." quando enviar pro cliente. O marcador NUNCA aparece
-pro cliente — é executado no servidor.
+O sistema vai SUBSTITUIR o marcador por algo como
+"Marquei pra 11/02 às 09h (janela 09h-12h) — protocolo TK-ABC1234."
+quando enviar pro cliente. O marcador NUNCA aparece pro cliente —
+é executado no servidor.
 
 PARA ABRIR UM CHAMADO (sem data marcada):
   [ABRIR_CHAMADO tipo=tecnico motivo="descrição"]
@@ -368,11 +462,12 @@ PARA ABRIR UM CHAMADO (sem data marcada):
 Tipos válidos: tecnico, comercial, suporte
 
 REGRAS:
-1. SEMPRE consulte o bloco "AGENDA DA LOUSA" antes de escolher data/janela
-   — nunca ofereça janela LOTADA.
+1. NÃO ofereça hora cravada ao cliente. Ofereça janela (manhã/tarde).
 2. NÃO emita marcador se o cliente AINDA NÃO confirmou — só após ele
-   dizer "sim" / "pode marcar" / "11/06 manhã".
+   dizer "sim" / "pode marcar" / "amanhã manhã".
 3. UM marcador por resposta. Se precisar agendar + chamado, faça em 2 turns.
 4. NUNCA escreva o marcador como "exemplo" ao cliente — ele só serve
    pro sistema executar.
+5. Se o sistema responder "janela cheia", ofereça a outra janela ou
+   uma data diferente.
 """.strip()
