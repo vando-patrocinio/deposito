@@ -72,6 +72,7 @@ from routes import (
     presidente_agentes as routes_presidente_agentes,
     lousa_sala as routes_lousa_sala,
     lousa_sala_config as routes_lousa_sala_config,
+    aihub_prompts as routes_aihub_prompts,
     audit_log_panel as routes_audit_log,
     backend_health_routes as routes_backend_health,
     warroom as routes_warroom,
@@ -666,6 +667,14 @@ async def _startup() -> None:
         start_scheduler()
     except Exception as _e:
         logger.warning("[startup] fleet/security/parceria indexes falhou: %s", _e)
+
+    # Sincroniza prompts versionados no Git com o aihub_agents.
+    try:
+        from services.prompt_loader import sync_all as _sync_prompts
+        _results = await _sync_prompts()
+        logger.info("[startup] prompt_loader: %s", _results)
+    except Exception as _e:
+        logger.warning("[startup] prompt_loader falhou: %s", _e)
     # Migrations aditivas (idempotentes — só adicionam campos/índices,
     # nunca apagam). Ver /app/memory/DATA_PERSISTENCE.md.
     try:
@@ -1190,6 +1199,7 @@ app.include_router(routes_presidente_ia.router)
 app.include_router(routes_presidente_agentes.router)
 app.include_router(routes_lousa_sala.router)
 app.include_router(routes_lousa_sala_config.router)
+app.include_router(routes_aihub_prompts.router)
 app.include_router(routes_audit_log.router)
 app.include_router(routes_backend_health.router)
 app.include_router(routes_warroom.router)
