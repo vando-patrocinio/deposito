@@ -979,10 +979,19 @@ async def lousa_grid(
         {"cargo": None},
         {"cargo": ""},
     ]
-    # EXCLUI Lousa virtuais (SALA etc) — elas têm view própria.
+    # EXCLUI Lousa virtuais (SALA etc) — colocamos a SALA manualmente como
+    # primeira coluna fixa, com query separada.
     q["is_virtual"] = {"$ne": True}
     collabs = await db.collaborators.find(q, {"_id": 0}).to_list(500)
     collabs.sort(key=lambda c: c.get("name", ""))
+
+    # SALA — coluna FIXA no início do quadro. Recebe agendamentos da Isabella.
+    company_id_for_sala = user.get("company_id") or DEMO_COMPANY_ID
+    sala_q = {"company_id": company_id_for_sala, "is_virtual": True,
+                "virtual_kind": "sala_atendimento"}
+    sala_doc = await db.collaborators.find_one(sala_q, {"_id": 0})
+    if sala_doc:
+        collabs.insert(0, sala_doc)
 
     cids = [c["id"] for c in collabs]
     is_historical = bool(date_from or date_to)
@@ -1200,10 +1209,12 @@ async def lousa_grid(
         # Regra de exibição (pedido do usuário, iter215):
         # SÓ aparece coluna de colaborador que TEM bolha. Sem bolha →
         # não renderiza, independente de externo/interno ou histórico.
+        # EXCEÇÃO: SALA virtual é fixa, aparece SEMPRE (pedido CTO Feb/26).
         has_any_bubble = bool(tickets) or bool(unscheduled) or (
             is_historical and bool(recent_resolved)
         )
-        if not has_any_bubble:
+        is_virtual_sala = bool(c.get("is_virtual"))
+        if not has_any_bubble and not is_virtual_sala:
             continue
 
         columns.append({
@@ -1211,6 +1222,8 @@ async def lousa_grid(
                 "id": cid, "name": c.get("name", ""),
                 "avatar": c.get("avatar_data_url"),
                 "is_test_mode": c.get("is_test_mode", False),
+                "is_virtual": is_virtual_sala,
+                "virtual_kind": c.get("virtual_kind"),
                 "praca_id": c.get("praca_id"),
                 "praca": c.get("praca_name") or c.get("city") or "",
             },
@@ -1240,14 +1253,20 @@ async def lousa_grid(
     except Exception as _e:
         logger.warning("[lousa] enrich live_signal falhou: %s", _e)
 
-    # Ordena colunas: técnicos com MAIS bolhas (ativas) à esquerda → menos à direita.
+    # Ordena colunas: SALA virtual SEMPRE primeiro (fixa). Depois técnicos
+    # com MAIS bolhas (ativas) à esquerda → menos à direita.
     # Tiebreaker: nome alfabético para resultado estável.
     def _bubble_count(col: dict) -> int:
         n = len(col.get("unscheduled") or [])
         for s in col.get("slots") or []:
             n += len(s.get("tickets") or [])
         return n
-    columns.sort(key=lambda c: (-_bubble_count(c), (c.get("collaborator") or {}).get("name", "")))
+    def _is_sala(col: dict) -> bool:
+        return bool((col.get("collaborator") or {}).get("is_virtual"))
+    columns.sort(key=lambda c: (
+        0 if _is_sala(c) else 1,
+        -_bubble_count(c),
+        (c.get("collaborator") or {}).get("name", "")))
     return {
         "columns": columns,
         "historical": is_historical,

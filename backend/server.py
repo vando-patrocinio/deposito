@@ -71,6 +71,7 @@ from routes import (
     presidente_ia as routes_presidente_ia,
     presidente_agentes as routes_presidente_agentes,
     lousa_sala as routes_lousa_sala,
+    lousa_sala_config as routes_lousa_sala_config,
     audit_log_panel as routes_audit_log,
     backend_health_routes as routes_backend_health,
     warroom as routes_warroom,
@@ -1188,6 +1189,7 @@ app.include_router(routes_conselho_ia.router)
 app.include_router(routes_presidente_ia.router)
 app.include_router(routes_presidente_agentes.router)
 app.include_router(routes_lousa_sala.router)
+app.include_router(routes_lousa_sala_config.router)
 app.include_router(routes_audit_log.router)
 app.include_router(routes_backend_health.router)
 app.include_router(routes_warroom.router)

@@ -145,9 +145,41 @@ async def _pick_vacant_slot(*, company_id: str, sala_id: str,
 
 
 async def _pick_default_collaborator(company_id: str) -> Optional[str]:
-    """Mantido por compatibilidade. Isabella SEMPRE roteia para SALA
-    agora — esta função retorna SALA."""
-    return await _ensure_sala(company_id)
+    """Roteia para SALA por padrão. Quando o gestor liga auto-distribute,
+    escolhe o técnico real com MENOS bolhas pendentes hoje."""
+    settings_doc = await db.settings.find_one(
+        {"id": company_id}, {"_id": 0, "isabella_auto_distribute": 1})
+    if not (settings_doc or {}).get("isabella_auto_distribute"):
+        return await _ensure_sala(company_id)
+
+    # AUTO ON — distribuição direta para técnico real menos carregado
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    try:
+        cands = []
+        async for c in db.collaborators.find(
+                {"company_id": company_id,
+                 "is_virtual": {"$ne": True},
+                 "$or": [{"clock_in_enabled": True},
+                           {"clock_in_enabled": {"$exists": False}}]},
+                {"_id": 0, "id": 1, "name": 1}):
+            cands.append(c)
+        if not cands:
+            return await _ensure_sala(company_id)
+        scored = []
+        for c in cands:
+            n = await db.tickets.count_documents({
+                "company_id": company_id,
+                "assigned_collaborator_id": c["id"],
+                "status": {"$in": ["pendente", "aberta",
+                                      "aguardando_atendimento"]},
+                "scheduled_time": {"$regex": f"^{today}"},
+            })
+            scored.append((n, c["id"]))
+        scored.sort()
+        return scored[0][1]
+    except Exception as e:
+        log.warning("[isabella_actions] auto-distribute falhou: %s", e)
+        return await _ensure_sala(company_id)
 
 
 async def _create_visit_ticket(*, company_id: str, phone: str,
@@ -157,11 +189,13 @@ async def _create_visit_ticket(*, company_id: str, phone: str,
                                   window: str,
                                   motivo: str) -> Dict[str, Any]:
     _, win_label = WINDOWS.get(window, WINDOWS["manha"])
-    # SALA: roteia toda bolha da Isabella aqui.
+    # Default: SALA. Se gestor ligou auto-distribute, vai direto pro técnico.
+    target_id = await _pick_default_collaborator(company_id)
     sala_id = await _ensure_sala(company_id)
-    # Slot vago DENTRO da janela
+    is_sala = (target_id == sala_id)
+    # Slot vago: dentro da SALA OU dentro do técnico real
     hour = await _pick_vacant_slot(
-        company_id=company_id, sala_id=sala_id,
+        company_id=company_id, sala_id=target_id,
         date_iso=date_iso, window=window)
     if hour is None:
         # Janela cheia — sinaliza ao chamador (humanizer responde ao cliente).
@@ -177,9 +211,9 @@ async def _create_visit_ticket(*, company_id: str, phone: str,
     ticket_id = f"tkt-{uuid.uuid4().hex[:10]}"
     short = f"TK-{uuid.uuid4().hex[:7].upper()}"
 
-    # próxima posição na fila da SALA
+    # próxima posição na fila do destino (SALA ou técnico)
     last = await db.tickets.find(
-        {"assigned_collaborator_id": sala_id,
+        {"assigned_collaborator_id": target_id,
          "status": {"$in": ["pendente", "aberta",
                               "aguardando_atendimento"]}},
         {"_id": 0, "position": 1}).sort("position", -1).to_list(1)
@@ -212,13 +246,13 @@ async def _create_visit_ticket(*, company_id: str, phone: str,
         "scheduled_date": date_iso,
         "position": next_pos,
         "status": "pendente",
-        "assigned_collaborator_id": sala_id,
+        "assigned_collaborator_id": target_id,
         "phone": phone,
         "subscriber_id": subscriber_id,
         "subscriber_name": subscriber_name,
         "source": "isabella_whatsapp",
         "auto_created_by_isabella": True,
-        "needs_assignment_review": True,  # SALA exige distribuição
+        "needs_assignment_review": is_sala,  # SALA exige distribuição
         "opened_at": None, "closed_at": None, "closed_by": None,
         "close_location": None, "outcome": None,
         "whatsapp_status": "nao_enviado",
@@ -241,20 +275,24 @@ async def _create_visit_ticket(*, company_id: str, phone: str,
                        "type": "visita_tecnica",
                        "scheduled_date": date_iso,
                        "scheduled_hour": hour,
-                       "queue": "SALA"},
+                       "queue": "SALA" if is_sala
+                                  else "direct_to_technician",
+                       "assigned_collaborator_id": target_id},
         )
     except Exception:
         pass
-    log.info("[isabella_actions] visita SALA ticket=%s short=%s phone=%s "
-              "date=%s slot=%s window=%s", ticket_id, short, phone,
-              date_iso, slot_label, window)
+    log.info("[isabella_actions] visita %s ticket=%s short=%s phone=%s "
+              "date=%s slot=%s window=%s assigned=%s",
+              "SALA" if is_sala else "DIRECT",
+              ticket_id, short, phone,
+              date_iso, slot_label, window, target_id)
     return {"ticket_id": ticket_id, "short_id": short,
             "scheduled_date": date_iso, "window": window,
             "window_label": win_label,
             "slot_label": slot_label,
             "hour": hour,
-            "assigned_collaborator_id": sala_id,
-            "queue": "SALA",
+            "assigned_collaborator_id": target_id,
+            "queue": "SALA" if is_sala else "direct_to_technician",
             "br_date": _format_br_date(date_iso)}
 
 

@@ -175,7 +175,9 @@ const ACTION_LABEL = {
   transferida: { icon: "↔", color: "#0d9488", label: "Transferida" },
 };
 
-import LousaSalaTab from "./components/LousaSalaTab";
+import LousaSalaTab from "./components/LousaSalaTab"; // mantido para uso futuro (popup/zoom)
+// eslint-disable-next-line no-unused-vars
+const _LousaSalaTab = LousaSalaTab;
 
 export default function LousaAdminPanel({ systemStatus = { offline: false, drift_blocked: false }, currentUser = null }) {
   const isAuditor = !!currentUser
@@ -302,6 +304,30 @@ export default function LousaAdminPanel({ systemStatus = { offline: false, drift
   const [selectedDate, setSelectedDate] = useState(() => todayLocalISO());
   const [atlazTenantDomain, setAtlazTenantDomain] = useState("");
   const [onlyFleetAlerts, setOnlyFleetAlerts] = useState(false);  // filtro frota_alerta
+  const [salaAutoDistribute, setSalaAutoDistribute] = useState(false);
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const url = process.env.REACT_APP_BACKEND_URL + "/api/lousa/sala-config";
+    const tok = window.localStorage.getItem("ponto_token");
+    fetch(url, { headers: tok ? { Authorization: `Bearer ${tok}` } : {} })
+      .then((r) => r.ok ? r.json() : null)
+      .then((d) => { if (d) setSalaAutoDistribute(!!d.auto_distribute); })
+      .catch(() => {});
+  }, []);
+  const toggleSalaAuto = async () => {
+    if (typeof window === "undefined") return;
+    const next = !salaAutoDistribute;
+    const tok = window.localStorage.getItem("ponto_token");
+    try {
+      const r = await fetch(
+        process.env.REACT_APP_BACKEND_URL + "/api/lousa/sala-config",
+        { method: "POST",
+          headers: { ...(tok ? { Authorization: `Bearer ${tok}` } : {}),
+                     "Content-Type": "application/json" },
+          body: JSON.stringify({ auto_distribute: next }) });
+      if (r.ok) setSalaAutoDistribute(next);
+    } catch (e) { /* noop */ }
+  };
   const prevOverdueRef = useRef(0);
   const isLocked = systemStatus.offline || systemStatus.drift_blocked;
   const isToday = selectedDate === todayLocalISO();
@@ -966,6 +992,19 @@ export default function LousaAdminPanel({ systemStatus = { offline: false, drift
               <span style={{ fontSize: 13 }}></span>
               <span>Liberar bolha</span>
             </ToolbarBtn>
+            <ToolbarBtn
+              onClick={toggleSalaAuto}
+              data-testid="lousa-sala-auto-toggle"
+              title={salaAutoDistribute
+                ? "Isabella distribui DIRETO pro técnico menos carregado (sem passar pela SALA). Clique para desligar."
+                : "Isabella envia tudo pra coluna SALA. Gestor distribui manualmente. Clique para ligar auto-distribuição."}
+              accent={salaAutoDistribute ? "success" : "neutral"}
+            >
+              <span style={{ fontSize: 13 }}>
+                {salaAutoDistribute ? "🟢" : "🔵"}
+              </span>
+              <span>SALA · Auto {salaAutoDistribute ? "ON" : "OFF"}</span>
+            </ToolbarBtn>
             {isAuditor && (
               <ToolbarBtn
                 onClick={() => setShowAutoReschedModal(true)}
@@ -1132,7 +1171,6 @@ export default function LousaAdminPanel({ systemStatus = { offline: false, drift
                       borderBottom: "1px solid #e2e8f0", marginBottom: 14 }}>
         {[
           { id: "board", label: "Quadro" },
-          { id: "sala", label: "🟦 SALA" },
           { id: "insights", label: "PAINEL IA" },
           { id: "central_ont", label: "️ CENTRAL_ONT" },
           { id: "gestao_metas", label: "GESTÃO E METAS" },
@@ -1168,10 +1206,9 @@ export default function LousaAdminPanel({ systemStatus = { offline: false, drift
         (activeSubTab === "central_ont" ? <CentralOntPanel /> :
         (activeSubTab === "quality_notes" ? <LousaQualityNotesPanel /> :
         (activeSubTab === "callbacks" ? <ManagerCallbacksPanel /> :
-        (activeSubTab === "sala" ? <LousaSalaTab /> :
         (activeSubTab === "insights"
           ? <InsightsPanel onJumpTicket={(t) => setEditingTicket(t)} />
-          : <></>)))))}
+          : <></>))))}
       {activeSubTab === "board" && <>
       {/* Grade horizontal — coluna por técnico */}
       <div style={{
@@ -1204,18 +1241,22 @@ export default function LousaAdminPanel({ systemStatus = { offline: false, drift
           </div>
         )}
         {(focusTechId
-          ? grid.columns.filter((c) => c.collaborator.id === focusTechId)
+          ? grid.columns.filter((c) => c.collaborator.id === focusTechId
+                                          || c.collaborator.is_virtual)
           : (visibleTechIds.length > 0
-              ? grid.columns.filter((c) => visibleTechIds.includes(c.collaborator.id))
+              ? grid.columns.filter((c) => visibleTechIds.includes(c.collaborator.id)
+                                              || c.collaborator.is_virtual)
               : grid.columns)
         ).map((origCol) => {
+          // SALA = coluna virtual fixa. NÃO aplica filtro de "Só Frota" nem agente.
+          const isVirtualSala = !!origCol.collaborator.is_virtual;
           // Filtro "Só Frota": esconde bolhas que não são frota_alerta
-          let col = onlyFleetAlerts
+          let col = (onlyFleetAlerts && !isVirtualSala)
             ? { ...origCol, tickets: (origCol.tickets || [])
                 .filter((t) => t.type === "frota_alerta") }
             : origCol;
           // Filtro por agente IA (origin_source ou created_by)
-          if (agentFilter !== "all") {
+          if (agentFilter !== "all" && !isVirtualSala) {
             const ISABELLA = new Set(["isabella_ai", "isabella_route_support",
               "isabella_viability", "isabella_vision"]);
             const ALVARO = new Set(["alvaro_diagnose", "alvaro_ai"]);
@@ -1265,39 +1306,55 @@ export default function LousaAdminPanel({ systemStatus = { offline: false, drift
               }}
             />
           ) : (
-            <TechColumn
-              key={col.collaborator.id + tick}
-              column={col}
-              isDropTarget={dragOverCol === col.collaborator.id}
-              blinkOverdue={grid.sla_blink_when_overdue}
-              maxPerSlot={grid.grid?.max_per_slot || 2}
-              onSlotDrop={handleSlotDrop}
-              onDragOver={(e) => { e.preventDefault(); setDragOverCol(col.collaborator.id); }}
-              onDragLeave={() => setDragOverCol((c) => c === col.collaborator.id ? null : c)}
-              onDrop={() => handleDrop(col.collaborator.id)}
-              onDragStart={(tid) => setDraggingId(tid)}
-              onDragEnd={() => { setDraggingId(null); setDragOverCol(null); }}
-              draggingId={draggingId}
-              onAdminClose={handleAdminCloseAction}
-              onAdminOpen={handleAdminOpen}
-              onEdit={(t) => setEditingTicket(t)}
-              onReschedule={(t) => setReschedTicket(t)}
-              busy={busy}
-              selectMode={selectMode}
-              selectedIds={selectedIds}
-              onToggleSelect={toggleTicketSelected}
-              onEmptySlotDblClick={(techId, slotHour) => {
-                // Constrói datetime-local YYYY-MM-DDTHH:MM com base no
-                // selectedDate (já no formato YYYY-MM-DD) e no slotHour HH:MM
-                const dt = `${selectedDate}T${slotHour}`;
-                setCreateDefaults({
-                  assigned_collaborator_id: techId,
-                  scheduled_time: dt,
-                });
-                setShowCreate(true);
-              }}
-              wide={!!focusTechId}
-            />
+            <div key={col.collaborator.id + tick}
+                  data-testid={isVirtualSala ? "lousa-board-sala-col" : undefined}
+                  style={isVirtualSala ? {
+                    position: "relative",
+                    border: "2px solid #0ea5e9",
+                    borderRadius: 14,
+                    background: "linear-gradient(180deg, #f0f9ff 0%, #ffffff 60%)",
+                    padding: 4,
+                  } : { display: "contents" }}>
+              {isVirtualSala && (
+                <div style={{
+                  position: "absolute", top: -10, left: 14,
+                  background: "#0ea5e9", color: "white",
+                  padding: "2px 8px", borderRadius: 6,
+                  fontSize: 10, fontWeight: 800, letterSpacing: 0.5,
+                  zIndex: 2,
+                }}>SALA · FIXA</div>
+              )}
+              <TechColumn
+                column={col}
+                isDropTarget={dragOverCol === col.collaborator.id}
+                blinkOverdue={grid.sla_blink_when_overdue}
+                maxPerSlot={grid.grid?.max_per_slot || 2}
+                onSlotDrop={handleSlotDrop}
+                onDragOver={(e) => { e.preventDefault(); setDragOverCol(col.collaborator.id); }}
+                onDragLeave={() => setDragOverCol((c) => c === col.collaborator.id ? null : c)}
+                onDrop={() => handleDrop(col.collaborator.id)}
+                onDragStart={(tid) => setDraggingId(tid)}
+                onDragEnd={() => { setDraggingId(null); setDragOverCol(null); }}
+                draggingId={draggingId}
+                onAdminClose={handleAdminCloseAction}
+                onAdminOpen={handleAdminOpen}
+                onEdit={(t) => setEditingTicket(t)}
+                onReschedule={(t) => setReschedTicket(t)}
+                busy={busy}
+                selectMode={selectMode}
+                selectedIds={selectedIds}
+                onToggleSelect={toggleTicketSelected}
+                onEmptySlotDblClick={(techId, slotHour) => {
+                  const dt = `${selectedDate}T${slotHour}`;
+                  setCreateDefaults({
+                    assigned_collaborator_id: techId,
+                    scheduled_time: dt,
+                  });
+                  setShowCreate(true);
+                }}
+                wide={!!focusTechId}
+              />
+            </div>
           );
         })}
       </div>
