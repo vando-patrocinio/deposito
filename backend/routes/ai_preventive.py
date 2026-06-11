@@ -461,7 +461,7 @@ async def accept_suggestion(suggestion_id: str,
     relato = (f"🤖 Preventiva sugerida pela IA — sinal {s['rx_dbm']:.1f} dBm "
               f"({s['urgency']}). OLT: {s.get('olt_name', '?')} · zona {s.get('zone_name', '?')}.")
     tid = f"tkt-{uuid.uuid4().hex[:10]}"
-    await db.tickets.insert_one({
+    doc = {
         "id": tid,
         "client_id": str(uuid.uuid4()),
         "client_snapshot": {
@@ -480,7 +480,12 @@ async def accept_suggestion(suggestion_id: str,
         "created_at": now_iso(),
         "ai_preventive_id": suggestion_id,
         "ai_preventive_rx_dbm": s["rx_dbm"],
-    })
+    }
+    # SALA-routing — preventiva sistemica cai em SALA (11/02/2026).
+    from services.sala_router import route_to_sala
+    await route_to_sala(doc, reason="ai_preventive_accepted",
+                          original_tech_suggested=s.get("tech_id"))
+    await db.tickets.insert_one(doc)
     await db.ai_preventive_suggestions.update_one(
         {"id": suggestion_id}, {"$set": {"status": "accepted", "ticket_id": tid, "accepted_at": now_iso()}},
     )

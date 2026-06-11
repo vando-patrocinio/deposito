@@ -2,6 +2,46 @@
 
 > Documento vivo. Atualizado a cada sprint.
 
+## 🚦 SALA = porta unica de TODA nota sistemica ✅ (11/02/2026)
+
+### Decisão
+Toda OS emitida AUTOMATICAMENTE pelo sistema (Isabella, preventivas, detecção de degradação, outage, predictive) agora cai na grade SALA. Gestor triagem manual. OS criadas por humano (drag-drop, "auto-distribute" ligado pelo gestor, aprovação explícita com tech escolhido na UI) continuam indo direto pro técnico.
+
+### Helper único: `services/sala_router.py::route_to_sala(doc, reason, original_tech_suggested)`
+- Substitui `assigned_collaborator_id` por `col-sala[-<tenant>]` (auto-cria SALA se não existir naquele tenant)
+- Carimba o doc com `system_generated=True`, `sala_route_reason=<motivo>`, `sala_routed_at`, e preserva `original_tech_suggested` pra rastreio
+- Whitelist de razões válidas: `isabella_agendamento`, `isabella_incident`, `ai_preventive_accepted`, `preventive_auto`, `rede_ia_outage`, `smartolt_predictive`, etc.
+
+### Geradores patcheados nesta sessão
+| Origem | Arquivo | reason |
+|---|---|---|
+| Isabella agendamento via WhatsApp | `services/isabella_lousa_scheduler.py:380` | `isabella_agendamento` |
+| Isabella incidente coletivo | `services/isabella_incident.py:358` | `isabella_incident` |
+| Sugestão preventiva aceita pelo admin | `routes/ai_preventive.py:486` | `ai_preventive_accepted` |
+| Preventiva auto (sinal crítico cron) | `routes/preventive_os.py:333` | `preventive_auto` |
+| Rede IA outage (mass disconnect) | `services/rede_ia_outage_detector.py:194` | `rede_ia_outage` |
+| SmartOLT predictive (CTO em risco) | `services/smartolt_predictive.py:277` | `smartolt_predictive` |
+| Atlaz órfão (já roteado anteriormente) | `routes/atlaz.py::_get_or_create_unassigned_inbox` | `atlaz_unassigned` |
+| Isabella _create_visit_ticket / _create_chamado | `services/isabella_actions.py` | (já usa `_pick_default_collaborator` que retorna SALA por default) |
+
+### Red Team — `scripts/red_team_sala_routing.py` (6/6 PASS)
+1. ✅ `route_to_sala` muta doc → assigned=col-sala, system_generated=True, reason carimbado
+2. ✅ Cria SALA em tenant novo (multi-tenant funciona)
+3. ✅ Reason inválida normalizada → `system_other`
+4. ✅ Sem `company_id` → `ValueError` (fail-fast)
+5. ✅ Todos os 6 sites esperados importam `route_to_sala`
+6. ✅ `VALID_REASONS` cobre todas as fontes em uso
+
+### Audit trail no DB
+Cada OS sistemica agora tem 3 campos novos pra auditoria:
+- `system_generated`: True
+- `sala_route_reason`: ex. `"isabella_agendamento"`
+- `original_tech_suggested`: tech que a IA achava bom mandar (NULL se nenhuma sugestão)
+
+Gestor consegue agrupar SALA por `sala_route_reason` no futuro pra ver de onde vem o volume de triagem.
+
+
+
 ## 🎨 SALA card — layout otimizado pra triagem ✅ (11/02/2026)
 
 ### Problemas identificados no print do user

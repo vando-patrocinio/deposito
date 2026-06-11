@@ -254,7 +254,7 @@ async def auto_create_preventive_tickets(
         if c["severity"] not in ("ALTO", "CRITICO"):
             continue
         tk_id = f"tk-pred-{uuid.uuid4().hex[:10]}"
-        await db.tickets.insert_one({
+        _pred_doc = {
             "id": tk_id, "company_id": company_id,
             "status": "aberta",
             "priority": "ALTA" if c["severity"] == "CRITICO" else "MEDIA",
@@ -268,7 +268,11 @@ async def auto_create_preventive_tickets(
             "_predictive_kind": c["kind"],
             "_predictive_zone": c["zone"],
             "_predictive_confidence": c["confidence"],
-        })
+        }
+        # SALA-routing — preditivo cai em SALA (11/02/2026).
+        from services.sala_router import route_to_sala
+        await route_to_sala(_pred_doc, reason="smartolt_predictive")
+        await db.tickets.insert_one(_pred_doc)
         try:
             from services.event_bus import emit_event
             await emit_event(

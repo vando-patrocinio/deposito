@@ -353,6 +353,10 @@ async def _create_collective_ticket(company: str, inc: dict) -> Optional[str]:
         },
         "created_at": _now_iso(), "created_by": "isabella_incident",
     }
+    # SALA-routing — incidente coletivo da Isabella cai em SALA (11/02/2026).
+    from services.sala_router import route_to_sala
+    await route_to_sala(doc, reason="isabella_incident",
+                          original_tech_suggested=tech_id)
     await db.tickets.insert_one(doc)
     try:
         from services.event_bus import emit_event

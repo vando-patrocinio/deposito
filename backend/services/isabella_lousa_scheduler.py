@@ -376,6 +376,10 @@ async def confirm_and_create_os(*, company_id: str,
         "isabella_confirmation": confirmation_text,
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
+    # SALA-routing — toda OS sistemica cai em SALA pra gestor triar (11/02/2026).
+    from services.sala_router import route_to_sala
+    await route_to_sala(doc, reason="isabella_agendamento",
+                          original_tech_suggested=slot["collaborator_id"])
     await db.tickets.insert_one(doc)
 
     # Hook financeiro: ISABELLA_OS_CREATED (pending — confirma quando OS resolver)

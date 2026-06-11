@@ -188,6 +188,9 @@ async def _detect_company(company_id: str) -> Dict[str, Any]:
         if center_lat is not None:
             outage_doc["latitude"] = center_lat
             outage_doc["longitude"] = center_lng
+        # SALA-routing — outage detector cai em SALA (11/02/2026).
+        from services.sala_router import route_to_sala
+        await route_to_sala(outage_doc, reason="rede_ia_outage")
         await db.tickets.insert_one(outage_doc)
         created += 1
 
