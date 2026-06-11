@@ -76,6 +76,7 @@ from routes import (
     lousa_sala_config as routes_lousa_sala_config,
     aihub_prompts as routes_aihub_prompts,
     user_magic_links as routes_user_magic_links,
+    sala_orphan_health as routes_sala_orphan_health,
     audit_log_panel as routes_audit_log,
     backend_health_routes as routes_backend_health,
     warroom as routes_warroom,
@@ -859,6 +860,11 @@ async def _startup() -> None:
     scheduler.add_job(weekly_migrate_job,
                       CronTrigger(day_of_week="sun", hour=4, minute=0),
                       id="mongo_weekly_migrate", replace_existing=True)
+    # CTO 11/06/2026: health check de tickets órfãos (a cada 15 min)
+    from services.sala_orphan_health import run_orphan_health_check
+    scheduler.add_job(run_orphan_health_check, "interval", minutes=15,
+                      id="sala_orphan_health", replace_existing=True,
+                      max_instances=1, coalesce=True)
     asyncio.create_task(holidays_refresh_job())
     asyncio.create_task(location_logs_cleanup_job())
     routes_atlaz.start_worker()
@@ -1207,6 +1213,7 @@ app.include_router(routes_lousa_sala.router)
 app.include_router(routes_lousa_sala_config.router)
 app.include_router(routes_aihub_prompts.router)
 app.include_router(routes_user_magic_links.router)
+app.include_router(routes_sala_orphan_health.router)
 app.include_router(routes_audit_log.router)
 app.include_router(routes_backend_health.router)
 app.include_router(routes_warroom.router)

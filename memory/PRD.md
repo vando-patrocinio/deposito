@@ -2,6 +2,27 @@
 
 > Documento vivo. Atualizado a cada sprint.
 
+## 🩺 Health Check Automático: Órfãos da SALA ✅ (11/06/2026 P0 CTO)
+
+**Objetivo:** garantir que NUNCA mais haja ticket invisível na Lousa, mesmo se algum caminho futuro escapar do `route_to_sala()`.
+
+**Implementação:**
+- `services/sala_orphan_health.py` — job que detecta órfãos e move pra SALA do tenant
+- Cron: `interval, minutes=15` no scheduler (apscheduler) — autoinit no startup
+- Auto-emite evento `sala.orphan_healed` no Sistema Nervoso quando atua
+- Persiste relatórios em `sala_orphan_health` para auditoria
+
+**Endpoints admin (`/api/admin/sala-orphan-health/`):**
+- `GET /status` — último relatório + contagem atual de órfãos
+- `POST /run-now` — dispara o check imediatamente (sem esperar 15 min)
+- `GET /history?limit=20` — histórico de execuções
+
+**Validação:**
+- Criados 3 órfãos sintéticos via DB → `POST /run-now` → 3 healed em 5ms → órfãos restantes = 0
+- Idempotência: rodando 2x seguidas, segunda execução `healed_total=0`
+
+---
+
 ## 🧹 Bug Crítico: 1583 Tickets Invisíveis na Lousa ✅ (11/06/2026 P0 CTO)
 
 **Sintoma reportado:** "Tem notas que estão sendo criadas no atlaz, e tem notas que estão para o futuro na sala que não estão sendo vistas na lousa, audite."
