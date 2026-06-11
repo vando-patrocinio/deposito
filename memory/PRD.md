@@ -2,6 +2,33 @@
 
 > Documento vivo. Atualizado a cada sprint.
 
+## 🔗 Magic Links + Vínculo Único Usuário↔Colaborador ✅ (11/06/2026 P0 CTO)
+
+**Objetivo:** Eliminar a dor de "perdi acesso ao link e não consigo mais entrar". Cada usuário do painel tem 1 link ATIVO + 1 link RESERVA pré-armado. Renovar = 1 clique → ativo morre, reserva sobe, novo reserva gerado.
+
+**Backend (novo módulo `routes/user_magic_links.py`):**
+- Coleção `user_magic_links` (status: active/reserve/revoked, generation, audit)
+- `GET /api/users/{uid}/magic-link` — retorna ativo + reserva (bootstrap automático)
+- `POST /api/users/{uid}/magic-link/rotate` — rotaciona com audit log
+- `POST /api/auth/magic-login` — público, troca token por JWT
+- Bootstrap idempotente: garante que todo user ativo tem ativo + reserva
+
+**Vínculo único `collaborator_id`:**
+- Em `routes/users.py` (POST e PUT): valida que nenhum outro user tem o mesmo `collaborator_id`
+- Erro 409 com mensagem clara identificando quem já está vinculado
+
+**Frontend:**
+- `UsersPanel.js`: dropdown "Vincular a colaborador" no form (data-testid=`u-collaborator-id`), opções já vinculadas aparecem com ⚠ e disabled
+- Botão "🔗 Link" por linha (data-testid=`magic-link-{uid}`) → abre modal `magic-link-modal` com ATIVO + RESERVA + Copiar + Renovar
+- `AuthContext.js`: useEffect captura `?ml=<token>` no boot, faz magic-login, salva JWT em localStorage, limpa URL
+
+**Validação (testing_agent_v3_fork — iteration_99):**
+- Backend: 11/11 pytest PASS (100%)
+- Frontend: 120 botões "🔗 Link", modal funcional com 2 URLs distintas, dropdown com 17 opções (5 disabled por já vinculado), login `/?ml=<token>` salva JWT corretamente
+- 0 bugs críticos. Observações para melhoria futura: rate-limit no magic-login, lock optimista no rotate.
+
+---
+
 ## 🔐 RBAC — Promoção Mayara + Isolamento Financeiro ✅ (11/06/2026 P0 CTO)
 
 **Caso:** Mayara Saldanha (Aux. Administrativo) recebia 403 em `/api/lousa/*` por estar somente em `collaborators` (role token = "colaborador"). Inconsistência: aba "Chamados" no menu desktop estava marcada como `roles: ["administrador"]`, enquanto rotas backend exigem `gestor`.
