@@ -94,6 +94,7 @@ export default function CadastroPanel() {
       await api.updateCollaborator(c.id, {
         name: c.name, cpf: c.cpf, email: c.email, phone: c.phone,
         role: c.role, company: c.company,
+        cargo: c.cargo,  // CTO 11/06/2026: sem isso, default=None apaga "tecnico" e vira externo
         schedule: c.schedule, overtime_policy: c.overtime_policy,
         city: c.city ?? null, state: c.state ?? null, praca_id: c.praca_id ?? null,
         praca_ids_extra: c.praca_ids_extra || [],

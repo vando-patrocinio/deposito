@@ -2,6 +2,27 @@
 
 > Documento vivo. Atualizado a cada sprint.
 
+## 🛠️ Bug: Toggle "Bate ponto" apagava o cargo do colaborador ✅ (11/06/2026 P0 CTO)
+
+**Sintoma:** ao desligar a obrigação de ponto, colaborador "Técnico" virava "COLABORADOR EXTERNO · Operação SP" no painel.
+
+**Root cause:** `toggleClockInEnabled` em `CadastroPanel.js` montava o payload do PUT **sem incluir `cargo`**. No backend, `CollaboratorIn.cargo: Optional[str] = None`, então `payload.model_dump()` retornava `cargo=None` e o `$set` apagava o cargo no Mongo. Frontend caía no fallback genérico → "COLABORADOR EXTERNO".
+
+**Fixes (defesa em 2 camadas):**
+1. `CadastroPanel.js` linha 96: adicionado `cargo: c.cargo` no payload
+2. `routes/clock.py` linha 552: se `data["cargo"]` veio None mas o doc atual tem cargo, **mantém o atual**. Blinda contra qualquer outro caminho que esqueça o campo
+
+**Backfill:** restaurados 4 colaboradores no preview (Hudson, Wellington, admin, Carlos Almeida) cujo cargo foi apagado pelo bug. Script aplicável em produção pós-redeploy:
+```
+python3 backend/scripts/restore_lost_cargo.py
+```
+
+**Validação ao vivo:**
+- JEFFERSON: PUT sem `cargo` no payload → cargo `tecnico` PRESERVADO ✅
+- Bug não recorre: payload incompleto não destrói mais o cadastro
+
+---
+
 ## 🛠️ Bug: Colaborador externo "sem permissão" no Cadastro de CTO ✅ (11/06/2026 P0 CTO)
 
 **Sintoma:** técnico Eddy (Ligo Fibra) abre o wizard "Cadastro de CTO" no PWA mobile, escolhe localização, foto, clica Continuar → toast vermelho "Você não tem permissão para acessar este recurso." + Sentinela IA indisponível.

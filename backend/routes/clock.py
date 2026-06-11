@@ -546,9 +546,16 @@ async def update_collaborator(cid: str, payload: CollaboratorIn, user: dict = De
     prev = await db.collaborators.find_one({"id": cid},
                                            {"_id": 0, "active": 1, "name": 1,
                                             "company_id": 1,
+                                            "cargo": 1,
                                             "can_attend_whatsapp": 1})
     data = payload.model_dump()
     data["updated_at"] = now_iso()
+    # CTO 11/06/2026: blindagem contra payload incompleto que perderia o cargo.
+    # Se o cliente NÃO passou `cargo` (None) mas o doc atual TEM cargo, mantém.
+    # Sem isso, toggles parciais (ex.: Bate ponto: OFF) apagavam "tecnico" e o
+    # colaborador aparecia como "COLABORADOR EXTERNO" no painel.
+    if data.get("cargo") in (None, "", "null") and (prev or {}).get("cargo"):
+        data["cargo"] = prev["cargo"]
     # Marca quando foi desativado (para o KPI de perdas pendentes)
     if data.get("active") is False and (prev or {}).get("active") is not False:
         data["deactivated_at"] = now_iso()
