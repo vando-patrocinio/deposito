@@ -18,8 +18,8 @@ NERVOUS_METADATA = {
     "owner": "ai-team",
     "domain": "isabella",
     "criticality": "high",
-    "emits_events": False,
-    "event_types": [],
+    "emits_events": True,
+    "event_types": ["opportunity.updated"],
     "company_id_required": True,
 }
 
@@ -216,6 +216,16 @@ async def update_status(opp_id: str, company_id: str, *,
         patch["execution_result"] = result or {}
     r = await db.isabella_commander_opportunities.update_one(
         {"id": opp_id, "company_id": company_id}, {"$set": patch})
+    try:
+        from services.event_bus import emit_event
+        await emit_event(
+            "opportunity.updated",
+            company_id=company_id,
+            source="isabella_opportunities",
+            payload={},
+        )
+    except Exception:
+        pass
     if not r.matched_count:
         raise ValueError(f"opportunity {opp_id} não encontrada")
     return await db.isabella_commander_opportunities.find_one(

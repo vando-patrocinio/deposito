@@ -18,8 +18,8 @@ NERVOUS_METADATA = {
     "owner": "ops-team",
     "domain": "operacoes",
     "criticality": "high",
-    "emits_events": False,
-    "event_types": [],
+    "emits_events": True,
+    "event_types": ["ticket.updated"],
     "company_id_required": True,
 }
 
@@ -916,6 +916,16 @@ async def transfer_ticket(ticket_id: str, payload: TransferIn,
         return t
 
     await db.tickets.update_one({"id": ticket_id}, {"$set": update})
+    try:
+        from services.event_bus import emit_event
+        await emit_event(
+            "ticket.updated",
+            company_id=company_id,
+            source="lousa",
+            payload={},
+        )
+    except Exception:
+        pass
     await _log_ticket_action(
         ticket_id=ticket_id, action="transferida",
         actor_id=user["id"], actor_name=user.get("name", "Gestor"),
@@ -3130,6 +3140,16 @@ async def reorder_tickets(payload: ReorderIn, user: dict = Depends(get_current_u
         t = by_id[item.id]
         if t["priority"] == "normal" and item.id not in locked_ids:
             await db.tickets.update_one({"id": item.id}, {"$set": {"position": item.position}})
+            try:
+                from services.event_bus import emit_event
+                await emit_event(
+                    "ticket.updated",
+                    company_id=cid,
+                    source="lousa",
+                    payload={},
+                )
+            except Exception:
+                pass
     return {"ok": True}
 
 
@@ -3137,6 +3157,16 @@ async def reorder_tickets(payload: ReorderIn, user: dict = Depends(get_current_u
         t = by_id[item.id]
         if t["priority"] == "normal" and item.id not in locked_ids:
             await db.tickets.update_one({"id": item.id}, {"$set": {"position": item.position}})
+            try:
+                from services.event_bus import emit_event
+                await emit_event(
+                    "ticket.updated",
+                    company_id=cid,
+                    source="lousa",
+                    payload={},
+                )
+            except Exception:
+                pass
     return {"ok": True}
 
 
@@ -4311,6 +4341,16 @@ async def public_reorder_tickets(payload: PublicReorderIn):
         t = by_id[item.id]
         if t["priority"] == "normal" and item.id not in locked_ids:
             await db.tickets.update_one({"id": item.id}, {"$set": {"position": item.position}})
+            try:
+                from services.event_bus import emit_event
+                await emit_event(
+                    "ticket.updated",
+                    company_id=cid,
+                    source="lousa",
+                    payload={},
+                )
+            except Exception:
+                pass
     return {"ok": True}
 
 
@@ -4441,6 +4481,16 @@ async def finalize_ticket(ticket_id: str, payload: FinalizeIn, user: dict = Depe
             "signed_receipt": cd_dump.get("signed_receipt"),
         }},
     )
+    try:
+        from services.event_bus import emit_event
+        await emit_event(
+            "ticket.updated",
+            company_id=company_id,
+            source="lousa",
+            payload={},
+        )
+    except Exception:
+        pass
     # Quality notes — snapshot do sinal NO FECHAMENTO (apenas SmartOLT-mapped)
     if is_smartolt_client:
         await _capture_signal_snapshot(ticket_id, company_id, "close")
@@ -4628,6 +4678,16 @@ async def notify_backoffice(ticket_id: str, user: dict = Depends(get_current_use
     if t["status"] != "aberta":
         raise HTTPException(400, "Nota precisa estar aberta")
     await db.tickets.update_one({"id": ticket_id}, {"$set": {"status": "aguardando_atendimento"}})
+    try:
+        from services.event_bus import emit_event
+        await emit_event(
+            "ticket.updated",
+            company_id=cid,
+            source="lousa",
+            payload={},
+        )
+    except Exception:
+        pass
     coll = await db.collaborators.find_one({"id": cid}, {"_id": 0, "name": 1, "company_id": 1})
     await _create_notification(
         type_="ticket_needs_backoffice",
@@ -5029,6 +5089,16 @@ async def admin_open_ticket(ticket_id: str, user: dict = Depends(require_role("g
         {"id": ticket_id},
         {"$set": {"status": "aberta", "opened_at": now_iso()}},
     )
+    try:
+        from services.event_bus import emit_event
+        await emit_event(
+            "ticket.updated",
+            company_id=company_id,
+            source="lousa",
+            payload={},
+        )
+    except Exception:
+        pass
     await _log_ticket_action(
         ticket_id=ticket_id, action="aberta_admin",
         actor_id=user["id"], actor_name=user.get("name", "Gestor"),
@@ -5158,6 +5228,16 @@ async def release_stuck_ticket(
             },
         },
     )
+    try:
+        from services.event_bus import emit_event
+        await emit_event(
+            "ticket.updated",
+            company_id=cid,
+            source="lousa",
+            payload={},
+        )
+    except Exception:
+        pass
 
     # 3) Auditoria — quem clicou
     coll_doc = await db.collaborators.find_one(
@@ -7830,6 +7910,16 @@ async def resolve_manager_callback(
                 "observacao": obs,
             }}},
         )
+        try:
+            from services.event_bus import emit_event
+            await emit_event(
+                "ticket.updated",
+                company_id=cid,
+                source="lousa",
+                payload={},
+            )
+        except Exception:
+            pass
         return {"ok": True, "status": "contacted",
                 "next_action_required": True,
                 "message": "Contato registrado. Defina o próximo passo "

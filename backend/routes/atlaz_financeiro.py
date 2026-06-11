@@ -18,8 +18,8 @@ NERVOUS_METADATA = {
     "owner": "billing-team",
     "domain": "financeiro",
     "criticality": "high",
-    "emits_events": False,
-    "event_types": [],
+    "emits_events": True,
+    "event_types": ["invoice.updated"],
     "company_id_required": True,
 }
 
@@ -525,6 +525,16 @@ async def mark_invoice_paid(
         {"company_id": cid, "id": invoice_id},
         {"$set": update_doc},
     )
+    try:
+        from services.event_bus import emit_event
+        await emit_event(
+            "invoice.updated",
+            company_id=cid,
+            source="atlaz_financeiro",
+            payload={},
+        )
+    except Exception:
+        pass
 
     # --- 2) Push pra Atlaz (best-effort)
     atlaz_push: Dict[str, Any] = {"attempted": False}
@@ -613,6 +623,16 @@ async def unmark_invoice_paid(
             },
         },
     )
+    try:
+        from services.event_bus import emit_event
+        await emit_event(
+            "invoice.updated",
+            company_id=cid,
+            source="atlaz_financeiro",
+            payload={},
+        )
+    except Exception:
+        pass
     return {"ok": True}
 
 

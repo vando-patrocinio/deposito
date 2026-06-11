@@ -25,8 +25,8 @@ NERVOUS_METADATA = {
     "owner": "ops-team",
     "domain": "operacoes",
     "criticality": "high",
-    "emits_events": False,
-    "event_types": [],
+    "emits_events": True,
+    "event_types": ["ticket.updated"],
     "company_id_required": True,
 }
 
@@ -280,6 +280,16 @@ async def revert_triage(company_id: str, ticket_id: str,
             "ai_triage.reverted_by": user_email,
         }},
     )
+    try:
+        from services.event_bus import emit_event
+        await emit_event(
+            "ticket.updated",
+            company_id=company_id,
+            source="lousa_ai_triagem",
+            payload={},
+        )
+    except Exception:
+        pass
     if res.matched_count == 0:
         return {"ok": False, "error": "Ticket não encontrado ou sem triagem"}
     return {"ok": True}

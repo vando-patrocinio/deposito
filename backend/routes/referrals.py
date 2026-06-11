@@ -27,8 +27,8 @@ NERVOUS_METADATA = {
     "owner": "growth-team",
     "domain": "indicacoes",
     "criticality": "high",
-    "emits_events": False,
-    "event_types": [],
+    "emits_events": True,
+    "event_types": ["subscriber.updated"],
     "company_id_required": True,
 }
 
@@ -188,6 +188,16 @@ async def _get_or_create_referral_code(cid: str, subscriber_id: str) -> str:
                 {"id": subscriber_id, "company_id": cid},
                 {"$set": {"referral_code": code, "updated_at": now_iso()}},
             )
+            try:
+                from services.event_bus import emit_event
+                await emit_event(
+                    "subscriber.updated",
+                    company_id=cid,
+                    source="referrals",
+                    payload={},
+                )
+            except Exception:
+                pass
             return code
     raise HTTPException(500, "Falha ao gerar código de indicação único")
 

@@ -18,8 +18,8 @@ NERVOUS_METADATA = {
     "owner": "ai-team",
     "domain": "isabella",
     "criticality": "high",
-    "emits_events": False,
-    "event_types": [],
+    "emits_events": True,
+    "event_types": ["wa.message.persisted"],
     "company_id_required": True,
 }
 
@@ -202,6 +202,16 @@ async def _send_followup_via_twilio(company_id: str, phone: str,
             "source": "followup_scheduler",
             "created_at": datetime.now(timezone.utc).isoformat(),
         })
+        try:
+            from services.event_bus import emit_event
+            await emit_event(
+                "wa.message.persisted",
+                company_id=company_id,
+                source="isabella_followup",
+                payload={},
+            )
+        except Exception:
+            pass
         return True
     except Exception as e:
         logger.warning("[followup] _send falhou: %s", e)

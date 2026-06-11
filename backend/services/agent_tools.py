@@ -15,8 +15,8 @@ NERVOUS_METADATA = {
     "owner": "ai-team",
     "domain": "isabella",
     "criticality": "high",
-    "emits_events": False,
-    "event_types": [],
+    "emits_events": True,
+    "event_types": ["subscriber.bulk_updated", "ticket.opened"],
     "company_id_required": True,
 }
 
@@ -228,6 +228,16 @@ async def _exec_flag_dunning(cid: str,
             "dunning_flagged_at": datetime.now(timezone.utc).isoformat(),
             "dunning_reason": args.get("reason", "")[:200],
         }})
+    try:
+        from services.event_bus import emit_event
+        await emit_event(
+            "subscriber.bulk_updated",
+            company_id=cid,
+            source="agent_tools",
+            payload={},
+        )
+    except Exception:
+        pass
     return {"matched": r.matched_count, "modified": r.modified_count,
              "ids_requested": len(ids)}
 
@@ -256,6 +266,16 @@ async def _exec_create_inspection_ticket(cid: str,
         "created_by": "agent_ia",
     }
     await db.tickets.insert_one(ticket)
+    try:
+        from services.event_bus import emit_event
+        await emit_event(
+            "ticket.opened",
+            company_id=cid,
+            source="agent_tools",
+            payload={},
+        )
+    except Exception:
+        pass
     return {"ticket_id": ticket_id,
              "cto": cto.get("label", cto_id),
              "neighborhood": cto.get("neighborhood")}
@@ -314,6 +334,16 @@ async def _exec_escalate_dunning(cid: str,
             "dunning_escalated_at": now_iso,
             "dunning_escalation_reason": (args.get("reason") or "")[:200],
         }})
+    try:
+        from services.event_bus import emit_event
+        await emit_event(
+            "subscriber.bulk_updated",
+            company_id=cid,
+            source="agent_tools",
+            payload={},
+        )
+    except Exception:
+        pass
     return {"matched": r.matched_count, "modified": r.modified_count,
              "ids_requested": len(ids), "to_stage": to_stage}
 

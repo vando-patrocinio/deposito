@@ -27,8 +27,8 @@ NERVOUS_METADATA = {
     "owner": "ai-team",
     "domain": "isabella",
     "criticality": "high",
-    "emits_events": False,
-    "event_types": [],
+    "emits_events": True,
+    "event_types": ["campaign.updated"],
     "company_id_required": True,
 }
 
@@ -585,4 +585,14 @@ async def council_review(campaign_id: str,
         {"id": campaign_id},
         {"$set": {"council_review": parecer,
                    "updated_at": _iso(_now())}})
+    try:
+        from services.event_bus import emit_event
+        await emit_event(
+            "campaign.updated",
+            company_id=company_id,
+            source="isabella_experience",
+            payload={},
+        )
+    except Exception:
+        pass
     return parecer

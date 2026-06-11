@@ -24,8 +24,8 @@ NERVOUS_METADATA = {
     "owner": "infra-team",
     "domain": "rede",
     "criticality": "high",
-    "emits_events": False,
-    "event_types": [],
+    "emits_events": True,
+    "event_types": ["cto.updated"],
     "company_id_required": True,
 }
 
@@ -69,6 +69,16 @@ async def _sync_one(cid: str, cto: dict) -> dict:
                        "smartolt_last_error": "CTO sem nomenclatura (name vazio)",
                        "smartolt_last_attempt_at": _now_iso()}},
         )
+        try:
+            from services.event_bus import emit_event
+            await emit_event(
+                "cto.updated",
+                company_id=cid,
+                source="smartolt_push_ctos",
+                payload={},
+            )
+        except Exception:
+            pass
         return {"cto_id": cto_id, "ok": False, "reason": "empty-name"}
 
     try:
@@ -89,6 +99,16 @@ async def _sync_one(cid: str, cto: dict) -> dict:
                 "smartolt_sync_attempts": 0,
             }},
         )
+        try:
+            from services.event_bus import emit_event
+            await emit_event(
+                "cto.updated",
+                company_id=cid,
+                source="smartolt_push_ctos",
+                payload={},
+            )
+        except Exception:
+            pass
         await db.smartolt_actions.insert_one({
             "company_id": cid,
             "action": "push_cto",
@@ -300,6 +320,16 @@ async def retry_one(cto_id: str, user: dict = Depends(get_current_user)):
                    "smartolt_sync_attempts": 0,
                    "smartolt_last_attempt_at": None}},
     )
+    try:
+        from services.event_bus import emit_event
+        await emit_event(
+            "cto.updated",
+            company_id=cid,
+            source="smartolt_push_ctos",
+            payload={},
+        )
+    except Exception:
+        pass
     res = await _sync_one(cid, await db.ctos.find_one(
         {"id": cto_id, "company_id": cid}, {"_id": 0}))
     return res

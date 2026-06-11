@@ -23,8 +23,8 @@ NERVOUS_METADATA = {
     "owner": "vendas-team",
     "domain": "comercial",
     "criticality": "high",
-    "emits_events": False,
-    "event_types": [],
+    "emits_events": True,
+    "event_types": ["wa.message.persisted"],
     "company_id_required": True,
 }
 
@@ -148,6 +148,16 @@ async def _persist_outbound(cid: str, phone: str, text: str,
                           "campaign": "wifi_self_service_upsell"},
             "created_at": now_iso(),
         })
+        try:
+            from services.event_bus import emit_event
+            await emit_event(
+                "wa.message.persisted",
+                company_id=cid,
+                source="sales_outreach",
+                payload={},
+            )
+        except Exception:
+            pass
     except Exception as e:
         log.warning("[sales_outreach] persist_outbound fail: %s", e)
 
@@ -332,6 +342,16 @@ async def schedule_wifi_confirmation(
                     "metadata": {"source": "wifi_confirmation_reminder"},
                     "created_at": now_iso(),
                 })
+                try:
+                    from services.event_bus import emit_event
+                    await emit_event(
+                        "wa.message.persisted",
+                        company_id=cid,
+                        source="sales_outreach",
+                        payload={},
+                    )
+                except Exception:
+                    pass
             except Exception as e:
                 log.warning("[sales_outreach] confirm persist fail: %s", e)
             log.info("[sales_outreach] confirm wifi sent phone=%s ssid=%s",

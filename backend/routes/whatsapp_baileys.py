@@ -20,8 +20,8 @@ NERVOUS_METADATA = {
     "owner": "isabella-team",
     "domain": "whatsapp",
     "criticality": "high",
-    "emits_events": False,
-    "event_types": [],
+    "emits_events": True,
+    "event_types": ["subscriber.created", "wa.message.persisted"],
     "company_id_required": True,
 }
 
@@ -92,6 +92,16 @@ async def _deliver_boleto_with_pdf(cid: str, phone: str,
         "external_id": (sent_text or {}).get("message_id"),
         "created_at": now_iso(),
     })
+    try:
+        from services.event_bus import emit_event
+        await emit_event(
+            "wa.message.persisted",
+            company_id=cid,
+            source="whatsapp_baileys",
+            payload={},
+        )
+    except Exception:
+        pass
 
     if is_request or not invoices:
         return
@@ -448,6 +458,16 @@ async def send_message(payload: SendIn,
         "delivery_status": "sent" if send_ok else "failed",
         "delivery_error": send_error,
     })
+    try:
+        from services.event_bus import emit_event
+        await emit_event(
+            "wa.message.persisted",
+            company_id=cid,
+            source="whatsapp_baileys",
+            payload={},
+        )
+    except Exception:
+        pass
     if not send_ok:
         # Não engole: deixa o frontend mostrar toast vermelho.
         raise HTTPException(
@@ -564,6 +584,16 @@ async def send_image(payload: SendImageIn,
         "delivery_status": "sent" if send_ok else "failed",
         "delivery_error": send_error,
     })
+    try:
+        from services.event_bus import emit_event
+        await emit_event(
+            "wa.message.persisted",
+            company_id=cid,
+            source="whatsapp_baileys",
+            payload={},
+        )
+    except Exception:
+        pass
     if not send_ok:
         raise HTTPException(
             status_code=502,
@@ -772,6 +802,16 @@ async def inbound_call(payload: InboundCallIn,
         "wa_timestamp": payload.timestamp,
         "created_at": now_iso(),
     })
+    try:
+        from services.event_bus import emit_event
+        await emit_event(
+            "wa.message.persisted",
+            company_id=cid,
+            source="whatsapp_baileys",
+            payload={},
+        )
+    except Exception:
+        pass
 
     response_text = (
         "Oi! 😊 Aqui eu não consigo atender chamada, mas se você me "
@@ -3305,6 +3345,16 @@ async def import_contacts_as_leads(
             "origin": "whatsapp_contact_sync",
             "created_at": now,
         })
+        try:
+            from services.event_bus import emit_event
+            await emit_event(
+                "subscriber.created",
+                company_id=cid,
+                source="whatsapp_baileys",
+                payload={},
+            )
+        except Exception:
+            pass
         await db.subscriber_phones.insert_one({
             "id": f"sphone-{uuid.uuid4().hex[:10]}",
             "company_id": cid, "subscriber_id": sub_id,

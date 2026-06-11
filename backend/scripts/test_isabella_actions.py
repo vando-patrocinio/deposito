@@ -5,8 +5,8 @@ NERVOUS_METADATA = {
     "owner": "ai-team",
     "domain": "isabella",
     "criticality": "high",
-    "emits_events": False,
-    "event_types": [],
+    "emits_events": True,
+    "event_types": ["ticket.closed"],
     "company_id_required": True,
 }
 
@@ -54,6 +54,16 @@ async def test_agendar_visita():
           f"scheduled={tk['scheduled_time']}")
     # cleanup
     await db.tickets.delete_one({"id": tk["id"]})
+    try:
+        from services.event_bus import emit_event
+        await emit_event(
+            "ticket.closed",
+            company_id=company_id,
+            source="test_isabella_actions",
+            payload={},
+        )
+    except Exception:
+        pass
 
 
 async def test_abrir_chamado():
@@ -74,6 +84,16 @@ async def test_abrir_chamado():
     assert tk["type"] == "chamado_tecnico"
     assert tk["status"] == "ABERTO"
     await db.tickets.delete_one({"id": tk["id"]})
+    try:
+        from services.event_bus import emit_event
+        await emit_event(
+            "ticket.closed",
+            company_id=company_id,
+            source="test_isabella_actions",
+            payload={},
+        )
+    except Exception:
+        pass
     print(f"  ✅ chamado_tecnico persistido")
 
 

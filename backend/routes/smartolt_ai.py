@@ -12,8 +12,8 @@ NERVOUS_METADATA = {
     "owner": "infra-team",
     "domain": "rede",
     "criticality": "high",
-    "emits_events": False,
-    "event_types": [],
+    "emits_events": True,
+    "event_types": ["wa.message.persisted"],
     "company_id_required": True,
 }
 
@@ -185,6 +185,16 @@ async def _send_draft_via_baileys(cid: str, draft: Dict[str, Any],
         "delivery_error": send_error,
         "created_at": now_iso(),
     })
+    try:
+        from services.event_bus import emit_event
+        await emit_event(
+            "wa.message.persisted",
+            company_id=cid,
+            source="smartolt_ai",
+            payload={},
+        )
+    except Exception:
+        pass
     return {"ok": send_ok, "error": send_error}
 
 

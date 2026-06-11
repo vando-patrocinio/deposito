@@ -16,8 +16,8 @@ NERVOUS_METADATA = {
     "owner": "ops-team",
     "domain": "operacoes",
     "criticality": "high",
-    "emits_events": False,
-    "event_types": [],
+    "emits_events": True,
+    "event_types": ["ticket.updated"],
     "company_id_required": True,
 }
 
@@ -358,6 +358,16 @@ async def rompimento_finalize(ticket_id: str, payload: RompimentoFinalizeIn,
             "finalized_longitude": payload.longitude,
         }},
     )
+    try:
+        from services.event_bus import emit_event
+        await emit_event(
+            "ticket.updated",
+            company_id=company_id,
+            source="lousa_rompimento",
+            payload={},
+        )
+    except Exception:
+        pass
 
     # ------------------------------------------------------------------
     # Fechamento em lote de notas individuais causadas pelo rompimento

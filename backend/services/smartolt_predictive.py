@@ -9,8 +9,8 @@ NERVOUS_METADATA = {
     "owner": "infra-team",
     "domain": "rede",
     "criticality": "high",
-    "emits_events": False,
-    "event_types": [],
+    "emits_events": True,
+    "event_types": ["ticket.opened"],
     "company_id_required": True,
 }
 
@@ -269,6 +269,16 @@ async def auto_create_preventive_tickets(
             "_predictive_zone": c["zone"],
             "_predictive_confidence": c["confidence"],
         })
+        try:
+            from services.event_bus import emit_event
+            await emit_event(
+                "ticket.opened",
+                company_id=company_id,
+                source="smartolt_predictive",
+                payload={},
+            )
+        except Exception:
+            pass
         created.append({"ticket_id": tk_id, "zone": c["zone"],
                           "severity": c["severity"]})
 

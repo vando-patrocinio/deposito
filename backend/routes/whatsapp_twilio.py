@@ -17,8 +17,8 @@ NERVOUS_METADATA = {
     "owner": "isabella-team",
     "domain": "whatsapp",
     "criticality": "high",
-    "emits_events": False,
-    "event_types": [],
+    "emits_events": True,
+    "event_types": ["wa.message.persisted"],
     "company_id_required": True,
 }
 
@@ -261,6 +261,16 @@ async def send(payload: SendIn,
         "created_at": now_iso(),
         "by_user_email": user.get("email"),
     })
+    try:
+        from services.event_bus import emit_event
+        await emit_event(
+            "wa.message.persisted",
+            company_id=cid,
+            source="whatsapp_twilio",
+            payload={},
+        )
+    except Exception:
+        pass
     return result
 
 
@@ -407,6 +417,16 @@ async def webhook(request: Request):
         "subscriber_id": subscriber_id,
         "created_at": now_iso(),
     })
+    try:
+        from services.event_bus import emit_event
+        await emit_event(
+            "wa.message.persisted",
+            company_id=company_id,
+            source="whatsapp_twilio",
+            payload={},
+        )
+    except Exception:
+        pass
     logger.info("[twilio] inbound %s (%s): %s%s", phone, profile_name,
                 text[:80], f" [{num_media} media]" if num_media else "")
 
@@ -740,6 +760,16 @@ async def _generate_and_send_twilio_reply(
             "subscriber_id": subscriber_id,
             "created_at": now_iso(),
         })
+        try:
+            from services.event_bus import emit_event
+            await emit_event(
+                "wa.message.persisted",
+                company_id=company_id,
+                source="whatsapp_twilio",
+                payload={},
+            )
+        except Exception:
+            pass
     send_result = send_results[0] if send_results else {"ok": False}
     # Isabella CEO Follow-up: registra outcome em ai_evaluations
     try:

@@ -21,8 +21,8 @@ NERVOUS_METADATA = {
     "owner": "ai-team",
     "domain": "isabella",
     "criticality": "high",
-    "emits_events": False,
-    "event_types": [],
+    "emits_events": True,
+    "event_types": ["subscriber.created"],
     "company_id_required": True,
 }
 
@@ -103,6 +103,16 @@ async def setup():
             "id": cid, "company_id": CO, "name": f"CLIENTE INC{n}",
             "pppoe_user": f"inc{n}@test", "neighborhood": NEIGH,
             "test_fixture": True, "created_at": now_iso()})
+        try:
+            from services.event_bus import emit_event
+            await emit_event(
+                "subscriber.created",
+                company_id=cid,
+                source="test_isabella_incident",
+                payload={},
+            )
+        except Exception:
+            pass
     # 3 reparos/48h na CTO (clientes 1-3) → regra 1
     repairs = [mk_repair(n, f"sub-inc-{n}", NEIGH) for n in range(1, 4)]
     # +2 reparos no MESMO bairro (clientes sem porta) → regra 2 (5 no bairro)

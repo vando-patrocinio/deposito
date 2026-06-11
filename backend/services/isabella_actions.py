@@ -16,8 +16,8 @@ NERVOUS_METADATA = {
     "owner": "isabella-team",
     "domain": "isabella",
     "criticality": "high",
-    "emits_events": False,
-    "event_types": [],
+    "emits_events": True,
+    "event_types": ["ticket.opened"],
     "company_id_required": True,
     "notes": "Cria tickets via marcadores [AGENDAR_VISITA] / [ABRIR_CHAMADO].",
 }
@@ -125,6 +125,16 @@ async def _create_chamado(*, company_id: str, phone: str,
         "created_by": "isabella",
     }
     await db.tickets.insert_one(ticket)
+    try:
+        from services.event_bus import emit_event
+        await emit_event(
+            "ticket.opened",
+            company_id=company_id,
+            source="isabella_actions",
+            payload={},
+        )
+    except Exception:
+        pass
     log.info("[isabella_actions] chamado criado ticket=%s phone=%s tipo=%s",
               ticket_id, phone, tipo_norm)
     return {"ticket_id": ticket_id, "short_id": short, "tipo": tipo_norm}

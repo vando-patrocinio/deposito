@@ -22,8 +22,8 @@ NERVOUS_METADATA = {
     "owner": "billing-team",
     "domain": "financeiro",
     "criticality": "high",
-    "emits_events": False,
-    "event_types": [],
+    "emits_events": True,
+    "event_types": ["subscriber.updated"],
     "company_id_required": True,
 }
 
@@ -194,6 +194,16 @@ async def create_charge(
                 {"$set": {gw_field: gateway_customer_id,
                            f"{payload.gateway}_synced_at": _now().isoformat()}},
             )
+            try:
+                from services.event_bus import emit_event
+                await emit_event(
+                    "subscriber.updated",
+                    company_id=cid,
+                    source="payment_charges",
+                    payload={},
+                )
+            except Exception:
+                pass
         except GatewayError as e:
             raise HTTPException(502, f"Gateway error (sync customer): {e}")
 

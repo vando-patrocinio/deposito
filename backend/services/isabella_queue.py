@@ -17,8 +17,8 @@ NERVOUS_METADATA = {
     "owner": "ai-team",
     "domain": "isabella",
     "criticality": "high",
-    "emits_events": False,
-    "event_types": [],
+    "emits_events": True,
+    "event_types": ["wa.message.persisted"],
     "company_id_required": True,
 }
 
@@ -181,6 +181,16 @@ async def _send_fallback_and_log(*, cid: str, phone: str,
             "llm_timeout_fallback": True,
             "created_at": now_iso(),
         })
+        try:
+            from services.event_bus import emit_event
+            await emit_event(
+                "wa.message.persisted",
+                company_id=cid,
+                source="isabella_queue",
+                payload={},
+            )
+        except Exception:
+            pass
         await _bump("llm_timeout_count")
         await _bump("twilio_send_count")
     except Exception as e:

@@ -17,8 +17,8 @@ NERVOUS_METADATA = {
     "owner": "vendas-team",
     "domain": "comercial",
     "criticality": "high",
-    "emits_events": False,
-    "event_types": [],
+    "emits_events": True,
+    "event_types": ["subscriber.bulk_updated", "subscriber.cancelled", "subscriber.created", "subscriber.updated"],
     "company_id_required": True,
 }
 
@@ -602,6 +602,16 @@ async def create_subscriber(payload: SubscriberIn,
         "created_by": user.get("name") or user.get("email"),
     })
     await db.subscribers.insert_one(dict(doc))
+    try:
+        from services.event_bus import emit_event
+        await emit_event(
+            "subscriber.created",
+            company_id=cid,
+            source="subscribers",
+            payload={},
+        )
+    except Exception:
+        pass
     await _replace_phones(cid, sid, payload.phones)
     await _replace_addresses(cid, sid, payload.addresses)
 
@@ -735,6 +745,16 @@ async def update_subscriber(sid: str, payload: SubscriberUpdate,
     upd["updated_at"] = now_iso()
     res = await db.subscribers.update_one(
         {"company_id": cid, "id": sid}, {"$set": upd})
+    try:
+        from services.event_bus import emit_event
+        await emit_event(
+            "subscriber.updated",
+            company_id=cid,
+            source="subscribers",
+            payload={},
+        )
+    except Exception:
+        pass
     if res.matched_count == 0:
         raise HTTPException(404, "Assinante não encontrado.")
     # Hook de conversão automática do funil Wi-Fi self-service
@@ -760,6 +780,16 @@ async def delete_subscriber(sid: str,
                              user: dict = Depends(require_role("gestor"))):
     cid = _cid(user)
     res = await db.subscribers.delete_one({"company_id": cid, "id": sid})
+    try:
+        from services.event_bus import emit_event
+        await emit_event(
+            "subscriber.cancelled",
+            company_id=cid,
+            source="subscribers",
+            payload={},
+        )
+    except Exception:
+        pass
     if res.deleted_count == 0:
         raise HTTPException(404, "Assinante não encontrado.")
     await db.subscriber_phones.delete_many(
@@ -1185,6 +1215,16 @@ async def bulk_fix_install_date(
         query,
         {"$set": {"installation_date": iso, "updated_at": now_iso()}},
     )
+    try:
+        from services.event_bus import emit_event
+        await emit_event(
+            "subscriber.bulk_updated",
+            company_id=cid,
+            source="subscribers",
+            payload={},
+        )
+    except Exception:
+        pass
     return {"matched": result.matched_count,
              "modified": result.modified_count,
              "installation_date": iso}

@@ -23,8 +23,8 @@ NERVOUS_METADATA = {
     "owner": "infra-team",
     "domain": "rede",
     "criticality": "high",
-    "emits_events": False,
-    "event_types": [],
+    "emits_events": True,
+    "event_types": ["cto.updated"],
     "company_id_required": True,
 }
 
@@ -516,6 +516,16 @@ async def release_port(
             "updated_at": now_iso(),
         }},
     )
+    try:
+        from services.event_bus import emit_event
+        await emit_event(
+            "cto.updated",
+            company_id=cid,
+            source="cto_ports_base",
+            payload={},
+        )
+    except Exception:
+        pass
     await sync_port_from_cto(cid, cto_id, port_number)
     logger.info(
         "[cto-ports] port released cid=%s cto=%s p=%s by=%s reason=%s",
@@ -566,6 +576,16 @@ async def release_all_ports(
                 "updated_at": now_iso(),
             }},
         )
+        try:
+            from services.event_bus import emit_event
+            await emit_event(
+                "cto.updated",
+                company_id=cid,
+                source="cto_ports_base",
+                payload={},
+            )
+        except Exception:
+            pass
         await sync_port_from_cto(cid, cto_id, n)
         released.append({
             "port_number": n,

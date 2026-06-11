@@ -42,8 +42,8 @@ NERVOUS_METADATA = {
     "owner": "billing-team",
     "domain": "financeiro",
     "criticality": "high",
-    "emits_events": False,
-    "event_types": [],
+    "emits_events": True,
+    "event_types": ["invoice.updated"],
     "company_id_required": True,
 }
 
@@ -394,6 +394,16 @@ async def mark_paid(inv_id: str, payload: MarkPaidIn,
     await db.subscriber_invoices.update_one(
         {"company_id": cid, "id": inv_id}, {"$set": upd},
     )
+    try:
+        from services.event_bus import emit_event
+        await emit_event(
+            "invoice.updated",
+            company_id=cid,
+            source="billing",
+            payload={},
+        )
+    except Exception:
+        pass
     updated = await db.subscriber_invoices.find_one(
         {"company_id": cid, "id": inv_id}, {"_id": 0},
     )
@@ -420,6 +430,16 @@ async def cancel_invoice(inv_id: str, user: dict = Depends(get_current_user)):
         {"$set": {"status": "canceled", "canceled_at": now_iso(),
                   "canceled_by": user.get("email")}},
     )
+    try:
+        from services.event_bus import emit_event
+        await emit_event(
+            "invoice.updated",
+            company_id=cid,
+            source="billing",
+            payload={},
+        )
+    except Exception:
+        pass
     if res.matched_count == 0:
         raise HTTPException(404, "Fatura não encontrada ou já paga.")
     inv = await db.subscriber_invoices.find_one(

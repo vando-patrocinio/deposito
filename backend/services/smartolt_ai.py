@@ -32,8 +32,8 @@ NERVOUS_METADATA = {
     "owner": "infra-team",
     "domain": "rede",
     "criticality": "high",
-    "emits_events": False,
-    "event_types": [],
+    "emits_events": True,
+    "event_types": ["wa.message.persisted"],
     "company_id_required": True,
 }
 
@@ -241,6 +241,16 @@ async def _insert_internal_notes(company_id: str, outage: Dict[str, Any],
             "is_internal_note": True,
             "visible_to_client": False,
         })
+        try:
+            from services.event_bus import emit_event
+            await emit_event(
+                "wa.message.persisted",
+                company_id=company_id,
+                source="smartolt_ai",
+                payload={},
+            )
+        except Exception:
+            pass
         inserted += 1
     if inserted:
         logger.info("[smartolt-ai] %d notas internas (%s) inseridas para outage %s",

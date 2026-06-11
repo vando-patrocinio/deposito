@@ -14,8 +14,8 @@ NERVOUS_METADATA = {
     "owner": "ai-team",
     "domain": "isabella",
     "criticality": "high",
-    "emits_events": False,
-    "event_types": [],
+    "emits_events": True,
+    "event_types": ["wa.message.persisted"],
     "company_id_required": True,
 }
 
@@ -40,6 +40,16 @@ async def _seed_outbound(cid: str, phone: str):
         "text": "Oi! Como posso ajudar?",
         "created_at": datetime.now(timezone.utc).isoformat(),
     })
+    try:
+        from services.event_bus import emit_event
+        await emit_event(
+            "wa.message.persisted",
+            company_id=cid,
+            source="test_humanizer",
+            payload={},
+        )
+    except Exception:
+        pass
 
 
 async def test_humanize_system_prompt():
