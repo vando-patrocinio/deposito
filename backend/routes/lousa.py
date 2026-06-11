@@ -1556,15 +1556,41 @@ async def _lousa_for_collaborator(
 
 @router.get("/lousa/all")
 async def list_all_tickets(user: dict = Depends(require_role("gestor"))):
-    """Painel gestor/admin: todas as bolhas do tenant."""
+    """Painel gestor/admin: todas as bolhas do tenant.
+
+    CTO 11/06/2026: ticket sem `assigned_collaborator_id` é renderizado na SALA
+    do tenant (col-sala-<cid>). Garante que nenhuma nota fique invisível.
+    """
     q = tenant_filter(user)
-    raw = await db.tickets.find(q, {"_id": 0}).to_list(2000)
+    raw = await db.tickets.find(q, {"_id": 0}).to_list(5000)
+
+    # Resolve sala_id do tenant (cacheia 1x)
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+    sala_id = None
+    try:
+        from services.isabella_actions import _ensure_sala
+        sala_id = await _ensure_sala(cid)
+    except Exception:
+        sala_id = "col-sala"
+
+    # Fallback in-memory: órfãos viram virtuais da SALA (sem mutar DB aqui).
+    orphans_made_visible = 0
+    for t in raw:
+        if not t.get("assigned_collaborator_id"):
+            t["assigned_collaborator_id"] = sala_id
+            t["system_generated"] = t.get("system_generated") or True
+            t["sala_route_reason"] = t.get("sala_route_reason") or "auto_visible_fallback"
+            orphans_made_visible += 1
+
     raw.sort(key=lambda t: (
         0 if t["status"] == "aguardando_atendimento" else 1,
         PRIORITY_RANK.get(t.get("priority", "normal"), 2),
         t.get("position", 0),
     ))
-    return {"tickets": [_normalize_ticket(t) for t in raw]}
+    return {
+        "tickets": [_normalize_ticket(t) for t in raw],
+        "_meta": {"orphans_made_visible": orphans_made_visible, "sala_id": sala_id},
+    }
 
 
 @router.get("/lousa/returned-notes")

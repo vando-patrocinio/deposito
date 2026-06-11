@@ -361,7 +361,7 @@ async def _execute_action(decision: Dict[str, Any]) -> Dict[str, Any]:
         # cria ticket técnico real (não depende de transporte WA)
         sid = decision["action_payload"]["subscriber_id"]
         ticket_id = _uid("tk")
-        await db.tickets.insert_one({
+        ticket_doc = {
             "id": ticket_id, "company_id": decision["company_id"],
             "client_id": sid,
             "status": "aberta",
@@ -373,7 +373,18 @@ async def _execute_action(decision: Dict[str, Any]) -> Dict[str, Any]:
                 f"Ação: {decision['recommended_action']}."),
             "origin": "autonomous_engine",
             "created_at": _iso(),
-        })
+        }
+        # CTO 11/06/2026: TODOS os tickets sistêmicos vão para a SALA por padrão.
+        # Sem isso, o ticket cai com assigned_collaborator_id=None e some da Lousa.
+        try:
+            from services.sala_router import route_to_sala
+            await route_to_sala(ticket_doc, reason="autonomous_engine")
+        except Exception as _e:
+            import logging
+            logging.getLogger("autonomous_engine").warning(
+                "route_to_sala falhou: %s", _e
+            )
+        await db.tickets.insert_one(ticket_doc)
         action["status"] = "executed"
         action["executed_at"] = _iso()
         action["result"] = {"ticket_id": ticket_id}

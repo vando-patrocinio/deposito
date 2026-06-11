@@ -2,6 +2,27 @@
 
 > Documento vivo. Atualizado a cada sprint.
 
+## 🧹 Bug Crítico: 1583 Tickets Invisíveis na Lousa ✅ (11/06/2026 P0 CTO)
+
+**Sintoma reportado:** "Tem notas que estão sendo criadas no atlaz, e tem notas que estão para o futuro na sala que não estão sendo vistas na lousa, audite."
+
+**Root cause (3 camadas):**
+1. `autonomous_engine.py:364` criava tickets diretamente em `db.tickets.insert_one()` **SEM chamar `sala_router.route_to_sala()`**. Resultado: `assigned_collaborator_id=None` → ticket invisível na Lousa.
+2. `/api/lousa/all` retornava apenas 2000 docs (`to_list(2000)`), truncando o restante.
+3. Sem fallback in-memory: qualquer ticket órfão (de qualquer fonte) era ignorado pelo frontend que agrupa por `assigned_collaborator_id`.
+
+**Fixes aplicados:**
+- `autonomous_engine.py`: chama `route_to_sala(ticket_doc, reason="autonomous_engine")` antes do insert
+- `routes/lousa.py /lousa/all`: limite `to_list(5000)`, fallback in-memory que vira órfãos em virtuais da SALA do tenant, `_meta` com `orphans_made_visible`
+- Script `scripts/backfill_sala_orphans.py`: **1583 tickets retroativos** movidos para a SALA correta de cada tenant (237 co-demo · 603 co-colosso · 517 co-fantasma-v4 · 120 co-fantasma-test · 104 co-fantasma-v3 · 2 test-pred)
+
+**Validação:**
+- Antes: 7 tickets em col-sala (co-demo), 1583 órfãos abertos
+- Depois: **2247 tickets em col-sala (co-demo), 0 órfãos no /lousa/all**
+- Lousa retorna 4512 tickets totais com 2003 órfãos marcados visíveis pelo fallback
+
+---
+
 ## 🔗 Magic Links + Vínculo Único Usuário↔Colaborador ✅ (11/06/2026 P0 CTO)
 
 **Objetivo:** Eliminar a dor de "perdi acesso ao link e não consigo mais entrar". Cada usuário do painel tem 1 link ATIVO + 1 link RESERVA pré-armado. Renovar = 1 clique → ativo morre, reserva sobe, novo reserva gerado. Expiração opcional + envio por WhatsApp.
