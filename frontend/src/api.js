@@ -58,23 +58,43 @@ client.interceptors.response.use(
 
     // Sprint 3 — interceptor global 403 / 429 / 503
     // Dispara evento p/ AppContent renderizar toast amigável.
+    // EXCEÇÃO: 403 em endpoints background NÃO vira toast quando o
+    // user logado é colaborador/técnico (role limitada), evitando a
+    // chuva de "Acesso negado" causada por widgets globais (Sentinela,
+    // briefings, presidente) que batem em rotas só-gestor.
     if (status === 403 || status === 429 || status === 503) {
       const kind = status === 403 ? "forbidden"
         : status === 429 ? "rate-limited"
         : "unavailable";
+      let suppressToast = false;
+      if (status === 403) {
+        try {
+          const role = (JSON.parse(
+            window.localStorage.getItem("ponto_user") || "{}") || {}).role;
+          if (role && role !== "administrador" && role !== "gestor"
+              && role !== "auditor") {
+            suppressToast = true;
+          }
+        } catch { /* ignore */ }
+      }
       const defaults = {
         forbidden: "Seu perfil não tem permissão para essa ação.",
         "rate-limited": "Limite de uso atingido. Tente novamente em alguns instantes.",
         unavailable: "Serviço temporariamente indisponível.",
       };
-      try {
-        window.dispatchEvent(new CustomEvent("smartprov-http-error", {
-          detail: {
-            status, kind, url,
-            message: detail || defaults[kind],
-          },
-        }));
-      } catch { /* ignore */ }
+      if (!suppressToast) {
+        try {
+          window.dispatchEvent(new CustomEvent("smartprov-http-error", {
+            detail: {
+              status, kind, url,
+              message: detail || defaults[kind],
+            },
+          }));
+        } catch { /* ignore */ }
+      } else {
+        // Continua logando no console para debug sem incomodar o usuário.
+        console.debug("[api] 403 silenciado (role colaborador):", url);
+      }
     }
 
     // Humaniza err.message para pt-BR sem expor stack/HTTP cru.
