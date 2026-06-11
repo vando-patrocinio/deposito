@@ -11,6 +11,16 @@ Validações (sem unittest.mock):
 
 Uso: `python3 /app/backend/scripts/test_isabella_commanders.py`
 """
+
+NERVOUS_METADATA = {
+    "owner": "ai-team",
+    "domain": "isabella",
+    "criticality": "high",
+    "emits_events": False,
+    "event_types": [],
+    "company_id_required": True,
+}
+
 import asyncio
 import sys
 from pathlib import Path

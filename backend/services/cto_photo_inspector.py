@@ -6,6 +6,16 @@ severidade e recomendações sobre o estado físico da CTO.
 Cache: análise é salva em `cto_photo_analyses` (por hash da imagem) para
 evitar recomputar a cada visualização.
 """
+
+NERVOUS_METADATA = {
+    "owner": "infra-team",
+    "domain": "rede",
+    "criticality": "high",
+    "emits_events": False,
+    "event_types": [],
+    "company_id_required": True,
+}
+
 import base64
 import hashlib
 import json

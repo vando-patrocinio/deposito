@@ -11,6 +11,16 @@ Retorna nível de viabilidade + evidências pra IA explicar pro cliente:
 """
 from __future__ import annotations
 
+
+NERVOUS_METADATA = {
+    "owner": "platform-team",
+    "domain": "infra",
+    "criticality": "medium",
+    "emits_events": False,
+    "event_types": [],
+    "company_id_required": True,
+}
+
 import re
 import unicodedata
 from typing import Any, Dict, List, Optional

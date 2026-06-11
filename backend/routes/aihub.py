@@ -11,6 +11,16 @@ Tudo usa o EMERGENT_LLM_KEY já configurado no app (sem chaves externas).
 """
 from __future__ import annotations
 
+
+NERVOUS_METADATA = {
+    "owner": "ai-team",
+    "domain": "isabella",
+    "criticality": "high",
+    "emits_events": False,
+    "event_types": [],
+    "company_id_required": True,
+}
+
 import asyncio
 import base64
 import logging

@@ -9,6 +9,16 @@ Valida:
   - bubbles_for_send quebra em ≤180c + remove saudação se contínua
   - Funciona para qualquer canal (interface canal-agnóstica)
 """
+
+NERVOUS_METADATA = {
+    "owner": "ai-team",
+    "domain": "isabella",
+    "criticality": "high",
+    "emits_events": False,
+    "event_types": [],
+    "company_id_required": True,
+}
+
 import asyncio
 import sys
 import uuid

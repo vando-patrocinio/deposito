@@ -10,6 +10,16 @@ Modelo (boas práticas — Resolução CONTRAN 14/98 + ALISAT/Cobli/TOTVS 2026):
 """
 from __future__ import annotations
 
+
+NERVOUS_METADATA = {
+    "owner": "ops-team",
+    "domain": "operacoes",
+    "criticality": "high",
+    "emits_events": False,
+    "event_types": [],
+    "company_id_required": True,
+}
+
 import io
 import logging
 import uuid

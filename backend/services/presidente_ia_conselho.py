@@ -9,6 +9,16 @@ Cache: 60 minutos por (cid, role) — reduz custo e mantém UX rápido.
 """
 from __future__ import annotations
 
+
+NERVOUS_METADATA = {
+    "owner": "ai-team",
+    "domain": "isabella",
+    "criticality": "high",
+    "emits_events": False,
+    "event_types": [],
+    "company_id_required": True,
+}
+
 import logging
 import os
 import uuid

@@ -14,6 +14,16 @@ Sem mocks. Side-effects auditáveis em executive_ledger, ai_evaluations,
 smart_repairs e client_equipment_history.
 """
 from __future__ import annotations
+
+NERVOUS_METADATA = {
+    "owner": "platform-team",
+    "domain": "infra",
+    "criticality": "low",
+    "emits_events": False,
+    "event_types": [],
+    "company_id_required": True,
+}
+
 import asyncio
 import json
 import os

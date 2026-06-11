@@ -3,9 +3,20 @@ presidente_ia_nl.py — V6.2 FASE 5
 Linguagem natural. Responde em português executivo direto.
 """
 from __future__ import annotations
+
+NERVOUS_METADATA = {
+    "owner": "ai-team",
+    "domain": "isabella",
+    "criticality": "high",
+    "emits_events": False,
+    "event_types": [],
+    "company_id_required": True,
+}
+
 from datetime import datetime, timezone
 from typing import Any, Dict
 
+from database import db
 from services import financial_foundation as fin
 from services import real_revenue
 from services import autonomous_engine as eng
@@ -54,6 +65,37 @@ async def daily_natural(company_id: str) -> Dict[str, Any]:
     if not biggest_blocker and not biggest_roi:
         narrative.append("Não há bloqueadores nem oportunidades pendentes.")
 
+    # ─── Sistema Nervoso (Fase 5 — Nervous Foundation) ──────────
+    nervous_brief = None
+    try:
+        from services.nervous_autodiscovery import _calc_sustained_coverage
+        latest = await db.nervous_coverage_history.find_one(
+            {}, {"_id": 0}, sort=[("ts", -1)])
+        if latest:
+            sustained = await _calc_sustained_coverage()
+            cov = latest.get("coverage_pct", 0)
+            silent_n = latest.get("silent_critical_count", 0)
+            regs = len(latest.get("regressions", []))
+            risk = ("VERDE" if (silent_n == 0 and regs == 0 and cov >= 80)
+                     else "AMARELO" if (silent_n == 0 and regs == 0)
+                     else "VERMELHO")
+            nervous_brief = {
+                "coverage_pct": cov,
+                "sustained_30d_pct": sustained,
+                "silent_critical": silent_n,
+                "regressions": regs,
+                "risk_level": risk,
+            }
+            line = (f"Sistema Nervoso: {cov}% cobertura · sustained 30d "
+                     f"{sustained}% · risco {risk}.")
+            if silent_n > 0:
+                line += f" 🚨 {silent_n} módulo(s) crítico(s) sem metadata."
+            if regs > 0:
+                line += f" 🔴 {regs} regressão(ões) detectada(s)."
+            narrative.append(line)
+    except Exception:
+        pass
+
     return {
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "company_id": company_id,
@@ -63,4 +105,5 @@ async def daily_natural(company_id: str) -> Dict[str, Any]:
         "blocking_growth": biggest_blocker,
         "highest_roi": biggest_roi,
         "autonomy_score": score["score"],
+        "nervous_foundation": nervous_brief,
     }

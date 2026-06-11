@@ -9,6 +9,16 @@ Valida:
   6. Aceita perfis admin/gestor/auditor (testa gestor)
 """
 from __future__ import annotations
+
+NERVOUS_METADATA = {
+    "owner": "ops-team",
+    "domain": "operacoes",
+    "criticality": "high",
+    "emits_events": False,
+    "event_types": [],
+    "company_id_required": True,
+}
+
 import asyncio
 import json
 import os

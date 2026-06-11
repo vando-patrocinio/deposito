@@ -3,6 +3,16 @@
 Cria/atualiza o agente Vendas para a empresa demo. Pode ser rodado:
     python -m scripts.seed_vendas_agent
 """
+
+NERVOUS_METADATA = {
+    "owner": "vendas-team",
+    "domain": "comercial",
+    "criticality": "high",
+    "emits_events": False,
+    "event_types": [],
+    "company_id_required": True,
+}
+
 import asyncio
 import os
 import sys

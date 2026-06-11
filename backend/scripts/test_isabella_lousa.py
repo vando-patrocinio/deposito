@@ -4,6 +4,16 @@ Número autorizado para teste: 21998176526.
 NUNCA envia para outros números reais.
 """
 from __future__ import annotations
+
+NERVOUS_METADATA = {
+    "owner": "ops-team",
+    "domain": "operacoes",
+    "criticality": "high",
+    "emits_events": False,
+    "event_types": [],
+    "company_id_required": True,
+}
+
 import asyncio
 import json
 import os

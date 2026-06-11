@@ -16,6 +16,16 @@ Valida:
  9. Presidente IA: summary com bloco de incidentes.
 10. Resolução + RBAC (técnico não varre; sem JWT = 401).
 """
+
+NERVOUS_METADATA = {
+    "owner": "ai-team",
+    "domain": "isabella",
+    "criticality": "high",
+    "emits_events": False,
+    "event_types": [],
+    "company_id_required": True,
+}
+
 import asyncio
 import sys
 import uuid

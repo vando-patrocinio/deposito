@@ -4,6 +4,16 @@ Indicador único: SMARTPROV SCORE (0-100).
   30% Receita | 20% Retenção | 20% Automação | 15% DQ | 15% Rede
 """
 from __future__ import annotations
+
+NERVOUS_METADATA = {
+    "owner": "platform-team",
+    "domain": "infra",
+    "criticality": "medium",
+    "emits_events": False,
+    "event_types": [],
+    "company_id_required": True,
+}
+
 from datetime import datetime, timezone, timedelta
 from typing import Any, Dict
 

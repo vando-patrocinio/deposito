@@ -10,6 +10,16 @@ Cada OLT é um "perfil" no vault sob:
   integration:olt:profiles:{name}:label        human-readable
 """
 from __future__ import annotations
+
+NERVOUS_METADATA = {
+    "owner": "infra-team",
+    "domain": "rede",
+    "criticality": "high",
+    "emits_events": False,
+    "event_types": [],
+    "company_id_required": True,
+}
+
 import re
 from typing import Optional, List, Dict, Any
 from fastapi import APIRouter, Depends, HTTPException

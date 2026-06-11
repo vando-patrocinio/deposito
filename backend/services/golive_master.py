@@ -4,6 +4,16 @@ Verifica 8 dependências críticas continuamente.
 VERDE só se TODAS estão saudáveis.
 """
 from __future__ import annotations
+
+NERVOUS_METADATA = {
+    "owner": "platform-team",
+    "domain": "infra",
+    "criticality": "medium",
+    "emits_events": False,
+    "event_types": [],
+    "company_id_required": True,
+}
+
 from datetime import datetime, timezone
 from typing import Any, Dict
 

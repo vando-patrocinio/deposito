@@ -7,6 +7,16 @@ Função principal: build_boleto_pdf(invoice) -> bytes
 """
 from __future__ import annotations
 
+
+NERVOUS_METADATA = {
+    "owner": "platform-team",
+    "domain": "infra",
+    "criticality": "medium",
+    "emits_events": False,
+    "event_types": [],
+    "company_id_required": True,
+}
+
 import io
 import logging
 import os

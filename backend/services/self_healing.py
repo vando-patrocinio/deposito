@@ -4,6 +4,16 @@ Cada bloqueador identificado pelo `blockers_audit` recebe ação corretiva
 EXECUTÁVEL com botão "APLICAR CORREÇÃO". Antes/Depois/ROI/Rollback registrados.
 """
 from __future__ import annotations
+
+NERVOUS_METADATA = {
+    "owner": "platform-team",
+    "domain": "infra",
+    "criticality": "medium",
+    "emits_events": False,
+    "event_types": [],
+    "company_id_required": True,
+}
+
 import uuid
 from datetime import datetime, timezone
 from typing import Any, Dict, Optional

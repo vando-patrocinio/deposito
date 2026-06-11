@@ -4,6 +4,16 @@ Painel executivo: "POR QUE A IA NÃO ESTÁ AGINDO?"
 Lista bloqueadores REAIS com impacto financeiro mensurado.
 """
 from __future__ import annotations
+
+NERVOUS_METADATA = {
+    "owner": "platform-team",
+    "domain": "infra",
+    "criticality": "medium",
+    "emits_events": False,
+    "event_types": [],
+    "company_id_required": True,
+}
+
 from datetime import datetime, timezone, timedelta
 from typing import Any, Dict, List
 import os

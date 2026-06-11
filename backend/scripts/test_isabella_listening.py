@@ -4,6 +4,16 @@
   3. Listening guard: cliente "so quero instalar" → Isabella não pergunta qualificação
   4. Name suppression: "Pamela" só 1x por turn
 """
+
+NERVOUS_METADATA = {
+    "owner": "ai-team",
+    "domain": "isabella",
+    "criticality": "high",
+    "emits_events": False,
+    "event_types": [],
+    "company_id_required": True,
+}
+
 import asyncio
 import sys
 import time

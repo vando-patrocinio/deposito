@@ -5,6 +5,16 @@ Decide se ação financeira pode ser executada ou deve ser marcada
 como `blocked_transport` (sem culpa da IA).
 """
 from __future__ import annotations
+
+NERVOUS_METADATA = {
+    "owner": "platform-team",
+    "domain": "infra",
+    "criticality": "medium",
+    "emits_events": False,
+    "event_types": [],
+    "company_id_required": True,
+}
+
 import os
 import httpx
 from datetime import datetime, timezone

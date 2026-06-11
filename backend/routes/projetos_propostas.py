@@ -13,6 +13,16 @@ informativo (header descritivo, diferencial, benefício, fechamento).
 """
 from __future__ import annotations
 
+
+NERVOUS_METADATA = {
+    "owner": "ops-team",
+    "domain": "operacoes",
+    "criticality": "high",
+    "emits_events": False,
+    "event_types": [],
+    "company_id_required": True,
+}
+
 import io
 import json
 import logging

@@ -16,6 +16,16 @@ State machine:
 """
 from __future__ import annotations
 
+
+NERVOUS_METADATA = {
+    "owner": "platform-team",
+    "domain": "infra",
+    "criticality": "medium",
+    "emits_events": False,
+    "event_types": [],
+    "company_id_required": True,
+}
+
 import logging
 import uuid
 from typing import Any, Dict, List, Literal, Optional

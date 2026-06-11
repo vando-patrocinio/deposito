@@ -11,6 +11,16 @@ para os outros agentes via markers invisíveis:
 Rodar:
     cd /app/backend && python scripts/seed_isabella_ligo.py
 """
+
+NERVOUS_METADATA = {
+    "owner": "ai-team",
+    "domain": "isabella",
+    "criticality": "high",
+    "emits_events": False,
+    "event_types": [],
+    "company_id_required": True,
+}
+
 import asyncio
 import os
 import sys

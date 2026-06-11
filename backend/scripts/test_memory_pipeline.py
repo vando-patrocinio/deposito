@@ -12,6 +12,16 @@ Política Zero-Mocks: TODAS as chamadas vão pro MongoDB real do tenant.
 """
 from __future__ import annotations
 
+
+NERVOUS_METADATA = {
+    "owner": "platform-team",
+    "domain": "infra",
+    "criticality": "low",
+    "emits_events": False,
+    "event_types": [],
+    "company_id_required": True,
+}
+
 import asyncio
 import sys
 

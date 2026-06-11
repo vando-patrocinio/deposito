@@ -13,6 +13,16 @@ Camada de IA visual (Álvaro) para frota usa Claude Sonnet vision via
 Emergent LLM Key (mesmo padrão de services/fleet_ai_worker.py), com
 fallback heurístico determinístico sobre dados reais quando o LLM falha.
 """
+
+NERVOUS_METADATA = {
+    "owner": "ai-team",
+    "domain": "isabella",
+    "criticality": "high",
+    "emits_events": False,
+    "event_types": [],
+    "company_id_required": True,
+}
+
 import asyncio
 import json
 import logging

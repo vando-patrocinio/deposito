@@ -20,6 +20,16 @@ Worker autônomo: roda a cada 60s e tria tickets `ai_triage_pending=true`
 """
 from __future__ import annotations
 
+
+NERVOUS_METADATA = {
+    "owner": "ops-team",
+    "domain": "operacoes",
+    "criticality": "high",
+    "emits_events": False,
+    "event_types": [],
+    "company_id_required": True,
+}
+
 import asyncio
 import json as _json
 import logging

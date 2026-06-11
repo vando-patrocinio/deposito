@@ -15,6 +15,16 @@ Sub-módulos relacionados:
 - `services/cto_pdf.py`     — geração do PDF da CTO
 - `services/drive_backup.py`— upload genérico ao Google Drive
 """
+
+NERVOUS_METADATA = {
+    "owner": "platform-team",
+    "domain": "infra",
+    "criticality": "medium",
+    "emits_events": False,
+    "event_types": [],
+    "company_id_required": True,
+}
+
 import asyncio
 import logging
 import time

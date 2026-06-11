@@ -14,6 +14,16 @@ Toda função responde SIM a ≥1: aumenta receita · reduz churn · reduz
 custo · reduz truck roll · melhora produtividade · sem intervenção.
 """
 from __future__ import annotations
+
+NERVOUS_METADATA = {
+    "owner": "platform-team",
+    "domain": "infra",
+    "criticality": "medium",
+    "emits_events": False,
+    "event_types": [],
+    "company_id_required": True,
+}
+
 import re
 import uuid
 import logging

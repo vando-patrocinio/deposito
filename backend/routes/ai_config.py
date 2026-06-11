@@ -11,6 +11,16 @@ principal cair. Cada agente de atendimento (Isabella, Jerusa) usa a chain.
 """
 from __future__ import annotations
 
+
+NERVOUS_METADATA = {
+    "owner": "platform-team",
+    "domain": "infra",
+    "criticality": "medium",
+    "emits_events": False,
+    "event_types": [],
+    "company_id_required": True,
+}
+
 import time as _t
 from typing import List, Optional
 

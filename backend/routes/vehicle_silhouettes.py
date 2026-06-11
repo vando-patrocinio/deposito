@@ -7,6 +7,16 @@ Marks de avaria são círculos vermelhos numerados (mesmo `ord` do frontend).
 """
 from __future__ import annotations
 
+
+NERVOUS_METADATA = {
+    "owner": "ops-team",
+    "domain": "operacoes",
+    "criticality": "high",
+    "emits_events": False,
+    "event_types": [],
+    "company_id_required": True,
+}
+
 from reportlab.graphics.shapes import (Circle, Drawing, Ellipse, Line, Path,
                                         Polygon, Rect, String, definePath)
 from reportlab.lib import colors

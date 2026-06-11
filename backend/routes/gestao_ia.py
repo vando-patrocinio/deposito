@@ -1,6 +1,16 @@
 """Routes para GESTAO_IA — análise estratégica de KPIs operacionais."""
 from __future__ import annotations
 
+
+NERVOUS_METADATA = {
+    "owner": "platform-team",
+    "domain": "infra",
+    "criticality": "medium",
+    "emits_events": False,
+    "event_types": [],
+    "company_id_required": True,
+}
+
 from typing import Dict, Any
 
 from fastapi import APIRouter, Depends, HTTPException

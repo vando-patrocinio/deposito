@@ -26,6 +26,16 @@ Endpoints:
 """
 from __future__ import annotations
 
+
+NERVOUS_METADATA = {
+    "owner": "billing-team",
+    "domain": "financeiro",
+    "criticality": "high",
+    "emits_events": False,
+    "event_types": [],
+    "company_id_required": True,
+}
+
 import hashlib
 import logging
 import os

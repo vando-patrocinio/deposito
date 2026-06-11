@@ -12,6 +12,16 @@ Métricas: `isabella_queue_metrics` (snapshot a cada 5s) +
 """
 from __future__ import annotations
 
+
+NERVOUS_METADATA = {
+    "owner": "ai-team",
+    "domain": "isabella",
+    "criticality": "high",
+    "emits_events": False,
+    "event_types": [],
+    "company_id_required": True,
+}
+
 import asyncio
 import logging
 import os

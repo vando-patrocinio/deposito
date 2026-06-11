@@ -5,6 +5,16 @@ Usado no cadastro de cliente (frontend) e por automações da Isabella.
 ViaCEP é gratuito, sem autenticação, sem rate limit conhecido.
 Algoritmo de CPF/CNPJ implementado localmente (rápido, sem custo).
 """
+
+NERVOUS_METADATA = {
+    "owner": "platform-team",
+    "domain": "infra",
+    "criticality": "medium",
+    "emits_events": False,
+    "event_types": [],
+    "company_id_required": True,
+}
+
 import logging
 import re
 from typing import Optional

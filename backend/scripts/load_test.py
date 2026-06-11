@@ -8,6 +8,16 @@ Uso:
 """
 from __future__ import annotations
 
+
+NERVOUS_METADATA = {
+    "owner": "platform-team",
+    "domain": "infra",
+    "criticality": "low",
+    "emits_events": False,
+    "event_types": [],
+    "company_id_required": True,
+}
+
 import argparse
 import asyncio
 import sys

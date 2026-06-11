@@ -11,6 +11,16 @@ um relatório do tipo "daily", o que dispara em cadeia:
 Idempotente: o endpoint /report já tem cache por (company, period, dia),
 então rodar 2× no mesmo dia não duplica.
 """
+
+NERVOUS_METADATA = {
+    "owner": "platform-team",
+    "domain": "infra",
+    "criticality": "high",
+    "emits_events": False,
+    "event_types": [],
+    "company_id_required": True,
+}
+
 import asyncio
 import logging
 from datetime import datetime, timezone

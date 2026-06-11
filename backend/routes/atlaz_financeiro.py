@@ -13,6 +13,16 @@ ENDPOINTS DA API ATLAZ V2 (descobertos via /probe):
 
 Estratégia: pull /faturas com janela móvel + bulk_write (1k+ docs eficiente).
 """
+
+NERVOUS_METADATA = {
+    "owner": "billing-team",
+    "domain": "financeiro",
+    "criticality": "high",
+    "emits_events": False,
+    "event_types": [],
+    "company_id_required": True,
+}
+
 import logging
 import uuid
 from datetime import datetime, timedelta, timezone

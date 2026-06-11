@@ -4,6 +4,16 @@ GET  /api/settings/retirada-template
 PUT  /api/settings/retirada-template  { template: str }
 POST /api/settings/retirada-template/reset  (volta ao padrão)
 """
+
+NERVOUS_METADATA = {
+    "owner": "ops-team",
+    "domain": "operacoes",
+    "criticality": "high",
+    "emits_events": False,
+    "event_types": [],
+    "company_id_required": True,
+}
+
 from typing import Any, Dict
 
 from fastapi import APIRouter, Depends, HTTPException

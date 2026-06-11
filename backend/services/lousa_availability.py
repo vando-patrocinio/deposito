@@ -16,6 +16,16 @@ Regra de saturação:
 """
 from __future__ import annotations
 
+
+NERVOUS_METADATA = {
+    "owner": "ops-team",
+    "domain": "operacoes",
+    "criticality": "high",
+    "emits_events": False,
+    "event_types": [],
+    "company_id_required": True,
+}
+
 import logging
 from datetime import date, datetime, timedelta, timezone
 from typing import Dict, List, Optional, Tuple

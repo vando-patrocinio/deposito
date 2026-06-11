@@ -11,6 +11,16 @@ Retorna {score: 0-10, label: "Excelente"/"Bom"/"Atenção"/"Crítico", signals: 
 """
 from __future__ import annotations
 
+
+NERVOUS_METADATA = {
+    "owner": "ops-team",
+    "domain": "operacoes",
+    "criticality": "high",
+    "emits_events": False,
+    "event_types": [],
+    "company_id_required": True,
+}
+
 import math
 from datetime import datetime, timedelta, timezone
 from typing import Any, Optional

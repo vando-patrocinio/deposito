@@ -6,6 +6,16 @@ e valida que:
   - Anti-CPF rewrite remove "Pode me passar o CPF" se identificado
   - Saudação repetida em turn 2/3/4 → dropada
 """
+
+NERVOUS_METADATA = {
+    "owner": "platform-team",
+    "domain": "infra",
+    "criticality": "low",
+    "emits_events": False,
+    "event_types": [],
+    "company_id_required": True,
+}
+
 import asyncio
 import sys
 import uuid

@@ -1,5 +1,15 @@
 """ai_center_v6.py — Endpoints REST V6.0 (consolidação, sem novas telas)."""
 from __future__ import annotations
+
+NERVOUS_METADATA = {
+    "owner": "ai-team",
+    "domain": "isabella",
+    "criticality": "high",
+    "emits_events": False,
+    "event_types": [],
+    "company_id_required": True,
+}
+
 from fastapi import APIRouter, Body, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 from core import require_role

@@ -12,6 +12,16 @@ LÓGICA:
 - Valor novo = valor atual × (1 + inflação_acumulada_12m / 100)
 - Log persistido em `subscriber_readjustments` (auditoria)
 """
+
+NERVOUS_METADATA = {
+    "owner": "platform-team",
+    "domain": "infra",
+    "criticality": "medium",
+    "emits_events": False,
+    "event_types": [],
+    "company_id_required": True,
+}
+
 import logging
 import uuid
 from datetime import datetime, timedelta, timezone

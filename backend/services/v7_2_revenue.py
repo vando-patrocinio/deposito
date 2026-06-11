@@ -12,6 +12,16 @@ Resolve os 4 bugs do G1 (revenue_realization=0 com 3.445 invoices paid):
 Sem novas IAs, sem novas telas. Só fix de joins e fonte-de-verdade.
 """
 from __future__ import annotations
+
+NERVOUS_METADATA = {
+    "owner": "vendas-team",
+    "domain": "comercial",
+    "criticality": "high",
+    "emits_events": False,
+    "event_types": [],
+    "company_id_required": True,
+}
+
 import logging
 import uuid
 from datetime import datetime, timedelta, timezone

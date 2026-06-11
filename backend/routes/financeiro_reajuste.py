@@ -2,6 +2,16 @@
 
 UI: lista clientes com reajuste devido/próximo, permite aplicar individual ou em lote.
 """
+
+NERVOUS_METADATA = {
+    "owner": "billing-team",
+    "domain": "financeiro",
+    "criticality": "high",
+    "emits_events": False,
+    "event_types": [],
+    "company_id_required": True,
+}
+
 import logging
 from typing import Optional
 

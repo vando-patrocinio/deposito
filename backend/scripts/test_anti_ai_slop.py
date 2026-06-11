@@ -3,6 +3,16 @@
 Para cada regra, valida que `deslop()` reescreve corretamente.
 Zero mocks.
 """
+
+NERVOUS_METADATA = {
+    "owner": "ai-team",
+    "domain": "isabella",
+    "criticality": "high",
+    "emits_events": False,
+    "event_types": [],
+    "company_id_required": True,
+}
+
 import sys
 from pathlib import Path
 

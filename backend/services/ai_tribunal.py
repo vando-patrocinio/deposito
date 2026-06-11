@@ -13,6 +13,16 @@ Endpoint consultivo: agrega tudo num único explainability report.
 """
 from __future__ import annotations
 
+
+NERVOUS_METADATA = {
+    "owner": "platform-team",
+    "domain": "shield",
+    "criticality": "high",
+    "emits_events": False,
+    "event_types": [],
+    "company_id_required": True,
+}
+
 import logging
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional

@@ -17,6 +17,16 @@ bloco correspondente é omitido sem quebrar o fluxo de atendimento.
 """
 from __future__ import annotations
 
+
+NERVOUS_METADATA = {
+    "owner": "ai-team",
+    "domain": "isabella",
+    "criticality": "high",
+    "emits_events": False,
+    "event_types": [],
+    "company_id_required": True,
+}
+
 import logging
 from typing import Optional
 

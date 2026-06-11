@@ -15,6 +15,16 @@ Cada step vira `isabella_opportunities(kind=dunning)` com `recommended_action`.
 """
 from __future__ import annotations
 
+
+NERVOUS_METADATA = {
+    "owner": "billing-team",
+    "domain": "financeiro",
+    "criticality": "high",
+    "emits_events": False,
+    "event_types": [],
+    "company_id_required": True,
+}
+
 import logging
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Tuple

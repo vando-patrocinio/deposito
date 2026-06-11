@@ -10,6 +10,16 @@ Idempotente: rerun não duplica (upsert por number).
 Uso:
     cd /app/backend && python3 scripts/seed_scenarios_batch1.py
 """
+
+NERVOUS_METADATA = {
+    "owner": "ops-team",
+    "domain": "operacoes",
+    "criticality": "high",
+    "emits_events": False,
+    "event_types": [],
+    "company_id_required": True,
+}
+
 import asyncio
 import os
 import sys

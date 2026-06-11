@@ -14,6 +14,16 @@ Cada detector retorna List[Dict] no formato:
 """
 from __future__ import annotations
 
+
+NERVOUS_METADATA = {
+    "owner": "platform-team",
+    "domain": "infra",
+    "criticality": "medium",
+    "emits_events": False,
+    "event_types": [],
+    "company_id_required": True,
+}
+
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List
 

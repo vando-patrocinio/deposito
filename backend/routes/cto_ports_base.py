@@ -18,6 +18,16 @@ Endpoints (router prefix /api/cto-ports):
   POST   /sync          re-sincronizar TODA a base a partir de ctos.ports
                        (admin only — idempotente; usa para migração)
 """
+
+NERVOUS_METADATA = {
+    "owner": "infra-team",
+    "domain": "rede",
+    "criticality": "high",
+    "emits_events": False,
+    "event_types": [],
+    "company_id_required": True,
+}
+
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 

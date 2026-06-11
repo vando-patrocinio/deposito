@@ -12,6 +12,16 @@ Toggles disponíveis:
 GET  /api/settings/os-validation-toggles
 PUT  /api/settings/os-validation-toggles  { ipv6_test_required?, cto_photo_required?, mac_validation_required? }
 """
+
+NERVOUS_METADATA = {
+    "owner": "ops-team",
+    "domain": "operacoes",
+    "criticality": "high",
+    "emits_events": False,
+    "event_types": [],
+    "company_id_required": True,
+}
+
 from typing import Any, Dict
 
 from fastapi import APIRouter, Depends, HTTPException

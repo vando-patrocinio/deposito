@@ -7,6 +7,16 @@ Lote 3 (#15-#24): Agendamento + Lousa Kanban · visita, reagendamento,
 
 Idempotente.
 """
+
+NERVOUS_METADATA = {
+    "owner": "ops-team",
+    "domain": "operacoes",
+    "criticality": "high",
+    "emits_events": False,
+    "event_types": [],
+    "company_id_required": True,
+}
+
 import asyncio
 import os
 import sys

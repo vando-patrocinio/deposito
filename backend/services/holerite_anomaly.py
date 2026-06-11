@@ -21,6 +21,16 @@ Best practices aplicadas:
 """
 from __future__ import annotations
 
+
+NERVOUS_METADATA = {
+    "owner": "billing-team",
+    "domain": "financeiro",
+    "criticality": "high",
+    "emits_events": False,
+    "event_types": [],
+    "company_id_required": True,
+}
+
 import logging
 from typing import Any, Dict, List, Optional
 

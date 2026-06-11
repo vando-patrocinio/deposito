@@ -13,6 +13,16 @@ Inclui:
 - GET  /api/ai-training/runs              → histórico de execuções
 - GET  /api/ai-training/runs/{id}         → detalhe de uma execução
 """
+
+NERVOUS_METADATA = {
+    "owner": "platform-team",
+    "domain": "infra",
+    "criticality": "medium",
+    "emits_events": False,
+    "event_types": [],
+    "company_id_required": True,
+}
+
 import asyncio
 import json
 import logging

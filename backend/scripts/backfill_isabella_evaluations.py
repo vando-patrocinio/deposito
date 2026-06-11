@@ -7,6 +7,16 @@ ANTES do outbound).
 Idempotente: pula outbounds que já têm evaluation associada.
 """
 from __future__ import annotations
+
+NERVOUS_METADATA = {
+    "owner": "ai-team",
+    "domain": "isabella",
+    "criticality": "high",
+    "emits_events": False,
+    "event_types": [],
+    "company_id_required": True,
+}
+
 import asyncio
 import sys
 import time

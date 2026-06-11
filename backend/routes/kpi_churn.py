@@ -7,6 +7,16 @@ GET /api/kpis/churn-reasons?period_days=30 → agregado por categoria,
 Lê de `tickets` onde `type=retirada`, `status=fechado` e
 `completion_data.cancel_reason_category` está preenchido.
 """
+
+NERVOUS_METADATA = {
+    "owner": "vendas-team",
+    "domain": "comercial",
+    "criticality": "high",
+    "emits_events": False,
+    "event_types": [],
+    "company_id_required": True,
+}
+
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 import json

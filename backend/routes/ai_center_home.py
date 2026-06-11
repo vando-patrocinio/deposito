@@ -3,6 +3,16 @@
 Responde em <2s: KPIs consolidados + briefing executivo em linguagem natural.
 """
 from __future__ import annotations
+
+NERVOUS_METADATA = {
+    "owner": "ai-team",
+    "domain": "isabella",
+    "criticality": "high",
+    "emits_events": False,
+    "event_types": [],
+    "company_id_required": True,
+}
+
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict
 from fastapi import APIRouter, Depends, HTTPException

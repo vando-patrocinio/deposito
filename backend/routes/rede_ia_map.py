@@ -23,6 +23,16 @@ Endpoints:
 - POST /map/positions         → grava reposicionamento manual
 - GET  /map/cto-health/{id}   → média de sinal das ONUs daquela CTO/VLAN
 """
+
+NERVOUS_METADATA = {
+    "owner": "platform-team",
+    "domain": "infra",
+    "criticality": "medium",
+    "emits_events": False,
+    "event_types": [],
+    "company_id_required": True,
+}
+
 import base64
 import hashlib
 import hmac

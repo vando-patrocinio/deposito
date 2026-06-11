@@ -18,6 +18,16 @@ Para cada `isabella_opportunities` no tenant fantasma:
   4. Marca opp como `converted` / `lost`
 """
 from __future__ import annotations
+
+NERVOUS_METADATA = {
+    "owner": "platform-team",
+    "domain": "infra",
+    "criticality": "low",
+    "emits_events": False,
+    "event_types": [],
+    "company_id_required": True,
+}
+
 import asyncio, json, os, random, sys, uuid
 from datetime import datetime, timezone
 

@@ -7,6 +7,16 @@ B) Filtro oportunidades: conta isabella_opportunities geradas por threshold 55
    vs threshold 80 (baseline antigo).
 """
 from __future__ import annotations
+
+NERVOUS_METADATA = {
+    "owner": "platform-team",
+    "domain": "infra",
+    "criticality": "low",
+    "emits_events": False,
+    "event_types": [],
+    "company_id_required": True,
+}
+
 import asyncio
 import json
 import os

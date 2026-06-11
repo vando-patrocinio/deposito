@@ -9,6 +9,16 @@ motor_ia_intel.py — Endpoints REST do Motor IA pós-CTO audit
 """
 from __future__ import annotations
 
+
+NERVOUS_METADATA = {
+    "owner": "ai-team",
+    "domain": "isabella",
+    "criticality": "high",
+    "emits_events": False,
+    "event_types": [],
+    "company_id_required": True,
+}
+
 from typing import Any, Dict
 
 from fastapi import APIRouter, Depends, Query

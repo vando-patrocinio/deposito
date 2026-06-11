@@ -5,6 +5,16 @@ Lote 5 (#31-#40): Avaliador IA + Coach + Aprendizado.
 
 Idempotente.
 """
+
+NERVOUS_METADATA = {
+    "owner": "ops-team",
+    "domain": "operacoes",
+    "criticality": "high",
+    "emits_events": False,
+    "event_types": [],
+    "company_id_required": True,
+}
+
 import asyncio
 import os
 import sys

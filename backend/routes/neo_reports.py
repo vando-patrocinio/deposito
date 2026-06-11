@@ -12,6 +12,16 @@ Dispatcher: `dispatch_due_schedules_job` é chamado pelo APScheduler a cada
 """
 from __future__ import annotations
 
+
+NERVOUS_METADATA = {
+    "owner": "platform-team",
+    "domain": "infra",
+    "criticality": "medium",
+    "emits_events": False,
+    "event_types": [],
+    "company_id_required": True,
+}
+
 import base64
 import io
 import logging

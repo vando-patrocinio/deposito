@@ -19,6 +19,16 @@ Por default authorize_real_send=False → toda mensagem segue
 homologation.safe_send_whatsapp (que redireciona para TEST_PHONE).
 """
 from __future__ import annotations
+
+NERVOUS_METADATA = {
+    "owner": "platform-team",
+    "domain": "infra",
+    "criticality": "medium",
+    "emits_events": False,
+    "event_types": [],
+    "company_id_required": True,
+}
+
 import math
 import random
 import re

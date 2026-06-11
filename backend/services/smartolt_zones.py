@@ -11,6 +11,16 @@ Estratégia:
 - Cache local em `smartolt_zones_cache` com TTL curto
 - Log de operações em `smartolt_zone_audit`
 """
+
+NERVOUS_METADATA = {
+    "owner": "infra-team",
+    "domain": "rede",
+    "criticality": "high",
+    "emits_events": False,
+    "event_types": [],
+    "company_id_required": True,
+}
+
 import asyncio
 import logging
 import time

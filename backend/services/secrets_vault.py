@@ -16,6 +16,16 @@ Geração da MASTER_KEY (uma vez, em setup):
   → copiar para /app/backend/.env como SECRETS_MASTER_KEY=...
 """
 from __future__ import annotations
+
+NERVOUS_METADATA = {
+    "owner": "platform-team",
+    "domain": "shield",
+    "criticality": "high",
+    "emits_events": False,
+    "event_types": [],
+    "company_id_required": True,
+}
+
 import os
 import logging
 import uuid

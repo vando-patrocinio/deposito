@@ -21,6 +21,16 @@ funcional em ambientes de dev.
 """
 from __future__ import annotations
 
+
+NERVOUS_METADATA = {
+    "owner": "infra-team",
+    "domain": "rede",
+    "criticality": "high",
+    "emits_events": False,
+    "event_types": [],
+    "company_id_required": True,
+}
+
 import base64
 import hashlib
 import io

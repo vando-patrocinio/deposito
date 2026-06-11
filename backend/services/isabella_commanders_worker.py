@@ -9,6 +9,16 @@ Tolerante a falhas: catch global por loop, log e retoma na próxima iteração.
 """
 from __future__ import annotations
 
+
+NERVOUS_METADATA = {
+    "owner": "ai-team",
+    "domain": "isabella",
+    "criticality": "high",
+    "emits_events": False,
+    "event_types": [],
+    "company_id_required": True,
+}
+
 import asyncio
 import logging
 from datetime import datetime, timezone

@@ -4,6 +4,16 @@ Endpoints REST do Data Quality v2.
 """
 from __future__ import annotations
 
+
+NERVOUS_METADATA = {
+    "owner": "ai-team",
+    "domain": "isabella",
+    "criticality": "high",
+    "emits_events": False,
+    "event_types": [],
+    "company_id_required": True,
+}
+
 import uuid
 from datetime import datetime, timezone
 from typing import Any, Dict

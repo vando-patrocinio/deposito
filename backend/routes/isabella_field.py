@@ -4,6 +4,16 @@ Mesma segurança da camada Smart Field Ops: JWT + vínculo de colaborador +
 company_id + rate limit + auditoria. Nenhum sistema paralelo — apenas o
 motor de decisão (services/isabella_field.py) sobre os dados reais.
 """
+
+NERVOUS_METADATA = {
+    "owner": "ai-team",
+    "domain": "isabella",
+    "criticality": "high",
+    "emits_events": False,
+    "event_types": [],
+    "company_id_required": True,
+}
+
 import logging
 from typing import Optional
 

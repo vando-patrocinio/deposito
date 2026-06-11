@@ -1,5 +1,15 @@
 """Endpoints OPERAÇÃO ISABELLA AGENDA NA LOUSA — /api/isabella-lousa/*."""
 from __future__ import annotations
+
+NERVOUS_METADATA = {
+    "owner": "ops-team",
+    "domain": "operacoes",
+    "criticality": "high",
+    "emits_events": False,
+    "event_types": [],
+    "company_id_required": True,
+}
+
 from typing import Any, Dict, Optional
 
 from fastapi import APIRouter, Depends, HTTPException

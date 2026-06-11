@@ -21,6 +21,16 @@ Toggles por empresa em aihub_settings key="field_ops_toggles"
 
 Contrato completo: /app/docs/SMART_FIELD_OPS_CONNECTION.md
 """
+
+NERVOUS_METADATA = {
+    "owner": "ops-team",
+    "domain": "operacoes",
+    "criticality": "high",
+    "emits_events": False,
+    "event_types": [],
+    "company_id_required": True,
+}
+
 import logging
 import uuid
 from datetime import datetime, timedelta, timezone

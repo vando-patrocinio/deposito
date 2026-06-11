@@ -15,6 +15,16 @@ REGRAS:
 NÃO envia WhatsApp aqui — esse é responsabilidade do módulo Billing
 (disparo_boleto ou módulo dedicado).
 """
+
+NERVOUS_METADATA = {
+    "owner": "platform-team",
+    "domain": "infra",
+    "criticality": "high",
+    "emits_events": False,
+    "event_types": [],
+    "company_id_required": True,
+}
+
 import asyncio
 import logging
 from datetime import datetime, timedelta, timezone

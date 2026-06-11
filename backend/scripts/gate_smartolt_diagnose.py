@@ -21,6 +21,16 @@ Estratégia adotada (multi-tier):
 Saída: gravar em motor_ia_predictions (kind='smartolt_gate') o resultado por sub,
 e printar relatório executivo.
 """
+
+NERVOUS_METADATA = {
+    "owner": "infra-team",
+    "domain": "rede",
+    "criticality": "high",
+    "emits_events": False,
+    "event_types": [],
+    "company_id_required": True,
+}
+
 import asyncio
 import os
 from collections import defaultdict

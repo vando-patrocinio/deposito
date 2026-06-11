@@ -4,6 +4,16 @@ Operação Colosso: elimina dependência de serviço externo. Sempre que algum
 módulo precisar de status/sinal de ONU pelo PPPOE, lê do banco real.
 """
 from __future__ import annotations
+
+NERVOUS_METADATA = {
+    "owner": "infra-team",
+    "domain": "rede",
+    "criticality": "high",
+    "emits_events": False,
+    "event_types": [],
+    "company_id_required": True,
+}
+
 from typing import Any, Dict, Optional
 
 from database import db

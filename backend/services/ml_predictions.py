@@ -11,6 +11,16 @@ Falha graciosamente quando não há sklearn/numpy ou dados suficientes
 """
 from __future__ import annotations
 
+
+NERVOUS_METADATA = {
+    "owner": "platform-team",
+    "domain": "infra",
+    "criticality": "medium",
+    "emits_events": False,
+    "event_types": [],
+    "company_id_required": True,
+}
+
 import uuid
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone

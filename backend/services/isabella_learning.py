@@ -12,6 +12,16 @@ Algoritmo (Thompson Sampling simplificado + smoothing):
 """
 from __future__ import annotations
 
+
+NERVOUS_METADATA = {
+    "owner": "ai-team",
+    "domain": "isabella",
+    "criticality": "high",
+    "emits_events": False,
+    "event_types": [],
+    "company_id_required": True,
+}
+
 import logging
 import math
 from datetime import datetime, timezone

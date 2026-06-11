@@ -20,27 +20,48 @@ from typing import Any, Dict, List, Optional
 from database import db
 
 
-# Mapeamento Constituição V3.0: domínio → lista de event_types esperados
+# Mapeamento Constituição V3.1: domínio → lista de event_types esperados
+# V3.1 absorveu 24 tipos legítimos detectados em produção
+# (ver /app/docs/CONSTITUICAO_NERVOSO_V3.1.md).
 EXPECTED_BY_DOMAIN: Dict[str, List[str]] = {
-    "comercial": ["SALE_CREATED", "SALE_CONVERTED", "SALE_LOST"],
+    "comercial": ["SALE_CREATED", "SALE_CONVERTED", "SALE_LOST",
+                   "opportunity.created"],
     "instalacoes": ["INSTALL_SCHEDULED", "INSTALL_COMPLETED",
                      "INSTALL_FAILED"],
     "financeiro": ["INVOICE_CREATED", "INVOICE_PAID", "INVOICE_OVERDUE",
                     "PAYMENT_RECEIVED", "PAYMENT_OVERDUE",
-                    "DUNNING_ESCALATED"],
+                    "DUNNING_ESCALATED", "dunning.step.recommended"],
     "atendimento": ["TICKET_OPENED", "TICKET_CLOSED",
-                     "TICKET_REOPENED", "TICKET_RECURRING"],
+                     "TICKET_REOPENED", "TICKET_RECURRING",
+                     "ATENDIMENTO_CHANCE_UPGRADE",
+                     "ATENDIMENTO_CHANCE_INDICACAO",
+                     "ATENDIMENTO_RISCO_CANCELAMENTO"],
     "whatsapp": ["WA_INBOUND_RECEIVED", "WA_OUTBOUND_SENT",
                   "WA_CAMPAIGN_SENT"],
-    "indicacoes": ["REFERRAL_CREATED", "REFERRAL_CONVERTED"],
+    "indicacoes": ["REFERRAL_CREATED", "REFERRAL_CONVERTED",
+                    "REFERRAL_OPPORTUNITY"],
     "parceiros": ["PARTNER_QR_REDEEMED"],
-    "estoque": ["EQUIPMENT_ASSIGNED", "EQUIPMENT_RETURNED"],
+    "estoque": ["EQUIPMENT_ASSIGNED", "EQUIPMENT_RETURNED",
+                 "field.isabella.stock.alert"],
     "rede": ["ONU_OFFLINE", "ONU_ONLINE", "SIGNAL_DEGRADED",
               "VLAN_SATURATED", "CTO_DEGRADED", "CTO_CRITICAL",
-              "COLLECTIVE_OUTAGE", "CLIENT_OFFLINE", "CLIENT_ONLINE"],
+              "COLLECTIVE_OUTAGE", "CLIENT_OFFLINE", "CLIENT_ONLINE",
+              "ONU_LOW_SIGNAL"],
     "operacoes": ["TECHNICIAN_STARTED", "TECHNICIAN_FINISHED",
                    "TECHNICIAN_LATE", "GPS_ROUTE_DEVIATION",
-                   "TECH_PRODUCTIVITY_DROP"],
+                   "TECH_PRODUCTIVITY_DROP",
+                   "field.isabella.crew.recommend",
+                   "incident.mass.notify"],
+    "isabella": ["revenue.opportunity.detected",
+                  "universo.score.updated", "churn.risk.scored",
+                  "twin.failure.predicted",
+                  "expansion.area.recommended",
+                  "experience.campaign.drafted",
+                  "experience.campaign.approved",
+                  "experience.event.executed",
+                  "council.meeting.held", "AI_OUTCOME"],
+    "shield": ["RBAC_DENIED", "DATA_QUALITY_DROP",
+                "shield.audit.completed", "shield.regression.detected"],
 }
 
 FRIENDLY_NAMES = {

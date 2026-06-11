@@ -4,6 +4,16 @@ Preditor de falhas de rede ANTES do cliente reclamar.
 Antecipa CTO crítica, PON crítica, VLAN crítica, churn por sinal.
 """
 from __future__ import annotations
+
+NERVOUS_METADATA = {
+    "owner": "infra-team",
+    "domain": "rede",
+    "criticality": "high",
+    "emits_events": False,
+    "event_types": [],
+    "company_id_required": True,
+}
+
 from datetime import datetime, timezone, timedelta
 from typing import Any, Dict, List
 

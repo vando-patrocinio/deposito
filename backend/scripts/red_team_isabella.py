@@ -5,6 +5,16 @@ race conditions, cross-company, latência sob carga.
 
 Uso: python3 /app/backend/scripts/red_team_isabella.py
 """
+
+NERVOUS_METADATA = {
+    "owner": "ai-team",
+    "domain": "isabella",
+    "criticality": "high",
+    "emits_events": False,
+    "event_types": [],
+    "company_id_required": True,
+}
+
 import asyncio
 import os
 import sys

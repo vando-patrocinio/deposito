@@ -1,6 +1,16 @@
 """Lousa AI · Triagem — endpoints REST."""
 from __future__ import annotations
 
+
+NERVOUS_METADATA = {
+    "owner": "ops-team",
+    "domain": "operacoes",
+    "criticality": "high",
+    "emits_events": False,
+    "event_types": [],
+    "company_id_required": True,
+}
+
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException

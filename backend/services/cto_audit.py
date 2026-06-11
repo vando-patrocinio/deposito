@@ -9,6 +9,16 @@ Gera 3 listas:
 2. GHOST_PORTS — Porta de CTO marcada como "used" mas ONU não existe/desativada no SmartOLT
 3. SUMMARY     — Totais por company_id
 """
+
+NERVOUS_METADATA = {
+    "owner": "infra-team",
+    "domain": "rede",
+    "criticality": "high",
+    "emits_events": False,
+    "event_types": [],
+    "company_id_required": True,
+}
+
 import logging
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional

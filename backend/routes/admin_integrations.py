@@ -23,6 +23,16 @@ Back-compat: se `active_profile` ausente mas existem chaves antigas
 "default" na primeira chamada de `_ensure_legacy_migrated`.
 """
 from __future__ import annotations
+
+NERVOUS_METADATA = {
+    "owner": "platform-team",
+    "domain": "infra",
+    "criticality": "medium",
+    "emits_events": False,
+    "event_types": [],
+    "company_id_required": True,
+}
+
 import re
 import httpx
 from fastapi import APIRouter, Depends, HTTPException

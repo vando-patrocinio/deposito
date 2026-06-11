@@ -17,6 +17,16 @@ GET  /api/tech-tracking/trail/{collab_id}?date=YYYY-MM-DD  (autenticado)
 """
 from __future__ import annotations
 
+
+NERVOUS_METADATA = {
+    "owner": "platform-team",
+    "domain": "infra",
+    "criticality": "medium",
+    "emits_events": False,
+    "event_types": [],
+    "company_id_required": True,
+}
+
 import logging
 import time
 from datetime import datetime, timezone

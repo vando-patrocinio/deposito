@@ -20,6 +20,16 @@ Para cada cenário:
 Saída: JSON com 10 evidências + comparativo antes/depois.
 """
 from __future__ import annotations
+
+NERVOUS_METADATA = {
+    "owner": "ai-team",
+    "domain": "isabella",
+    "criticality": "high",
+    "emits_events": False,
+    "event_types": [],
+    "company_id_required": True,
+}
+
 import asyncio
 import json
 import os

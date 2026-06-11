@@ -7,6 +7,16 @@ Layout do PDF:
 - Foto da CTO (se houver)
 - Footer com técnico, gestor que aprovou, data
 """
+
+NERVOUS_METADATA = {
+    "owner": "infra-team",
+    "domain": "rede",
+    "criticality": "high",
+    "emits_events": False,
+    "event_types": [],
+    "company_id_required": True,
+}
+
 import base64
 import io
 import logging

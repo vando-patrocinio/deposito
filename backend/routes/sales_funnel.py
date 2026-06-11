@@ -17,6 +17,16 @@ Implementação:
 """
 from __future__ import annotations
 
+
+NERVOUS_METADATA = {
+    "owner": "vendas-team",
+    "domain": "comercial",
+    "criticality": "high",
+    "emits_events": False,
+    "event_types": [],
+    "company_id_required": True,
+}
+
 import logging
 import re
 import uuid

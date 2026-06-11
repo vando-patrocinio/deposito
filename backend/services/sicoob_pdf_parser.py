@@ -30,6 +30,16 @@ positivo), type ("income"|"expense"), description (str<=300), ofx_id (str).
 """
 from __future__ import annotations
 
+
+NERVOUS_METADATA = {
+    "owner": "platform-team",
+    "domain": "infra",
+    "criticality": "medium",
+    "emits_events": False,
+    "event_types": [],
+    "company_id_required": True,
+}
+
 import io
 import logging
 import re

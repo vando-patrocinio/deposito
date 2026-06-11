@@ -13,6 +13,16 @@ Roda 1x por hora por padrão (env `SMARTOLT_VLAN_SYNC_INTERVAL_S`, default
 """
 from __future__ import annotations
 
+
+NERVOUS_METADATA = {
+    "owner": "infra-team",
+    "domain": "rede",
+    "criticality": "high",
+    "emits_events": False,
+    "event_types": [],
+    "company_id_required": True,
+}
+
 import asyncio
 import logging
 import os

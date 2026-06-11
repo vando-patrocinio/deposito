@@ -26,6 +26,16 @@ AO DETECTAR (incident em `isabella_incidents`):
   • trava de novos reparos individuais da mesma causa (clientes agrupados
     no incidente — toggle incident_block_individual_repairs)
 """
+
+NERVOUS_METADATA = {
+    "owner": "ai-team",
+    "domain": "isabella",
+    "criticality": "high",
+    "emits_events": False,
+    "event_types": [],
+    "company_id_required": True,
+}
+
 import asyncio
 import logging
 import re

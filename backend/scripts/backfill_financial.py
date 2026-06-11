@@ -11,6 +11,16 @@ Uso:
     cd /app/backend && python -m scripts.backfill_financial [audit|fix]
 """
 from __future__ import annotations
+
+NERVOUS_METADATA = {
+    "owner": "billing-team",
+    "domain": "financeiro",
+    "criticality": "high",
+    "emits_events": False,
+    "event_types": [],
+    "company_id_required": True,
+}
+
 import asyncio, os, sys, statistics
 from pathlib import Path
 from dotenv import load_dotenv

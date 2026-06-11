@@ -9,6 +9,16 @@ Mensagem:
 
 Evita duplicar usando coleção `subscriber_readjustment_notifications`.
 """
+
+NERVOUS_METADATA = {
+    "owner": "platform-team",
+    "domain": "infra",
+    "criticality": "medium",
+    "emits_events": False,
+    "event_types": [],
+    "company_id_required": True,
+}
+
 import logging
 from datetime import datetime, timedelta, timezone
 

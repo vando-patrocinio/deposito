@@ -1,5 +1,15 @@
 """ai_center_financial.py — FASE 11 endpoints (V5.0)."""
 from __future__ import annotations
+
+NERVOUS_METADATA = {
+    "owner": "billing-team",
+    "domain": "financeiro",
+    "criticality": "high",
+    "emits_events": False,
+    "event_types": [],
+    "company_id_required": True,
+}
+
 from fastapi import APIRouter, Depends, HTTPException
 
 from rbac import require_roles

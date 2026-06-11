@@ -25,6 +25,16 @@ Coleções usadas (já existentes ou criadas idempotentemente):
   + motor_ia_outcomes, motor_ia_actions, subscriber_invoices (existem)
 """
 from __future__ import annotations
+
+NERVOUS_METADATA = {
+    "owner": "platform-team",
+    "domain": "infra",
+    "criticality": "medium",
+    "emits_events": False,
+    "event_types": [],
+    "company_id_required": True,
+}
+
 import math
 import random
 import uuid

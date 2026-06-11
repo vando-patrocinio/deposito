@@ -7,6 +7,16 @@ Demonstra valor em < 60 segundos.
 Só agregados financeiros e técnicos com `company_id` único do "showcase".
 """
 from __future__ import annotations
+
+NERVOUS_METADATA = {
+    "owner": "platform-team",
+    "domain": "infra",
+    "criticality": "medium",
+    "emits_events": False,
+    "event_types": [],
+    "company_id_required": True,
+}
+
 from datetime import datetime, timezone
 from fastapi import APIRouter
 

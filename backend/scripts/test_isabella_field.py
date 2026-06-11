@@ -17,6 +17,16 @@ Valida o critério de aceite do CTO:
  9. Isabella preside a Lousa: tickets.isabella persistido em toda bolha.
 10. Presidente IA: summary consolidado com indicadores reais.
 """
+
+NERVOUS_METADATA = {
+    "owner": "ai-team",
+    "domain": "isabella",
+    "criticality": "high",
+    "emits_events": False,
+    "event_types": [],
+    "company_id_required": True,
+}
+
 import asyncio
 import sys
 import uuid

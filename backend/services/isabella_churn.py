@@ -13,6 +13,16 @@ Saída: `isabella_opportunities(kind=churn)` com ação recomendada
 """
 from __future__ import annotations
 
+
+NERVOUS_METADATA = {
+    "owner": "ai-team",
+    "domain": "isabella",
+    "criticality": "high",
+    "emits_events": False,
+    "event_types": [],
+    "company_id_required": True,
+}
+
 import logging
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List

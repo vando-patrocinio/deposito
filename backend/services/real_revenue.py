@@ -4,6 +4,16 @@ Separa Estimado / Confirmado / Recebido. Nunca mistura projeção com realizado.
 Prioriza ações por ROI Score real.
 """
 from __future__ import annotations
+
+NERVOUS_METADATA = {
+    "owner": "vendas-team",
+    "domain": "comercial",
+    "criticality": "high",
+    "emits_events": False,
+    "event_types": [],
+    "company_id_required": True,
+}
+
 from datetime import datetime, timezone, timedelta
 from typing import Any, Dict, List
 

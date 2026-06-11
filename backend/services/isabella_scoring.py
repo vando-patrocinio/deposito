@@ -12,6 +12,16 @@ Score 0-100. NUNCA usa LLM (heurística estatística).
 """
 from __future__ import annotations
 
+
+NERVOUS_METADATA = {
+    "owner": "ai-team",
+    "domain": "isabella",
+    "criticality": "high",
+    "emits_events": False,
+    "event_types": [],
+    "company_id_required": True,
+}
+
 import uuid
 from collections import Counter
 from datetime import datetime, timedelta, timezone

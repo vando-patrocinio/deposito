@@ -14,6 +14,16 @@ Coleções:
   • mass_recipients      — destinatários (campaign_id, phone, vars{},
                                           status, message_id, error, sent_at)
 """
+
+NERVOUS_METADATA = {
+    "owner": "platform-team",
+    "domain": "infra",
+    "criticality": "medium",
+    "emits_events": False,
+    "event_types": [],
+    "company_id_required": True,
+}
+
 import asyncio
 import csv
 import io

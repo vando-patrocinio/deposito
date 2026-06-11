@@ -5,6 +5,16 @@ permanecem em server.py — aqui importamos lazy para evitar import circular.
 """
 from __future__ import annotations
 
+
+NERVOUS_METADATA = {
+    "owner": "platform-team",
+    "domain": "infra",
+    "criticality": "medium",
+    "emits_events": False,
+    "event_types": [],
+    "company_id_required": True,
+}
+
 import calendar
 from datetime import datetime, timezone
 from typing import Optional

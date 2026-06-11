@@ -21,6 +21,16 @@ Config persistida em `motor_ia_config` (Mongo), por company_id:
 """
 from __future__ import annotations
 
+
+NERVOUS_METADATA = {
+    "owner": "ai-team",
+    "domain": "isabella",
+    "criticality": "high",
+    "emits_events": False,
+    "event_types": [],
+    "company_id_required": True,
+}
+
 import logging
 import os
 from typing import Any, Dict, List, Optional

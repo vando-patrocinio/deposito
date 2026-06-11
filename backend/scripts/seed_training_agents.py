@@ -5,6 +5,16 @@ Idempotente: rodar várias vezes não duplica nada (usa upsert por name).
 Uso:
     cd /app/backend && python3 scripts/seed_training_agents.py
 """
+
+NERVOUS_METADATA = {
+    "owner": "platform-team",
+    "domain": "infra",
+    "criticality": "low",
+    "emits_events": False,
+    "event_types": [],
+    "company_id_required": True,
+}
+
 import asyncio
 import os
 import sys

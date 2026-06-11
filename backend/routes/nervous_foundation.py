@@ -13,6 +13,16 @@ Tudo super-admin only (impacto plataforma).
 """
 from __future__ import annotations
 
+
+NERVOUS_METADATA = {
+    "owner": "platform-team",
+    "domain": "infra",
+    "criticality": "high",
+    "emits_events": False,
+    "event_types": [],
+    "company_id_required": True,
+}
+
 from fastapi import APIRouter, Depends, HTTPException, Request
 
 from core import get_current_user

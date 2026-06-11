@@ -5,6 +5,16 @@ resposta curta + uma reply LLM "malcomportada" que tenta abrir fluxo
 comercial. Valida que o guardião RECUPERA contexto.
 """
 from __future__ import annotations
+
+NERVOUS_METADATA = {
+    "owner": "platform-team",
+    "domain": "infra",
+    "criticality": "low",
+    "emits_events": False,
+    "event_types": [],
+    "company_id_required": True,
+}
+
 import asyncio, json, os, sys, uuid
 from datetime import datetime, timezone
 

@@ -3,6 +3,16 @@ ai_center_autonomous.py — FASE 10 V5.0
 Endpoints do Autonomous Engine.
 """
 from __future__ import annotations
+
+NERVOUS_METADATA = {
+    "owner": "ai-team",
+    "domain": "isabella",
+    "criticality": "high",
+    "emits_events": False,
+    "event_types": [],
+    "company_id_required": True,
+}
+
 from fastapi import APIRouter, Depends, HTTPException, Body
 from typing import List
 

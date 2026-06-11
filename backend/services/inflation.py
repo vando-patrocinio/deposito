@@ -11,6 +11,16 @@ Endpoint padrão:
 
 Cache em MongoDB (collection inflation_indices) — refresh diário no worker.
 """
+
+NERVOUS_METADATA = {
+    "owner": "platform-team",
+    "domain": "infra",
+    "criticality": "medium",
+    "emits_events": False,
+    "event_types": [],
+    "company_id_required": True,
+}
+
 import logging
 from datetime import date, datetime, timedelta, timezone
 from typing import Dict, List, Optional

@@ -12,6 +12,16 @@ Origem dos dados:
 
 Sem mocks. Sem estimativas que não venham do banco.
 """
+
+NERVOUS_METADATA = {
+    "owner": "platform-team",
+    "domain": "infra",
+    "criticality": "low",
+    "emits_events": False,
+    "event_types": [],
+    "company_id_required": True,
+}
+
 import asyncio
 import os
 import re

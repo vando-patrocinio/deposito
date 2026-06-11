@@ -1,5 +1,15 @@
 """ai_center_cash.py — V7.1 OPERAÇÃO CAIXA endpoints."""
 from __future__ import annotations
+
+NERVOUS_METADATA = {
+    "owner": "ai-team",
+    "domain": "isabella",
+    "criticality": "high",
+    "emits_events": False,
+    "event_types": [],
+    "company_id_required": True,
+}
+
 from fastapi import APIRouter, Depends, HTTPException
 
 from rbac import require_roles

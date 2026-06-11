@@ -17,6 +17,16 @@ Output:
   /app/docs/RELATORIO_BLINDAGEM_TOTAL.json   (raw)
   /app/docs/RELATORIO_BLINDAGEM_TOTAL.md     (executivo, A-E)
 """
+
+NERVOUS_METADATA = {
+    "owner": "platform-team",
+    "domain": "shield",
+    "criticality": "high",
+    "emits_events": False,
+    "event_types": [],
+    "company_id_required": True,
+}
+
 import asyncio
 import json
 import os

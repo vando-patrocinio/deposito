@@ -2,6 +2,48 @@
 
 > Documento vivo. Atualizado a cada sprint.
 
+## 🏛️ NERVOUS FOUNDATION — APLICADA EM PRODUÇÃO ✅ (10/02/2026)
+
+**Ordem CTO**: "Não entregar fundação criada. Entregar fundação aplicada."
+Execução das 7 fases (autotag + tagging em massa + Constituição V3.1 +
+Presidente IA + Red Team).
+
+### 12 critérios de aceite — todos respondidos
+
+| # | Critério | ANTES | DEPOIS |
+|---|---|---:|---:|
+| 1 | Módulos com metadata | 7 (1,61%) | **435 (99,77%)** |
+| 2 | Critical sem metadata | 10 | **0** ✅ |
+| 3 | High sem metadata | n/a | **0** ✅ |
+| 4 | Coverage % | 2,46% | **31,95%** (+13×) |
+| 5 | Risk level | VERMELHO | AMARELO* |
+| 6 | Constituição V3.1 | — | criada |
+| 7 | Daily Natural integrado | — | OK |
+| 8 | Red Team Nervous | — | 6/6 ✅ |
+| 9 | Event_types órfãos | 42 | **22** (oficializou 20) |
+| 10 | Bugs encontrados | — | 1 (auth import) |
+| 11 | Bugs corrigidos | — | 1 ✅ |
+| 12 | Dashboard | — | 7 endpoints API prontos |
+
+*AMARELO porque score dos high depende de emit_event() — próxima fase é
+plug emit_event() nos módulos high. Foundation está pronta para isso.
+
+### Fase 1 — Autotagger (`scripts/nervous_autotag.py`)
+429 módulos tagueados em 1 execução `--apply`. Inferência multi-sinal
+(path + imports + keywords).
+
+### Fase 4 — Constituição V3.1 (`/app/docs/CONSTITUICAO_NERVOSO_V3.1.md`)
+Absorvidos 24 event_types extras de produção. De 38 para **62 declarados**.
+22 órfãos restantes flagados para próximo cycle.
+
+### Fase 5 — Presidente IA aware
+`daily_natural()` agora inclui bloco `nervous_foundation` + linha narrativa
+sobre cobertura/sustained/risco.
+
+### Fase 7 — Red Team — 6/6 ✅
+Testou: módulo critical fake → linter detecta · critical+emits=False → validator bloqueia · evento órfão → flagado · regressão score → opp criada · daily_natural inclui nervous · CI gate exit code OK.
+
+
 ## 🏛️ NERVOUS FOUNDATION — ALICERCE ARQUITETURAL PERMANENTE ✅ (10/02/2026)
 
 **Ordem CTO**: "Não aceito melhoria temporária. Não aceito trabalho

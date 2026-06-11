@@ -6,6 +6,16 @@ configurada em Motor IA → Sistemas.
 Geração mais barata: voice "nova" (feminina pt-BR) · formato OGG/Opus
 (o que o WhatsApp prefere pra voice notes — tamanho menor, melhor UX).
 """
+
+NERVOUS_METADATA = {
+    "owner": "platform-team",
+    "domain": "infra",
+    "criticality": "medium",
+    "emits_events": False,
+    "event_types": [],
+    "company_id_required": True,
+}
+
 import logging
 import os
 from typing import Optional

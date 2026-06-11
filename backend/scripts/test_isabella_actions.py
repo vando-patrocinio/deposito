@@ -1,5 +1,15 @@
 """TEST ISABELLA ACTIONS — valida criação real de tickets na Lousa
 via marcadores emitidos pelo LLM. Zero mocks. MongoDB real."""
+
+NERVOUS_METADATA = {
+    "owner": "ai-team",
+    "domain": "isabella",
+    "criticality": "high",
+    "emits_events": False,
+    "event_types": [],
+    "company_id_required": True,
+}
+
 import asyncio
 import sys
 import uuid

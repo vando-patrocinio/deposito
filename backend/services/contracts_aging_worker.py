@@ -5,6 +5,16 @@ Roda a cada 15min em background (via lifespan).
 """
 from __future__ import annotations
 
+
+NERVOUS_METADATA = {
+    "owner": "vendas-team",
+    "domain": "comercial",
+    "criticality": "medium",
+    "emits_events": False,
+    "event_types": [],
+    "company_id_required": True,
+}
+
 import asyncio
 import logging
 import uuid

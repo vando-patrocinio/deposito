@@ -18,6 +18,16 @@ Cobertura (contrato /app/docs/SMART_FIELD_OPS_CONNECTION.md §8):
 
 Fixtures REAIS criadas no co-demo e removidas no final. Nenhum mock.
 """
+
+NERVOUS_METADATA = {
+    "owner": "ops-team",
+    "domain": "operacoes",
+    "criticality": "high",
+    "emits_events": False,
+    "event_types": [],
+    "company_id_required": True,
+}
+
 import asyncio
 import sys
 import uuid

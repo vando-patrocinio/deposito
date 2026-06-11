@@ -1,5 +1,15 @@
 """ai_center_smartolt_twin.py — FASE 4 endpoints REST."""
 from __future__ import annotations
+
+NERVOUS_METADATA = {
+    "owner": "infra-team",
+    "domain": "rede",
+    "criticality": "high",
+    "emits_events": False,
+    "event_types": [],
+    "company_id_required": True,
+}
+
 from typing import Any, Dict
 from fastapi import APIRouter, Depends, HTTPException
 from rbac import require_roles

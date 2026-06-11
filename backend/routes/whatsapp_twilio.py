@@ -12,6 +12,16 @@ Endpoints:
 """
 from __future__ import annotations
 
+
+NERVOUS_METADATA = {
+    "owner": "isabella-team",
+    "domain": "whatsapp",
+    "criticality": "high",
+    "emits_events": False,
+    "event_types": [],
+    "company_id_required": True,
+}
+
 import asyncio
 import base64
 import hashlib
