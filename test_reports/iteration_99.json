@@ -1,0 +1,34 @@
+{
+  "summary": "P0 CTO Vando (magic links por usuário + collaborator_id UNIQUE). 11/11 backend pytest PASSAM. UI valida painel Usuários: 120 botões '🔗 Link' (data-testid=magic-link-{uid}), modal magic-link-modal abre com ml-active-url + ml-reserve-url contendo URLs distintas ?ml=<token>, 2 botões Copiar, ml-rotate-btn presente. Edit-modal mostra u-collaborator-id com 17 opções; 5 disabled com '⚠ já vinculado' (exatamente como spec). Login automático via /?ml=<token> funciona: JWT salvo em localStorage (ponto_token, 355 chars), URL limpa, redirect /app.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_user_magic_links_p0.py",
+    "/app/test_reports/pytest/iter99_magic_links.xml"
+  ],
+  "action_items": [
+    "Nenhum bloqueio. Observação opcional: botão 'Renovar link' (ml-rotate-btn) usa modal HTML in-app de Confirmação (não window.confirm). Funciona corretamente via UI, mas testes Playwright que escutam page.on('dialog') precisam clicar explicitamente em 'Confirmar' (button:has-text('Confirmar')) — vale documentar pro próximo SDET."
+  ],
+  "critical_code_review_comments": [
+    "/app/backend/routes/user_magic_links.py: rotate executa 3 passos sequenciais sem transaction — em caso de crash entre passos pode deixar usuário com 0 ativos ou 2 reservas. _bootstrap_for_user é idempotente e mitiga, mas considerar Mongo session/transaction.",
+    "magic_login não tem rate-limit (limiter foi removido por conflito com pydantic). Token longo (32 url-safe ~190 bits) mitiga brute-force, mas adicionar limiter via slowapi @limiter.limit no decorator com Request explícito resolve.",
+    "rotate idempotência: dois cliques rápidos geram 2 reservas extras (UPDATE_MANY active→revoked + CREATE 2 novos reservas em sequência). Considerar lock optimista por generation."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_user_magic_links_p0.py (novo)"
+  ],
+  "success_rate": {"backend": "100% (11/11)", "frontend": "100% (todos os data-testid presentes e fluxos funcionando)"},
+  "test_credentials": "admin@empresa.com / 123456 (SUPER_ADMIN auditor) — lido de /app/memory/test_credentials.md (não alterado).",
+  "seed_data_creation": "Test cria/deleta TEST_clr_xxx@example.com no test_put_user_collaborator_null_ok. Magic link rotation rodou na Mayara (msaldanhavargasmiranda@gmail.com) → tokens novos válidos no DB.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Backend cobertura completa em /app/backend/tests/test_user_magic_links_p0.py (pytest, 11 testes, ~3s). Para UI: forçar painel via localStorage.setItem('ponto_active_tab','users') + reload — query string ?view=users SOZINHA não navega (App.js linha 985 lê do localStorage, não do URL). Todos data-testid solicitados existem e funcionam: magic-link-{uid}, magic-link-modal, ml-active-url, ml-reserve-url, ml-rotate-btn, u-collaborator-id. Atenção: ml-rotate-btn dispara MODAL HTML 'Confirmar ação' — usar button:has-text('Confirmar') para clicar (NÃO page.on('dialog')).",
+  "rca of the issue": "N/A — todos os fluxos passaram. Único 'falso negativo' do meu Playwright inicial foi ter usado page.on('dialog') para o rotate, mas o app usa modal custom não-nativo. Não é bug — é UX deliberadamente acessível. Backend rotation 100% validada pelo pytest (test_rotate_revokes_active_promotes_reserve_new_reserve + 3 cenários magic-login pós-rotate)."
+}

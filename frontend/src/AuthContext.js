@@ -35,6 +35,34 @@ export function AuthProvider({ children }) {
   const [token, setToken] = useState(() => (typeof window !== "undefined" ? window.localStorage.getItem(TOKEN_KEY) : null));
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
+
+  // Magic-link: ?ml=<token> → troca token por JWT, salva e limpa URL.
+  // Executa SÍNCRONO na 1ª montagem para não conflitar com /me.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const url = new URLSearchParams(window.location.search);
+    const mlToken = url.get("ml");
+    if (!mlToken || mlToken.length < 12) return;
+    (async () => {
+      try {
+        const r = await api.magicLogin(mlToken);
+        if (r?.access_token) {
+          window.localStorage.setItem(TOKEN_KEY, r.access_token);
+          setToken(r.access_token);
+          setUser(r.user);
+        }
+      } catch (e) {
+        console.warn("magic-login falhou", e?.response?.data || e.message);
+      } finally {
+        // Limpa o ?ml= da URL para não vazar em screenshots
+        url.delete("ml");
+        const qs = url.toString();
+        const newUrl = window.location.pathname + (qs ? `?${qs}` : "") + (window.location.hash || "");
+        window.history.replaceState({}, "", newUrl);
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   // Public token mode: link público (?ptoken=xxx) que dá acesso admin sem login.
   // Persistido em localStorage; o interceptor de api.js injeta o header X-Public-Token.
   const [publicToken, setPublicToken] = useState(() => {

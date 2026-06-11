@@ -23,7 +23,7 @@ function initials(name) {
   return (p[0][0] + p[p.length - 1][0]).toUpperCase();
 }
 
-const EMPTY = { email: "", password: "", name: "", role: "gestor", can_attend_whatsapp: false, access_tags: null };
+const EMPTY = { email: "", password: "", name: "", role: "gestor", can_attend_whatsapp: false, access_tags: null, collaborator_id: "" };
 
 export default function UsersPanel() {
   const { user: currentUser, impersonate } = useAuth();
@@ -35,6 +35,55 @@ export default function UsersPanel() {
   const [flash, setFlash] = useState("");
   const [pwUserId, setPwUserId] = useState(null);
   const [pwValue, setPwValue] = useState("");
+  // Magic link modal state
+  const [mlUser, setMlUser] = useState(null);     // user-alvo do modal
+  const [mlData, setMlData] = useState(null);     // {active, reserve}
+  const [mlLoading, setMlLoading] = useState(false);
+  const [mlCopied, setMlCopied] = useState("");
+  async function openMagicLink(u) {
+    setMlUser(u);
+    setMlData(null);
+    setMlLoading(true);
+    try {
+      const d = await api.getUserMagicLink(u.id);
+      setMlData(d);
+    } catch (e) {
+      setFlash("❌ " + (e?.response?.data?.detail || e.message));
+    } finally {
+      setMlLoading(false);
+    }
+  }
+  async function rotateMagicLink() {
+    if (!mlUser) return;
+    if (!await window.confirm("Renovar o link?\n\nO link ATIVO será revogado IMEDIATAMENTE. O link RESERVA assumirá o lugar e um novo reserva será gerado. Quem ainda usar o link antigo verá 'Link expirado'.")) return;
+    setMlLoading(true);
+    try {
+      const d = await api.rotateUserMagicLink(mlUser.id, "rotação manual via painel");
+      setMlData({ active: d.active, reserve: d.reserve, user_id: mlUser.id, user_email: mlUser.email, user_name: mlUser.name });
+      setFlash("✅ Link renovado. Antigo ativo morreu, reserva virou ativo, novo reserva criado.");
+      setTimeout(() => setFlash(""), 5000);
+    } catch (e) {
+      setFlash("❌ " + (e?.response?.data?.detail || e.message));
+    } finally {
+      setMlLoading(false);
+    }
+  }
+  function magicUrl(token) {
+    if (!token) return "";
+    // Magic URL roteia via index — backend permite endpoint público; o front
+    // detecta ?ml=<token> no boot e chama /api/auth/magic-login, salvando JWT.
+    const origin = (typeof window !== "undefined" && window.location?.origin) || "";
+    return `${origin}/?ml=${token}`;
+  }
+  async function copyToClipboard(label, val) {
+    try {
+      await navigator.clipboard.writeText(val);
+      setMlCopied(label);
+      setTimeout(() => setMlCopied(""), 1800);
+    } catch {
+      setFlash("Não foi possível copiar. Selecione e copie manualmente.");
+    }
+  }
   const [showLog, setShowLog] = useState(false);
   const [logEntries, setLogEntries] = useState([]);
   const [filterRole, setFilterRole] = useState("all");
@@ -99,6 +148,7 @@ export default function UsersPanel() {
       email: u.email, password: "", name: u.name, role: u.role,
       can_attend_whatsapp: u.can_attend_whatsapp ?? false,
       access_tags: Array.isArray(u.access_tags) ? u.access_tags : null,
+      collaborator_id: u.collaborator_id || "",
     });
     setEditing(u.id); setError("");
   }
@@ -113,6 +163,7 @@ export default function UsersPanel() {
           name: form.name,
           role: form.role,
           can_attend_whatsapp: !!form.can_attend_whatsapp,
+          collaborator_id: form.collaborator_id || null,
           ...(Array.isArray(form.access_tags) ? { access_tags: form.access_tags } : {}),
         });
       } else {
@@ -121,6 +172,7 @@ export default function UsersPanel() {
           role: form.role,
           email: form.email.trim().toLowerCase(),
           can_attend_whatsapp: !!form.can_attend_whatsapp,
+          collaborator_id: form.collaborator_id || null,
         };
         if (Array.isArray(form.access_tags)) {
           payload.access_tags = form.access_tags;
@@ -336,6 +388,9 @@ export default function UsersPanel() {
                 <Button variant="soft" onClick={() => { setPwUserId(u.id); setPwValue(""); }} data-testid={`pw-${u.id}`}>
                   <Icon name="shield" /> Senha
                 </Button>
+                <Button variant="soft" onClick={() => openMagicLink(u)} data-testid={`magic-link-${u.id}`} title="Link de acesso direto + reserva">
+                  🔗 Link
+                </Button>
                 <Button variant="secondary" onClick={() => startEdit(u)} data-testid={`edit-user-${u.id}`}>
                   <Icon name="gear" /> Editar
                 </Button>
@@ -388,6 +443,30 @@ export default function UsersPanel() {
             </select>
           </Field>
 
+          <Field label="Vincular a colaborador (cadastro)">
+            <select
+              data-testid="u-collaborator-id"
+              style={inputStyle}
+              value={form.collaborator_id || ""}
+              onChange={(e) => setForm({ ...form, collaborator_id: e.target.value })}
+            >
+              <option value="">— Sem vínculo —</option>
+              {collabs.map((c) => {
+                // Marca quem já está vinculado a outro user (não bloqueia, só sinaliza)
+                const other = users.find((uu) => uu.collaborator_id === c.id && uu.id !== editing);
+                const suffix = other ? ` ⚠ já vinculado a ${other.email}` : "";
+                return (
+                  <option key={c.id} value={c.id} disabled={!!other}>
+                    {c.name} · {c.role || c.cargo || "—"}{suffix}
+                  </option>
+                );
+              })}
+            </select>
+            <p style={{ fontSize: 11, color: "#64748b", margin: "4px 0 0" }}>
+              Cada usuário aceita 1 cadastro de colaborador. Se o vínculo existir, novo usuário não consegue reutilizar.
+            </p>
+          </Field>
+
           <Field label="Tags de acesso (módulos liberados)">
             <AccessTagsPicker
               role={form.role}
@@ -412,6 +491,83 @@ export default function UsersPanel() {
             <Button variant="secondary" onClick={() => setEditing(null)}>Cancelar</Button>
           </div>
         </Card>
+      )}
+
+      {/* Magic Link modal */}
+      {mlUser && (
+        <div
+          role="dialog"
+          data-testid="magic-link-modal"
+          onClick={(e) => { if (e.target === e.currentTarget) setMlUser(null); }}
+          style={{ position: "fixed", inset: 0, background: "rgba(15,23,42,.55)", zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}
+        >
+          <div style={{ background: "white", borderRadius: 22, width: "100%", maxWidth: 640, boxShadow: "0 24px 60px rgba(15,23,42,.32)" }}>
+            <div style={{ padding: "18px 22px 8px", display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid #f1f5f9" }}>
+              <div>
+                <h3 style={{ margin: 0, fontSize: 17 }}>🔗 Links de acesso</h3>
+                <p style={{ margin: "4px 0 0", color: "#64748b", fontSize: 12.5 }}>
+                  <strong>{mlUser.name}</strong> · {mlUser.email}
+                </p>
+              </div>
+              <button onClick={() => setMlUser(null)} style={{ background: "transparent", border: "none", fontSize: 22, cursor: "pointer", color: "#64748b" }}>×</button>
+            </div>
+            <div style={{ padding: 18 }}>
+              {mlLoading && <p style={{ color: "#64748b" }}>Carregando…</p>}
+              {!mlLoading && mlData && (
+                <>
+                  <div style={{ background: "#ecfdf5", border: "1px solid #6ee7b7", borderRadius: 14, padding: 14, marginBottom: 12 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                      <strong style={{ color: "#065f46", fontSize: 13 }}>🟢 LINK ATIVO</strong>
+                      <span style={{ fontSize: 11, color: "#047857" }}>geração {mlData.active?.generation}</span>
+                    </div>
+                    <input
+                      readOnly
+                      value={magicUrl(mlData.active?.token)}
+                      data-testid="ml-active-url"
+                      style={{ ...inputStyle, fontSize: 12, fontFamily: "monospace", background: "white", marginBottom: 6 }}
+                      onClick={(e) => e.target.select()}
+                    />
+                    <div style={{ display: "flex", gap: 6 }}>
+                      <Button variant="soft" onClick={() => copyToClipboard("active", magicUrl(mlData.active?.token))} data-testid="ml-copy-active">
+                        {mlCopied === "active" ? "✓ Copiado" : "📋 Copiar"}
+                      </Button>
+                    </div>
+                  </div>
+                  <div style={{ background: "#fef3c7", border: "1px solid #fcd34d", borderRadius: 14, padding: 14, marginBottom: 12 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                      <strong style={{ color: "#92400e", fontSize: 13 }}>🟡 RESERVA (armada para próxima troca)</strong>
+                      <span style={{ fontSize: 11, color: "#b45309" }}>geração {mlData.reserve?.generation}</span>
+                    </div>
+                    <input
+                      readOnly
+                      value={magicUrl(mlData.reserve?.token)}
+                      data-testid="ml-reserve-url"
+                      style={{ ...inputStyle, fontSize: 12, fontFamily: "monospace", background: "white", marginBottom: 6 }}
+                      onClick={(e) => e.target.select()}
+                    />
+                    <div style={{ display: "flex", gap: 6 }}>
+                      <Button variant="soft" onClick={() => copyToClipboard("reserve", magicUrl(mlData.reserve?.token))} data-testid="ml-copy-reserve">
+                        {mlCopied === "reserve" ? "✓ Copiado" : "📋 Copiar"}
+                      </Button>
+                    </div>
+                  </div>
+                  <div style={{ background: "#f8fafc", border: "1px dashed #cbd5e1", borderRadius: 12, padding: 12, marginBottom: 12 }}>
+                    <p style={{ margin: 0, fontSize: 12, color: "#475569" }}>
+                      Ao <strong>Renovar</strong>: o ATIVO atual morre, o RESERVA vira ATIVO e um novo RESERVA é gerado.
+                      Quem ainda usar o antigo verá &quot;Link expirado&quot;.
+                    </p>
+                  </div>
+                </>
+              )}
+              <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", borderTop: "1px solid #f1f5f9", paddingTop: 12 }}>
+                <Button variant="secondary" onClick={() => setMlUser(null)}>Fechar</Button>
+                <Button onClick={rotateMagicLink} data-testid="ml-rotate-btn" disabled={mlLoading}>
+                  ↻ Renovar link
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
 
       {showLog && (

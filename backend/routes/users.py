@@ -361,6 +361,17 @@ async def create_user(payload: UserIn, user: dict = Depends(require_role("audito
         coll = await db.collaborators.find_one({"id": payload.collaborator_id, "company_id": cid})
         if not coll:
             raise HTTPException(404, "Colaborador vinculado não existe nesta empresa")
+        # Unicidade: o colaborador só pode estar vinculado a 1 usuário.
+        already = await db.users.find_one(
+            {"collaborator_id": payload.collaborator_id},
+            {"_id": 0, "email": 1, "name": 1},
+        )
+        if already:
+            raise HTTPException(
+                409,
+                f"Este colaborador já está vinculado ao usuário "
+                f"{already.get('name')} <{already.get('email')}>.",
+            )
     # Tags: se vieram no payload, valida; senão usa default do papel
     raw_tags = getattr(payload, "access_tags", None)
     tags = sanitize_tags(raw_tags) if raw_tags is not None else list(DEFAULT_TAGS_BY_ROLE.get(payload.role, []))
@@ -398,7 +409,25 @@ async def update_user(uid: str, payload: dict, user: dict = Depends(require_role
     if "active" in payload:
         update["active"] = bool(payload["active"])
     if "collaborator_id" in payload:
-        update["collaborator_id"] = payload["collaborator_id"] or None
+        new_coll_id = payload["collaborator_id"] or None
+        if new_coll_id:
+            # Valida existência do colaborador no tenant do user-alvo.
+            cid_target = (await db.users.find_one({"id": uid}, {"company_id": 1}) or {}).get("company_id") or user.get("company_id") or DEMO_COMPANY_ID
+            coll = await db.collaborators.find_one({"id": new_coll_id, "company_id": cid_target})
+            if not coll:
+                raise HTTPException(404, "Colaborador vinculado não existe nesta empresa")
+            # Unicidade: nenhum outro user pode ter esse collaborator_id.
+            already = await db.users.find_one(
+                {"collaborator_id": new_coll_id, "id": {"$ne": uid}},
+                {"_id": 0, "email": 1, "name": 1},
+            )
+            if already:
+                raise HTTPException(
+                    409,
+                    f"Este colaborador já está vinculado ao usuário "
+                    f"{already.get('name')} <{already.get('email')}>.",
+                )
+        update["collaborator_id"] = new_coll_id
     if "can_attend_whatsapp" in payload:
         update["can_attend_whatsapp"] = bool(payload["can_attend_whatsapp"])
     if "access_tags" in payload:

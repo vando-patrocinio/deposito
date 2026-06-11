@@ -25,6 +25,7 @@ PUBLIC_PATHS: List[str] = [
     "/api/auth/forgot",
     "/api/auth/reset",
     "/api/auth/google-login",
+    "/api/auth/magic-login",
     "/api/auth/logout",
     "/api/payments/webhook/",
     "/api/webhook/",

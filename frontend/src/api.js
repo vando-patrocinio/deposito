@@ -222,6 +222,11 @@ export const api = {
   deleteUser: (id) => client.delete(`/users/${id}`).then((r) => r.data),
   setUserPassword: (user_id, new_password) => client.post("/users/set-password", { user_id, new_password }).then((r) => r.data),
 
+  // Magic links por usuário (CTO P0 11/06/2026)
+  getUserMagicLink: (uid) => client.get(`/users/${uid}/magic-link`).then((r) => r.data),
+  rotateUserMagicLink: (uid, reason) => client.post(`/users/${uid}/magic-link/rotate`, { reason: reason || null }).then((r) => r.data),
+  magicLogin: (token) => client.post("/auth/magic-login", { token }).then((r) => r.data),
+
   // Live location
   postLocation: (data) => client.post("/locations", data).then((r) => r.data),
   liveLocations: (activeMinutes = 360) => client.get("/locations/live", { params: { active_minutes: activeMinutes } }).then((r) => r.data),
