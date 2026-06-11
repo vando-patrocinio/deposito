@@ -2,6 +2,36 @@
 
 > Documento vivo. Atualizado a cada sprint.
 
+## 🧠 Governança IA — Versionamento Git de Prompts ✅ (11/06/2026)
+
+**Objetivo:** zerar agentes IA órfãos (sem fonte de verdade em Git).
+
+**Antes:** 1 de 16 agentes versionados (apenas Isabella).
+**Depois:** 15 de 16 versionados em `/app/backend/prompts/*.md` (Teste = sandbox, excluído).
+
+Arquivos criados:
+- `alvaro_v1.md`, `camila_v1.md`, `jerusa_v1.md`, `vendas_v1.md`,
+  `orquestrador_v1.md`, `avaliador_v1.md`, `motor_ia_v1.md`,
+  `co_pilot_ia_v1.md`, `smartolt_ai_v1.md`, `coach_ia_v1.md`,
+  `sentinela_lousa_v1.md`, `aprendizado_v1.md`, `lousa_triagem_v1.md`,
+  `holerite_ia_v1.md`
+
+Pipeline:
+- `prompt_loader.AGENT_PROMPTS` expandido (1 → 15 agentes)
+- Sync automático no startup do backend (idempotente via SHA-1)
+- Hot-reload por agente: `POST /api/aihub/prompts/{name}/reload-prompt`
+- Status consolidado: `GET /api/aihub/prompts/source-status`
+- Bundle de humanização (DIRECT-FIRST / ANTI-SLOP) injetado automaticamente
+
+Validação:
+- DB `aihub_agents`: 15/15 com `prompt_source_sha`, `prompt_source_file`, `prompt_version`, `prompt_applied_at`
+- Endpoint admin retornando 200 OK com lista completa
+- 2ª boot: 100% `noop_same_sha` (idempotência confirmada)
+
+Script auxiliar: `/app/backend/scripts/extract_agents_to_md.py` (replay seguro).
+
+---
+
 ## 🔍 Auditoria WCAG AA — Relatório (read-only) ✅ (11/02/2026)
 
 ### Resumo executivo
