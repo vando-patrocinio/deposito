@@ -20,7 +20,7 @@ import {
   Wifi, BrainCircuit,
 } from "lucide-react";
 import CollaboratorApp from "@/CollaboratorApp";
-import VersionBadge from "@/VersionBadge";
+// VersionBadge removido do visual (request do user — 11/02/2026)
 import CadastroPanel from "@/CadastroPanel";
 import ProjectsPanel from "@/ProjectsPanel";
 import LeaderboardMural from "@/LeaderboardMural";
@@ -1360,7 +1360,6 @@ export default function App() {
         fontFamily: "system-ui", color: "#64748b",
       }}>Carregando mapa…</div>}>
         <PublicMapPage />
-        <VersionBadge />
       </React.Suspense>
     );
   }
@@ -1372,7 +1371,6 @@ export default function App() {
       <GlobalToast />
       <SonnerToaster position="bottom-right" richColors closeButton
         toastOptions={{ duration: 5000 }} />
-      <VersionBadge />
     </AuthProvider>
   );
 }
