@@ -148,7 +148,7 @@ def _suppress_repeated_name(bubbles: List[str]) -> List[str]:
         if name_used:
             patterns = [
                 rf",?\s*{re.escape(captured)}[!,.]\s*",
-                rf"^{re.escape(captured)}[,!.]\s+",
+                rf"^{re.escape(captured)}[,!.]?\s+",  # "Pamela " ou "Pamela, "
                 rf"\s+{re.escape(captured)}\b[!,.]?",
             ]
             for p in patterns:

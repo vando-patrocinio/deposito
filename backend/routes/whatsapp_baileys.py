@@ -2344,6 +2344,74 @@ async def _maybe_auto_reply(cid: str, phone: str, user_text: str,
 
     sys_prompt += "\n\n" + "\n\n".join(extra)
 
+    # 3h.2 ANTI-CPF GUARDIAN — se cliente já está identificado pelo
+    # telefone, INJETA bloco que proíbe pedir CPF / cadastro.
+    link_for_guard = None
+    try:
+        from phone_normalizer import link_phone_to_subscriber
+        link_for_guard = await link_phone_to_subscriber(phone, cid)
+        history_inbound: list[str] = []
+        async for m in db.aihub_wa_messages.find(
+                {"company_id": cid, "phone": phone,
+                 "direction": "inbound"},
+                {"_id": 0, "text": 1}).sort("created_at", -1).limit(20):
+            history_inbound.append(m.get("text", ""))
+        from services.anti_cpf_guardian import inject_identification_block
+        sys_prompt += "\n\n" + inject_identification_block(
+            link_for_guard, history_inbound=history_inbound)
+    except Exception as e:
+        logger.info("[wa-baileys] anti_cpf inject skip: %s", e)
+
+    # 3i. LISTENING GUARD — detecta intenção direta, perguntas repetidas
+    # e pedidos qualificatórios recusados (impede Isabella de pedir CPF
+    # se cliente já está identificado, ou repetir pergunta literal).
+    listening_analysis: dict = {}
+    try:
+        from services.listening_guard import (
+            analyze_listening, inject_listening_block,
+        )
+        listening_analysis = await analyze_listening(
+            company_id=cid, phone=phone, user_text=user_text)
+        lb = inject_listening_block(listening_analysis)
+        if lb:
+            sys_prompt += "\n\n" + lb
+    except Exception as e:
+        logger.info("[wa-baileys] listening_guard skip: %s", e)
+
+    # 3j. SHORT-TERM MEMORY GUARD — bloqueia abertura de fluxo comercial
+    # quando cliente acabou de responder a uma pergunta.
+    short_term_analysis: dict = {}
+    try:
+        from services.short_term_memory_guard import (
+            analyze_short_term_context, inject_memory_block,
+        )
+        short_term_analysis = await analyze_short_term_context(
+            company_id=cid, phone=phone, user_text=user_text)
+        mb = inject_memory_block(short_term_analysis)
+        if mb:
+            sys_prompt += "\n\n" + mb
+    except Exception as e:
+        logger.info("[wa-baileys] short_term_memory skip: %s", e)
+
+    # 3k. SAUDAÇÃO REPETIDA — bloco anti-Oi-Pamela: se conversa contínua
+    # (últ. outbound < 30min), instrui Isabella a NÃO cumprimentar.
+    try:
+        from datetime import datetime as _dt, timezone as _tz, timedelta as _td
+        cutoff_g = (_dt.now(_tz.utc) - _td(minutes=30)).isoformat()
+        recent_out = await db.aihub_wa_messages.count_documents(
+            {"company_id": cid, "phone": phone,
+             "direction": "outbound",
+             "created_at": {"$gt": cutoff_g}})
+        if recent_out > 0:
+            sys_prompt += (
+                "\n\n=== CONVERSA CONTÍNUA ===\n"
+                "Esta conversa está em ANDAMENTO (você já interagiu nos "
+                "últimos 30min). NÃO comece o turn com 'Oi <Nome>!' ou "
+                "qualquer saudação. Vá DIRETO ao ponto. Cumprimento já "
+                "foi feito.")
+    except Exception:
+        pass
+
     # 3d. Histórico de conversa (janela 100, truncate por tokens)
     try:
         from services.ai_history import fetch_history_turns
@@ -2586,7 +2654,78 @@ async def _maybe_auto_reply(cid: str, phone: str, user_text: str,
     # Mantém a sensação de "ela mandou 3 mensagens" em vez de um parágrafo
     # gigante numa bolha só. Cap de 6 chunks pra evitar spam — overflow vira
     # 1 último chunk com o restante.
+    # 5.0 LISTENING GUARD REWRITE — remove perguntas qualificatórias que
+    # o cliente já recusou (ex.: cliente disse "só quero instalar" e a
+    # Isabella mesmo assim pergunta "quantas pessoas usam?").
+    try:
+        if listening_analysis:
+            from services.listening_guard import rewrite_if_violates as _lg_rw
+            reply_text = _lg_rw(reply_text, listening_analysis)
+    except Exception as e:
+        logger.info("[wa-baileys] listening rewrite skip: %s", e)
+
+    # 5.0.b ANTI-CPF REWRITE — remove sentença pedindo CPF/cadastro
+    # quando cliente já está identificado.
+    try:
+        if link_for_guard and link_for_guard.get("subscriber_id"):
+            from services.anti_cpf_guardian import (
+                detect_violations, rewrite_if_violates as _cpf_rw,
+            )
+            vio = detect_violations(reply_text)
+            if vio:
+                reply_text = _cpf_rw(reply_text, link_for_guard)
+                logger.warning(
+                    "[wa-baileys] anti_cpf REWROTE phone=%s violations=%s",
+                    phone, vio)
+    except Exception as e:
+        logger.info("[wa-baileys] anti_cpf rewrite skip: %s", e)
+
     chunks = _split_ai_reply(reply_text, max_chunks=6)
+
+    # 5.1 Pós-processador BUBBLE SPLITTER — força ≤180c por bolha,
+    # suprime nome repetido, ≤1 pergunta por bolha (estilo humano WhatsApp).
+    try:
+        from services.bubble_splitter import split_into_bubbles
+        refined: List[str] = []
+        for ch in chunks:
+            if len(ch) <= 180 and ch.count("?") <= 1:
+                refined.append(ch)
+            else:
+                refined.extend(split_into_bubbles(ch))
+        # Re-aplica suppress de nome no conjunto inteiro (cross-chunk)
+        if refined:
+            from services.bubble_splitter import _suppress_repeated_name
+            refined = _suppress_repeated_name(refined)
+        chunks = [c for c in refined if c.strip()]
+    except Exception as e:
+        logger.warning("[wa-baileys] bubble_splitter refine falhou: %s", e)
+
+    # 5.2 ANTI-SAUDAÇÃO REPETIDA EM CONVERSA CONTÍNUA — se já existe
+    # outbound nas últimas 30min, remove "Oi <Nome>!" inicial dos chunks
+    # (Isabella não cumprimenta a mesma pessoa toda hora).
+    try:
+        cutoff_greet = (datetime.now(timezone.utc)
+                          - timedelta(minutes=30)).isoformat()
+        had_recent = await db.aihub_wa_messages.count_documents({
+            "company_id": cid, "phone": phone, "direction": "outbound",
+            "created_at": {"$gt": cutoff_greet}})
+        if had_recent > 0 and chunks:
+            greet_rx = re.compile(
+                r"^\s*(?:oi|ol[áa]|opa|bom\s+dia|boa\s+tarde|boa\s+noite)"
+                r"[\s,!]+[A-ZÁÉÍÓÚ][a-záéíóú]+[!,.\s]*\s*[😊😄🙂🚀✨🎉]?\s*",
+                re.IGNORECASE)
+            new_chunks: List[str] = []
+            for ch in chunks:
+                stripped = greet_rx.sub("", ch).strip()
+                if stripped:
+                    new_chunks.append(stripped)
+                # se greeting era a bolha inteira, dropa silenciosamente
+            if new_chunks:
+                chunks = new_chunks
+                logger.info("[wa-baileys] saudação repetida removida "
+                              "(conversa contínua), phone=%s", phone)
+    except Exception as e:
+        logger.warning("[wa-baileys] anti-greet falhou: %s", e)
 
     # 5b. Se cliente mandou voice note, gera TTS do texto completo e envia
     # como áudio APÓS as bolhas de texto (UX "conversa falada").

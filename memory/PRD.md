@@ -2,7 +2,73 @@
 
 > Documento vivo. Atualizado a cada sprint.
 
-## 👂 ISABELLA — ESCUTA, AGREGADOR E BOLHAS HUMANAS ✅ (10/02/2026)
+## 🩹 ISABELLA — BUG PAMELA #2 (BAILEYS + ANTI-CPF + ANTI-GREET) ✅ (10/02/2026)
+
+**Ordem CTO #2**: screenshot 21:25 mostrou Isabella ainda violando:
+1. Bolha gigante 300+c em 1 mensagem (bubble_splitter não estava aplicado no Baileys).
+2. "Oi Pamela!" em 4 turns consecutivos (anti-greeting cross-turn faltava).
+3. Repetia LITERALMENTE pergunta do turn anterior depois de "Oi" do cliente.
+4. **Pedia CPF mesmo com cliente já identificada** (anti-CPF não estava wired no Baileys).
+5. Bolha incluía 3 perguntas em 1 turn.
+
+### Diagnóstico
+Conversa real estava em `channel='baileys'` (não Twilio). Minha primeira leva
+de fixes só aplicou em `whatsapp_twilio.py`. O Baileys (`whatsapp_baileys.py`)
+tem fluxo paralelo e precisava receber as mesmas camadas.
+
+### Entregas (Baileys agora paridade com Twilio)
+- `whatsapp_baileys.py` linha ~2345 (após `extra` montado):
+  - **Anti-CPF Guardian** wired (`inject_identification_block` + `rewrite_if_violates`)
+  - **Listening Guard** wired (`analyze_listening` + `inject_listening_block`)
+  - **Short-Term Memory Guard** wired (`analyze_short_term_context` + `inject_memory_block`)
+  - **Bloco "CONVERSA CONTÍNUA"** injetado se houve outbound nos últimos 30min →
+    força Isabella a não cumprimentar de novo
+- `whatsapp_baileys.py` linha ~2589 (após `_split_ai_reply`):
+  - **Listening rewrite** remove sentenças qualificatórias recusadas
+  - **Anti-CPF rewrite** remove sentença pedindo CPF quando cliente identificado
+  - **Bubble splitter** refina cada chunk → ≤180c, ≤1 pergunta/bolha, nome 1x/turn
+  - **Anti-greet regex** remove "Oi <Nome>!" / "Olá <Nome>!" / "Bom dia <Nome>!"
+    de TODAS as bolhas se houve outbound <30min
+
+### System prompt da Isabella & Jerusa atualizado
+2 blocos novos em DB (`aihub_agents.system_prompt`):
+- "REGRA EXTRA — JÁ IDENTIFICADO": proíbe pedir CPF/RG/cadastro/titular se
+  cliente identificado; manda escalar pro time técnico ao invés de pedir doc.
+- "REGRA EXTRA — CONVERSA CONTÍNUA": proíbe saudação em sessão <30min.
+
+### Bug fix `_suppress_repeated_name`
+Padrão `^{name}[,!.]\s+` exigia pontuação. Agora `^{name}[,!.]?\s+`
+(opcional) → suprime "Pamela me diz..." também.
+
+### Validação Zero Mock (`scripts/test_pamela_scenario.py`)
+**6/6 ✅** reproduzindo cenário exato do screenshot:
+1. Bolha gigante (180c "Oi Pamela!... NÃO vinculado... CPF do titular?") → 3 bolhas ≤94c cada
+2. Nome "Pamela" 3x no input → 1x no output (suprimiu nas bolhas 2 e 3)
+3. Anti-CPF identificado: detecta `pede_cpf_simples` e remove a sentença
+4. "So quero instalar vc tem?" → `intent_direct + asks_availability` → reply qualificatório vira string vazia (limpa)
+5. Anti-greet regex: "Oi Pamela! 😊 Pra instalação..." → "Pra instalação..." (em 3 variações)
+6. Cenário real CTO: 1 mega-bolha → 3 bolhas ≤180c, 1 pergunta total
+
+### Regressão preservada
+- `test_isabella_listening.py` 5/5 ✅
+- `test_short_term_memory.py` 11/11 ✅
+- Shield Health: ONLINE
+- Red Team Shield: 28/28 A
+
+### O que vai mudar no próximo turn da Pamela
+| Bug screenshot | Comportamento agora |
+|---|---|
+| "Oi Pamela! 😊 Pra instalação..." em todo turn | "Pra instalação..." (saudação suprimida em conv contínua) |
+| 1 bolha com saudação + status + 2 perguntas | 3 bolhas curtas, 1 pergunta total, delay típo 2-4s entre elas |
+| "Pode me passar o CPF do titular" (cliente identificado) | Removido. Isabella escala para o time técnico sem pedir documento. |
+| Repete LITERAL pergunta anterior | Listening guard detecta `isabella_questions_repeated` e bloqueia |
+
+### Configuração nova (.env opcional, já wired)
+- `WA_AGGREGATE_WINDOW_S=6` — janela de silêncio
+- `WA_AGGREGATE_MAX_MSGS=10` — máx bolhas no buffer
+
+
+## 👂 ISABELLA — ESCUTA, AGREGADOR E BOLHAS HUMANAS (TWILIO) ✅ (10/02/2026)
 
 **Ordem CTO**: cliente mandou 3 "Oi" → Isabella ignorou os 2 primeiros.
 Cliente disse "só quero instalar" → Isabella continuou perguntando
