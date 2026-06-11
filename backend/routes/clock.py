@@ -72,30 +72,26 @@ router = APIRouter(prefix="/api", tags=["clock"])
 # Helpers — regras automáticas derivadas de `cargo`
 # -------------------------------------------------------------------------
 def _apply_cargo_rules(payload: "CollaboratorIn", user: dict) -> None:
-    """Aplica regras automáticas baseadas no cargo do colaborador.
-
-    - Associado → não bate ponto (clock_in_enabled=False)
-    - Aux. Administrativo / Atendente → libera Atendimento WhatsApp
-      (mas só se o solicitante for auditor; senão preserva valor atual)
-
+    """Aplica regras do cargo ao payload. NAO mexe em `clock_in_enabled`
+    - o gestor decide via formulario do Cadastro (toggle de ponto).
+    - Aux. Administrativo / Atendente -> libera Atendimento WhatsApp
+      (somente se o solicitante for auditor/admin).
     Mutaciona o `payload` in-place.
     """
     if not payload.cargo:
         return
     if payload.cargo not in CARGOS_VALID:
-        # Cargo desconhecido — ignora silenciosamente (permite custom em DB)
         return
-    payload.clock_in_enabled = clock_in_enabled_for(payload.cargo)
     if is_atendimento_cargo(payload.cargo) and user.get("role") in ("auditor", "admin"):
         payload.can_attend_whatsapp = True
 
 
 def _apply_cargo_rules_dict(data: dict, user: dict) -> None:
-    """Versão do `_apply_cargo_rules` que trabalha com dict (usado no UPDATE)."""
+    """Versão do `_apply_cargo_rules` para dict. NÃO mexe em
+    `clock_in_enabled` — admin tem prioridade absoluta sobre default."""
     cargo = data.get("cargo")
     if not cargo or cargo not in CARGOS_VALID:
         return
-    data["clock_in_enabled"] = clock_in_enabled_for(cargo)
     if is_atendimento_cargo(cargo) and user.get("role") in ("auditor", "admin"):
         data["can_attend_whatsapp"] = True
 
