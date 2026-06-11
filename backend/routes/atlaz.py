@@ -276,46 +276,18 @@ def _filter_by_filial(chamados: List[Dict[str, Any]], filiais: List[str]) -> Lis
 
 
 async def _get_or_create_unassigned_inbox(company_id: str) -> str:
-    """Retorna o ID do colaborador placeholder '📥 Sem técnico (Atlaz)' da empresa.
-    Cria se não existir. Esse colaborador é o destino das bolhas Atlaz sem técnico
-    atribuído — gestor arrasta para o técnico real via drag&drop da Lousa.
+    """Retorna o ID da SALA (Lousa virtual) do tenant — destino unificado
+    de bolhas Atlaz SEM tecnico mapeavel.
+
+    REGRA (11/02/2026): Atlaz orfan -> SEMPRE cai na grade SALA. O placeholder
+    `📥 Sem técnico (Atlaz)` (atlaz_inbox=True) foi descontinuado em favor da
+    SALA virtual, que já é a coluna fixa de triagem da Lousa Admin.
+
+    Migracao de tickets antigos: feita uma vez via script
+    `scripts/migrate_atlaz_inbox_to_sala.py` (idempotente).
     """
-    inbox = await db.collaborators.find_one(
-        {"company_id": company_id, "atlaz_inbox": True}, {"_id": 0, "id": 1},
-    )
-    if inbox:
-        return inbox["id"]
-    cid = "col-atlaz-inbox"
-    # Verifica colisão (improvável, mas seguro)
-    while await db.collaborators.find_one({"id": cid}, {"_id": 0, "id": 1}):
-        cid = f"col-atlaz-inbox-{uuid.uuid4().hex[:6]}"
-    now = now_iso()
-    await db.collaborators.insert_one({
-        "id": cid,
-        "name": "📥 Sem técnico (Atlaz)",
-        "cpf": f"INBOX-{cid[-6:]}",
-        "email": f"{cid}@atlaz.local",
-        "phone": "",
-        "role": "Inbox Atlaz",
-        "company": "Atlaz",
-        "schedule": {
-            "weekdays": [1, 2, 3, 4, 5],
-            "start": "00:00", "end": "23:59",
-            "lunch_start": "12:00", "lunch_end": "13:00",
-        },
-        "overtime_policy": {"enabled": False, "max_minutes_per_day": 0},
-        "city": None, "state": None, "praca_id": None,
-        "is_test_mode": False,
-        "company_id": company_id,
-        "avatar_data_url": None,
-        "reference_face": None,
-        "atlaz_synced": True,
-        "atlaz_inbox": True,
-        "active": True,
-        "created_at": now,
-        "updated_at": now,
-    })
-    return cid
+    from services.isabella_actions import _ensure_sala
+    return await _ensure_sala(company_id)
 
 
 async def _resolve_collaborator(

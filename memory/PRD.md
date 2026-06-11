@@ -2,6 +2,31 @@
 
 > Documento vivo. Atualizado a cada sprint.
 
+## 🎯 REGRA UNIFICADA — Atlaz orfan -> SALA ✅ (11/02/2026)
+
+### Decisao
+Todo ticket vindo do Atlaz **sem técnico mapeavel** agora cai DIRETO na grade **SALA** da Lousa (coluna virtual unificada de triagem, já usada pela Isabella). O placeholder `📥 Sem técnico (Atlaz)` foi descontinuado — gestor não precisa mais aprender duas inbox de orfan.
+
+### Mudanças
+- `/app/backend/routes/atlaz.py::_get_or_create_unassigned_inbox` agora delega para `services.isabella_actions._ensure_sala(company_id)`. Backwards-compat: nome da função preservado (chamada em `routes/atlaz.py:566` e `routes/atlaz.py:1929`).
+- Migração one-shot executada: **7 tickets ATIVOS** reassinados `col-atlaz-inbox` → `col-sala`, com flags `migrated_from_atlaz_inbox=True` e `migrated_to_sala_at` para rastreio.
+- Placeholder `📥 Sem técnico (Atlaz)` (id `col-atlaz-inbox`) **desativado** (`active=False`, `deactivation_reason="Migrado para SALA"`) — preservado como histórico, não aparece em listas de técnicos nem em rankings.
+
+### Validação (red-team `scripts/red_team_atlaz_to_sala.py` — 5/5 PASS)
+| # | Critério | Resultado |
+|---|---|---|
+| 1 | `_get_or_create_unassigned_inbox(co-demo)` retorna `col-sala` | ✅ |
+| 2 | Nenhum ticket ATIVO restante no inbox legado | ✅ 0/7 |
+| 3 | Placeholder atlaz_inbox desativado | ✅ |
+| 4 | SALA é virtual (`is_virtual=True, virtual_kind=sala_atendimento`) | ✅ |
+| 5 | Tickets migrados ficam rastreáveis via flag | ✅ 7/7 |
+
+### Scripts criados
+- `scripts/migrate_atlaz_inbox_to_sala.py` — migra inboxes legados em TODOS os tenants (idempotente). Pode rodar a qualquer momento para varrer ingest legado.
+- `scripts/red_team_atlaz_to_sala.py` — guarda de regressão.
+
+
+
 ## 🔨 REFACTOR P2 — Quebra de monólitos Fase 1 ✅ (11/02/2026)
 
 ### Resultado consolidado
