@@ -14,6 +14,90 @@ import OsValidationTogglesCard from "@/OsValidationTogglesCard";
 import PhotoRequirementsCard from "@/PhotoRequirementsCard";
 import PreventiveOsCard from "@/PreventiveOsCard";
 
+
+function CollabAppFeaturesCard() {
+  const [cfg, setCfg] = useState(null);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    api.salaConfig().then(setCfg).catch(() => setCfg({}));
+  }, []);
+
+  const toggle = async (key) => {
+    if (saving || !cfg) return;
+    setSaving(true);
+    try {
+      const next = !cfg[key];
+      const r = await api.setSalaConfig({ [key]: next });
+      setCfg({ ...cfg, ...r });
+    } catch (e) {
+      alert(`Erro ao salvar: ${e?.humanMessage || e.message}`);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Card title="App do Colaborador — Features"
+            style={{ gridColumn: "1 / -1" }}>
+      <p style={{ color: "#64748b", fontSize: 13, margin: "0 0 12px" }}>
+        Controle quais módulos ficam visíveis para os técnicos no app mobile.
+      </p>
+      <div data-testid="collab-app-features-card"
+            style={{ display: "grid", gap: 10 }}>
+        <FeatureRow
+          testid="toggle-smart-field"
+          label="Smart Field Ops"
+          desc="Botão de diagnóstico técnico, GPS e captura de incidentes no campo."
+          checked={!!cfg?.collab_smart_field_enabled}
+          disabled={saving || !cfg}
+          onChange={() => toggle("collab_smart_field_enabled")}
+        />
+      </div>
+    </Card>
+  );
+}
+
+
+function FeatureRow({ testid, label, desc, checked, disabled, onChange }) {
+  return (
+    <div style={{
+      display: "flex", alignItems: "center", justifyContent: "space-between",
+      padding: 12, background: "#f8fafc",
+      borderRadius: 10, border: "1px solid #e2e8f0",
+    }}>
+      <div style={{ flex: 1 }}>
+        <div style={{ fontWeight: 700, color: "#0f172a", fontSize: 14 }}>
+          {label}
+        </div>
+        <div style={{ color: "#64748b", fontSize: 12, marginTop: 2 }}>
+          {desc}
+        </div>
+      </div>
+      <label data-testid={testid}
+              style={{ position: "relative", display: "inline-block",
+                          width: 46, height: 26, cursor: disabled ? "wait" : "pointer" }}>
+        <input type="checkbox" checked={checked} disabled={disabled}
+                onChange={onChange}
+                style={{ opacity: 0, width: 0, height: 0 }} />
+        <span style={{
+          position: "absolute", inset: 0,
+          background: checked ? "#16a34a" : "#cbd5e1",
+          borderRadius: 13,
+          transition: "background 0.18s",
+        }} />
+        <span style={{
+          position: "absolute", top: 3, left: checked ? 23 : 3,
+          width: 20, height: 20, background: "white",
+          borderRadius: "50%", transition: "left 0.18s",
+          boxShadow: "0 1px 3px rgba(0,0,0,0.2)",
+        }} />
+      </label>
+    </div>
+  );
+}
+
+
 export default function SettingsPanel() {
   const [s, setS] = useState(null);
   const [form, setForm] = useState({
@@ -121,6 +205,7 @@ export default function SettingsPanel() {
 
   return (
     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 18 }}>
+      <CollabAppFeaturesCard />
       {/* Card de SLA / Tempos de Referência */}
       <Card title="Tempos de Referência por Serviço (SLA)">
         <p style={{ color: "#64748b", fontSize: 13, margin: "0 0 12px" }}>

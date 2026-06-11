@@ -160,6 +160,16 @@ function CollaboratorAppInner({ mobile = false, forcedCollabId = null, onLogout 
   const [receipt, setReceipt] = useState(null);
   const [position, setPosition] = useState(null);
   const [geoError, setGeoError] = useState("");
+  // Toggle controlado pelo gestor (settings.collab_smart_field_enabled).
+  // Default DESLIGADO: botão Smart Field Ops fica escondido.
+  const [smartFieldEnabled, setSmartFieldEnabled] = useState(false);
+  useEffect(() => {
+    let cancel = false;
+    api.salaConfigForCollabApp()
+      .then((d) => { if (!cancel) setSmartFieldEnabled(!!d?.smart_field_enabled); })
+      .catch(() => {});
+    return () => { cancel = true; };
+  }, []);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [avatarZoom, setAvatarZoom] = useState(false);
@@ -786,6 +796,7 @@ function CollaboratorAppInner({ mobile = false, forcedCollabId = null, onLogout 
                     <Icon name="clipboard" /> Abrir Lousa de Serviços
                   </button>
 
+                  {smartFieldEnabled && (
                   <button
                     data-testid="open-field-ops-btn-primary"
                     onClick={() => setScreen("field-ops")}
@@ -801,6 +812,7 @@ function CollaboratorAppInner({ mobile = false, forcedCollabId = null, onLogout 
                   >
                     <Icon name="shield" /> Smart Field Ops
                   </button>
+                  )}
 
                   <button
                     data-testid="open-cadastro-rede-btn"
@@ -946,6 +958,7 @@ function CollaboratorAppInner({ mobile = false, forcedCollabId = null, onLogout 
                 <Icon name="clipboard" /> Lousa de Serviços
               </button>
 
+              {smartFieldEnabled && (
               <button
                 data-testid="open-field-ops-btn"
                 onClick={() => setScreen("field-ops")}
@@ -962,6 +975,7 @@ function CollaboratorAppInner({ mobile = false, forcedCollabId = null, onLogout 
               >
                 <Icon name="shield" /> Smart Field Ops
               </button>
+              )}
 
               <button
                 data-testid="open-cadastro-rede-btn-clt"

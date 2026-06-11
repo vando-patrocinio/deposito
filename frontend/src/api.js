@@ -2128,4 +2128,12 @@ export const api = {
     client.get(`/experience/audit/${id}`).then((r) => r.data),
   expTemplates: () =>
     client.get(`/experience/templates`).then((r) => r.data),
+
+  // Configuração da SALA + features do app do colaborador
+  salaConfig: () =>
+    client.get("/lousa/sala-config").then((r) => r.data),
+  setSalaConfig: (patch) =>
+    client.post("/lousa/sala-config", patch).then((r) => r.data),
+  salaConfigForCollabApp: () =>
+    client.get("/lousa/collab-app-config").then((r) => r.data),
 };
