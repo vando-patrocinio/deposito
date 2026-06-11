@@ -77,6 +77,7 @@ from routes import (
     aihub_prompts as routes_aihub_prompts,
     user_magic_links as routes_user_magic_links,
     sala_orphan_health as routes_sala_orphan_health,
+    isabella_churn as routes_isabella_churn,
     audit_log_panel as routes_audit_log,
     backend_health_routes as routes_backend_health,
     warroom as routes_warroom,
@@ -865,6 +866,11 @@ async def _startup() -> None:
     scheduler.add_job(run_orphan_health_check, "interval", minutes=15,
                       id="sala_orphan_health", replace_existing=True,
                       max_instances=1, coalesce=True)
+    # CTO P1.2 11/06/2026: Isabella → SALA por churn (diário 06:00 UTC)
+    from services.isabella_churn_to_sala import run_churn_to_sala
+    scheduler.add_job(run_churn_to_sala, CronTrigger(hour=6, minute=0),
+                      id="isabella_churn_to_sala", replace_existing=True,
+                      max_instances=1, coalesce=True)
     asyncio.create_task(holidays_refresh_job())
     asyncio.create_task(location_logs_cleanup_job())
     routes_atlaz.start_worker()
@@ -1214,6 +1220,7 @@ app.include_router(routes_lousa_sala_config.router)
 app.include_router(routes_aihub_prompts.router)
 app.include_router(routes_user_magic_links.router)
 app.include_router(routes_sala_orphan_health.router)
+app.include_router(routes_isabella_churn.router)
 app.include_router(routes_audit_log.router)
 app.include_router(routes_backend_health.router)
 app.include_router(routes_warroom.router)

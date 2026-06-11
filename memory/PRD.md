@@ -2,6 +2,35 @@
 
 > Documento vivo. Atualizado a cada sprint.
 
+## 🎯 Isabella → SALA por Churn ✅ (11/06/2026 P1.2 CTO)
+
+**Objetivo:** converter sinal de churn em ação — clientes em alto risco viram tickets de RETENÇÃO na SALA, com playbook Isabella embedded.
+
+**Implementação:**
+- `services/isabella_churn_to_sala.py` — job que varre `subscribers.churn_score >= 0.7` E `status=ATIVO`
+- Cron diário 06:00 UTC via apscheduler
+- Para cada candidato: cria ticket via `route_to_sala(reason="isabella_followup")` com:
+  - `category=RETENTION`, `origin=isabella_churn_to_sala`
+  - `priority=ALTA` se score ≥ 0.85, senão MEDIA
+  - `isabella.mrr_at_risk` + `arr_at_risk` calculados
+  - Playbook diferenciado (ligação ativa em 24h se crítico; WhatsApp se alto)
+- Dedupe: 7 dias (não cria 2 tickets do mesmo cliente). Throttle: 100 por execução
+- Eventos `retention.ticket_created` emitidos no Sistema Nervoso
+- Configurável via env: `CHURN_TICKET_THRESHOLD`, `CHURN_DEDUPE_WINDOW_DAYS`, `CHURN_TICKETS_PER_RUN`
+
+**Endpoints admin (`/api/admin/isabella-churn/`):**
+- `GET /status` — candidatos + tickets abertos + último relatório
+- `POST /run-now` — dispara o job manualmente
+- `GET /history?limit=20` — auditoria histórica
+
+**Validação ao vivo:**
+- 1ª execução: 100 candidatos seen, **100 tickets criados em 334ms** (co-fantasma-v3:33, co-fantasma-v4:67)
+- 2ª execução: dedupe efetivo — pulou os 100 já existentes, criou 100 novos
+- Total no DB: **200 tickets RETENTION abertos** com playbook + MRR
+- Universo ATIVO: 216 subscribers (não 3291 — diferença = clientes inativos/cancelados que estavam no número bruto)
+
+---
+
 ## 🩺 Health Check Automático: Órfãos da SALA ✅ (11/06/2026 P0 CTO)
 
 **Objetivo:** garantir que NUNCA mais haja ticket invisível na Lousa, mesmo se algum caminho futuro escapar do `route_to_sala()`.
