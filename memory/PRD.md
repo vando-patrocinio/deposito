@@ -3154,3 +3154,34 @@ evidência por bucket, hooks auto-wire confirmados no código, deprecação
 do Orquestrador com janela 30d.
 
 Linter Nervous: 451 módulos / 0 críticos silentes / ✅ CI GATE OK.
+
+---
+
+## [11/06/2026 22:50] UI IA TESOUREIRA — ASAAS SANDBOX (DONE)
+
+### Ordem CTO
+Validar IA Tesoureira via UI — fila de aprovação, decisão IA, auditoria, KPIs, previsão de saída.
+
+### Entrega
+- **`/app/frontend/src/TreasuryPanel.jsx`** (novo, 868 linhas)
+- Aba **`IA Tesoureira`** no grupo Financeiro (sidebar), `superAdminOnly: true`
+- **Novos endpoints backend:**
+  - `GET /api/treasury/safety` — config + banners
+  - `GET /api/treasury/payments/{id}/decision` — última decisão IA
+  - `GET /api/treasury/payments/{id}/audit` — timeline de auditoria
+- **`/app/backend/scripts/seed_treasury_demo.py`** — popula 3 payees + 8 payments em `co-demo` (1 paid, 1 failed, 4 pending/blocked, 1 draft, 1 approved)
+- **`asaas_client.py`** com graceful degradation `_AsaasNoKey` → todas as chamadas retornam `{ok:false, error:"asaas_key_missing"}` quando `ASAAS_API_KEY` ausente (zero 500s)
+
+### Testes
+- `iteration_153.json` testing_agent_v3_fork: **100% (9/9)** com `retest_needed: false`
+- Fluxo aprovar → enviar → cancelar → ai-review validado end-to-end via UI
+- Sem CRA overlay, sem secrets vazados, gating super_admin ok
+
+### Bloqueadores produção
+- `ASAAS_API_KEY` vazia (movimentações sandbox bloqueadas até key ser plugada)
+- `ASAAS_WEBHOOK_TOKEN` vazio (callbacks Asaas)
+- `TREASURY_AUTO_APPROVAL_ENABLED=false` (mantido por política)
+- Sicoob direto: pendente mTLS x.509 + 48h homologação
+
+### Relatório
+`/app/docs/RELATORIO_UI_TESOUREIRA_ASAAS.md`
