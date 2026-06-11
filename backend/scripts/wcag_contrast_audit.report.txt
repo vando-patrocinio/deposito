@@ -1,0 +1,49 @@
+======================================================================
+WCAG AA contrast audit — frontend/src
+======================================================================
+Arquivos varridos: 393
+Arquivos com violacoes: 120
+Total de violacoes: 224
+
+Por severidade:
+  - AA-fail (<3.0 - critico): 126
+  - AA-large-only (3.0-4.5 - so texto grande): 98
+
+Top 20 arquivos com mais violacoes:
+    12  WhatsAppChatLayout.js
+    11  RedeIaMap.js
+     7  BillingPanel.js
+     5  FleetPanel.js
+     5  LousaMobile.js
+     4  SmartOltAiPanel.js
+     4  LousaAdminPanel.js
+     4  RedeIaPanel.js
+     4  OdometerBubble.js
+     4  OntScanBatchModal.js
+     4  components/LousaSalaTab.js
+     4  lousa/GestaoMetasPanel.js
+     3  ReferralLandingPage.js
+     3  ReferralsAdminPanel.js
+     3  ContractsPanel.js
+     3  SentinelaLousaCard.js
+     3  WhatsAppChannelsPanel.js
+     3  CadastroPanel.js
+     3  SubscribersPanel.js
+     3  WhatsAppInstancePanel.js
+
+Exemplos de violacoes criticas (AA-fail, ratio<3.0):
+  TrainingStudio.js:729  ratio=2.89  bg= rgba(22,163,74,.12)  fg=#16a34a
+  RedeIaMap.js:1223  ratio=2.77  bg=             #0ea5e9  fg=#fff
+  RedeIaMap.js:2425  ratio=1.00  bg=rgba(255,255,255,.1)  fg=white
+  RedeIaMap.js:2448  ratio=1.02  bg=rgba(16,185,129,.25)  fg=#a7f3d0
+  RedeIaMap.js:2531  ratio=1.00  bg=rgba(255,255,255,.1)  fg=white
+  RedeIaMap.js:2780  ratio=2.77  bg=             #0ea5e9  fg=#fff
+  RedeIaMap.js:2792  ratio=2.15  bg=             #f59e0b  fg=#fff
+  PracasPanel.js:285  ratio=2.34  bg=             #f1f5f9  fg=#94a3b8
+  PredictivePanel.jsx:97  ratio=2.01  bg=           #064e3b22  fg=#10b981
+  ReferralLandingPage.js:106  ratio=1.20  bg=rgba(255,255,255,.08)  fg=#FFE6D2
+  ReferralLandingPage.js:308  ratio=1.00  bg=rgba(255,255,255,.14)  fg=#fff
+  ReferralLandingPage.js:406  ratio=1.00  bg=rgba(255,255,255,.06)  fg=#fff
+  BlockersPanel.jsx:152  ratio=2.01  bg=           #064e3b22  fg=#10b981
+  ReferralsAdminPanel.js:207  ratio=2.56  bg=               white  fg=#94a3b8
+  ReferralsAdminPanel.js:647  ratio=2.87  bg=             #FF6A1A  fg=white

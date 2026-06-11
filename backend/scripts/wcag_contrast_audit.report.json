@@ -1,0 +1,850 @@
+{
+  "summary": {
+    "files_scanned": 393,
+    "files_with_issues": 120,
+    "violations_total": 224,
+    "by_severity": {
+      "AA-fail (<3.0 - critico)": 126,
+      "AA-large-only (3.0-4.5 - so texto grande)": 98
+    }
+  },
+  "top_offenders": [
+    {
+      "file": "WhatsAppChatLayout.js",
+      "violations": [
+        {
+          "file": "WhatsAppChatLayout.js",
+          "line": 573,
+          "background": "#16a34a",
+          "color": "#fff",
+          "ratio": 3.3,
+          "severity": "AA-large-only"
+        },
+        {
+          "file": "WhatsAppChatLayout.js",
+          "line": 658,
+          "background": "#16a34a",
+          "color": "#fff",
+          "ratio": 3.3,
+          "severity": "AA-large-only"
+        },
+        {
+          "file": "WhatsAppChatLayout.js",
+          "line": 851,
+          "background": "#22c55e",
+          "color": "#fff",
+          "ratio": 2.28,
+          "severity": "AA-fail"
+        },
+        {
+          "file": "WhatsAppChatLayout.js",
+          "line": 1019,
+          "background": "#dbeafe",
+          "color": "#3b82f6",
+          "ratio": 3.01,
+          "severity": "AA-large-only"
+        },
+        {
+          "file": "WhatsAppChatLayout.js",
+          "line": 1045,
+          "background": "#16a34a",
+          "color": "#fff",
+          "ratio": 3.3,
+          "severity": "AA-large-only"
+        },
+        {
+          "file": "WhatsAppChatLayout.js",
+          "line": 1079,
+          "background": "rgba(13,148,136,.12)",
+          "color": "#0d9488",
+          "ratio": 3.25,
+          "severity": "AA-large-only"
+        },
+        {
+          "file": "WhatsAppChatLayout.js",
+          "line": 2092,
+          "background": "#25d366",
+          "color": "#fff",
+          "ratio": 1.98,
+          "severity": "AA-fail"
+        },
+        {
+          "file": "WhatsAppChatLayout.js",
+          "line": 2381,
+          "background": "rgba(225, 220, 200, 0.95)",
+          "color": "#54656f",
+          "ratio": 4.48,
+          "severity": "AA-large-only"
+        },
+        {
+          "file": "WhatsAppChatLayout.js",
+          "line": 2996,
+          "background": "#16a34a",
+          "color": "white",
+          "ratio": 3.3,
+          "severity": "AA-large-only"
+        },
+        {
+          "file": "WhatsAppChatLayout.js",
+          "line": 3028,
+          "background": "#16a34a",
+          "color": "white",
+          "ratio": 3.3,
+          "severity": "AA-large-only"
+        },
+        {
+          "file": "WhatsAppChatLayout.js",
+          "line": 4168,
+          "background": "#f59e0b",
+          "color": "white",
+          "ratio": 2.15,
+          "severity": "AA-fail"
+        },
+        {
+          "file": "WhatsAppChatLayout.js",
+          "line": 4238,
+          "background": "#f59e0b",
+          "color": "white",
+          "ratio": 2.15,
+          "severity": "AA-fail"
+        }
+      ]
+    },
+    {
+      "file": "RedeIaMap.js",
+      "violations": [
+        {
+          "file": "RedeIaMap.js",
+          "line": 339,
+          "background": "#fee2e2",
+          "color": "#dc2626",
+          "ratio": 3.95,
+          "severity": "AA-large-only"
+        },
+        {
+          "file": "RedeIaMap.js",
+          "line": 355,
+          "background": "#16a34a",
+          "color": "#fff",
+          "ratio": 3.3,
+          "severity": "AA-large-only"
+        },
+        {
+          "file": "RedeIaMap.js",
+          "line": 1223,
+          "background": "#0ea5e9",
+          "color": "#fff",
+          "ratio": 2.77,
+          "severity": "AA-fail"
+        },
+        {
+          "file": "RedeIaMap.js",
+          "line": 1529,
+          "background": "#0d9488",
+          "color": "#fff",
+          "ratio": 3.74,
+          "severity": "AA-large-only"
+        },
+        {
+          "file": "RedeIaMap.js",
+          "line": 2170,
+          "background": "#16a34a",
+          "color": "#fff",
+          "ratio": 3.3,
+          "severity": "AA-large-only"
+        },
+        {
+          "file": "RedeIaMap.js",
+          "line": 2425,
+          "background": "rgba(255,255,255,.1)",
+          "color": "white",
+          "ratio": 1.0,
+          "severity": "AA-fail"
+        },
+        {
+          "file": "RedeIaMap.js",
+          "line": 2448,
+          "background": "rgba(16,185,129,.25)",
+          "color": "#a7f3d0",
+          "ratio": 1.02,
+          "severity": "AA-fail"
+        },
+        {
+          "file": "RedeIaMap.js",
+          "line": 2531,
+          "background": "rgba(255,255,255,.1)",
+          "color": "white",
+          "ratio": 1.0,
+          "severity": "AA-fail"
+        },
+        {
+          "file": "RedeIaMap.js",
+          "line": 2780,
+          "background": "#0ea5e9",
+          "color": "#fff",
+          "ratio": 2.77,
+          "severity": "AA-fail"
+        },
+        {
+          "file": "RedeIaMap.js",
+          "line": 2792,
+          "background": "#f59e0b",
+          "color": "#fff",
+          "ratio": 2.15,
+          "severity": "AA-fail"
+        },
+        {
+          "file": "RedeIaMap.js",
+          "line": 2886,
+          "background": "#ea580c",
+          "color": "#fff",
+          "ratio": 3.56,
+          "severity": "AA-large-only"
+        }
+      ]
+    },
+    {
+      "file": "BillingPanel.js",
+      "violations": [
+        {
+          "file": "BillingPanel.js",
+          "line": 159,
+          "background": "#fff",
+          "color": "#0d9488",
+          "ratio": 3.74,
+          "severity": "AA-large-only"
+        },
+        {
+          "file": "BillingPanel.js",
+          "line": 270,
+          "background": "#fff",
+          "color": "#0d9488",
+          "ratio": 3.74,
+          "severity": "AA-large-only"
+        },
+        {
+          "file": "BillingPanel.js",
+          "line": 336,
+          "background": "#fff",
+          "color": "#16a34a",
+          "ratio": 3.3,
+          "severity": "AA-large-only"
+        },
+        {
+          "file": "BillingPanel.js",
+          "line": 514,
+          "background": "#fff",
+          "color": "#0d9488",
+          "ratio": 3.74,
+          "severity": "AA-large-only"
+        },
+        {
+          "file": "BillingPanel.js",
+          "line": 540,
+          "background": "#0d9488",
+          "color": "#fff",
+          "ratio": 3.74,
+          "severity": "AA-large-only"
+        },
+        {
+          "file": "BillingPanel.js",
+          "line": 680,
+          "background": "#fff",
+          "color": "#0ea5e9",
+          "ratio": 2.77,
+          "severity": "AA-fail"
+        },
+        {
+          "file": "BillingPanel.js",
+          "line": 832,
+          "background": "#fff",
+          "color": "#0d9488",
+          "ratio": 3.74,
+          "severity": "AA-large-only"
+        }
+      ]
+    },
+    {
+      "file": "FleetPanel.js",
+      "violations": [
+        {
+          "file": "FleetPanel.js",
+          "line": 352,
+          "background": "rgba(255,255,255,0.2)",
+          "color": "white",
+          "ratio": 1.0,
+          "severity": "AA-fail"
+        },
+        {
+          "file": "FleetPanel.js",
+          "line": 362,
+          "background": "rgba(220,38,38,0.25)",
+          "color": "white",
+          "ratio": 1.49,
+          "severity": "AA-fail"
+        },
+        {
+          "file": "FleetPanel.js",
+          "line": 950,
+          "background": "#10b981",
+          "color": "white",
+          "ratio": 2.54,
+          "severity": "AA-fail"
+        },
+        {
+          "file": "FleetPanel.js",
+          "line": 975,
+          "background": "rgba(0,0,0,0.5)",
+          "color": "white",
+          "ratio": 3.95,
+          "severity": "AA-large-only"
+        },
+        {
+          "file": "FleetPanel.js",
+          "line": 986,
+          "background": "rgba(255,255,255,0.15)",
+          "color": "white",
+          "ratio": 1.0,
+          "severity": "AA-fail"
+        }
+      ]
+    },
+    {
+      "file": "LousaMobile.js",
+      "violations": [
+        {
+          "file": "LousaMobile.js",
+          "line": 619,
+          "background": "#f1f5f9",
+          "color": "#64748b",
+          "ratio": 4.34,
+          "severity": "AA-large-only"
+        },
+        {
+          "file": "LousaMobile.js",
+          "line": 708,
+          "background": "#0ea5e9",
+          "color": "white",
+          "ratio": 2.77,
+          "severity": "AA-fail"
+        },
+        {
+          "file": "LousaMobile.js",
+          "line": 935,
+          "background": "white",
+          "color": "#94a3b8",
+          "ratio": 2.56,
+          "severity": "AA-fail"
+        },
+        {
+          "file": "LousaMobile.js",
+          "line": 1599,
+          "background": "#06b6d4",
+          "color": "white",
+          "ratio": 2.43,
+          "severity": "AA-fail"
+        },
+        {
+          "file": "LousaMobile.js",
+          "line": 2659,
+          "background": "rgba(251,191,36,0.2)",
+          "color": "#fbbf24",
+          "ratio": 1.5,
+          "severity": "AA-fail"
+        }
+      ]
+    },
+    {
+      "file": "SmartOltAiPanel.js",
+      "violations": [
+        {
+          "file": "SmartOltAiPanel.js",
+          "line": 68,
+          "background": "#0d9488",
+          "color": "#fff",
+          "ratio": 3.74,
+          "severity": "AA-large-only"
+        },
+        {
+          "file": "SmartOltAiPanel.js",
+          "line": 129,
+          "background": "rgba(220,38,38,.08)",
+          "color": "#dc2626",
+          "ratio": 4.28,
+          "severity": "AA-large-only"
+        },
+        {
+          "file": "SmartOltAiPanel.js",
+          "line": 276,
+          "background": "#0d9488",
+          "color": "#fff",
+          "ratio": 3.74,
+          "severity": "AA-large-only"
+        },
+        {
+          "file": "SmartOltAiPanel.js",
+          "line": 501,
+          "background": "#0d9488",
+          "color": "#fff",
+          "ratio": 3.74,
+          "severity": "AA-large-only"
+        }
+      ]
+    },
+    {
+      "file": "LousaAdminPanel.js",
+      "violations": [
+        {
+          "file": "LousaAdminPanel.js",
+          "line": 1245,
+          "background": "white",
+          "color": "#94a3b8",
+          "ratio": 2.56,
+          "severity": "AA-fail"
+        },
+        {
+          "file": "LousaAdminPanel.js",
+          "line": 1356,
+          "background": "#0ea5e9",
+          "color": "white",
+          "ratio": 2.77,
+          "severity": "AA-fail"
+        },
+        {
+          "file": "LousaAdminPanel.js",
+          "line": 2210,
+          "background": "#f59e0b",
+          "color": "white",
+          "ratio": 2.15,
+          "severity": "AA-fail"
+        },
+        {
+          "file": "LousaAdminPanel.js",
+          "line": 2451,
+          "background": "#0ea5e9",
+          "color": "white",
+          "ratio": 2.77,
+          "severity": "AA-fail"
+        }
+      ]
+    },
+    {
+      "file": "RedeIaPanel.js",
+      "violations": [
+        {
+          "file": "RedeIaPanel.js",
+          "line": 1604,
+          "background": "#16a34a",
+          "color": "#fff",
+          "ratio": 3.3,
+          "severity": "AA-large-only"
+        },
+        {
+          "file": "RedeIaPanel.js",
+          "line": 2689,
+          "background": "rgba(255,255,255,.1)",
+          "color": "white",
+          "ratio": 1.0,
+          "severity": "AA-fail"
+        },
+        {
+          "file": "RedeIaPanel.js",
+          "line": 2711,
+          "background": "rgba(255,255,255,.1)",
+          "color": "white",
+          "ratio": 1.0,
+          "severity": "AA-fail"
+        },
+        {
+          "file": "RedeIaPanel.js",
+          "line": 3653,
+          "background": "#ccfbf1",
+          "color": "#0d9488",
+          "ratio": 3.32,
+          "severity": "AA-large-only"
+        }
+      ]
+    },
+    {
+      "file": "OdometerBubble.js",
+      "violations": [
+        {
+          "file": "OdometerBubble.js",
+          "line": 111,
+          "background": "rgba(255,255,255,0.15)",
+          "color": "#fff",
+          "ratio": 1.0,
+          "severity": "AA-fail"
+        },
+        {
+          "file": "OdometerBubble.js",
+          "line": 218,
+          "background": "#0d9488",
+          "color": "#fff",
+          "ratio": 3.74,
+          "severity": "AA-large-only"
+        },
+        {
+          "file": "OdometerBubble.js",
+          "line": 236,
+          "background": "#10b981",
+          "color": "#fff",
+          "ratio": 2.54,
+          "severity": "AA-fail"
+        },
+        {
+          "file": "OdometerBubble.js",
+          "line": 247,
+          "background": "#10b981",
+          "color": "#fff",
+          "ratio": 2.54,
+          "severity": "AA-fail"
+        }
+      ]
+    },
+    {
+      "file": "OntScanBatchModal.js",
+      "violations": [
+        {
+          "file": "OntScanBatchModal.js",
+          "line": 227,
+          "background": "rgba(255,255,255,.15)",
+          "color": "#fff",
+          "ratio": 1.0,
+          "severity": "AA-fail"
+        },
+        {
+          "file": "OntScanBatchModal.js",
+          "line": 271,
+          "background": "rgba(255,255,255,.06)",
+          "color": "#fff",
+          "ratio": 1.0,
+          "severity": "AA-fail"
+        },
+        {
+          "file": "OntScanBatchModal.js",
+          "line": 287,
+          "background": "rgba(255,255,255,.08)",
+          "color": "#fff",
+          "ratio": 1.0,
+          "severity": "AA-fail"
+        },
+        {
+          "file": "OntScanBatchModal.js",
+          "line": 367,
+          "background": "rgba(239,68,68,.3)",
+          "color": "#fee2e2",
+          "ratio": 1.22,
+          "severity": "AA-fail"
+        }
+      ]
+    },
+    {
+      "file": "components/LousaSalaTab.js",
+      "violations": [
+        {
+          "file": "components/LousaSalaTab.js",
+          "line": 133,
+          "background": "#0ea5e9",
+          "color": "white",
+          "ratio": 2.77,
+          "severity": "AA-fail"
+        },
+        {
+          "file": "components/LousaSalaTab.js",
+          "line": 181,
+          "background": "white",
+          "color": "#94a3b8",
+          "ratio": 2.56,
+          "severity": "AA-fail"
+        },
+        {
+          "file": "components/LousaSalaTab.js",
+          "line": 267,
+          "background": "#0ea5e9",
+          "color": "white",
+          "ratio": 2.77,
+          "severity": "AA-fail"
+        },
+        {
+          "file": "components/LousaSalaTab.js",
+          "line": 301,
+          "background": "#16a34a",
+          "color": "white",
+          "ratio": 3.3,
+          "severity": "AA-large-only"
+        }
+      ]
+    },
+    {
+      "file": "lousa/GestaoMetasPanel.js",
+      "violations": [
+        {
+          "file": "lousa/GestaoMetasPanel.js",
+          "line": 280,
+          "background": "rgba(255,255,255,0.06)",
+          "color": "#e2e8f0",
+          "ratio": 1.23,
+          "severity": "AA-fail"
+        },
+        {
+          "file": "lousa/GestaoMetasPanel.js",
+          "line": 374,
+          "background": "#f8fafc",
+          "color": "#94a3b8",
+          "ratio": 2.45,
+          "severity": "AA-fail"
+        },
+        {
+          "file": "lousa/GestaoMetasPanel.js",
+          "line": 428,
+          "background": "rgba(220,38,38,0.2)",
+          "color": "#fecaca",
+          "ratio": 1.06,
+          "severity": "AA-fail"
+        },
+        {
+          "file": "lousa/GestaoMetasPanel.js",
+          "line": 533,
+          "background": "rgba(255,255,255,0.06)",
+          "color": "#e2e8f0",
+          "ratio": 1.23,
+          "severity": "AA-fail"
+        }
+      ]
+    },
+    {
+      "file": "ReferralLandingPage.js",
+      "violations": [
+        {
+          "file": "ReferralLandingPage.js",
+          "line": 106,
+          "background": "rgba(255,255,255,.08)",
+          "color": "#FFE6D2",
+          "ratio": 1.2,
+          "severity": "AA-fail"
+        },
+        {
+          "file": "ReferralLandingPage.js",
+          "line": 308,
+          "background": "rgba(255,255,255,.14)",
+          "color": "#fff",
+          "ratio": 1.0,
+          "severity": "AA-fail"
+        },
+        {
+          "file": "ReferralLandingPage.js",
+          "line": 406,
+          "background": "rgba(255,255,255,.06)",
+          "color": "#fff",
+          "ratio": 1.0,
+          "severity": "AA-fail"
+        }
+      ]
+    },
+    {
+      "file": "ReferralsAdminPanel.js",
+      "violations": [
+        {
+          "file": "ReferralsAdminPanel.js",
+          "line": 207,
+          "background": "white",
+          "color": "#94a3b8",
+          "ratio": 2.56,
+          "severity": "AA-fail"
+        },
+        {
+          "file": "ReferralsAdminPanel.js",
+          "line": 260,
+          "background": "#0d9488",
+          "color": "white",
+          "ratio": 3.74,
+          "severity": "AA-large-only"
+        },
+        {
+          "file": "ReferralsAdminPanel.js",
+          "line": 647,
+          "background": "#FF6A1A",
+          "color": "white",
+          "ratio": 2.87,
+          "severity": "AA-fail"
+        }
+      ]
+    },
+    {
+      "file": "ContractsPanel.js",
+      "violations": [
+        {
+          "file": "ContractsPanel.js",
+          "line": 143,
+          "background": "#0ea5e9",
+          "color": "#fff",
+          "ratio": 2.77,
+          "severity": "AA-fail"
+        },
+        {
+          "file": "ContractsPanel.js",
+          "line": 302,
+          "background": "#f1f5f9",
+          "color": "#64748b",
+          "ratio": 4.34,
+          "severity": "AA-large-only"
+        },
+        {
+          "file": "ContractsPanel.js",
+          "line": 591,
+          "background": "#0ea5e9",
+          "color": "#fff",
+          "ratio": 2.77,
+          "severity": "AA-fail"
+        }
+      ]
+    },
+    {
+      "file": "SentinelaLousaCard.js",
+      "violations": [
+        {
+          "file": "SentinelaLousaCard.js",
+          "line": 85,
+          "background": "#ef4444",
+          "color": "#fff",
+          "ratio": 3.76,
+          "severity": "AA-large-only"
+        },
+        {
+          "file": "SentinelaLousaCard.js",
+          "line": 132,
+          "background": "rgba(220,38,38,.08)",
+          "color": "#dc2626",
+          "ratio": 4.28,
+          "severity": "AA-large-only"
+        },
+        {
+          "file": "SentinelaLousaCard.js",
+          "line": 293,
+          "background": "#16a34a12",
+          "color": "#16a34a",
+          "ratio": 3.06,
+          "severity": "AA-large-only"
+        }
+      ]
+    },
+    {
+      "file": "WhatsAppChannelsPanel.js",
+      "violations": [
+        {
+          "file": "WhatsAppChannelsPanel.js",
+          "line": 82,
+          "background": "#0d9488",
+          "color": "white",
+          "ratio": 3.74,
+          "severity": "AA-large-only"
+        },
+        {
+          "file": "WhatsAppChannelsPanel.js",
+          "line": 114,
+          "background": "#0d9488",
+          "color": "white",
+          "ratio": 3.74,
+          "severity": "AA-large-only"
+        },
+        {
+          "file": "WhatsAppChannelsPanel.js",
+          "line": 164,
+          "background": "#0d9488",
+          "color": "white",
+          "ratio": 3.74,
+          "severity": "AA-large-only"
+        }
+      ]
+    },
+    {
+      "file": "CadastroPanel.js",
+      "violations": [
+        {
+          "file": "CadastroPanel.js",
+          "line": 1384,
+          "background": "#f8fafc",
+          "color": "#94a3b8",
+          "ratio": 2.45,
+          "severity": "AA-fail"
+        },
+        {
+          "file": "CadastroPanel.js",
+          "line": 1498,
+          "background": "#25D366",
+          "color": "white",
+          "ratio": 1.98,
+          "severity": "AA-fail"
+        },
+        {
+          "file": "CadastroPanel.js",
+          "line": 2023,
+          "background": "#25D366",
+          "color": "white",
+          "ratio": 1.98,
+          "severity": "AA-fail"
+        }
+      ]
+    },
+    {
+      "file": "SubscribersPanel.js",
+      "violations": [
+        {
+          "file": "SubscribersPanel.js",
+          "line": 1046,
+          "background": "#fef2f2",
+          "color": "#dc2626",
+          "ratio": 4.41,
+          "severity": "AA-large-only"
+        },
+        {
+          "file": "SubscribersPanel.js",
+          "line": 1135,
+          "background": "rgba(13,148,136,.08)",
+          "color": "#0d9488",
+          "ratio": 3.4,
+          "severity": "AA-large-only"
+        },
+        {
+          "file": "SubscribersPanel.js",
+          "line": 1159,
+          "background": "rgba(34,197,94,.15)",
+          "color": "#15803d",
+          "ratio": 4.4,
+          "severity": "AA-large-only"
+        }
+      ]
+    },
+    {
+      "file": "WhatsAppInstancePanel.js",
+      "violations": [
+        {
+          "file": "WhatsAppInstancePanel.js",
+          "line": 115,
+          "background": "#25d366",
+          "color": "#fff",
+          "ratio": 1.98,
+          "severity": "AA-fail"
+        },
+        {
+          "file": "WhatsAppInstancePanel.js",
+          "line": 479,
+          "background": "rgba(255,255,255,.12)",
+          "color": "#fff",
+          "ratio": 1.0,
+          "severity": "AA-fail"
+        },
+        {
+          "file": "WhatsAppInstancePanel.js",
+          "line": 688,
+          "background": "#16a34a",
+          "color": "#fff",
+          "ratio": 3.3,
+          "severity": "AA-large-only"
+        }
+      ]
+    }
+  ],
+  "all_violations_count": 224
+}

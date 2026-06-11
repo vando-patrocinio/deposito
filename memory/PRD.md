@@ -2,6 +2,56 @@
 
 > Documento vivo. Atualizado a cada sprint.
 
+## 🔍 Auditoria WCAG AA — Relatório (read-only) ✅ (11/02/2026)
+
+### Resumo executivo
+- **393 arquivos** varridos (`/app/frontend/src/*.js,*.jsx`)
+- **120 arquivos com violações** (30% do código)
+- **224 violações totais** (após composite alpha sobre fundo branco)
+  - **126 AA-fail crítico** (`ratio < 3.0` — falha até pra texto grande)
+  - **98 AA-large-only** (`3.0 ≤ ratio < 4.5` — passa só pra texto ≥18px ou ≥14px bold)
+
+### Top 5 pares (bg + fg) que mais falham
+| ocorr. | background | texto | ratio | sugestão |
+|---:|---|---|---:|---|
+| 9 | `#0ea5e9` (azul SALA) | branco | **2.77** | escurecer pra `#0369a1` (ratio 7.0) OU texto `#0c4a6e` |
+| 5 | `white` | `#94a3b8` (cinza sutil) | 2.56 | trocar pra `#64748b` (4.5) |
+| 4 | `rgba(255,255,255,.1)` | branco | **1.00** | usar `rgba(0,0,0,.4)` como bg em hero dark |
+| 4 | `#f59e0b` (warn) | branco | **2.15** | escurecer pra `#b45309` (4.8) ou texto preto |
+| 4 | `#25d366` (WhatsApp green) | branco | **2.45** | escurecer pra `#128c7e` ou usar texto escuro |
+
+### Top 10 arquivos com mais violações
+| violações | arquivo |
+|---:|---|
+| 12 | `WhatsAppChatLayout.js` |
+| 11 | `RedeIaMap.js` |
+| 7 | `BillingPanel.js` |
+| 5 | `FleetPanel.js`, `LousaMobile.js` |
+| 4 | `SmartOltAiPanel.js`, `LousaAdminPanel.js`, `RedeIaPanel.js`, `OdometerBubble.js`, `OntScanBatchModal.js`, `components/LousaSalaTab.js`, `lousa/GestaoMetasPanel.js` |
+| 3 | `ReferralLandingPage.js`, `ReferralsAdminPanel.js`, `ContractsPanel.js`, `SentinelaLousaCard.js`, `WhatsAppChannelsPanel.js`, `CadastroPanel.js`, `SubscribersPanel.js`, `WhatsAppInstancePanel.js` |
+
+### Como rodar a auditoria
+```bash
+python3 /app/backend/scripts/wcag_contrast_audit.py
+```
+Saída persistida:
+- `/app/backend/scripts/wcag_contrast_audit.report.json` (detalhado)
+- `/app/backend/scripts/wcag_contrast_audit.report.txt` (humano)
+
+### Limitações conhecidas
+- Não analisa CSS externo (apenas inline-styles JSX) — cobertura ~85% do código de cor real do app.
+- Composite alpha assume **parent branco** (verdadeiro pra tema light, que é o padrão do sistema).
+- Ignora `linear-gradient` / `conic-gradient` (gradiente exigiria amostragem multi-ponto — fora do escopo dessa primeira passada).
+- Não distingue texto normal de grande automaticamente — usa `4.5` como base e classifica em "AA-large-only" entre `[3.0, 4.5)`.
+
+### Próximas ações sugeridas (não executadas — read-only)
+1. Trocar **`#0ea5e9`+branco** por **`#0369a1`+branco** ou **azul claro+texto escuro** (afeta SALA, badges, Lousa) — single change, ganha ~9 violações
+2. Trocar `#f59e0b`+branco por `#b45309`+branco em estados de aviso (warn) — ganha ~4 violações
+3. Revisar `WhatsAppChatLayout.js` (12 violações concentradas) — provavel cluster de pílulas decorativas
+4. Auditar páginas marketing/landing (`ReferralLandingPage`, hero do `LandingPage`) — `rgba(255,255,255,.X)` sobre branco é invisível
+
+
+
 ## ☀️ Tema fixo LIGHT em todo o sistema ✅ (11/02/2026)
 
 ### Decisão CTO
