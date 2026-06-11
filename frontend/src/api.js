@@ -77,6 +77,22 @@ client.interceptors.response.use(
       } catch { /* ignore */ }
     }
 
+    // Humaniza err.message para pt-BR sem expor stack/HTTP cru.
+    // Qualquer caller legado que faça alert(e.message) já vê texto humano.
+    try {
+      // require dinâmico p/ evitar ciclo na inicialização do bundle.
+      // eslint-disable-next-line global-require
+      const { humanizeError } = require("./utils/humanizeError");
+      const human = humanizeError(err);
+      err.humanMessage = human;
+      // Só sobrescreve quando a mensagem original é técnica (inglês/HTTP).
+      const orig = err.message || "";
+      if (/Request failed|Network Error|timeout|status code/i.test(orig)
+          || !orig) {
+        err.message = human;
+      }
+    } catch { /* ignore */ }
+
     return Promise.reject(err);
   }
 );

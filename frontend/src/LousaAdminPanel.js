@@ -393,7 +393,8 @@ export default function LousaAdminPanel({ systemStatus = { offline: false, drift
       setTimeout(() => setRefreshFlash(false), 1200);
     } catch (e) {
       console.error("Erro lousa", e);
-      await window.alert("Erro ao atualizar: " + (e?.message || e));
+      const { humanizeError } = await import("./utils/humanizeError");
+      await window.alert(`Erro ao atualizar: ${humanizeError(e)}`);
     } finally {
       setRefreshing(false);
     }
@@ -920,7 +921,8 @@ export default function LousaAdminPanel({ systemStatus = { offline: false, drift
                   alert(`✅ ${total} bolha(s) distribuída(s) em ${r.collaborators_processed} técnico(s).`);
                   await refresh();
                 } catch (e) {
-                  alert(`Erro ao otimizar: ${e?.response?.data?.detail || e.message}`);
+                  const { humanizeError } = await import("./utils/humanizeError");
+                  alert(`Erro ao otimizar: ${humanizeError(e)}`);
                 }
               }}
               data-testid="lousa-auto-distribute-btn"
