@@ -4,28 +4,29 @@
 
 ## 🔗 Magic Links + Vínculo Único Usuário↔Colaborador ✅ (11/06/2026 P0 CTO)
 
-**Objetivo:** Eliminar a dor de "perdi acesso ao link e não consigo mais entrar". Cada usuário do painel tem 1 link ATIVO + 1 link RESERVA pré-armado. Renovar = 1 clique → ativo morre, reserva sobe, novo reserva gerado.
+**Objetivo:** Eliminar a dor de "perdi acesso ao link e não consigo mais entrar". Cada usuário do painel tem 1 link ATIVO + 1 link RESERVA pré-armado. Renovar = 1 clique → ativo morre, reserva sobe, novo reserva gerado. Expiração opcional + envio por WhatsApp.
 
-**Backend (novo módulo `routes/user_magic_links.py`):**
-- Coleção `user_magic_links` (status: active/reserve/revoked, generation, audit)
+**Backend (`routes/user_magic_links.py`):**
+- Coleção `user_magic_links` (status: active/reserve/revoked, generation, audit, expires_at)
 - `GET /api/users/{uid}/magic-link` — retorna ativo + reserva (bootstrap automático)
-- `POST /api/users/{uid}/magic-link/rotate` — rotaciona com audit log
-- `POST /api/auth/magic-login` — público, troca token por JWT
-- Bootstrap idempotente: garante que todo user ativo tem ativo + reserva
+- `POST /api/users/{uid}/magic-link/rotate` — rotaciona; body opcional `{expires_in_days}` aplica TTL no novo ativo (7/30/90 dias ou indefinido)
+- `POST /api/users/{uid}/magic-link/send` — envia link ativo via WhatsApp (Baileys sidecar). Resolve telefone do payload OU do colaborador vinculado
+- `POST /api/auth/magic-login` — público, troca token por JWT; rejeita expirados (revoga e retorna 401)
 
 **Vínculo único `collaborator_id`:**
 - Em `routes/users.py` (POST e PUT): valida que nenhum outro user tem o mesmo `collaborator_id`
 - Erro 409 com mensagem clara identificando quem já está vinculado
 
-**Frontend:**
-- `UsersPanel.js`: dropdown "Vincular a colaborador" no form (data-testid=`u-collaborator-id`), opções já vinculadas aparecem com ⚠ e disabled
-- Botão "🔗 Link" por linha (data-testid=`magic-link-{uid}`) → abre modal `magic-link-modal` com ATIVO + RESERVA + Copiar + Renovar
-- `AuthContext.js`: useEffect captura `?ml=<token>` no boot, faz magic-login, salva JWT em localStorage, limpa URL
+**Frontend (`UsersPanel.js` + `AuthContext.js`):**
+- Dropdown "Vincular a colaborador" no form (data-testid `u-collaborator-id`)
+- Botão "🔗 Link" por linha (data-testid `magic-link-{uid}`) → abre modal `magic-link-modal`
+- Dentro do modal: link ATIVO + RESERVA + Copiar + dropdown Expiração (0/7/30/90 dias, `ml-expires-select`) + input telefone (`ml-phone-input`) + botão "Enviar WhatsApp" (`ml-send-whatsapp-btn`)
+- `AuthContext`: useEffect captura `?ml=<token>` no boot, faz magic-login, salva JWT em localStorage, limpa URL
 
-**Validação (testing_agent_v3_fork — iteration_99):**
-- Backend: 11/11 pytest PASS (100%)
-- Frontend: 120 botões "🔗 Link", modal funcional com 2 URLs distintas, dropdown com 17 opções (5 disabled por já vinculado), login `/?ml=<token>` salva JWT corretamente
-- 0 bugs críticos. Observações para melhoria futura: rate-limit no magic-login, lock optimista no rotate.
+**Validação (testing_agent — iteration_99 + iteration_100):**
+- Backend: 17/17 pytest PASS (11 base + 6 novos)
+- Frontend: 100% data-testid presentes, fluxo de 30 dias E2E funcional
+- 0 bugs críticos. Observações para refino futuro: fail-closed em ISO inválido, ordem de checks no /send.
 
 ---
 
