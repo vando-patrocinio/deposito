@@ -2,6 +2,60 @@
 
 > Documento vivo. Atualizado a cada sprint.
 
+## 🔨 REFACTOR P2 — Quebra de monólitos Fase 1 ✅ (11/02/2026)
+
+### Resultado consolidado
+| Arquivo | LOC antes | LOC depois | Δ | Slice extraído |
+|---|---:|---:|---:|---|
+| `routes/lousa.py` | 8763 | **8313** | **-450 (-5.1%)** | `lousa_manager_callbacks.py` (4 endpoints) |
+| `routes/whatsapp_baileys.py` | 5399 | **5194** | **-205 (-3.8%)** | `whatsapp_business_hours.py` (5 endpoints) |
+| **Total** | **14162** | **13507** | **-655 LOC (-4.6%)** | 9 endpoints extraídos |
+
+### Novos módulos
+- `/app/backend/routes/lousa_manager_callbacks.py` (446 LOC):
+  `GET /api/lousa/manager-callbacks`, `POST .../resolve`, `POST .../release-back`, `POST .../create-new-ticket`
+- `/app/backend/routes/whatsapp_business_hours.py` (215 LOC):
+  `GET/PUT /api/whatsapp-baileys/auto-reply`, `GET/PUT /api/whatsapp-baileys/business-hours`, `GET /api/whatsapp-baileys/after-hours-metrics`
+
+### Garantias preservadas (red-team validado)
+- 22 símbolos públicos de `routes.lousa` continuam importáveis (`_log_ticket_action`, `_lousa_for_collaborator`, `CompletionData`, `geocode_address`, etc).
+- 9 símbolos externos de `routes.whatsapp_baileys` continuam importáveis (`SIDECAR_BASE`, `_sidecar_post`, `_split_ai_reply`, `_maybe_auto_reply`, `baileys_watchdog_job`, etc).
+- Round-trip PUT `/auto-reply` persiste e restaura. GET `/business-hours` retorna `status`. GET `/after-hours-metrics?days=3` retorna 8 samples válidos.
+
+### Red Team — `/app/backend/scripts/red_team_lousa_split.py`
+6 blocos de teste, **todos PASS**. Cobre: 404 routing, validação de payload, restauração de estado, backwards-compat de imports, contagem real de LOC.
+
+### Próximas fatias (P2 — fases seguintes)
+- `lousa.py` — candidatos: `central_ont/*` (~360 LOC), `quality_notes/*` (~545 LOC), `manager-briefing/management-kpis/history` (~460 LOC), `onu-bridge/ipv6-test/ping-auto` (~300 LOC), bloco `public/*` (~3200 LOC).
+- `whatsapp_baileys.py` — candidatos: `viability-heatmap` (~88 LOC), `contacts/*` (~141 LOC), `click-to-chat/*` (~87 LOC), bloco `public/conversations/*` (~250 LOC).
+
+
+
+## 🔧 BUGFIX P0 — clock_in_enabled toggle respeita admin em TODOS os cargos ✅ (11/02/2026)
+
+### Root cause
+`_apply_cargo_rules_dict` (e a contraparte `_apply_cargo_rules`) em `routes/clock.py` sobrescreviam `clock_in_enabled` baseado no `cargo`. Resultado: toggle do gestor era ignorado e técnicos viraram refém do clock-in. Patch anterior tentou remover, mas deixou um `def` duplicado com docstring órfã + em-dash → backend em **crash loop** com `SyntaxError: invalid character '—' (U+2014)`.
+
+### Fix aplicado
+- `/app/backend/routes/clock.py` linhas 74-85: removida a duplicata órfã; mantida única versão que **NÃO toca** em `clock_in_enabled` (admin tem prioridade absoluta).
+- Backend volta a bootar (HTTP 200 health, 401 auth-gated).
+
+### Red Team E2E — `/app/backend/scripts/red_team_clock_in_toggle.py`
+| Camada | Resultado |
+|---|---|
+| **Unit** `_apply_cargo_rules*` × 7 cargos × 2 estados | **20/20 PASS** — clock_in_enabled jamais alterado |
+| **HTTP PUT /api/collaborators/{id}** (co-demo, todas as company) | **12/12 PASS** com dados válidos (cargos: tecnico×4, aux_admin×2, reparador×1, sem-cargo×5) |
+| **Mobile E2E** `_lousa_for_collaborator(DIOGO)` com `clock_in_enabled=False` | `lousa_unlocked=True`, `needs_clock_in=False`, **4 tickets entregues** |
+| **Mobile E2E** mesma flow com `clock_in_enabled=True` sem ponto | `lousa_unlocked=False`, `needs_clock_in=True` (bloqueio correto) |
+| Skips (data quality pré-existente, **não afeta toggle**) | 4 registros legados sem cpf/email: SALA, Alpha Tech, KAUE, "Sem técnico (Atlaz)" |
+
+### Critério de aceitação
+- Admin altera "Exigir bater ponto" no Cadastro → persiste no DB ✅
+- Técnico com toggle=False → Lousa Mobile entrega tickets imediatamente, sem fence/selfie ✅
+- Técnico com toggle=True → Lousa permanece bloqueada até bater entrada ✅
+
+
+
 ## 🛡️ COMPANY_ID PROPAGATION — REFACTOR CIRÚRGICO ✅ (10/02/2026)
 
 ### 16/16 critérios respondidos

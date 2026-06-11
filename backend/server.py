@@ -58,6 +58,7 @@ from routes import (
     locations as routes_locations,
     logs as routes_logs,
     lousa as routes_lousa,
+    lousa_manager_callbacks as routes_lousa_callbacks,
     pracas as routes_pracas,
     push as routes_push,
     saas as routes_saas,
@@ -92,6 +93,7 @@ from routes import (
     plans as routes_plans,
     voice as routes_voice,
     whatsapp_baileys as routes_wa_baileys,
+    whatsapp_business_hours as routes_wa_business_hours,
     whatsapp_channels as routes_wa_channels,
     central_ia as routes_central_ia,
     rede_ia as routes_rede_ia,
@@ -1155,6 +1157,7 @@ app.include_router(routes_push.router)
 app.include_router(routes_collab_auth.router)
 app.include_router(routes_logs.router)
 app.include_router(routes_lousa.router)
+app.include_router(routes_lousa_callbacks.router)
 from routes import lousa_tv as routes_lousa_tv  # noqa: E402
 app.include_router(routes_lousa_tv.router)
 from routes import lousa_rompimento as routes_lousa_rompimento  # noqa: E402
@@ -1257,6 +1260,7 @@ app.include_router(routes_sentinela_lousa.router)
 app.include_router(routes_lousa_ai.router)
 app.include_router(routes_voice.router)
 app.include_router(routes_wa_baileys.router)
+app.include_router(routes_wa_business_hours.router)
 app.include_router(routes_isabella_prompt.router)
 app.include_router(routes_central_ia.router)
 app.include_router(routes_rede_ia.router)
