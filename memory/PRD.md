@@ -2,6 +2,83 @@
 
 > Documento vivo. Atualizado a cada sprint.
 
+## 📅 ISABELLA AGORA AGENDA NA LOUSA ✅ (10/02/2026)
+
+**Ordem CTO**: "Por que a Isabella não agenda dentro da Lousa ainda?"
+Conversa com Vando: Isabella detectava o problema, mas só PERGUNTAVA
+"Quer que eu solicite uma visita pra amanhã 11/06...?". O cliente
+respondia "sim" e ela não tinha como executar. Tava textuando o que
+deveria estar EXECUTANDO.
+
+### Diagnóstico
+- `services/lousa_availability.py` já injetava a grade da Lousa no prompt
+  (Isabella sabia se 11/06 manhã estava livre).
+- `services/agent_tools.py` existia com `create_inspection_ticket` mas
+  NUNCA foi wired no fluxo conversacional (Twilio/Baileys). LLM não
+  tinha function-calling ativo na conversa WhatsApp.
+- Resultado: Isabella propunha mas não executava → loop infinito de
+  "Quer que eu agende? / Sim / Vou ver / Sim / ...".
+
+### Solução: marcadores executáveis
+Padrão simples e robusto sem function-calling: **Isabella emite um
+marcador no fim da resposta, o sistema executa, substitui pelo texto
+de confirmação ao cliente.**
+
+### Entregas
+- `services/isabella_actions.py` (NOVO · 196 LoC) com 2 marcadores:
+  - `[AGENDAR_VISITA data=YYYY-MM-DD janela=manha|tarde motivo="..."]`
+    → cria ticket em `tickets` com `type=visita_tecnica`, `status=AGENDADO`,
+    `scheduled_time` no horário da janela, `source=isabella_whatsapp`.
+    → substitui o marcador por **"Marquei pra DD/MM entre 09h–12h —
+    protocolo TK-XXXXXXX."**
+  - `[ABRIR_CHAMADO tipo=tecnico|comercial|suporte motivo="..."]`
+    → cria ticket sem data marcada, `status=ABERTO`.
+    → substitui por **"Abri o chamado — protocolo TK-XXXXXXX. A equipe
+    entra em contato."**
+
+- `actions_prompt_block()` injetado no `humanize_system_prompt()` →
+  Isabella aprende os marcadores em TODOS os canais que usam o humanizer.
+
+- `execute_action_markers()` chamado dentro de `humanize_reply()` →
+  rewrite mecânico que NUNCA deixa o marcador escapar pro cliente
+  mesmo se for emitido várias vezes (idempotente).
+
+### Validação Zero Mock — 5/5 ✅ (`scripts/test_isabella_actions.py`)
+1. `[AGENDAR_VISITA data=2026-02-11 janela=manha motivo="sinal..."]` →
+   ticket persistido `id=tk-90a623e18bce48 status=AGENDADO
+   scheduled=2026-02-11T09:00:00 type=visita_tecnica
+   source=isabella_whatsapp` → reply final: "Beleza, amanhã manhã.
+   Marquei pra 11/02 entre 09h–12h — protocolo TK-90A623E."
+2. `[ABRIR_CHAMADO tipo=tecnico motivo="..."]` → ticket persistido
+   `chamado_tecnico` + reply "Abri o chamado — protocolo TK-2E79BA5".
+3. Sem marcador → passthrough idêntico.
+4. Integração via `humanize_reply` → marcador removido + ticket criado.
+5. Bloco do prompt válido (1334c, contém AGENDAR_VISITA, ABRIR_CHAMADO,
+   manha/tarde, EXECUTE).
+
+### Pipeline completo agora
+```
+Cliente "Marca pra amanhã manhã" →
+  Isabella consulta AGENDA DA LOUSA (lousa_availability já injetado) →
+  Isabella decide → emite "Beleza! [AGENDAR_VISITA data=... janela=manha motivo=...]" →
+  humanize_reply:
+    1) listening rewrite
+    2) anti-CPF rewrite
+    3) deslop (anti vícios IA)
+    4) execute_action_markers ← CRIA TICKET REAL na Lousa
+  bubbles_for_send → quebra em bolhas ≤180c
+  → cliente recebe: "Beleza! Marquei pra 11/02 entre 09h–12h — protocolo TK-90A623E."
+```
+
+### Regressão preservada
+- `test_isabella_actions` 5/5 ✅ NOVO
+- `test_anti_ai_slop` 17/17 ✅
+- `test_humanizer` 5/5 ✅
+- `test_pamela_scenario` 6/6 ✅
+- `test_isabella_listening` 5/5 ✅
+- Shield Health ONLINE · Red Team 28/28 A
+
+
 ## 🤖 ANTI-IA-SLOP — 13 VÍCIOS BANIDOS ✅ (10/02/2026)
 
 **Ordem CTO**: "Se o objetivo é fazer a Isabella parecer real, elimine

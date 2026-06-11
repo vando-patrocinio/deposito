@@ -126,6 +126,15 @@ async def humanize_system_prompt(*, sys_prompt: str,
     except Exception as e:
         log.info("[humanizer] continuous skip: %s", e)
 
+    # 5) ISABELLA ACTIONS — bloco que ensina os marcadores
+    # [AGENDAR_VISITA] / [ABRIR_CHAMADO] para Isabella criar tickets
+    # diretamente na Lousa.
+    try:
+        from services.isabella_actions import actions_prompt_block
+        sys_prompt += "\n\n" + actions_prompt_block()
+    except Exception as e:
+        log.info("[humanizer] actions block skip: %s", e)
+
     return sys_prompt, ctx
 
 
@@ -167,6 +176,24 @@ async def humanize_reply(*, reply_text: str,
         reply_text = deslop(reply_text)
     except Exception as e:
         log.info("[humanizer] deslop skip: %s", e)
+
+    # 4) ISABELLA ACTIONS — executa marcadores [AGENDAR_VISITA] /
+    # [ABRIR_CHAMADO] criando tickets reais na Lousa e substitui o
+    # marcador pelo texto de confirmação ao cliente.
+    try:
+        from services.isabella_actions import execute_action_markers
+        link = (ctx or {}).get("link_for_guard") or {}
+        reply_text, actions_done = await execute_action_markers(
+            reply_text=reply_text, company_id=company_id, phone=phone,
+            subscriber_id=link.get("subscriber_id"),
+            subscriber_name=link.get("subscriber_name"))
+        if actions_done:
+            log.info("[humanizer] %d action(s) executed: %s",
+                       len(actions_done),
+                       [a.get("type") for a in actions_done])
+    except Exception as e:
+        log.warning("[humanizer] action markers skip: %s", e)
+
     return reply_text
 
 
