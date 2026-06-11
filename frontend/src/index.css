@@ -719,3 +719,10 @@ body.aihub-wa-fullscreen [data-testid="wa-chat-layout"] {
 .track-polyline-clickable:active {
   cursor: grabbing !important;
 }
+
+/* Lousa SALA — pulso do badge "aguardando triagem" quando level=hot */
+@keyframes salaTriagePulse {
+  0%   { box-shadow: 0 0 0 0   rgba(220, 38, 38, 0.55); }
+  70%  { box-shadow: 0 0 0 10px rgba(220, 38, 38, 0); }
+  100% { box-shadow: 0 0 0 0   rgba(220, 38, 38, 0); }
+}

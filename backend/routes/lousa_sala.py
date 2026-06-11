@@ -137,6 +137,57 @@ async def listar_dias(
     return {"sala_id": sala_id, "days": days}
 
 
+@router.get("/count")
+async def contagem_sala(
+    user: dict = Depends(require_role("gestor")),
+):
+    """Contador rapido de triagem em SALA, com nivel de pressao.
+
+    Retorno:
+      {
+        "total":   total ATIVO em SALA (qualquer data),
+        "today":   bolhas com scheduled_time = hoje (BRT),
+        "overdue": bolhas com scheduled_time em data passada (BRT),
+        "future":  bolhas com scheduled_time em data futura,
+        "level":   "calm" (<5) | "warn" (5-15) | "hot" (>15)
+      }
+    """
+    cid = _cid(user)
+    sala_id = await _sala_collaborator_id(cid)
+    today_iso = _today_br_iso()
+
+    base = {
+        "company_id": cid,
+        "assigned_collaborator_id": sala_id,
+        "status": {"$in": ["pendente", "aberta", "aguardando_atendimento"]},
+    }
+    total = await db.tickets.count_documents(base)
+    today = await db.tickets.count_documents({
+        **base, "scheduled_time": {"$regex": f"^{today_iso}"}})
+    overdue = await db.tickets.count_documents({
+        **base, "scheduled_time": {"$lt": today_iso, "$ne": ""}})
+    future = total - today - overdue
+    if future < 0:
+        future = 0
+
+    if total < 5:
+        level = "calm"
+    elif total <= 15:
+        level = "warn"
+    else:
+        level = "hot"
+
+    return {
+        "sala_id": sala_id,
+        "total": total,
+        "today": today,
+        "overdue": overdue,
+        "future": future,
+        "level": level,
+    }
+
+
+
 @router.post("/{ticket_id}/distribuir")
 async def distribuir(
     ticket_id: str,

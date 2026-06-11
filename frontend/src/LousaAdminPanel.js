@@ -217,6 +217,7 @@ export default function LousaAdminPanel({ systemStatus = { offline: false, drift
   const [sentinelaCount, setSentinelaCount] = useState(0);
   const [pendingCallbacksCount, setPendingCallbacksCount] = useState(0);
   const [pendingTransfersCount, setPendingTransfersCount] = useState(0);
+  const [salaTriage, setSalaTriage] = useState({ total: 0, today: 0, overdue: 0, future: 0, level: "calm" });
   const [busy, setBusy] = useState(false);
   const [draggingId, setDraggingId] = useState(null);
   const [dragOverCol, setDragOverCol] = useState(null);
@@ -494,6 +495,29 @@ export default function LousaAdminPanel({ systemStatus = { offline: false, drift
     const fetchCount = () => {
       api.lousaManagerCallbacks("pending", 200)
         .then((r) => { if (alive) setPendingCallbacksCount(r?.count || 0); })
+        .catch(() => {});
+    };
+    fetchCount();
+    const t = setInterval(fetchCount, 30000);
+    return () => { alive = false; clearInterval(t); };
+  }, []);
+
+  // Polling do contador de triagem da SALA (badge no header da coluna SALA)
+  useEffect(() => {
+    let alive = true;
+    const fetchCount = () => {
+      api.lousaSalaCount()
+        .then((r) => {
+          if (alive && r) {
+            setSalaTriage({
+              total: r.total || 0,
+              today: r.today || 0,
+              overdue: r.overdue || 0,
+              future: r.future || 0,
+              level: r.level || "calm",
+            });
+          }
+        })
         .catch(() => {});
     };
     fetchCount();
@@ -1318,13 +1342,51 @@ export default function LousaAdminPanel({ systemStatus = { offline: false, drift
                     padding: 4,
                   } : { display: "contents" }}>
               {isVirtualSala && (
-                <div style={{
-                  position: "absolute", top: -10, left: 14,
-                  background: "#0ea5e9", color: "white",
-                  padding: "2px 8px", borderRadius: 6,
-                  fontSize: 10, fontWeight: 800, letterSpacing: 0.5,
-                  zIndex: 2,
-                }}>SALA · FIXA</div>
+                <>
+                  <div style={{
+                    position: "absolute", top: -10, left: 14,
+                    background: "#0ea5e9", color: "white",
+                    padding: "2px 8px", borderRadius: 6,
+                    fontSize: 10, fontWeight: 800, letterSpacing: 0.5,
+                    zIndex: 2,
+                  }}>SALA · FIXA</div>
+                  {salaTriage.total > 0 && (() => {
+                    const lvl = salaTriage.level || "calm";
+                    const bg = lvl === "hot" ? "#dc2626"
+                             : lvl === "warn" ? "#f59e0b" : "#10b981";
+                    const pulse = lvl === "hot";
+                    return (
+                      <div
+                        data-testid="lousa-sala-triage-badge"
+                        title={`SALA aguardando triagem · ${salaTriage.total} total ` +
+                               `(hoje: ${salaTriage.today}, atrasadas: ${salaTriage.overdue}, ` +
+                               `futuras: ${salaTriage.future})`}
+                        style={{
+                          position: "absolute", top: -10, right: 14,
+                          background: bg, color: "white",
+                          padding: "2px 10px", borderRadius: 999,
+                          fontSize: 11, fontWeight: 800, letterSpacing: 0.3,
+                          zIndex: 3, display: "flex", alignItems: "center", gap: 6,
+                          boxShadow: pulse ? `0 0 0 0 ${bg}` : "0 1px 3px rgba(0,0,0,.15)",
+                          animation: pulse ? "salaTriagePulse 1.6s infinite" : undefined,
+                          cursor: "default",
+                        }}
+                      >
+                        <span style={{
+                          width: 6, height: 6, borderRadius: 999,
+                          background: "white", opacity: 0.85,
+                        }} />
+                        {salaTriage.total} aguardando triagem
+                        {salaTriage.overdue > 0 && (
+                          <span style={{
+                            background: "rgba(0,0,0,0.25)", padding: "1px 6px",
+                            borderRadius: 999, fontSize: 10, fontWeight: 700,
+                          }}>{salaTriage.overdue} atrasada{salaTriage.overdue > 1 ? "s" : ""}</span>
+                        )}
+                      </div>
+                    );
+                  })()}
+                </>
               )}
               <TechColumn
                 column={col}

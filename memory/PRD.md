@@ -2,6 +2,36 @@
 
 > Documento vivo. Atualizado a cada sprint.
 
+## 🚦 SALA Triage Badge — pressão de triagem visível em tempo real ✅ (11/02/2026)
+
+### Decisão
+Agora que SALA virou hub único de triagem (Isabella + Atlaz orfan), o gestor precisa enxergar a pressão **da própria mesa** sem clicar. Coloquei um badge na coluna SALA da Lousa Admin que muda de cor conforme a carga.
+
+### Regras visuais
+| Total ativo | Cor | Animação | Significado |
+|---:|---|---|---|
+| 0 | (oculto) | — | Sem triagem pendente |
+| 1–4 | 🟢 verde (#10b981) | nenhuma | Calmo |
+| 5–15 | 🟡 âmbar (#f59e0b) | nenhuma | Atenção |
+| >15 | 🔴 vermelho (#dc2626) | **pulso a cada 1.6s** | Estourado |
+
+Tooltip mostra breakdown: `total / hoje / atrasadas / futuras`. Sub-pílula "X atrasada(s)" aparece dentro do badge se houver agendamento em data passada.
+
+### Endpoint criado
+- `GET /api/lousa/sala/count` (role gestor) → `{sala_id, total, today, overdue, future, level}`
+
+### Arquivos
+- `/app/backend/routes/lousa_sala.py` — endpoint `/count`
+- `/app/frontend/src/api.js` — `api.lousaSalaCount()`
+- `/app/frontend/src/LousaAdminPanel.js` — state `salaTriage`, polling 30s, badge JSX condicional (data-testid `lousa-sala-triage-badge`)
+- `/app/frontend/src/index.css` — keyframes `salaTriagePulse`
+
+### Validação manual
+- Estado atual co-demo: `total=8 today=1 overdue=0 future=7 level=warn` → badge âmbar exibido com tooltip
+- Lint do frontend: zero erros novos (apenas 6 warnings pre-existentes em outras linhas do arquivo)
+
+
+
 ## 🎯 REGRA UNIFICADA — Atlaz orfan -> SALA ✅ (11/02/2026)
 
 ### Decisao

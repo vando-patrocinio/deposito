@@ -378,6 +378,8 @@ export const api = {
   lousaManagerCallbackCreateNewTicket: (req_id, data) =>
     client.post(`/lousa/manager-callbacks/${req_id}/create-new-ticket`, data)
       .then((r) => r.data),
+  // SALA — contador de triagem (badge na coluna SALA da Lousa)
+  lousaSalaCount: () => client.get(`/lousa/sala/count`).then((r) => r.data),
   // RADIUS / PPPoE — Módulo 2
   radiusDashboard: () => client.get(`/radius/dashboard`).then((r) => r.data),
   radiusSessionsActive: (params = {}) =>
