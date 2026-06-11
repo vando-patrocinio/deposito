@@ -3185,3 +3185,31 @@ Validar IA Tesoureira via UI — fila de aprovação, decisão IA, auditoria, KP
 
 ### Relatório
 `/app/docs/RELATORIO_UI_TESOUREIRA_ASAAS.md`
+
+---
+
+## [11/06/2026 23:10] TICKET SCHEMA GUARD — BLINDAGEM DA LOUSA (DONE)
+
+### Ordem CTO
+Impedir regressão: SmartProv nunca mais pode gravar priority/status/type fora do vocabulário canônico.
+
+### Entrega
+- **`/app/backend/services/ticket_schema.py`** (NOVO) — vocabulário canônico + normalizers + aliases (PT-BR uppercase, English, legacy `padrao/open/closed/reopened`)
+- **`/app/backend/database.py`** (REFATORADO) — proxy `_TicketsGuard` que envolve `db.tickets` e normaliza automaticamente `insert_one/many`, `update_one/many`, `find_one_and_update`, `replace_one`. Emite evento `TICKET_SCHEMA_REJECTED` quando valor desconhecido é coercido
+- **`/app/backend/scripts/lint_ticket_schema.py`** (NOVO) — `--check/--fix/--json` modes
+- **`/app/backend/scripts/test_ticket_schema_guard.py`** (NOVO) — red-team 10/10 PASS
+
+### Vocabulário canônico
+- `priority`: normal · prioridade · urgente · horario
+- `status`: pendente · aguardando_atendimento · aberta · em_execucao · finalizada · encerrada · reagendada · cancelada
+
+### Resultado banco (co-demo + agregado)
+- Antes: 3828 inválidos / 3349 fixáveis
+- Linter `--fix` corrigiu **3577** tickets
+- Pós-fix: **0 fixáveis remanescentes** · 3817 `client_snapshot` ausentes (legacy, não auto-corrigível)
+
+### Eventos
+Insert/update com valor totalmente fora do vocab + aliases → emite `TICKET_SCHEMA_REJECTED` em `system_events` com rejections detalhadas (campo, valor original, coerced_to).
+
+### Relatório
+`/app/docs/RELATORIO_TICKET_SCHEMA_GUARD.md`
