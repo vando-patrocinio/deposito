@@ -1,15 +1,13 @@
-"""BUBBLE SPLITTER — quebra resposta em bolhas de WhatsApp (≤180 chars).
+"""BUBBLE SPLITTER — quebra resposta em bolhas de WhatsApp (≤100 chars).
 
-O LLM ignora o "MÁX 180 chars" do prompt e despeja respostas de 300+
-chars em uma única bolha com 2-3 perguntas no mesmo turno.
-
-Esta camada mecânica corrige:
-  • Hard limit de 180 chars por bolha
-  • Quebra em pontuação natural (. ! ? \n)
-  • Detecta e separa múltiplas perguntas (1 pergunta por bolha)
-  • Remove emojis duplicados, escape de "Pamela," repetido
-  • Hard cap: máx 3 bolhas por turn (evita inundação)
-  • Cap absoluto: cada bolha 180 chars
+REGRA DE BOLHAS (CTO Feb/26):
+  • Hard limit 100 chars por bolha (era 180c, reduzido para sensação
+    de pessoa real digitando no WhatsApp).
+  • Sweet spot 40-80 chars.
+  • Hard cap: máx 4 bolhas por turn (era 3) — mais bolhas, menos texto.
+  • Quebra em pontuação natural (. ! ? \n).
+  • Detecta e separa múltiplas perguntas (1 pergunta por bolha).
+  • Remove emojis duplicados, escape de "Pamela," repetido.
 """
 from __future__ import annotations
 
@@ -25,8 +23,8 @@ NERVOUS_METADATA = {
 import re
 from typing import List
 
-MAX_BUBBLE_CHARS = 180
-MAX_BUBBLES = 3
+MAX_BUBBLE_CHARS = 100
+MAX_BUBBLES = 4
 # Símbolos que sinalizam quebra natural
 _SENT_RX = re.compile(r"(?<=[\.!\?…])\s+(?=[A-ZÁÉÍÓÚÂÊÔÇ0-9])")
 _NL_RX = re.compile(r"\n+")
