@@ -477,6 +477,18 @@ async def _upsert_incident(company: str, cand: dict, arpu: float) -> dict:
     if affected >= 8:
         await _emit(EventType.INCIDENT_MASS_REPAIR, company, base_payload)
 
+    # AGENT BUS — Rede IA detectou incidente → Isabella abre comunicação.
+    try:
+        from services.agent_bus import route as _bus_route
+        await _bus_route("REDE_INCIDENTE_DETECTADO", company, {
+            "incident_id": inc_id, "kind": cand["kind"],
+            "scope": scope, "criticality": criticality,
+            "clients_at_risk": clients_at_risk,
+            "collective_ticket_id": inc["collective_ticket_id"],
+            "annual_revenue_at_risk_brl": churn_brl})
+    except Exception as e:
+        logger.warning("[isabella_incident] agent_bus fail: %s", e)
+
     # Notificação ao gestor
     try:
         await db.notifications.insert_one({

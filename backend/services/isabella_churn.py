@@ -264,6 +264,20 @@ async def scan_company(company_id: str, *, limit: int = 500) -> Dict[str, Any]:
             severity="critica" if score >= 75 else ("alta" if score >= 50 else "media"),
             payload={"subscriber_id": s["id"], "score": score,
                       "reasons": reasons[:5]})
+        # AGENT BUS — Isabella detectou churn → Camila recebe oportunidade.
+        if score >= 50:
+            try:
+                from services.agent_bus import route as _bus_route
+                await _bus_route("ISABELLA_CHURN_DETECTED",
+                                      company_id,
+                                      {"subscriber_id": s["id"],
+                                        "score": score,
+                                        "probability": prob,
+                                        "impact_brl": impact,
+                                        "reasons": reasons[:5],
+                                        "recommended_action": action})
+            except Exception:
+                pass
         if created >= limit:
             break
 

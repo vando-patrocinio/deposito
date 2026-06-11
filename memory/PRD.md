@@ -2561,3 +2561,65 @@ Agentes remanescentes fora do ORG_CHART: **Orquestrador** (review) e
 **Teste** (disabled). Compliance scheduler permanecerá alertando o
 Presidente sobre eles via `AGENT_NEW_DISCOVERED` até a decisão final
 sobre o Orquestrador.
+
+## MONETIZAÇÃO POR AGENTE + AUTO-WIRE BUS (Feb/2026) ✅
+
+CTO virou o foco: organização → monetização. Implementado:
+
+### 1) Orquestrador deprecated com janela 30d
+`aihub_agents.Orquestrador`: `enabled=false, status="deprecated_observation",
+deprecated_at=2026-06-11T03:24:58Z, scheduled_removal_at=2026-07-11T03:24:58Z,
+observation_window_days=30`. Reason: "Sem supervisor + sem eventos + sem
+impacto + duplicidade com Motor IA (2/5 critérios)".
+
+### 2) services/agent_revenue.py — Receita por agente
+3 baldes auditáveis (R$ reais lidos do Mongo):
+- **Receita Gerada**: vendas/upsell/expansão (`executive_ledger.modulo='Receita'`
+  + `motor_ia_revenue_attribution.kind in {generated,upsell,expansion}`).
+- **Receita Protegida**: retenção/churn evitado (`modulo='Retenção'`).
+- **Economia**: cobrança recuperada + Smart Field (twin evita visita)
+  + ROI de `motor_ia_actions` filtrado por `source/agent` por agente.
+
+Atribuição declarativa em `ATTRIBUTION_RULES`. Motor IA leva 5% do total
+como reconhecimento técnico (coordena LLMs). Coach IA não monetiza
+diretamente — mede `attendant_corrective_actions` aplicadas.
+
+### 3) Endpoints novos
+- `GET /api/presidente/receita-por-agente?days=30` — ranking + buckets.
+- `GET /api/presidente/agente-do-mes` — pódio 1-2-3 + total da equipe.
+
+Snapshot por agente em `/api/presidente/agente/{id}` agora inclui
+`revenue_30d: {generated_brl, protected_brl, saved_brl, total_brl, cases}`.
+
+### 4) Daily Natural (briefing) com monetização
+Briefing matinal `Café com a IA do CEO` agora emite:
+- 💰 Equipe 30d: total + breakdown (gerada/protegida/economia)
+- 🏆 Agente do período: nome + R$ total
+
+### 5) Agent Bus auto-wired
+- `services/isabella_incident.py` (linha 478) → ao detectar incidente
+  coletivo, dispara automaticamente `REDE_INCIDENTE_DETECTADO` no bus.
+- `services/isabella_churn.py` (linha 267) → ao identificar churn
+  score ≥ 50, dispara `ISABELLA_CHURN_DETECTED` para Camila receber
+  oportunidade em `motor_ia_insights`.
+
+### Estado em produção (co-demo)
+```
+team_total_30d:      R$ 19.668,90
+team_generated_brl:  R$      0,00
+team_protected_brl:  R$      0,00
+team_saved_brl:      R$ 19.668,90
+agent_of_period:     Álvaro IA (R$ 16.000,00, Smart Field)
+podium:              1. Álvaro IA      R$ 16.000,00
+                     2. Isabella IA    R$  2.732,29
+                     3. Motor IA       R$    936,61 (5% meta-share)
+```
+
+### Validação Zero-Mocks
+`red_team_team_ia.py` 10/10 PASS. Suite cobre: ORG_CHART (16),
+humanização (5/5 100%), idempotência, snapshot, endpoints, agent_bus
+rejeita órfão + cria registros reais, receita real do banco com
+evidência por bucket, hooks auto-wire confirmados no código, deprecação
+do Orquestrador com janela 30d.
+
+Linter Nervous: 451 módulos / 0 críticos silentes / ✅ CI GATE OK.

@@ -390,6 +390,21 @@ async def snapshot_agent(company_id: str,
     last_activity = (aihub or {}).get("updated_at") if aihub else None
     impact_brl = await _financial_impact_brl(company_id, agent_id)
 
+    # Revenue real (30d) — fonte única de verdade.
+    try:
+        from services import agent_revenue as _rev
+        if agent_id in _rev.ATTRIBUTION_RULES and agent_id != "motor_ia":
+            revenue = await _rev.revenue_for_agent(company_id, agent_id, 30)
+        elif agent_id == "coach":
+            revenue = await _rev._coach_for(company_id, 30)
+        else:
+            revenue = _rev._empty(agent_id, 30)
+    except Exception as e:
+        log.info("[agent_registry] revenue skip %s: %s", agent_id, e)
+        revenue = {"generated_brl": 0.0, "protected_brl": 0.0,
+                     "saved_brl": 0.0, "total_brl": 0.0, "cases": 0,
+                     "evidence": []}
+
     is_offline = False
     if aihub_name:
         if not aihub:
@@ -418,6 +433,13 @@ async def snapshot_agent(company_id: str,
         },
         "productivity": productivity,
         "financial_impact_brl_30d": impact_brl,
+        "revenue_30d": {
+            "generated_brl": revenue["generated_brl"],
+            "protected_brl": revenue["protected_brl"],
+            "saved_brl": revenue["saved_brl"],
+            "total_brl": revenue["total_brl"],
+            "cases": revenue["cases"],
+        },
     }
 
 

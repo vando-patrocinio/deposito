@@ -226,6 +226,63 @@ async def test_routing_listing():
     _ok(f"{len(routes)} rotas declaradas")
 
 
+async def test_revenue_per_agent():
+    print("\n[8] Receita por agente — agent_revenue.team_revenue(co-demo, 30d)")
+    from services import agent_revenue as rev
+    snap = await rev.team_revenue(CID, days=30)
+    if not snap.get("agent_of_period"):
+        _fail("agent_of_period None")
+    if snap["team_total_brl"] <= 0:
+        _fail(f"team_total_brl={snap['team_total_brl']} (esperado >0)")
+    aop = snap["agent_of_period"]
+    if aop["total_brl"] <= 0:
+        _fail(f"top agent sem receita: {aop}")
+    # ranking ordenado
+    totals = [r["total_brl"] for r in snap["ranking"]]
+    if totals != sorted(totals, reverse=True):
+        _fail("ranking não está ordenado por total_brl desc")
+    _ok(f"agent_of_period={aop['label']} total={aop['total_brl']}")
+    _ok(f"team_total_30d={snap['team_total_brl']} "
+         f"(gen={snap['team_generated_brl']} "
+         f"prot={snap['team_protected_brl']} saved={snap['team_saved_brl']})")
+    # cada bucket tem evidência rastreável
+    for r in snap["ranking"]:
+        if r["total_brl"] > 0 and not r["evidence"]:
+            _fail(f"{r['agent_id']} tem total mas sem evidence")
+    _ok("100% das atribuições têm evidência rastreável (auditável)")
+
+
+async def test_agent_bus_autowired():
+    print("\n[9] Agent Bus auto-wired em pontos quentes")
+    import importlib
+    import services.isabella_incident as inc_mod
+    import services.isabella_churn as churn_mod
+    incident_src = open(inc_mod.__file__).read()
+    churn_src = open(churn_mod.__file__).read()
+    if "REDE_INCIDENTE_DETECTADO" not in incident_src:
+        _fail("isabella_incident não chama agent_bus REDE_INCIDENTE_DETECTADO")
+    if "ISABELLA_CHURN_DETECTED" not in churn_src:
+        _fail("isabella_churn não chama agent_bus ISABELLA_CHURN_DETECTED")
+    _ok("isabella_incident.py auto-emite REDE_INCIDENTE_DETECTADO")
+    _ok("isabella_churn.py auto-emite ISABELLA_CHURN_DETECTED")
+
+
+async def test_orquestrador_deprecated():
+    print("\n[10] Orquestrador deprecated com janela de 30d")
+    d = await db.aihub_agents.find_one(
+        {"name": "Orquestrador"},
+        {"_id": 0, "enabled": 1, "status": 1,
+         "deprecated_at": 1, "scheduled_removal_at": 1})
+    if d.get("enabled") is not False:
+        _fail(f"Orquestrador ainda enabled: {d}")
+    if d.get("status") != "deprecated_observation":
+        _fail(f"status inesperado: {d.get('status')}")
+    if not d.get("scheduled_removal_at"):
+        _fail("scheduled_removal_at faltando")
+    _ok(f"Orquestrador OFFLINE · status={d['status']} · "
+         f"remoção={d['scheduled_removal_at']}")
+
+
 async def main():
     print("═══════════════ RED-TEAM EQUIPE IA ═══════════════")
     await test_org_chart_integrity()
@@ -235,6 +292,9 @@ async def main():
     await test_endpoints()
     await test_agent_bus()
     await test_routing_listing()
+    await test_revenue_per_agent()
+    await test_agent_bus_autowired()
+    await test_orquestrador_deprecated()
     print("\n═══════════════ ✅ TUDO VERDE ═══════════════")
     return 0
 

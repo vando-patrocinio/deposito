@@ -88,7 +88,9 @@ async def build_briefing_text(cid: str) -> Dict[str, Any]:
     equipe_payload = None
     try:
         from services import agent_registry as reg
+        from services import agent_revenue as rev
         snap = await reg.snapshot_all(cid)
+        rev_snap = await rev.team_revenue(cid, days=30)
         equipe_payload = {
             "team_size": snap["team_size"],
             "avg_humanization_score": snap["avg_humanization_score"],
@@ -96,6 +98,11 @@ async def build_briefing_text(cid: str) -> Dict[str, Any]:
             "low_productivity": snap["ranking"]["low_productivity"],
             "offline": snap["offline"],
             "nao_conformes": snap["nao_conformes"],
+            "agent_of_period": rev_snap.get("agent_of_period"),
+            "team_total_brl_30d": rev_snap.get("team_total_brl"),
+            "team_generated_brl_30d": rev_snap.get("team_generated_brl"),
+            "team_protected_brl_30d": rev_snap.get("team_protected_brl"),
+            "team_saved_brl_30d": rev_snap.get("team_saved_brl"),
         }
         lines.append("")
         lines.append("*👥 EQUIPE IA*")
@@ -118,6 +125,20 @@ async def build_briefing_text(cid: str) -> Dict[str, Any]:
             lines.append(
                 f"• ⚠ Fora de conformidade: "
                 f"{', '.join(snap['nao_conformes'])}")
+
+        # MONETIZAÇÃO 30d
+        aop = rev_snap.get("agent_of_period") or {}
+        total = rev_snap.get("team_total_brl") or 0
+        if total > 0:
+            lines.append(
+                f"• 💰 Equipe 30d: {_format_brl(total)} "
+                f"(gerada {_format_brl(rev_snap.get('team_generated_brl', 0))} · "
+                f"protegida {_format_brl(rev_snap.get('team_protected_brl', 0))} · "
+                f"economia {_format_brl(rev_snap.get('team_saved_brl', 0))})")
+        if aop.get("total_brl"):
+            lines.append(
+                f"• 🏆 Agente do período: *{aop['label']}* "
+                f"({_format_brl(aop['total_brl'])})")
     except Exception as e:
         logger.info("[briefing] equipe ia skip: %s", e)
 

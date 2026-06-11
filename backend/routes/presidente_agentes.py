@@ -79,3 +79,34 @@ async def forcar_scan(
     await _audit(user, "ia", "presidente_equipe_scan", target=cid,
                     data={"alerts": result.get("alerts_emitted", 0)})
     return result
+
+
+@router.get("/receita-por-agente")
+async def receita_por_agente(
+    days: int = 30,
+    user: dict = Depends(require_ai_access()),
+    _: bool = Depends(rate_limit(30, 600, "presidente_revenue")),
+):
+    """Receita por agente nos últimos N dias.
+
+    Retorna ranking ordenado por total_brl + agente do período.
+    """
+    from services import agent_revenue
+    cid = _cid(user)
+    return await agent_revenue.team_revenue(cid, days=max(1, min(days, 365)))
+
+
+@router.get("/agente-do-mes")
+async def agente_do_mes(
+    user: dict = Depends(require_ai_access()),
+):
+    """O agente que mais entregou dinheiro nos últimos 30 dias."""
+    from services import agent_revenue
+    cid = _cid(user)
+    snap = await agent_revenue.team_revenue(cid, days=30)
+    return {
+        "agent_of_period": snap["agent_of_period"],
+        "team_total_brl": snap["team_total_brl"],
+        "podium": snap["ranking"][:3],
+        "window_days": 30,
+    }
