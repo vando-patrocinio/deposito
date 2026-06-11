@@ -1,19 +1,19 @@
 {
   "summary": {
-    "total_endpoints": 1345,
-    "public": 29,
-    "private": 1316,
+    "total_endpoints": 1799,
+    "public": 36,
+    "private": 1763,
     "non_staff_auth_protected": 73,
-    "staff_private": 1243,
-    "role_protected": 1231,
-    "auth_only_no_role": 12,
-    "destructive_DELETE": 77,
-    "export_routes": 9,
-    "ia_routes": 289,
+    "staff_private": 1690,
+    "role_protected": 1412,
+    "auth_only_no_role": 278,
+    "destructive_DELETE": 80,
+    "export_routes": 11,
+    "ia_routes": 385,
     "ia_routes_unprotected": 0,
     "destructive_without_role": 0,
     "export_without_role": 0,
-    "coverage_pct": 99.03
+    "coverage_pct": 83.55
   },
   "by_prefix": {
     "/api/": {
@@ -35,8 +35,8 @@
       "public": 0
     },
     "/api/admin": {
-      "total": 12,
-      "role": 12,
+      "total": 47,
+      "role": 47,
       "auth_only": 0,
       "public": 0
     },
@@ -44,6 +44,12 @@
       "total": 20,
       "role": 20,
       "auth_only": 0,
+      "public": 0
+    },
+    "/api/ai-center": {
+      "total": 181,
+      "role": 0,
+      "auth_only": 181,
       "public": 0
     },
     "/api/ai-config": {
@@ -95,6 +101,12 @@
       "public": 0
     },
     "/api/atlaz-financeiro": {
+      "total": 11,
+      "role": 11,
+      "auth_only": 0,
+      "public": 0
+    },
+    "/api/audit-log": {
       "total": 11,
       "role": 11,
       "auth_only": 0,
@@ -172,6 +184,12 @@
       "auth_only": 0,
       "public": 0
     },
+    "/api/colaborador": {
+      "total": 1,
+      "role": 0,
+      "auth_only": 1,
+      "public": 0
+    },
     "/api/collab-assets": {
       "total": 11,
       "role": 8,
@@ -188,6 +206,12 @@
       "total": 13,
       "role": 13,
       "auth_only": 0,
+      "public": 0
+    },
+    "/api/colosso": {
+      "total": 12,
+      "role": 0,
+      "auth_only": 12,
       "public": 0
     },
     "/api/connections": {
@@ -268,10 +292,22 @@
       "auth_only": 0,
       "public": 2
     },
+    "/api/experience": {
+      "total": 9,
+      "role": 0,
+      "auth_only": 9,
+      "public": 0
+    },
     "/api/feriados": {
       "total": 5,
       "role": 5,
       "auth_only": 0,
+      "public": 0
+    },
+    "/api/field": {
+      "total": 30,
+      "role": 0,
+      "auth_only": 30,
       "public": 0
     },
     "/api/financeiro": {
@@ -316,6 +352,12 @@
       "auth_only": 0,
       "public": 0
     },
+    "/api/health-panel": {
+      "total": 4,
+      "role": 0,
+      "auth_only": 0,
+      "public": 4
+    },
     "/api/holerites": {
       "total": 20,
       "role": 20,
@@ -328,9 +370,27 @@
       "auth_only": 0,
       "public": 0
     },
+    "/api/identity-360": {
+      "total": 1,
+      "role": 0,
+      "auth_only": 1,
+      "public": 0
+    },
     "/api/integrations": {
       "total": 3,
       "role": 3,
+      "auth_only": 0,
+      "public": 0
+    },
+    "/api/isabella": {
+      "total": 33,
+      "role": 33,
+      "auth_only": 0,
+      "public": 0
+    },
+    "/api/isabella-lousa": {
+      "total": 5,
+      "role": 5,
       "auth_only": 0,
       "public": 0
     },
@@ -359,10 +419,10 @@
       "public": 0
     },
     "/api/lousa": {
-      "total": 99,
-      "role": 99,
+      "total": 101,
+      "role": 100,
       "auth_only": 0,
-      "public": 0
+      "public": 1
     },
     "/api/lousa-ai": {
       "total": 3,
@@ -377,8 +437,8 @@
       "public": 0
     },
     "/api/motor-ia": {
-      "total": 13,
-      "role": 13,
+      "total": 35,
+      "role": 35,
       "auth_only": 0,
       "public": 0
     },
@@ -418,6 +478,12 @@
       "auth_only": 0,
       "public": 0
     },
+    "/api/operacao-tese": {
+      "total": 6,
+      "role": 0,
+      "auth_only": 6,
+      "public": 0
+    },
     "/api/parceiro-portal": {
       "total": 14,
       "role": 0,
@@ -455,8 +521,8 @@
       "public": 0
     },
     "/api/presidente-ia": {
-      "total": 15,
-      "role": 15,
+      "total": 89,
+      "role": 89,
       "auth_only": 0,
       "public": 0
     },
@@ -479,10 +545,10 @@
       "public": 0
     },
     "/api/public": {
-      "total": 1,
+      "total": 3,
       "role": 0,
       "auth_only": 1,
-      "public": 0
+      "public": 2
     },
     "/api/public-access": {
       "total": 3,
@@ -592,6 +658,12 @@
       "auth_only": 0,
       "public": 0
     },
+    "/api/shield": {
+      "total": 20,
+      "role": 0,
+      "auth_only": 20,
+      "public": 0
+    },
     "/api/site": {
       "total": 6,
       "role": 0,
@@ -656,6 +728,12 @@
       "total": 4,
       "role": 4,
       "auth_only": 0,
+      "public": 0
+    },
+    "/api/universo-ligo": {
+      "total": 6,
+      "role": 0,
+      "auth_only": 6,
       "public": 0
     },
     "/api/users": {
@@ -735,16 +813,64 @@
     "auth_only_no_role": [
       "GET /api/auth/me",
       "POST /api/auth/change-my-password",
-      "GET /api/",
-      "GET /api/server-time",
-      "GET /api/notifications",
-      "POST /api/notifications/{nid}/read",
-      "POST /api/notifications/read-all",
-      "GET /api/utils/validate-document",
-      "GET /api/utils/cep/{cep}",
-      "GET /api/public/os-validation-toggles/{collab_id}",
-      "GET /api/kpis/churn-reasons",
-      "POST /api/kpis/churn-reasons/ai-insights"
+      "POST /api/ai-center/alvaro-v5/triage",
+      "GET /api/ai-center/alvaro-v5/consult-network/{subscriber_id}",
+      "GET /api/ai-center/alvaro-v5/recurrence/list",
+      "GET /api/ai-center/alvaro-v5/recurrence/{subscriber_id}",
+      "POST /api/ai-center/alvaro-v5/recurrence/batch",
+      "GET /api/ai-center/failure-risk/list",
+      "GET /api/ai-center/failure-risk/distribution",
+      "GET /api/ai-center/failure-risk/metrics",
+      "POST /api/ai-center/failure-risk/drive",
+      "GET /api/ai-center/failure-risk/{subscriber_id}",
+      "GET /api/ai-center/v51/go-live-checklist",
+      "GET /api/ai-center/v51/technician-score/{tech_id}",
+      "GET /api/ai-center/v51/technician-ranking",
+      "GET /api/ai-center/v51/ops-kpis",
+      "GET /api/ai-center/v51/cto-ranking",
+      "GET /api/ai-center/v51/region-ranking",
+      "GET /api/ai-center/v51/vlan-ranking",
+      "GET /api/ai-center/v51/command-center",
+      "GET /api/ai-center/v51/smart-field-ops/status",
+      "GET /api/ai-center/observability/health",
+      "GET /api/ai-center/observability/summary",
+      "GET /api/ai-center/observability/presidente-brief",
+      "GET /api/ai-center/observability/incidents",
+      "POST /api/ai-center/observability/zabbix/ingest",
+      "POST /api/ai-center/observability/grafana/snapshot",
+      "POST /api/ai-center/observability/run",
+      "GET /api/ai-center/observability/grafana/olts",
+      "GET /api/ai-center/observability/grafana/olts/all",
+      "POST /api/ai-center/observability/grafana/discover-onus",
+      "GET /api/ai-center/observability/grafana/diagnose",
+      "GET /api/ai-center/observability/connectors/status",
+      "GET /api/ai-center/observability/knowledge-graph",
+      "GET /api/ai-center/homologation/status",
+      "GET /api/ai-center/homologation/status/public",
+      "POST /api/ai-center/homologation/test-send",
+      "POST /api/ai-center/homologation/simulate-pipeline",
+      "POST /api/ai-center/homologation/reconcile",
+      "GET /api/ai-center/homologation/outbox",
+      "GET /api/ai-center/homologation/blocked-events",
+      "GET /api/ai-center/homologation/isolation-check",
+      "POST /api/ai-center/v6/smart-field/sync",
+      "GET /api/ai-center/v6/smart-field/kpis",
+      "GET /api/ai-center/v6/company-score",
+      "POST /api/ai-center/v6/revenue/mark-received",
+      "POST /api/ai-center/v6/revenue/reconcile",
+      "GET /api/ai-center/v6/digital-twin",
+      "POST /api/ai-center/v7/tickets/backfill-category",
+      "GET /api/ai-center/v7/install/predict/{subscriber_id}",
+      "GET /api/ai-center/v7/repair/predict/{ticket_id}",
+      "GET /api/ai-center/v7/install/audit/{install_id}",
+      "POST /api/ai-center/v7/payment/received",
+      "POST /api/ai-center/v7/operacao-tese/run-batch",
+      "GET /api/ai-center/v7/proof-of-value",
+      "POST /api/ai-center/v7/action-to-cash/backfill-from-invoices",
+      "POST /api/ai-center/v7/action-to-cash/backfill-v72",
+      "GET /api/ai-center/v7/revenue/truth",
+      "POST /api/ai-center/v7/data-quality/backfill-g2-g3",
+      "GET /api/ai-center/v7/data-quality/audit"
     ],
     "destructive_without_role": [],
     "export_without_role": [],
