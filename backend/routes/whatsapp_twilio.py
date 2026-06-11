@@ -481,50 +481,22 @@ async def _generate_and_send_twilio_reply(
     if subscriber_ctx:
         sys_prompt += f"\n\n[Dados do cliente]\n{subscriber_ctx}"
 
-    # GUARDIÃO ANTI-CPF — Operação Identificação Automática
-    # Resolve identidade real do telefone (mesma lógica do webhook).
-    link_for_guard = None
+    # ════════════════════════════════════════════════════════════════
+    # HUMANIZER — camada única (anti-CPF + listening + short-term +
+    # conversa contínua). Mesmo helper usado em todos os canais.
+    # ════════════════════════════════════════════════════════════════
+    humanizer_ctx: dict = {}
+    try:
+        from services.humanizer import humanize_system_prompt
+        sys_prompt, humanizer_ctx = await humanize_system_prompt(
+            sys_prompt=sys_prompt, company_id=cid,
+            phone=phone, user_text=user_text)
+    except Exception as e:
+        logger.warning("[twilio] humanizer prompt falhou: %s", e)
+    link_for_guard = humanizer_ctx.get("link_for_guard")
+    listening_analysis = humanizer_ctx.get("listening_analysis") or {}
+    short_term_analysis = humanizer_ctx.get("short_term_analysis") or {}
     history_inbound: list[str] = []
-    short_term_analysis: dict = {}
-    try:
-        from phone_normalizer import link_phone_to_subscriber
-        link_for_guard = await link_phone_to_subscriber(phone, cid)
-        async for m in db.aihub_wa_messages.find(
-                {"company_id": cid, "phone": phone, "direction": "inbound"},
-                {"_id": 0, "text": 1}).sort("created_at", -1).limit(20):
-            history_inbound.append(m.get("text", ""))
-        from services.anti_cpf_guardian import inject_identification_block
-        sys_prompt += "\n\n" + inject_identification_block(
-            link_for_guard, history_inbound=history_inbound)
-    except Exception as e:
-        logger.warning("[twilio] anti_cpf_guardian inject falhou: %s", e)
-
-    # MEMÓRIA DE CURTO PRAZO — Operação Memória Obrigatória
-    try:
-        from services.short_term_memory_guard import (
-            analyze_short_term_context, inject_memory_block,
-        )
-        short_term_analysis = await analyze_short_term_context(
-            company_id=cid, phone=phone, user_text=user_text)
-        mem_block = inject_memory_block(short_term_analysis)
-        if mem_block:
-            sys_prompt += "\n\n" + mem_block
-    except Exception as e:
-        logger.warning("[twilio] short_term_memory inject falhou: %s", e)
-
-    # LISTENING GUARD — detecta intenção direta + perguntas repetidas
-    listening_analysis: dict = {}
-    try:
-        from services.listening_guard import (
-            analyze_listening, inject_listening_block,
-        )
-        listening_analysis = await analyze_listening(
-            company_id=cid, phone=phone, user_text=user_text)
-        lb = inject_listening_block(listening_analysis)
-        if lb:
-            sys_prompt += "\n\n" + lb
-    except Exception as e:
-        logger.warning("[twilio] listening_guard analyze falhou: %s", e)
 
     # MEMÓRIA DE LONGO PRAZO — Operação Memória Total (15/30/60 dias)
     try:
@@ -713,26 +685,23 @@ async def _generate_and_send_twilio_reply(
     except Exception as e:
         logger.warning("[twilio] universo_ligo_pitch falhou: %s", e)
 
-    # LISTENING GUARD — reescreve resposta se Isabella violou intenção
+    # ════════════════════════════════════════════════════════════════
+    # HUMANIZER REPLY — rewrite (listening + anti-CPF) + bubbles
+    # Mesmo helper de todos os canais.
+    # ════════════════════════════════════════════════════════════════
     try:
-        if listening_analysis:
-            from services.listening_guard import rewrite_if_violates as _lg_rewrite
-            reply_text = _lg_rewrite(reply_text, listening_analysis)
+        from services.humanizer import humanize_reply, bubbles_for_send
+        reply_text = await humanize_reply(
+            reply_text=reply_text, ctx=humanizer_ctx,
+            company_id=cid, phone=phone)
+        bubbles = bubbles_for_send(
+            reply_text=reply_text, ctx=humanizer_ctx) or [reply_text[:180]]
     except Exception as e:
-        logger.warning("[twilio] listening_guard rewrite falhou: %s", e)
-
-    # BUBBLE SPLITTER — quebra em bolhas ≤180 chars e envia múltiplas
-    # mensagens com delay realista entre elas (anti-monolito).
-    try:
-        from services.bubble_splitter import (
-            split_into_bubbles, estimate_typing_delay,
-        )
-        bubbles = split_into_bubbles(reply_text) or [reply_text[:180]]
-    except Exception as e:
-        logger.warning("[twilio] bubble_splitter falhou: %s", e)
+        logger.warning("[twilio] humanizer reply falhou: %s", e)
         bubbles = [reply_text[:180]]
 
     # Envia cada bolha com pequeno delay humano (sleep 0.6-4.5s)
+    from services.bubble_splitter import estimate_typing_delay
     send_results = []
     for i, bubble in enumerate(bubbles):
         if i > 0:
@@ -742,7 +711,6 @@ async def _generate_and_send_twilio_reply(
                 pass
         sr = await send_via_twilio(cid, phone, bubble)
         send_results.append(sr)
-        # Persiste outbound POR BOLHA (para auditoria e history)
         await db.aihub_wa_messages.insert_one({
             "id": f"wam-{uuid.uuid4().hex[:10]}",
             "company_id": cid,

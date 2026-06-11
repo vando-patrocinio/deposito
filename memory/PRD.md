@@ -2,6 +2,73 @@
 
 > Documento vivo. Atualizado a cada sprint.
 
+## 🌐 HUMANIZER — CAMADA ÚNICA PARA TODOS OS CANAIS ✅ (10/02/2026)
+
+**Ordem CTO**: "Essas regras são para todos os canais." Refatorar para
+um único helper que QUALQUER canal de mensagem chama (Twilio, Baileys,
+Meta, Telegram futuro, SMS-AI, voice-bot etc).
+
+### Entregas
+- `services/humanizer.py` (NOVO · 198 LoC) — 3 funções canal-agnósticas:
+  - `humanize_system_prompt(sys_prompt, cid, phone, user_text)` →
+    retorna `(sys_prompt_enriched, ctx)`. Anexa:
+    - Anti-CPF Guardian (`inject_identification_block`)
+    - Listening Guard (`inject_listening_block`)
+    - Short-Term Memory (`inject_memory_block`)
+    - Bloco "CONVERSA CONTÍNUA" se já houve outbound <30min
+  - `humanize_reply(reply_text, ctx, cid, phone)` →
+    aplica rewrite listening + rewrite anti-CPF pós-LLM.
+  - `bubbles_for_send(reply_text, ctx, max_bubble_chars=180, max_bubbles=3)`
+    → quebra em bolhas humanas + remove saudação se `ctx.is_continuous`.
+
+### Antes vs Depois
+| Antes | Depois |
+|---|---|
+| `whatsapp_twilio.py` repetia 40+ linhas de wiring | 3 chamadas: `humanize_system_prompt`, `humanize_reply`, `bubbles_for_send` |
+| `whatsapp_baileys.py` repetia o mesmo wiring | Idem — código duplicado eliminado |
+| Adicionar novo canal = re-copy/paste de 80 linhas | Adicionar novo canal = 3 chamadas ao helper |
+
+### Regex anti-greeting agora full Unicode PT-BR
+Pega: Oi/Olá/Opa/Bom dia/Boa tarde/Boa noite/E aí/Hey/Hi/Hello +
+nomes com á é í ó ú **ã õ â ê ô ç** (antes "João" passava — pegava só
+"jo"). Fix em `_GREET_RX`.
+
+### Validação Zero Mock (`scripts/test_humanizer.py`)
+**5/5 ✅**:
+1. `humanize_system_prompt` anexa listening + retorna ctx correto
+2. Conversa contínua detectada (1 outbound recente) → bloco anti-greet injetado
+3. `humanize_reply` remove pergunta qualificatória + remove pedido de CPF
+4. `bubbles_for_send` mantém saudação quando NOT contínuo, remove quando contínuo
+5. `_strip_repeated_greetings` em 5 variantes: Oi/Olá/Bom dia/Hey/Boa noite + acentos PT-BR
+
+### Regressão preservada (4 suítes verdes)
+- `test_humanizer.py` 5/5 ✅
+- `test_pamela_scenario.py` 6/6 ✅
+- `test_isabella_listening.py` 5/5 ✅
+- `test_short_term_memory.py` 11/11 ✅
+- Shield Health ONLINE · Red Team 28/28 A
+
+### Como adicionar humanização a um canal NOVO
+```python
+# Antes do LLM:
+from services.humanizer import (
+    humanize_system_prompt, humanize_reply, bubbles_for_send)
+sys_prompt, ctx = await humanize_system_prompt(
+    sys_prompt=sys_prompt, company_id=cid,
+    phone=phone, user_text=user_text)
+
+# Depois do LLM:
+reply_text = await humanize_reply(
+    reply_text=reply_text, ctx=ctx, company_id=cid, phone=phone)
+bubbles = bubbles_for_send(reply_text=reply_text, ctx=ctx)
+
+# Enviar:
+for b in bubbles:
+    await meu_canal.send(phone, b)
+    await asyncio.sleep(typing_delay(b))
+```
+
+
 ## 🩹 ISABELLA — BUG PAMELA #2 (BAILEYS + ANTI-CPF + ANTI-GREET) ✅ (10/02/2026)
 
 **Ordem CTO #2**: screenshot 21:25 mostrou Isabella ainda violando:
