@@ -75,8 +75,8 @@ export const DEFAULT_TAB_PERMISSIONS = {
     "atendimento", "alvaro-ia", "mass-messaging", "sales-funnel",
     "cadastro", "subscribers", "plans", "pracas",
     "logs",
-    "sheet", "holerite", "feriados",
-    "budget", "billing", "fleet",
+    "sheet", "feriados",
+    "budget", "fleet",
   ],
 };
 

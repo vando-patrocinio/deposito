@@ -2,6 +2,30 @@
 
 > Documento vivo. Atualizado a cada sprint.
 
+## 🔐 RBAC — Promoção Mayara + Isolamento Financeiro ✅ (11/06/2026 P0 CTO)
+
+**Caso:** Mayara Saldanha (Aux. Administrativo) recebia 403 em `/api/lousa/*` por estar somente em `collaborators` (role token = "colaborador"). Inconsistência: aba "Chamados" no menu desktop estava marcada como `roles: ["administrador"]`, enquanto rotas backend exigem `gestor`.
+
+**Fixes aplicados:**
+1. **Promoção a gestor** — Criada conta em `users` espelhando `collaborators`, role=`gestor`, company=`co-demo`, source=`promoted_from_collaborator`, `linked_collaborator_email` preservado.
+2. **Frontend `App.js:208`** — aba "Chamados" expandida para `roles: ["gestor", "administrador"]` (corrigindo a divergência com o backend).
+3. **Isolamento Financeiro (super admin only):**
+   - `Financeiro` (id=`financeiro`) — já tinha `superAdminOnly: true`
+   - `Faturamento` (id=`billing`) — adicionado `superAdminOnly: true`
+   - `Pagamentos` (id=`payments`) — adicionado `superAdminOnly: true`
+   - `Holerite` (id=`holerite`) — adicionado `superAdminOnly: true`
+   - Removidos `billing` e `holerite` do `DEFAULT_TAB_PERMISSIONS.gestor` em `TabPermissionsCard.js`
+4. **Credenciais atualizadas** em `/app/memory/test_credentials.md`.
+
+**Verificação:**
+- `POST /api/auth/login` Mayara → 200 OK, retorna `role="gestor"`, `is_super_admin=false`
+- `GET /api/lousa/all` com token Mayara → 200 OK (acesso liberado)
+- Super admins (Vando, admin@empresa.com) seguem vendo TODAS as abas (`is_super_admin=true` bypassa o filtro)
+
+⚠️ **Produção (`ligo.system`) precisa de redeploy** para herdar essas mudanças.
+
+---
+
 ## 🧠 Governança IA — Versionamento Git de Prompts ✅ (11/06/2026)
 
 **Objetivo:** zerar agentes IA órfãos (sem fonte de verdade em Git).
