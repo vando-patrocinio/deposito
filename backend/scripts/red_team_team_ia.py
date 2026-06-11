@@ -56,7 +56,8 @@ async def test_org_chart_integrity():
     ids = {a["id"] for a in items}
     must_have = {"presidente", "isabella", "alvaro", "camila", "vendas",
                  "jerusa", "rede", "smartolt", "copilot", "avaliador",
-                 "aprendizado", "sentinela_lousa"}
+                 "aprendizado", "sentinela_lousa",
+                 "motor_ia", "coach", "lousa_triagem", "holerite"}
     if not must_have.issubset(ids):
         _fail(f"faltam ids: {must_have - ids}")
     if "presidente" not in ids:

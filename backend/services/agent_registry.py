@@ -158,6 +158,19 @@ ORG_CHART: List[Dict[str, Any]] = [
         "humanization_required": False,
     },
     {
+        "id": "lousa_triagem",
+        "label": "Lousa Triagem",
+        "cargo": "Triagem Automática de Tickets",
+        "reports_to": "alvaro",
+        "category": "intelligence",
+        "responsibilities": [
+            "classificação de tickets na abertura",
+            "tipo/prioridade/setor/urgência",
+        ],
+        "aihub_name": "Lousa Triagem",
+        "humanization_required": False,
+    },
+    {
         "id": "camila",
         "label": "Camila IA",
         "cargo": "Diretora Comercial",
@@ -184,6 +197,19 @@ ORG_CHART: List[Dict[str, Any]] = [
         "humanization_required": True,
     },
     {
+        "id": "holerite",
+        "label": "Holerite IA",
+        "cargo": "Parsing Administrativo de Folha",
+        "reports_to": "camila",
+        "category": "administrative",
+        "responsibilities": [
+            "parsing CLT/eSocial", "extração de funcionários e valores",
+            "fuzzy match com cadastro",
+        ],
+        "aihub_name": "Holerite IA",
+        "humanization_required": False,
+    },
+    {
         "id": "avaliador",
         "label": "Avaliador IA",
         "cargo": "Auditor de Qualidade",
@@ -205,6 +231,32 @@ ORG_CHART: List[Dict[str, Any]] = [
             "pesos", "outcomes", "memória", "evolução dos modelos",
         ],
         "aihub_name": "Aprendizado",
+        "humanization_required": False,
+    },
+    {
+        "id": "coach",
+        "label": "Coach IA",
+        "cargo": "Analista de Atendimentos Finalizados",
+        "reports_to": "aprendizado",
+        "category": "learning",
+        "responsibilities": [
+            "análise pós-conversa", "recomendações de melhoria",
+            "coaching de colaboradores e agentes",
+        ],
+        "aihub_name": "Coach IA",
+        "humanization_required": False,
+    },
+    {
+        "id": "motor_ia",
+        "label": "Motor IA",
+        "cargo": "Supervisor Central Técnico de LLMs",
+        "reports_to": "presidente",
+        "category": "infra",
+        "responsibilities": [
+            "orquestração LLM (OpenRouter, Claude, GPT, DeepSeek)",
+            "retentativas", "heurísticas anti-lixo",
+        ],
+        "aihub_name": "Motor IA",
         "humanization_required": False,
     },
 ]

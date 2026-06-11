@@ -2518,3 +2518,46 @@ em motor_ia_actions e motor_ia_insights. 7) Routing table completo.
 ### Nervous Foundation
 Linter CI gate: ✅ 449 módulos / 443 com metadata / 0 críticos silentes.
 `scripts/red_team_orphan_watcher.py`: 10/10 PASSED (mantido).
+
+## LIMPEZA ORGANIZACIONAL IA — Etapas 1→4 (Feb/2026) ✅
+
+### Etapa 1 — AGENT_DISCOVERY_REPORT
+`scripts/agent_discovery_report.py` levantou para cada um dos 6 agentes
+fora do ORG_CHART: company_id, model, eventos emitidos/consumidos,
+actions, ROI total, dependências em código, criação/atualização.
+Snapshot persistido em `agent_discovery_reports` (id `disc-1781147894`,
+6 items).
+
+### Etapa 2 — Classificação executiva
+| Agente         | Categoria              | 5 critérios |
+|----------------|-----------------------|-------------|
+| Motor IA       | COMPONENTE_TECNICO    | 4/5         |
+| Coach IA       | AGENTE_EXECUTIVO      | 4/5         |
+| Lousa Triagem  | SERVICO_INTERNO       | 4/5         |
+| Holerite IA    | AGENTE_ADMINISTRATIVO | 4/5         |
+| Orquestrador   | COMPONENTE_TECNICO    | 2/5         |
+| Teste          | AGENTE_TESTE          | 1/5         |
+
+### Etapa 3 — Decisões aplicadas (NOT dry-run)
+- Motor IA · Coach IA · Lousa Triagem · Holerite IA → `noop_will_join_chart`.
+- Orquestrador → `aihub_agents.review_required=true, review_reason=…`.
+- Teste → `enabled=false, status=deprecated_by_cto, deprecated_at=…`.
+
+### Etapa 4 — Novo ORG_CHART (16 nós)
+```
+Presidente IA
+├─ Isabella IA → Jerusa · Sentinela Lousa
+├─ Álvaro IA → Rede IA → SmartOLT IA · Co-Pilot IA · Lousa Triagem (NEW)
+├─ Camila IA → Vendas IA · Holerite IA (NEW)
+├─ Avaliador IA
+├─ Aprendizado IA → Coach IA (NEW)
+└─ Motor IA (NEW)
+```
+
+### Estado final
+`/api/presidente/agentes` retorna team_size=16, avg_humanization=100/100,
+offline=[], nao_conformes=[]. Red-team suite 7/7 PASS.
+Agentes remanescentes fora do ORG_CHART: **Orquestrador** (review) e
+**Teste** (disabled). Compliance scheduler permanecerá alertando o
+Presidente sobre eles via `AGENT_NEW_DISCOVERED` até a decisão final
+sobre o Orquestrador.
