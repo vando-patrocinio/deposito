@@ -80,6 +80,20 @@ async def main():
             else:
                 _ok(f"{method} {path} -> {r.status_code} ({label})")
 
+        # POST mobile/health-event tem que aceitar colaborador
+        r = await cli.post("/api/mobile/health-event", headers=headers, json={
+            "kind": "lousa_load_failed",
+            "collaborator_id": cid,
+            "status": 520,
+            "detail": "red_team probe",
+            "ua": "red-team/1.0",
+            "url": "https://test/",
+        })
+        if r.status_code != 200:
+            blocked.append(f"POST /api/mobile/health-event -> {r.status_code} :: {r.text[:200]}")
+        else:
+            _ok(f"POST /api/mobile/health-event -> 200 (telemetria mobile)")
+
     if blocked:
         print("")
         for b in blocked:

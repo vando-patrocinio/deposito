@@ -59,6 +59,7 @@ from routes import (
     logs as routes_logs,
     lousa as routes_lousa,
     lousa_manager_callbacks as routes_lousa_callbacks,
+    mobile_health as routes_mobile_health,
     pracas as routes_pracas,
     push as routes_push,
     saas as routes_saas,
@@ -1158,6 +1159,7 @@ app.include_router(routes_collab_auth.router)
 app.include_router(routes_logs.router)
 app.include_router(routes_lousa.router)
 app.include_router(routes_lousa_callbacks.router)
+app.include_router(routes_mobile_health.router)
 from routes import lousa_tv as routes_lousa_tv  # noqa: E402
 app.include_router(routes_lousa_tv.router)
 from routes import lousa_rompimento as routes_lousa_rompimento  # noqa: E402

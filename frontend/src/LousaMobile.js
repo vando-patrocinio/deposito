@@ -36,6 +36,8 @@ import SmartoltLiveCard from "./lousa/SmartoltLiveCard";
  */
 export default function LousaMobile({ collaboratorId, onBack, isAdminTest = false, onOpenCTO, onOpenRedeMap }) {
   const [data, setData] = useState(null);
+  const [loadTimedOut, setLoadTimedOut] = useState(false);
+  const [lastLoadError, setLastLoadError] = useState(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
   const [openTicket, setOpenTicket] = useState(null);
@@ -90,6 +92,8 @@ export default function LousaMobile({ collaboratorId, onBack, isAdminTest = fals
       const d = await api.lousaByCollaborator(collaboratorId,
                                                   { adminTest: isAdminTest });
       setData(d);
+      setLastLoadError(null);
+      setLoadTimedOut(false);
       // Quando recarrega fora do modo reorder, sincroniza orderedIds
       if (!reorderMode) {
         setOrderedIds((d.tickets || []).map((t) => t.id));
@@ -97,13 +101,36 @@ export default function LousaMobile({ collaboratorId, onBack, isAdminTest = fals
       setRefreshFlash(true);
       setTimeout(() => setRefreshFlash(false), 1200);
     } catch (e) {
-      setErr(e?.response?.data?.detail || e.message);
+      const status = e?.response?.status || 0;
+      const detail = e?.response?.data?.detail || e?.message || "erro desconhecido";
+      const body = (typeof e?.response?.data === "string"
+                      ? e.response.data : "").slice(0, 400);
+      setErr(detail);
+      setLastLoadError({ status, detail, body, when: new Date().toISOString() });
+      // Telemetria mobile_health_events — backend registra pra auditoria.
+      try {
+        api.mobileHealthEvent?.({
+          kind: "lousa_load_failed",
+          collaborator_id: collaboratorId,
+          status, detail: String(detail).slice(0, 300),
+          ua: navigator.userAgent.slice(0, 200),
+          url: window.location.href.slice(0, 400),
+        });
+      } catch { /* fail-silent */ }
     } finally {
       setRefreshing(false);
     }
   }, [collaboratorId, reorderMode, isAdminTest]);
 
   useEffect(() => { refresh(); }, [refresh]);
+
+  // Timeout de carregamento — se 8s sem dado e sem erro,
+  // mostra fallback acionavel em vez de spinner infinito.
+  useEffect(() => {
+    if (data || lastLoadError) return undefined;
+    const t = setTimeout(() => setLoadTimedOut(true), 8000);
+    return () => clearTimeout(t);
+  }, [data, lastLoadError]);
 
   // iter189 — busca config de odômetro do dia
   useEffect(() => {
@@ -559,6 +586,59 @@ export default function LousaMobile({ collaboratorId, onBack, isAdminTest = fals
   }, [badSignalAuth?.request_id]);
 
   if (!data) {
+    if (lastLoadError || loadTimedOut) {
+      const e = lastLoadError || { status: 0, detail: "Tempo esgotado (>8s)" };
+      const isAuth = e.status === 401 || e.status === 403;
+      const isUpstream = e.status >= 500 || /cloudflare|gateway|origin/i.test(String(e.detail));
+      const title = isAuth
+        ? "Sessao expirada"
+        : isUpstream
+          ? "Servidor indisponivel"
+          : "Falha ao carregar a lousa";
+      const hint = isAuth
+        ? "Saia e entre de novo no app. Se persistir, peca pro gestor reativar o acesso."
+        : isUpstream
+          ? "O servidor central nao respondeu. Aguarde 30s e tente recarregar. Persistindo, avise o gestor."
+          : "Recarregue. Se continuar, avise o gestor e cite o codigo abaixo.";
+      return (
+        <div data-testid="lousa-load-error" style={{
+          padding: 24, maxWidth: 480, margin: "32px auto",
+          background: "white", borderRadius: 14,
+          boxShadow: "0 8px 24px rgba(0,0,0,.08)",
+          textAlign: "center", color: "#0f172a",
+        }}>
+          <div style={{ fontSize: 36, marginBottom: 8 }}>
+            {isAuth ? "🔒" : isUpstream ? "🛰️" : "⚠️"}
+          </div>
+          <div style={{ fontSize: 18, fontWeight: 800, marginBottom: 6 }}>
+            {title}
+          </div>
+          <div style={{ fontSize: 14, color: "#475569", marginBottom: 18 }}>
+            {hint}
+          </div>
+          <div style={{
+            fontSize: 11, color: "#64748b", background: "#f1f5f9",
+            padding: "8px 10px", borderRadius: 8, marginBottom: 18,
+            fontFamily: "monospace", wordBreak: "break-all",
+          }}>
+            codigo: {e.status || "TIMEOUT"} · {String(e.detail).slice(0, 140)}
+          </div>
+          <button
+            data-testid="lousa-load-error-retry"
+            onClick={() => {
+              setLoadTimedOut(false);
+              setLastLoadError(null);
+              refresh();
+            }}
+            style={{
+              padding: "10px 18px", borderRadius: 999,
+              background: "#0f172a", color: "white", border: 0,
+              fontWeight: 700, cursor: "pointer", fontSize: 14,
+            }}
+          >Recarregar</button>
+        </div>
+      );
+    }
     return (
       <div data-testid="lousa-loading" style={{ padding: 30, textAlign: "center", color: "#64748b" }}>
         Carregando lousa...

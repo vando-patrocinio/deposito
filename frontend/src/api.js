@@ -380,6 +380,10 @@ export const api = {
       .then((r) => r.data),
   // SALA — contador de triagem (badge na coluna SALA da Lousa)
   lousaSalaCount: () => client.get(`/lousa/sala/count`).then((r) => r.data),
+
+  // Mobile health — telemetria de falhas do app do colaborador (best-effort)
+  mobileHealthEvent: (data) => client.post(`/mobile/health-event`, data)
+    .then((r) => r.data).catch(() => null),
   // RADIUS / PPPoE — Módulo 2
   radiusDashboard: () => client.get(`/radius/dashboard`).then((r) => r.data),
   radiusSessionsActive: (params = {}) =>

@@ -2,6 +2,39 @@
 
 > Documento vivo. Atualizado a cada sprint.
 
+## 🛠️ Enhancement — Mobile loading com timeout + telemetria ✅ (11/02/2026)
+
+### Problema
+O `LousaMobile.js::refresh()` engolia o erro em `catch` (linha 100) e mantinha o spinner "Carregando lousa…" infinito quando o backend retornava 403/520/timeout. O bug do DIOGO ficou mascarado por **dias** por causa disso. Quando produção (Cloudflare proxy) devolve 520 ("origin returned invalid response"), o tech também não vê nenhuma orientação acionável.
+
+### Fix entregue
+**Frontend (`LousaMobile.js`):**
+- Spinner ganhou **timeout de 8s** — se não carregar nesse tempo, troca pra tela de erro acionável (data-testid `lousa-load-error`).
+- Tela de erro classifica em 3 cenários:
+  - 🔒 **401/403** → "Sessão expirada — saia e entre de novo no app"
+  - 🛰️ **5xx / "cloudflare|gateway|origin"** → "Servidor indisponível — aguarde 30s e tente recarregar"
+  - ⚠️ Outros → "Falha ao carregar a lousa"
+- Mostra o **código de erro** (`520 · Cloudflare...`) e botão "Recarregar" (data-testid `lousa-load-error-retry`)
+- Todo erro de carregamento envia automaticamente `POST /api/mobile/health-event` (best-effort, fail-silent).
+
+**Backend — novo módulo `routes/mobile_health.py`:**
+- `POST /api/mobile/health-event` (auth: qualquer role, incluindo `colaborador`).
+- Persiste em `mobile_health_events` (campos: `kind`, `collaborator_id`, `status`, `detail`, `ua`, `url`, `ip`, `user_email`, `created_at`, `extra`).
+- Log estruturado pro logger central — feed pra futuro dashboard de saúde do app.
+- Whitelist de `kind`: `lousa_load_failed`, `lousa_load_timeout`, `ticket_action_failed`, `clock_action_failed`, `outbox_sync_failed`, `generic`.
+
+### Garantias
+- Red-team `scripts/red_team_colaborador_rbac.py` ampliado: agora valida que `POST /api/mobile/health-event` aceita role=colaborador (200) — 6/6 PASS.
+- Telemetria validada end-to-end: DIOGO disparou evento de teste, persistido com `id=mhe-a471c67a8d5543`, `kind=lousa_load_failed`, `status=520`.
+
+### Próximo bug similar aparece em 8s, não em dias
+A combinação **fallback + telemetria** garante que:
+1. Tech vê mensagem útil imediatamente
+2. Gestor consegue auditar via `mobile_health_events` no DB
+3. Cloudflare 520 (caso produção do screenshot) é classificado e exibido com instrução clara
+
+
+
 ## 🔴 BUGFIX P0 — Mobile colaborador preso em "Carregando lousa…" ✅ (11/02/2026)
 
 ### Root cause (auditado)
