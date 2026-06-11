@@ -392,10 +392,32 @@ export default function LousaAdminPanel({ systemStatus = { offline: false, drift
       setLogs(lg.items || []);
       setRefreshFlash(true);
       setTimeout(() => setRefreshFlash(false), 1200);
+      // sucesso → reseta contador silencioso
+      window.__lousaPollFails = 0;
     } catch (e) {
       console.error("Erro lousa", e);
-      const { humanizeError } = await import("./utils/humanizeError");
-      await window.alert(`Erro ao atualizar: ${humanizeError(e)}`);
+      // CTO P0: erros transitórios (5xx/timeout/520-Cloudflare/network) durante
+      // polling de 8s NÃO devem travar o gestor com window.alert. Só ALERTAR
+      // após 3 falhas consecutivas E somente para erros não transitórios.
+      const status = e?.response?.status;
+      const isTransient = !status      // network error
+        || status === 0
+        || status === 502 || status === 503 || status === 504
+        || status === 520 || status === 521 || status === 522
+        || status === 523 || status === 524 || status === 525;
+      window.__lousaPollFails = (window.__lousaPollFails || 0) + 1;
+      if (isTransient && window.__lousaPollFails < 3) {
+        // silencia — próxima iteração de 8s resolve sozinha
+      } else {
+        try {
+          const { humanizeError } = await import("./utils/humanizeError");
+          const { toast } = await import("sonner");
+          toast.error(`Lousa: ${humanizeError(e)}`, {
+            id: "lousa-refresh-error",   // 1 toast só (substitui o anterior)
+            duration: 4000,
+          });
+        } catch { /* ignore */ }
+      }
     } finally {
       setRefreshing(false);
     }
