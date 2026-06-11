@@ -1199,6 +1199,14 @@ function AppContent() {
   }
 
   if (!user) {
+    // Se chegou com ?cid= mas sem token, redireciona para a tela de
+    // login obrigatória — o técnico precisa logar com email+senha
+    // fornecidos pelo gestor (grant-mobile-access).
+    const hasCidParam = (typeof window !== "undefined")
+      && new URLSearchParams(window.location.search).get("cid");
+    if (hasCidParam && publicView !== "login") {
+      return <LoginPage onBack={() => navigate("/")} />;
+    }
     if (publicView === "signup") {
       return <SignupPage
         defaultPlan={route.params.plan === "free" ? "free" : "trial"}
