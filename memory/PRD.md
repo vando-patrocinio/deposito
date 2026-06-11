@@ -2,6 +2,141 @@
 
 > Documento vivo. Atualizado a cada sprint.
 
+## 🏛️ NERVOUS FOUNDATION — ALICERCE ARQUITETURAL PERMANENTE ✅ (10/02/2026)
+
+**Ordem CTO**: "Não aceito melhoria temporária. Não aceito trabalho
+manual. O objetivo não é ter 100% hoje. O objetivo é IMPEDIR que um
+dia deixe de ser 100%."
+
+8 fases implementadas — sistema agora se **autoperpetua**.
+
+### Fase 1 — Nervous Contract (`services/nervous_contract.py`)
+Cada módulo `.py` em `routes/`, `services/`, `scripts/` deve declarar
+no topo:
+```python
+NERVOUS_METADATA = {
+    "owner": "team-x",
+    "domain": "comercial",       # 15 domínios válidos
+    "criticality": "critical",   # low | medium | high | critical
+    "emits_events": True,
+    "event_types": ["VENDA_FECHADA"],
+    "company_id_required": True,
+}
+```
+- Validador `validate_dict()` checa coerência (critical EXIGE emits_events).
+- Inferência por path quando ausente: `routes/payments/*` → critical.
+
+### Fase 2 — Nervous Linter (`scripts/nervous_linter.py`)
+Varre os 435 módulos via AST. Detecta:
+- NERVOUS_METADATA ausente
+- Domain/criticality inválido
+- `emits_events=True` declarado mas sem `emit_event()` no código
+- `emit_event()` no código sem `emits_events=True` declarado
+- `criticality=critical` sem `emits_events=True`
+
+Modos: `human` (terminal), `json` (CI), `ci` (exit code != 0 bloqueia).
+
+### Fase 3 — CI/CD Gate (`.git-hooks/pre-commit-nervous`)
+Instalado em `.git/hooks/pre-commit`. Bloqueia commit se há violação
+CRITICAL. Bypass apenas via `git commit --no-verify` (deixa rastro).
+
+### Fase 4 — Auto Discovery (`services/nervous_autodiscovery.py`)
+Scheduler diário **05:00 UTC** (depois do shield audit). A cada run:
+- Escaneia 435 módulos
+- Upsert em `nervous_module_registry` (DB)
+- Detecta `new_modules` (não estão no registry)
+- Calcula score por módulo (Fase 5)
+- Persiste snapshot em `nervous_coverage_history`
+
+### Fase 5 — Nervous Score 0-100 por módulo
+| Pontos | Critério |
+|---:|---|
+| +30 | tem NERVOUS_METADATA válido |
+| +30 | criticality ∈ {critical, high} ⇒ emits_events=True |
+| +20 | chama `emit_event()` no código (coerência) |
+| +20 | eventos REAIS emitidos nas últimas 24h |
+
+Persistido em `nervous_module_scores` com snapshot_id pra detectar
+regressões.
+
+### Fase 6 — Meta Real (por bucket de criticidade)
+Em vez de "50 módulos conectados", a métrica de sucesso é:
+- 100% dos `critical` com score >= 80
+- 100% dos `high` com score >= 80
+- (medium/low são "nice to have")
+
+`by_criticality` mostra % OK por bucket no snapshot.
+
+### Fase 7 — Cobertura Permanente Sustentada
+`_calc_sustained_coverage()` retorna a **PIOR cobertura nas últimas 30
+medições**. Definição:
+- "Sustained 100%" = nunca caiu de 100% em 30 dias.
+- Se cair 1 dia, o número quebra. Force a manter, não atingir.
+
+Detecção automática de **regressões** (score caiu ≥20pts vs snapshot
+anterior). Drop ≥30pts abre opp `kind=nervous_regression` no Conselho IA.
+
+### Fase 8 — Presidente IA aware (`routes/nervous_foundation.py`)
+7 endpoints novos sob `/api/nervous`:
+| Endpoint | Resposta |
+|---|---|
+| `GET /coverage` | snapshot mais recente |
+| `GET /coverage/sustained` | sustained 30d + atual + flag is_sustained_100 |
+| `GET /silent` | módulos críticos sem metadata, agrupados por criticality |
+| `GET /regressions?days=7` | quedas de score detectadas |
+| `GET /module/{path}` | score detalhado + histórico de 10 medições |
+| `GET /history?days=30` | série temporal de snapshots |
+| `POST /discover/run-now` | força rodada (super-admin) |
+| `GET /presidente/brief` | resumo executivo pronto pra falar |
+
+### Validação E2E (executada agora)
+```
+POST /api/nervous/discover/run-now
+{
+  "total_modules": 435,
+  "declared_metadata": 7,
+  "metadata_coverage_pct": 1.61,
+  "average_score": 2.46,
+  "coverage_pct": 2.46,
+  "silent_critical_count": 10,
+  "by_criticality": {"critical":0.0,"high":0.0,"medium":0.0,"low":0.0},
+  "sustained_30d": 0.0
+}
+GET /presidente/brief
+{
+  "risk_level": "VERMELHO",
+  "narrative": "Cobertura nervosa hoje: 2.46%. 🚨 10 módulo(s)
+  CRÍTICO(s) sem metadata. Por criticidade OK: critical 0%..."
+}
+```
+
+### Estado inicial honesto
+- Acabei de criar a fundação. Apenas **7 módulos têm metadata** (os
+  que tagueei como semente: humanizer, isabella_actions, anti_ai_slop,
+  bubble_splitter, listening_guard, message_aggregator, shield_daily_audit).
+- **10 módulos críticos identificados** sem metadata (routes/whatsapp_*,
+  routes/subscribers, routes/shield, services/financial_foundation).
+- **Cobertura: 2.46% · Sustained 30d: 0% · Risk: VERMELHO**.
+- **MAS** agora o sistema é AUTOPERPETUÁVEL: cada novo módulo será
+  detectado, validado e bloqueado se faltar metadata.
+
+### Próxima ação (do CTO ou do time)
+Aplicar metadata nos 10 críticos imediatos:
+```python
+# Em routes/whatsapp_baileys.py, primeiras linhas após docstring:
+NERVOUS_METADATA = {
+    "owner": "isabella-team",
+    "domain": "whatsapp",
+    "criticality": "critical",
+    "emits_events": True,
+    "event_types": ["WA_INBOUND_RECEIVED", "WA_OUTBOUND_SENT"],
+    "company_id_required": True,
+}
+```
+A cada arquivo tagueado + emit_event implementado, a cobertura sobe.
+**Diferença do antes**: agora ela NÃO PODE CAIR sem alguém fazer força.
+
+
 ## 📅 ISABELLA AGORA AGENDA NA LOUSA ✅ (10/02/2026)
 
 **Ordem CTO**: "Por que a Isabella não agenda dentro da Lousa ainda?"

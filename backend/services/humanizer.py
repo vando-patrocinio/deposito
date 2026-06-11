@@ -6,17 +6,18 @@ Aplica de forma centralizada (anti-AI-slop):
   3. Short-Term Memory (respostas curtas, correções)
   4. Anti-Greeting em conversa contínua (<30min)
   5. Bubble Splitter (≤180c, 1 pergunta/bolha, nome 1x, hard cap 3)
-
-Canais que devem chamar:
-  - `humanize_system_prompt()` ANTES do LLM
-  - `humanize_reply()` DEPOIS do LLM (antes de quebrar em chunks)
-  - `bubbles_for_send()` no envio (split final + anti-greet)
-
-Hoje wired em: whatsapp_twilio, whatsapp_baileys.
-Qualquer canal novo (Meta, Telegram, Signal, SMS-AI) só precisa chamar
-essas 3 funções para ganhar humanização full.
 """
 from __future__ import annotations
+
+NERVOUS_METADATA = {
+    "owner": "isabella-team",
+    "domain": "isabella",
+    "criticality": "high",
+    "emits_events": False,
+    "event_types": [],
+    "company_id_required": True,
+    "notes": "Camada de humanização wired em Twilio + Baileys.",
+}
 
 import logging
 import re

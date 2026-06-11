@@ -1,0 +1,34 @@
+#!/bin/bash
+# NERVOUS FOUNDATION — Pre-commit gate (Fase 3 CI/CD)
+#
+# Bloqueia commit se algum módulo CRITICAL não declarar NERVOUS_METADATA
+# ou se houver violação de contrato.
+#
+# Instalação:
+#   cp /app/.git-hooks/pre-commit-nervous /app/.git/hooks/pre-commit
+#   chmod +x /app/.git/hooks/pre-commit
+#
+# Bypass (apenas emergência, deixa registro):
+#   git commit --no-verify -m "..."
+
+set -e
+
+# Só roda se há mudanças em backend
+if ! git diff --cached --name-only | grep -qE "^backend/.*\.py$"; then
+    exit 0
+fi
+
+cd /app/backend
+python3 scripts/nervous_linter.py --mode=ci
+RESULT=$?
+
+if [ $RESULT -ne 0 ]; then
+    echo ""
+    echo "❌ NERVOUS GATE — commit bloqueado por violações CRITICAL."
+    echo "   Adicione NERVOUS_METADATA nos módulos críticos."
+    echo "   Bypass emergencial: git commit --no-verify"
+    exit 1
+fi
+
+echo "✅ NERVOUS GATE — pass"
+exit 0

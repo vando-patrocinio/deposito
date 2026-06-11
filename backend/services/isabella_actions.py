@@ -9,14 +9,19 @@ ela emite MARCADORES no fim da resposta. O sistema:
 Marcadores suportados:
   [AGENDAR_VISITA data=YYYY-MM-DD janela=manha|tarde motivo="texto"]
   [ABRIR_CHAMADO tipo=tecnico|comercial motivo="texto"]
-
-Exemplo de fluxo:
-  Cliente: "Pode marcar pra amanhã manhã"
-  Isabella: "Beleza! [AGENDAR_VISITA data=2026-02-11 janela=manha motivo=\"sinal\"]"
-  Sistema cria ticket TK-abc123 com scheduled_time=2026-02-11T09:00
-  Reply final: "Beleza! Marquei pra amanhã (11/02) entre 09h e 12h. Ticket TK-abc123."
 """
 from __future__ import annotations
+
+NERVOUS_METADATA = {
+    "owner": "isabella-team",
+    "domain": "isabella",
+    "criticality": "high",
+    "emits_events": False,
+    "event_types": [],
+    "company_id_required": True,
+    "notes": "Cria tickets via marcadores [AGENDAR_VISITA] / [ABRIR_CHAMADO].",
+}
+
 
 import logging
 import re

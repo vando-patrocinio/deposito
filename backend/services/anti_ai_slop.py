@@ -21,6 +21,15 @@ Pare de narrar que está trabalhando.
 """
 from __future__ import annotations
 
+NERVOUS_METADATA = {
+    "owner": "isabella-team",
+    "domain": "isabella",
+    "criticality": "high",
+    "emits_events": False,
+    "event_types": [],
+    "company_id_required": True,
+}
+
 import logging
 import re
 from typing import List, Tuple

@@ -118,6 +118,7 @@ from routes import (
     isabella_commanders as routes_isabella_commanders,
     universo_ligo as routes_universo_ligo,
     shield as routes_shield,
+    nervous_foundation as routes_nervous_foundation,
     whatsapp_twilio as routes_whatsapp_twilio,
     pdf_reports as routes_pdf_reports,
     whatsapp_meta as routes_whatsapp_meta,
@@ -1045,12 +1046,16 @@ async def _startup() -> None:
         from services.shield_daily_audit import (
             ensure_indexes as _sda_idx, register_scheduler as _sda_reg)
         from services.message_aggregator import ensure_indexes as _ma_idx
+        from services.nervous_autodiscovery import (
+            ensure_indexes as _nva_idx, register_scheduler as _nva_reg)
         asyncio.create_task(_aci())
         asyncio.create_task(_esi())
         asyncio.create_task(_oi())
         asyncio.create_task(_sda_idx())
         asyncio.create_task(_ma_idx())
+        asyncio.create_task(_nva_idx())
         _sda_reg(scheduler)
+        _nva_reg(scheduler)
     except Exception as e:
         logger.warning("[startup] shield indexes: %s", e)
     # NOTE: o worker da isabella_queue foi SEPARADO em processo dedicado
@@ -1267,6 +1272,7 @@ app.include_router(routes_isabella_field.router)
 app.include_router(routes_isabella_commanders.router)
 app.include_router(routes_universo_ligo.router)
 app.include_router(routes_shield.router)
+app.include_router(routes_nervous_foundation.router)
 app.include_router(routes_whatsapp_twilio.router)
 app.include_router(routes_whatsapp_meta.router)
 app.include_router(routes_holerite.router)
