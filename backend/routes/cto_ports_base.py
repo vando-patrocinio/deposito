@@ -127,6 +127,16 @@ async def sync_port_from_cto(company_id: str, cto_id: str,
                 "updated_at": now_iso(),
             }},
         )
+        try:
+            from services.event_bus import emit_event
+            await emit_event(
+                "cto.updated",
+                company_id=(sub_exists or {}).get("company_id"),
+                source="cto_ports_base",
+                payload={},
+            )
+        except Exception:
+            pass
         logger.warning(
             "[cto-ports] auto-healed orphan port cid=%s cto=%s p=%s"
             " reason=%s old_sub=%s",
@@ -429,6 +439,16 @@ async def backfill_from_subscribers(
                 "updated_at": now_iso(),
             }},
         )
+        try:
+            from services.event_bus import emit_event
+            await emit_event(
+                "cto.updated",
+                company_id=(cto or {}).get("company_id"),
+                source="cto_ports_base",
+                payload={},
+            )
+        except Exception:
+            pass
         await sync_port_from_cto(cid, cto["id"], cto_port)
         summary["linked"] += 1
         if len(summary["samples"]) < 20:
@@ -520,6 +540,16 @@ async def release_port(
         from services.event_bus import emit_event
         await emit_event(
             "cto.updated",
+            company_id=(cto or {}).get("company_id"),
+            source="cto_ports_base",
+            payload={},
+        )
+    except Exception:
+        pass
+    try:
+        from services.event_bus import emit_event
+        await emit_event(
+            "cto.updated",
             company_id=cid,
             source="cto_ports_base",
             payload={},
@@ -576,6 +606,16 @@ async def release_all_ports(
                 "updated_at": now_iso(),
             }},
         )
+        try:
+            from services.event_bus import emit_event
+            await emit_event(
+                "cto.updated",
+                company_id=(cto or {}).get("company_id"),
+                source="cto_ports_base",
+                payload={},
+            )
+        except Exception:
+            pass
         try:
             from services.event_bus import emit_event
             await emit_event(

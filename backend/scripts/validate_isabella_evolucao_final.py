@@ -25,8 +25,8 @@ NERVOUS_METADATA = {
     "owner": "ai-team",
     "domain": "isabella",
     "criticality": "high",
-    "emits_events": False,
-    "event_types": [],
+    "emits_events": True,
+    "event_types": ["subscriber.created", "wa.message.persisted"],
     "company_id_required": True,
 }
 
@@ -158,6 +158,16 @@ async def _seed_subscriber_if_missing() -> str:
         "referral_score": 0.40,
         "collection_score": 0.55,
     })
+    try:
+        from services.event_bus import emit_event
+        await emit_event(
+            "subscriber.created",
+            company_id=(sub or {}).get("company_id"),
+            source="validate_isabella_evolucao_final",
+            payload={},
+        )
+    except Exception:
+        pass
     return sub_id
 
 
@@ -171,6 +181,16 @@ async def _ingest_inbound(phone: str, text: str) -> None:
         "text": text,
         "created_at": datetime.now(timezone.utc).isoformat(),
     })
+    try:
+        from services.event_bus import emit_event
+        await emit_event(
+            "wa.message.persisted",
+            company_id=(sub or {}).get("company_id"),
+            source="validate_isabella_evolucao_final",
+            payload={},
+        )
+    except Exception:
+        pass
 
 
 async def main() -> None:

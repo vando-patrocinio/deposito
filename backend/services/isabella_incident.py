@@ -31,8 +31,8 @@ NERVOUS_METADATA = {
     "owner": "ai-team",
     "domain": "isabella",
     "criticality": "high",
-    "emits_events": False,
-    "event_types": [],
+    "emits_events": True,
+    "event_types": ["ticket.opened"],
     "company_id_required": True,
 }
 
@@ -354,6 +354,16 @@ async def _create_collective_ticket(company: str, inc: dict) -> Optional[str]:
         "created_at": _now_iso(), "created_by": "isabella_incident",
     }
     await db.tickets.insert_one(doc)
+    try:
+        from services.event_bus import emit_event
+        await emit_event(
+            "ticket.opened",
+            company_id=(c or {}).get("company_id"),
+            source="isabella_incident",
+            payload={},
+        )
+    except Exception:
+        pass
     return tid
 
 

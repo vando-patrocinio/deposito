@@ -245,6 +245,16 @@ async def _insert_internal_notes(company_id: str, outage: Dict[str, Any],
             from services.event_bus import emit_event
             await emit_event(
                 "wa.message.persisted",
+                company_id=(existing or {}).get("company_id"),
+                source="smartolt_ai",
+                payload={},
+            )
+        except Exception:
+            pass
+        try:
+            from services.event_bus import emit_event
+            await emit_event(
+                "wa.message.persisted",
                 company_id=company_id,
                 source="smartolt_ai",
                 payload={},

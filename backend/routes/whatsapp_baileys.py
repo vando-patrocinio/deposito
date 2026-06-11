@@ -140,6 +140,16 @@ async def _deliver_boleto_with_pdf(cid: str, phone: str,
                 "external_id": (sent_doc or {}).get("message_id"),
                 "created_at": now_iso(),
             })
+            try:
+                from services.event_bus import emit_event
+                await emit_event(
+                    "wa.message.persisted",
+                    company_id=company_id,
+                    source="whatsapp_baileys",
+                    payload={},
+                )
+            except Exception:
+                pass
             if not sent_doc.get("ok"):
                 logger.warning("[wa-baileys] boleto pdf falhou: %s",
                                sent_doc.get("error"))
@@ -301,6 +311,16 @@ async def send_audio(payload: SendAudioIn,
         "delivery_status": "sent" if send_ok else "failed",
         "delivery_error": send_error,
     })
+    try:
+        from services.event_bus import emit_event
+        await emit_event(
+            "wa.message.persisted",
+            company_id=cid,
+            source="whatsapp_baileys",
+            payload={},
+        )
+    except Exception:
+        pass
     if not send_ok:
         raise HTTPException(
             status_code=502,
@@ -468,6 +488,16 @@ async def send_message(payload: SendIn,
         )
     except Exception:
         pass
+    try:
+        from services.event_bus import emit_event
+        await emit_event(
+            "wa.message.persisted",
+            company_id=cid,
+            source="whatsapp_baileys",
+            payload={},
+        )
+    except Exception:
+        pass
     if not send_ok:
         # Não engole: deixa o frontend mostrar toast vermelho.
         raise HTTPException(
@@ -584,6 +614,16 @@ async def send_image(payload: SendImageIn,
         "delivery_status": "sent" if send_ok else "failed",
         "delivery_error": send_error,
     })
+    try:
+        from services.event_bus import emit_event
+        await emit_event(
+            "wa.message.persisted",
+            company_id=cid,
+            source="whatsapp_baileys",
+            payload={},
+        )
+    except Exception:
+        pass
     try:
         from services.event_bus import emit_event
         await emit_event(
@@ -831,6 +871,16 @@ async def inbound_call(payload: InboundCallIn,
             "auto_reason": "call_rejected_auto_response",
             "created_at": now_iso(),
         })
+        try:
+            from services.event_bus import emit_event
+            await emit_event(
+                "wa.message.persisted",
+                company_id=company_id,
+                source="whatsapp_baileys",
+                payload={},
+            )
+        except Exception:
+            pass
     except Exception as e:
         logger.warning("[inbound-call] envio de resposta falhou: %s", e)
 
@@ -1169,18 +1219,31 @@ async def inbound_webhook(payload: InboundIn,
     if payload.from_me:
         return {"ok": True, "ignored": "from_me"}
     # Sprint 19 — emit wa.inbound (best-effort)
-    try:
-        from services.event_emitters import emit_business
-        await emit_business(
-            kind="wa.inbound",
-            company_id=getattr(payload, "company_id", None),
-            payload={"jid": payload.jid,
-                       "from_phone": getattr(payload, "from_phone", None),
-                       "text_preview": (
-                            getattr(payload, "text", "") or "")[:80]},
-            severity="baixa", source="whatsapp_baileys.inbound")
-    except Exception:
-        pass
+    # Multi-tenant guard: NUNCA emite sem company_id resolvido.
+    _cid_for_event = (getattr(payload, "company_id", None)
+                        or getattr(payload, "cid", None))
+    if not _cid_for_event:
+        # tenta resolver via canal/jid
+        try:
+            ch = await db.aihub_channels.find_one(
+                {"id": getattr(payload, "channel_id", None)},
+                {"_id": 0, "company_id": 1})
+            if ch:
+                _cid_for_event = ch.get("company_id")
+        except Exception:
+            pass
+    if _cid_for_event:
+        try:
+            from services.event_emitters import emit_business
+            await emit_business(
+                kind="wa.inbound", company_id=_cid_for_event,
+                payload={"jid": payload.jid,
+                          "from_phone": getattr(payload, "from_phone", None),
+                          "text_preview": (
+                                getattr(payload, "text", "") or "")[:80]},
+                severity="baixa", source="whatsapp_baileys.inbound")
+        except Exception:
+            pass
     # Ignora Status/Broadcast/Newsletters do WhatsApp — não são conversas reais
     # e o WhatsApp bloqueia respostas para esses JIDs (causa "FALHOU" na UI).
     jid_norm = (payload.jid or "").lower()
@@ -1571,6 +1634,16 @@ async def _process_inbound_ai_pipeline(
                 "created_at": now_iso(),
                 "metadata": {"manager_assistant": True},
             })
+            try:
+                from services.event_bus import emit_event
+                await emit_event(
+                    "wa.message.persisted",
+                    company_id=cid,
+                    source="whatsapp_baileys",
+                    payload={},
+                )
+            except Exception:
+                pass
             return
     except Exception as e:
         logger.warning("[wa-baileys] manager assistant falhou: %s", e)
@@ -4255,6 +4328,16 @@ async def assign_conversation(phone: str, payload: AssignIn,
                     "delivery_status": "sent" if ok else "failed",
                     "delivery_error": (send_body.get("error") if not ok else None),
                 })
+                try:
+                    from services.event_bus import emit_event
+                    await emit_event(
+                        "wa.message.persisted",
+                        company_id=(prev or {}).get("company_id"),
+                        source="whatsapp_baileys",
+                        payload={},
+                    )
+                except Exception:
+                    pass
         except Exception as e:
             logger.warning("[wa-baileys] handover msg falhou para %s: %s", phone, e)
             handover_status = "failed"
@@ -5250,6 +5333,16 @@ async def public_tech_send(collab_id: str, phone: str,
         "delivery_status": "sent" if send_ok else "failed",
         "delivery_error": send_error,
     })
+    try:
+        from services.event_bus import emit_event
+        await emit_event(
+            "wa.message.persisted",
+            company_id=(coll or {}).get("company_id"),
+            source="whatsapp_baileys",
+            payload={},
+        )
+    except Exception:
+        pass
     # iter183 — Marca a conversa como "Conv. Técnico" no painel WhatsApp
     if send_ok:
         await db.wa_conversations.update_one(

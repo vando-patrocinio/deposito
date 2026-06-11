@@ -18,8 +18,8 @@ NERVOUS_METADATA = {
     "owner": "ai-team",
     "domain": "isabella",
     "criticality": "high",
-    "emits_events": False,
-    "event_types": [],
+    "emits_events": True,
+    "event_types": ["ticket.updated"],
     "company_id_required": True,
 }
 
@@ -688,6 +688,16 @@ async def score_finish(company: str, collab: dict, ticket_id: str,
         sets["isabella_root_cause"] = root_cause
 
     await db.tickets.update_one({"id": ticket_id}, {"$set": sets})
+    try:
+        from services.event_bus import emit_event
+        await emit_event(
+            "ticket.updated",
+            company_id=(t or {}).get("company_id"),
+            source="isabella_field",
+            payload={},
+        )
+    except Exception:
+        pass
 
     ev = (EventType.FIELD_ISABELLA_INSTALLATION_SCORED
           if ttype == "instalacao" else EventType.FIELD_ISABELLA_REPAIR_SCORED)

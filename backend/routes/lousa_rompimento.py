@@ -362,6 +362,16 @@ async def rompimento_finalize(ticket_id: str, payload: RompimentoFinalizeIn,
         from services.event_bus import emit_event
         await emit_event(
             "ticket.updated",
+            company_id=(t or {}).get("company_id"),
+            source="lousa_rompimento",
+            payload={},
+        )
+    except Exception:
+        pass
+    try:
+        from services.event_bus import emit_event
+        await emit_event(
+            "ticket.updated",
             company_id=company_id,
             source="lousa_rompimento",
             payload={},
@@ -418,6 +428,16 @@ async def rompimento_finalize(ticket_id: str, payload: RompimentoFinalizeIn,
                 "finalized_longitude": payload.longitude,
             }},
         )
+        try:
+            from services.event_bus import emit_event
+            await emit_event(
+                "ticket.updated",
+                company_id=(lt or {}).get("company_id"),
+                source="lousa_rompimento",
+                payload={},
+            )
+        except Exception:
+            pass
         linked_results.append({"id": linked_id, "ok": True,
                                   "client_name": (lt.get("client_snapshot") or {}).get("name")})
 

@@ -91,6 +91,16 @@ async def _create_visit_ticket(*, company_id: str, phone: str,
         "created_by": "isabella",
     }
     await db.tickets.insert_one(ticket)
+    try:
+        from services.event_bus import emit_event
+        await emit_event(
+            "ticket.opened",
+            company_id=company_id,
+            source="isabella_actions",
+            payload={},
+        )
+    except Exception:
+        pass
     log.info("[isabella_actions] visita criada ticket=%s phone=%s "
               "date=%s window=%s", ticket_id, phone, date_iso, window)
     return {"ticket_id": ticket_id, "short_id": short,

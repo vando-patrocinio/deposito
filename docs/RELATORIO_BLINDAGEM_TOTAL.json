@@ -1,5 +1,5 @@
 {
-  "started_at": "2026-06-10T23:51:33.712616+00:00",
+  "started_at": "2026-06-11T02:44:15.852782+00:00",
   "checks": [
     {
       "name": "event_signing.sign_valid",
@@ -8,7 +8,7 @@
       "detail": {
         "sig_len": 64
       },
-      "ts": "2026-06-10T23:51:33.981996+00:00"
+      "ts": "2026-06-11T02:44:16.123293+00:00"
     },
     {
       "name": "event_signing.verify_clean",
@@ -21,7 +21,7 @@
         "age_seconds": 0,
         "reason": null
       },
-      "ts": "2026-06-10T23:51:33.982038+00:00"
+      "ts": "2026-06-11T02:44:16.123338+00:00"
     },
     {
       "name": "event_signing.detects_forgery",
@@ -31,7 +31,7 @@
         "reason": "bad_signature",
         "sig_valid": false
       },
-      "ts": "2026-06-10T23:51:33.982066+00:00"
+      "ts": "2026-06-11T02:44:16.123371+00:00"
     },
     {
       "name": "event_signing.detects_replay",
@@ -42,7 +42,7 @@
         "second": false,
         "reason": "replay_detected"
       },
-      "ts": "2026-06-10T23:51:33.983270+00:00"
+      "ts": "2026-06-11T02:44:16.125813+00:00"
     },
     {
       "name": "event_signing.detects_expired",
@@ -55,17 +55,17 @@
         "age_seconds": 3600,
         "reason": "expired_or_future"
       },
-      "ts": "2026-06-10T23:51:33.983339+00:00"
+      "ts": "2026-06-11T02:44:16.125876+00:00"
     },
     {
       "name": "audit_chain.append_5_records",
       "ok": true,
       "severity": "info",
       "detail": {
-        "last_hash": "080967e69b29b16d",
-        "chain_key": "redteam-fcba1243"
+        "last_hash": "53f719066752d111",
+        "chain_key": "redteam-cf3f11d2"
       },
-      "ts": "2026-06-10T23:51:33.986763+00:00"
+      "ts": "2026-06-11T02:44:16.130124+00:00"
     },
     {
       "name": "audit_chain.verify_clean",
@@ -73,10 +73,10 @@
       "severity": "info",
       "detail": {
         "ok": true,
-        "chain_key": "redteam-fcba1243",
+        "chain_key": "redteam-cf3f11d2",
         "records_verified": 5
       },
-      "ts": "2026-06-10T23:51:33.987253+00:00"
+      "ts": "2026-06-11T02:44:16.130537+00:00"
     },
     {
       "name": "audit_chain.tamper_applied",
@@ -85,7 +85,7 @@
       "detail": {
         "modified": 1
       },
-      "ts": "2026-06-10T23:51:33.987696+00:00"
+      "ts": "2026-06-11T02:44:16.131006+00:00"
     },
     {
       "name": "audit_chain.detects_tamper",
@@ -93,21 +93,21 @@
       "severity": "info",
       "detail": {
         "ok": false,
-        "chain_key": "redteam-fcba1243",
+        "chain_key": "redteam-cf3f11d2",
         "records_verified": 3,
         "broken_at": 3,
         "reason": "payload_tampered",
         "expected_payload_hash": "023b90e2389b4168e94490e16e03883224f926670e1f1c748f10aeb79175b759",
         "stored_payload_hash": "990a0a94e4f0e6e496f33021f29d4d44f44e27d4622d114f05026a02a089694e"
       },
-      "ts": "2026-06-10T23:51:33.988048+00:00"
+      "ts": "2026-06-11T02:44:16.131382+00:00"
     },
     {
       "name": "vault.available",
       "ok": true,
       "severity": "info",
       "detail": {},
-      "ts": "2026-06-10T23:51:33.989023+00:00"
+      "ts": "2026-06-11T02:44:16.132384+00:00"
     },
     {
       "name": "vault.set_secret",
@@ -115,20 +115,20 @@
       "severity": "info",
       "detail": {
         "ok": true,
-        "name": "redteam_secret_1cf40f",
+        "name": "redteam_secret_f0c806",
         "scope": "global",
-        "updated_at": "2026-06-10T23:51:33.990038+00:00"
+        "updated_at": "2026-06-11T02:44:16.133407+00:00"
       },
-      "ts": "2026-06-10T23:51:33.991046+00:00"
+      "ts": "2026-06-11T02:44:16.137184+00:00"
     },
     {
       "name": "vault.persisted_encrypted",
       "ok": true,
       "severity": "info",
       "detail": {
-        "ciphertext_prefix": "gAAAAABqKfiF6FhecZ-yTQrm_eI4Gz"
+        "ciphertext_prefix": "gAAAAABqKiEA4rpw8RZdmOkGDaUzCt"
       },
-      "ts": "2026-06-10T23:51:33.991405+00:00"
+      "ts": "2026-06-11T02:44:16.137665+00:00"
     },
     {
       "name": "vault.get_decrypts",
@@ -137,7 +137,7 @@
       "detail": {
         "decrypted_ok": true
       },
-      "ts": "2026-06-10T23:51:33.992020+00:00"
+      "ts": "2026-06-11T02:44:16.139028+00:00"
     },
     {
       "name": "vault.rotate",
@@ -147,7 +147,7 @@
         "ok": true,
         "version": 2
       },
-      "ts": "2026-06-10T23:51:33.992841+00:00"
+      "ts": "2026-06-11T02:44:16.139929+00:00"
     },
     {
       "name": "vault.audit_trail",
@@ -160,19 +160,19 @@
           "redteam_test"
         ]
       },
-      "ts": "2026-06-10T23:51:33.993318+00:00"
+      "ts": "2026-06-11T02:44:16.140407+00:00"
     },
     {
       "name": "backup.runs_mongodump",
       "ok": true,
       "severity": "info",
       "detail": {
-        "path": "/app/backups/20260610T235134",
-        "files": 813,
-        "bytes": 358435503,
-        "elapsed_s": 1.83
+        "path": "/app/backups/20260611T024416",
+        "files": 821,
+        "bytes": 364587581,
+        "elapsed_s": 1.79
       },
-      "ts": "2026-06-10T23:51:35.903444+00:00"
+      "ts": "2026-06-11T02:44:18.079232+00:00"
     },
     {
       "name": "backup.verify_integrity_post",
@@ -180,21 +180,21 @@
       "severity": "info",
       "detail": {
         "ok": true,
-        "last_backup_ts": "2026-06-10T23:51:35.902509+00:00",
-        "path": "/app/backups/20260610T235134",
-        "files": 813,
-        "bytes": 358435503,
-        "expected_files": 813,
-        "expected_bytes": 358435503
+        "last_backup_ts": "2026-06-11T02:44:18.078329+00:00",
+        "path": "/app/backups/20260611T024416",
+        "files": 821,
+        "bytes": 364587581,
+        "expected_files": 821,
+        "expected_bytes": 364587581
       },
-      "ts": "2026-06-10T23:51:35.915754+00:00"
+      "ts": "2026-06-11T02:44:18.091807+00:00"
     },
     {
       "name": "dr.drill_completed",
       "ok": true,
       "severity": "info",
       "detail": {
-        "rto_s": 16.96,
+        "rto_s": 16.69,
         "rpo_s": 0,
         "counts": [
           {
@@ -205,8 +205,8 @@
           },
           {
             "collection": "tickets",
-            "src": 4496,
-            "dst": 4496,
+            "src": 4497,
+            "dst": 4497,
             "delta": 0
           },
           {
@@ -224,21 +224,21 @@
           {
             "collection": "experience_campaigns",
             "src": 7,
-            "dst": 7,
-            "delta": 0
+            "dst": 0,
+            "delta": -7
           }
         ]
       },
-      "ts": "2026-06-10T23:52:00.375596+00:00"
+      "ts": "2026-06-11T02:44:41.277074+00:00"
     },
     {
       "name": "dr.restore_counts_match",
       "ok": true,
       "severity": "info",
       "detail": {
-        "fidelity_pct": 100.0,
-        "total_src": 42393,
-        "total_dst": 42393,
+        "fidelity_pct": 99.983,
+        "total_src": 42394,
+        "total_dst": 42387,
         "sample_counts": [
           {
             "collection": "subscribers",
@@ -248,8 +248,8 @@
           },
           {
             "collection": "tickets",
-            "src": 4496,
-            "dst": 4496,
+            "src": 4497,
+            "dst": 4497,
             "delta": 0
           },
           {
@@ -267,12 +267,12 @@
           {
             "collection": "experience_campaigns",
             "src": 7,
-            "dst": 7,
-            "delta": 0
+            "dst": 0,
+            "delta": -7
           }
         ]
       },
-      "ts": "2026-06-10T23:52:00.375664+00:00"
+      "ts": "2026-06-11T02:44:41.277152+00:00"
     },
     {
       "name": "observability.concurrency_50",
@@ -281,22 +281,22 @@
       "detail": {
         "requests": 50,
         "success_rate": 1.0,
-        "p50_ms": 387.23600000000005,
-        "p95_ms": 415.337,
-        "throughput_rps": 117.33
+        "p50_ms": 517.728,
+        "p95_ms": 814.1389999999999,
+        "throughput_rps": 60.58
       },
-      "ts": "2026-06-10T23:52:00.822111+00:00"
+      "ts": "2026-06-11T02:44:42.122655+00:00"
     },
     {
       "name": "observability.aggregate_persists",
       "ok": true,
       "severity": "info",
       "detail": {
-        "total": 186,
+        "total": 278,
         "error_rate": 0.0,
-        "top_paths_n": 17
+        "top_paths_n": 20
       },
-      "ts": "2026-06-10T23:52:02.826156+00:00"
+      "ts": "2026-06-11T02:44:44.126825+00:00"
     },
     {
       "name": "health.all_subsystems_present",
@@ -313,16 +313,16 @@
         ],
         "overall": "ONLINE"
       },
-      "ts": "2026-06-10T23:52:02.831762+00:00"
+      "ts": "2026-06-11T02:44:44.132124+00:00"
     },
     {
       "name": "health.mongo_online",
       "ok": true,
       "severity": "info",
       "detail": {
-        "latency_ms": 1.5
+        "latency_ms": 1.4
       },
-      "ts": "2026-06-10T23:52:02.831795+00:00"
+      "ts": "2026-06-11T02:44:44.132158+00:00"
     },
     {
       "name": "health.vault_online",
@@ -332,7 +332,7 @@
         "secrets": 12,
         "fernet": true
       },
-      "ts": "2026-06-10T23:52:02.831816+00:00"
+      "ts": "2026-06-11T02:44:44.132174+00:00"
     },
     {
       "name": "health.chain_no_broken",
@@ -342,7 +342,7 @@
         "chains_total": 1,
         "chains_broken": 0
       },
-      "ts": "2026-06-10T23:52:02.831832+00:00"
+      "ts": "2026-06-11T02:44:44.132187+00:00"
     },
     {
       "name": "rbac.no_token_rejected",
@@ -351,7 +351,7 @@
       "detail": {
         "http": 401
       },
-      "ts": "2026-06-10T23:52:02.854411+00:00"
+      "ts": "2026-06-11T02:44:44.154715+00:00"
     },
     {
       "name": "rbac.super_admin_can_backup",
@@ -360,7 +360,7 @@
       "detail": {
         "http": 200
       },
-      "ts": "2026-06-10T23:52:07.741468+00:00"
+      "ts": "2026-06-11T02:44:46.357460+00:00"
     },
     {
       "name": "tribunal.dossier_complete",
@@ -371,19 +371,19 @@
         "missing": [],
         "correctness": "no_outcome_yet"
       },
-      "ts": "2026-06-10T23:52:08.202692+00:00"
+      "ts": "2026-06-11T02:44:46.361962+00:00"
     }
   ],
   "metrics": {
-    "backup_elapsed_s": 1.83,
-    "backup_bytes": 358435503,
-    "backup_files": 813,
-    "rto_seconds": 16.96,
+    "backup_elapsed_s": 1.79,
+    "backup_bytes": 364587581,
+    "backup_files": 821,
+    "rto_seconds": 16.69,
     "rpo_seconds": 0,
-    "concurrency_p50_ms": 387.23600000000005,
-    "concurrency_p95_ms": 415.337,
-    "concurrency_rps": 117.33,
-    "mongo_latency_ms": 1.5,
+    "concurrency_p50_ms": 517.728,
+    "concurrency_p95_ms": 814.1389999999999,
+    "concurrency_rps": 60.58,
+    "mongo_latency_ms": 1.4,
     "health_overall": "ONLINE"
   },
   "grades": {

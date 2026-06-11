@@ -393,6 +393,16 @@ async def _exec_assign_technician(cid: str,
             "assign_reason": (args.get("reason") or "")[:200],
             "updated_at": now_iso,
         }})
+    try:
+        from services.event_bus import emit_event
+        await emit_event(
+            "ticket.updated",
+            company_id=(tech or {}).get("company_id"),
+            source="agent_tools",
+            payload={},
+        )
+    except Exception:
+        pass
     return {"ticket_id": ticket_id, "technician_id": tech_id,
              "technician_name": tech.get("name"),
              "previous_assignee": ticket.get("assigned_collaborator_id"),

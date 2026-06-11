@@ -9,8 +9,8 @@ NERVOUS_METADATA = {
     "owner": "ai-team",
     "domain": "isabella",
     "criticality": "high",
-    "emits_events": False,
-    "event_types": [],
+    "emits_events": True,
+    "event_types": ["subscriber.updated"],
     "company_id_required": True,
 }
 
@@ -165,6 +165,16 @@ async def run_backfill(
                 await db.subscribers.update_one(
                     {"id": sid, "company_id": company_id},
                     {"$set": upd})
+                try:
+                    from services.event_bus import emit_event
+                    await emit_event(
+                        "subscriber.updated",
+                        company_id=company_id,
+                        source="ai_center_data_quality",
+                        payload={},
+                    )
+                except Exception:
+                    pass
                 updated += 1
         after = await dq.full_report(company_id)
         return {

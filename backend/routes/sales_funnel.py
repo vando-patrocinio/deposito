@@ -22,8 +22,8 @@ NERVOUS_METADATA = {
     "owner": "vendas-team",
     "domain": "comercial",
     "criticality": "high",
-    "emits_events": False,
-    "event_types": [],
+    "emits_events": True,
+    "event_types": ["ticket.opened"],
     "company_id_required": True,
 }
 
@@ -320,6 +320,16 @@ async def convert_lead_to_ticket(phone: str, payload: ConvertIn,
         "created_at": now,
     }
     await db.tickets.insert_one(dict(ticket))
+    try:
+        from services.event_bus import emit_event
+        await emit_event(
+            "ticket.opened",
+            company_id=cid,
+            source="sales_funnel",
+            payload={},
+        )
+    except Exception:
+        pass
 
     # Sprint 19 — emit sale.created + ticket.opened
     try:

@@ -2198,6 +2198,16 @@ async def _maybe_auto_resched_degraded(ticket_id: str, company_id: str) -> None:
         "created_at": now_iso(),
     }
     await db.tickets.insert_one(dict(new_doc))
+    try:
+        from services.event_bus import emit_event
+        await emit_event(
+            "ticket.opened",
+            company_id=(last or {}).get("company_id"),
+            source="lousa",
+            payload={},
+        )
+    except Exception:
+        pass
     await _log_ticket_action(
         ticket_id=new_id, action="auto_resched_degraded",
         actor_id="system", actor_name="Sistema (auto)",
@@ -2303,6 +2313,16 @@ async def _capture_signal_snapshot(ticket_id: str, company_id: str,
             {"id": ticket_id},
             {"$set": {key: snap, key_at: now_iso()}},
         )
+        try:
+            from services.event_bus import emit_event
+            await emit_event(
+                "ticket.updated",
+                company_id=(t or {}).get("company_id"),
+                source="lousa",
+                payload={},
+            )
+        except Exception:
+            pass
         return snap
     except Exception as e:
         logger.info("[lousa.quality] snapshot %s falhou: %s", moment, e)
@@ -2435,6 +2455,16 @@ async def delete_ticket(ticket_id: str, user: dict = Depends(require_role("gesto
     if t.get("status") == "aberta":
         raise HTTPException(409, "Serviço em execução pelo técnico — não pode ser removido. Encerre antes via gestão.")
     res = await db.tickets.delete_one({"id": ticket_id})
+    try:
+        from services.event_bus import emit_event
+        await emit_event(
+            "ticket.closed",
+            company_id=(t or {}).get("company_id"),
+            source="lousa",
+            payload={},
+        )
+    except Exception:
+        pass
     if res.deleted_count == 0:
         raise HTTPException(404, "Nota não encontrada")
     return {"ok": True}
@@ -2766,6 +2796,16 @@ async def _revert_ticket_side_effects(ticket: dict, actor: dict) -> Dict[str, An
                     "ports.$.connected_via_ticket": "",
                 }},
             )
+            try:
+                from services.event_bus import emit_event
+                await emit_event(
+                    "cto.updated",
+                    company_id=(cto_doc or {}).get("company_id"),
+                    source="lousa",
+                    payload={},
+                )
+            except Exception:
+                pass
             summary["cto_port_freed"] = {"cto_id": cto_id, "port": int(cto_port)}
             try:
                 from routes.cto_ports_base import sync_port_from_cto
@@ -3390,6 +3430,16 @@ async def lousa_public_create_repair_from_ai(payload: PublicCreateRepairIn):
         "created_at": now_iso(),
     }
     await db.tickets.insert_one(dict(ticket))
+    try:
+        from services.event_bus import emit_event
+        await emit_event(
+            "ticket.opened",
+            company_id=(sub or {}).get("company_id"),
+            source="lousa",
+            payload={},
+        )
+    except Exception:
+        pass
     # Marca conv com o ticket criado
     await db.wa_conversations.update_one(
         {"company_id": cid, "phone": payload.phone},
@@ -3462,6 +3512,16 @@ async def public_open_ticket(ticket_id: str, payload: PublicOpenIn,
             "whatsapp_status": "enviado", "whatsapp_last_message": msg,
         }},
     )
+    try:
+        from services.event_bus import emit_event
+        await emit_event(
+            "ticket.updated",
+            company_id=(t or {}).get("company_id"),
+            source="lousa",
+            payload={},
+        )
+    except Exception:
+        pass
     coll = await db.collaborators.find_one({"id": cid}, {"_id": 0, "name": 1, "company_id": 1})
     await _log_ticket_action(
         ticket_id=ticket_id, action="aberta",
@@ -3721,6 +3781,16 @@ async def public_finalize_ticket(ticket_id: str, payload: PublicFinalizeIn,
                     "ai_sn_photo_queued_at": now_iso(),
                 }},
             )
+            try:
+                from services.event_bus import emit_event
+                await emit_event(
+                    "ticket.updated",
+                    company_id=(onu or {}).get("company_id"),
+                    source="lousa",
+                    payload={},
+                )
+            except Exception:
+                pass
             # Cria entrada pendente no estoque do técnico — fica como
             # `pending_ai_review` (ou `bloqueado_defeito` quando o técnico
             # marcou defeito). O worker assíncrono preenche SN/MAC depois.
@@ -4406,6 +4476,16 @@ async def open_ticket(ticket_id: str, user: dict = Depends(get_current_user)):
             "whatsapp_last_message": msg,
         }},
     )
+    try:
+        from services.event_bus import emit_event
+        await emit_event(
+            "ticket.updated",
+            company_id=(t or {}).get("company_id"),
+            source="lousa",
+            payload={},
+        )
+    except Exception:
+        pass
     return await db.tickets.find_one({"id": ticket_id}, {"_id": 0})
 
 
@@ -4481,6 +4561,16 @@ async def finalize_ticket(ticket_id: str, payload: FinalizeIn, user: dict = Depe
             "signed_receipt": cd_dump.get("signed_receipt"),
         }},
     )
+    try:
+        from services.event_bus import emit_event
+        await emit_event(
+            "ticket.updated",
+            company_id=(t or {}).get("company_id"),
+            source="lousa",
+            payload={},
+        )
+    except Exception:
+        pass
     try:
         from services.event_bus import emit_event
         await emit_event(
@@ -4821,6 +4911,16 @@ async def admin_close_ticket(ticket_id: str, payload: AdminCloseIn,
             # Histórico: quantas vezes foi reagendada
             update["reschedule_count"] = int(t.get("reschedule_count") or 0) + 1
     await db.tickets.update_one({"id": ticket_id}, {"$set": update})
+    try:
+        from services.event_bus import emit_event
+        await emit_event(
+            "ticket.updated",
+            company_id=(t or {}).get("company_id"),
+            source="lousa",
+            payload={},
+        )
+    except Exception:
+        pass
     await _log_ticket_action(
         ticket_id=ticket_id, action=payload.action,
         actor_id=user["id"], actor_name=user.get("name", "Gestor"),
@@ -5067,6 +5167,16 @@ async def edit_ticket(ticket_id: str, payload: TicketEditIn,
         return t
 
     await db.tickets.update_one({"id": ticket_id}, {"$set": update})
+    try:
+        from services.event_bus import emit_event
+        await emit_event(
+            "ticket.updated",
+            company_id=(t or {}).get("company_id"),
+            source="lousa",
+            payload={},
+        )
+    except Exception:
+        pass
     await _log_ticket_action(
         ticket_id=ticket_id, action="editada",
         actor_id=user["id"], actor_name=user.get("name", "Gestor"),
@@ -6236,6 +6346,16 @@ async def geofence_ping(payload: GeofencePingIn):
                 {"$set": {"geofence_state.outside_since": None,
                             "geofence_state.last_distance_m": int(distance_m)}},
             )
+            try:
+                from services.event_bus import emit_event
+                await emit_event(
+                    "ticket.updated",
+                    company_id=(open_ticket or {}).get("company_id"),
+                    source="lousa",
+                    payload={},
+                )
+            except Exception:
+                pass
         return {"ok": True, "alert": False, "distance_m": int(distance_m)}
 
     # FORA do raio
@@ -6247,6 +6367,16 @@ async def geofence_ping(payload: GeofencePingIn):
                         "geofence_state.last_distance_m": int(distance_m),
                         "geofence_state.alert_fired": False}},
         )
+        try:
+            from services.event_bus import emit_event
+            await emit_event(
+                "ticket.updated",
+                company_id=(open_ticket or {}).get("company_id"),
+                source="lousa",
+                payload={},
+            )
+        except Exception:
+            pass
         return {"ok": True, "alert": False, "distance_m": int(distance_m),
                 "outside_since": now.isoformat()}
 
@@ -7301,6 +7431,16 @@ async def lousa_bulk_action(payload: BulkActionIn,
             update["scheduled_time"] = sched
             update["grid_slot"] = None
         await db.tickets.update_one({"id": tid}, {"$set": update})
+        try:
+            from services.event_bus import emit_event
+            await emit_event(
+                "ticket.updated",
+                company_id=(t or {}).get("company_id"),
+                source="lousa",
+                payload={},
+            )
+        except Exception:
+            pass
         await _log_ticket_action(
             ticket_id=tid, action=payload.action,
             actor_id=user["id"], actor_name=user.get("name", "Gestor"),
@@ -7947,6 +8087,16 @@ async def resolve_manager_callback(
                 "needs_manager_action": False,
             }},
         )
+        try:
+            from services.event_bus import emit_event
+            await emit_event(
+                "ticket.updated",
+                company_id=(t or {}).get("company_id"),
+                source="lousa",
+                payload={},
+            )
+        except Exception:
+            pass
     elif action == "resolved_reschedule":
         new_time = payload.get("new_scheduled_time")
         if not new_time:
@@ -7962,6 +8112,16 @@ async def resolve_manager_callback(
                 "rescheduled_reason": obs,
             }},
         )
+        try:
+            from services.event_bus import emit_event
+            await emit_event(
+                "ticket.updated",
+                company_id=(t or {}).get("company_id"),
+                source="lousa",
+                payload={},
+            )
+        except Exception:
+            pass
     elif action == "resolved_reassign":
         new_collab = payload.get("new_collaborator_id")
         if not new_collab:
@@ -7983,6 +8143,16 @@ async def resolve_manager_callback(
                 "reassign_reason": obs,
             }},
         )
+        try:
+            from services.event_bus import emit_event
+            await emit_event(
+                "ticket.updated",
+                company_id=(collab or {}).get("company_id"),
+                source="lousa",
+                payload={},
+            )
+        except Exception:
+            pass
 
     await db.lousa_manager_callback_requests.update_one(
         {"id": req_id}, {"$set": update})
@@ -7994,6 +8164,16 @@ async def resolve_manager_callback(
             "observacao": obs,
         }}},
     )
+    try:
+        from services.event_bus import emit_event
+        await emit_event(
+            "ticket.updated",
+            company_id=(collab or {}).get("company_id"),
+            source="lousa",
+            payload={},
+        )
+    except Exception:
+        pass
     return {"ok": True, "status": "resolved", "action": action,
             "ticket_id": ticket_id}
 
@@ -8062,6 +8242,16 @@ async def release_back_manager_callback(
         set_fields["rescheduled_reason"] = obs
 
     await db.tickets.update_one({"id": ticket_id}, {"$set": set_fields})
+    try:
+        from services.event_bus import emit_event
+        await emit_event(
+            "ticket.updated",
+            company_id=(collab or {}).get("company_id"),
+            source="lousa",
+            payload={},
+        )
+    except Exception:
+        pass
     await db.tickets.update_one(
         {"id": ticket_id},
         {"$push": {"manager_callback_log": {
@@ -8072,6 +8262,16 @@ async def release_back_manager_callback(
             "new_scheduled_time": new_time or None,
         }}},
     )
+    try:
+        from services.event_bus import emit_event
+        await emit_event(
+            "ticket.updated",
+            company_id=(collab or {}).get("company_id"),
+            source="lousa",
+            payload={},
+        )
+    except Exception:
+        pass
     await db.lousa_manager_callback_requests.update_one(
         {"id": req_id},
         {"$set": {
@@ -8286,6 +8486,16 @@ async def save_ticket_ipv6_test(ticket_id: str, payload: TicketIpv6TestIn,
         {"id": ticket_id},
         {"$set": {"completion_data": cd, "updated_at": now_iso()}},
     )
+    try:
+        from services.event_bus import emit_event
+        await emit_event(
+            "ticket.updated",
+            company_id=(t or {}).get("company_id"),
+            source="lousa",
+            payload={},
+        )
+    except Exception:
+        pass
     return {"ok": True, "ipv6_inconsistente": inconsistent,
              "ipv6_test": ipv6_test_doc}
 
@@ -8329,6 +8539,16 @@ async def save_ticket_ping_auto(ticket_id: str, payload: TicketPingAutoIn,
         {"id": ticket_id},
         {"$set": {"completion_data": cd, "updated_at": now_iso()}},
     )
+    try:
+        from services.event_bus import emit_event
+        await emit_event(
+            "ticket.updated",
+            company_id=(t or {}).get("company_id"),
+            source="lousa",
+            payload={},
+        )
+    except Exception:
+        pass
     return {"ok": True, "ping_auto": ping_doc,
              "ping_inconsistente": payload.loss_pct > 30}
 

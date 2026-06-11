@@ -349,6 +349,16 @@ async def create_invoice(payload: InvoiceIn,
         "created_by": user.get("email"),
     }
     await db.subscriber_invoices.insert_one(dict(inv))
+    try:
+        from services.event_bus import emit_event
+        await emit_event(
+            "invoice.created",
+            company_id=(sub or {}).get("company_id"),
+            source="billing",
+            payload={},
+        )
+    except Exception:
+        pass
     # Sprint 19 — emit overdue se já passou da data
     try:
         from services.event_emitters import emit_business
@@ -742,6 +752,16 @@ async def _evaluate_dunning_for_company(cid: str,
                           "suspended_at": now_iso(),
                           "suspended_reason": "billing_dunning_d10"}},
             )
+            try:
+                from services.event_bus import emit_event
+                await emit_event(
+                    "subscriber.bulk_updated",
+                    company_id=(existing or {}).get("company_id"),
+                    source="billing",
+                    payload={},
+                )
+            except Exception:
+                pass
         # Status de invoice → overdue (se ainda open)
         for inv in invoices:
             due = _parse_date(inv.get("due_date"))

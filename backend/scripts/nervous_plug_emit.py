@@ -130,12 +130,34 @@ IMPORT_EMIT_RX = re.compile(r"from\s+services\.event_bus\s+import\s+emit_event")
 
 
 def _detect_company_id_var(source: str, pos: int) -> str | None:
-    """Procura por uma variável `company_id`/`cid` no escopo próximo à
-    posição da chamada DB. Retorna o nome da variável ou None."""
-    # Pega 30 linhas antes da posição
+    """Procura por uma fonte SEGURA de company_id no escopo próximo.
+    Retorna a EXPRESSÃO (não só nome) ou None se não há fonte segura.
+
+    Prioridade:
+      1. current_user.company_id (rota autenticada)
+      2. <var>.company_id quando <var> = await db.X.find_one(...)
+      3. Variável local `company_id`, `cid`, `tenant_id`
+    """
     upto = source[:pos]
-    last_lines = upto.splitlines()[-30:]
+    last_lines = upto.splitlines()[-50:]
     block = "\n".join(last_lines)
+
+    # 1) Rota com current_user — mais seguro
+    if re.search(r"\bcurrent_user\.company_id\b", block):
+        return "current_user.company_id"
+
+    # 2) Entity já lida com company_id (most common)
+    ent_rx = re.compile(
+        r"(\w+)\s*=\s*await\s+db\.\w+\.(?:find_one|find_one_and_update)\(")
+    matches = list(ent_rx.finditer(block))
+    if matches:
+        # Pega o mais próximo (último antes do pos)
+        var = matches[-1].group(1)
+        # Filtra variáveis genéricas que sabemos não terem company_id
+        if var not in {"result", "res", "doc"}:
+            return f'({var} or {{}}).get("company_id")'
+
+    # 3) Variável local company_id / cid / tenant_id
     for cand in ("company_id", "cid", "tenant_id"):
         if re.search(rf"\b{cand}\s*=|def\s+\w+\([^)]*{cand}", block):
             return cand

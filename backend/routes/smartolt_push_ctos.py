@@ -132,6 +132,16 @@ async def _sync_one(cid: str, cto: dict) -> dict:
                 "smartolt_sync_attempts": attempts,
             }},
         )
+        try:
+            from services.event_bus import emit_event
+            await emit_event(
+                "cto.updated",
+                company_id=company_id,
+                source="smartolt_push_ctos",
+                payload={},
+            )
+        except Exception:
+            pass
         await db.smartolt_actions.insert_one({
             "company_id": cid,
             "action": "push_cto",

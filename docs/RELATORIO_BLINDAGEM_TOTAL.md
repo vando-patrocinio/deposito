@@ -1,6 +1,6 @@
 # 🛡️ RELATÓRIO EXECUTIVO — BLINDAGEM TOTAL SMARTPROV
 
-**Data**: 2026-06-10T23:51:33.712616+00:00
+**Data**: 2026-06-11T02:44:15.852782+00:00
 **Auditor**: Red Team Shield (Zero Mocks)
 **Política**: 100% MongoDB real + mongodump real + endpoints HTTP autenticados.
 
@@ -31,15 +31,15 @@
 
 | Métrica | Valor |
 |---|---|
-| backup_elapsed_s | `1.83` |
-| backup_bytes | `358435503` |
-| backup_files | `813` |
-| rto_seconds | `16.96` |
+| backup_elapsed_s | `1.79` |
+| backup_bytes | `364587581` |
+| backup_files | `821` |
+| rto_seconds | `16.69` |
 | rpo_seconds | `0` |
-| concurrency_p50_ms | `387.23600000000005` |
-| concurrency_p95_ms | `415.337` |
-| concurrency_rps | `117.33` |
-| mongo_latency_ms | `1.5` |
+| concurrency_p50_ms | `517.728` |
+| concurrency_p95_ms | `814.1389999999999` |
+| concurrency_rps | `60.58` |
+| mongo_latency_ms | `1.4` |
 | health_overall | `ONLINE` |
 
 ## ✅/❌ CHECKS DETALHADOS
@@ -51,24 +51,24 @@
 - ✅ `event_signing.detects_forgery` (info) — {"reason": "bad_signature", "sig_valid": false}
 - ✅ `event_signing.detects_replay` (info) — {"first": true, "second": false, "reason": "replay_detected"}
 - ✅ `event_signing.detects_expired` (info) — {"ok": false, "signature_valid": true, "ts_valid": false, "age_seconds": 3600, "reason": "expired_or_future"}
-- ✅ `audit_chain.append_5_records` (info) — {"last_hash": "080967e69b29b16d", "chain_key": "redteam-fcba1243"}
-- ✅ `audit_chain.verify_clean` (info) — {"ok": true, "chain_key": "redteam-fcba1243", "records_verified": 5}
+- ✅ `audit_chain.append_5_records` (info) — {"last_hash": "53f719066752d111", "chain_key": "redteam-cf3f11d2"}
+- ✅ `audit_chain.verify_clean` (info) — {"ok": true, "chain_key": "redteam-cf3f11d2", "records_verified": 5}
 - ✅ `audit_chain.tamper_applied` (info) — {"modified": 1}
-- ✅ `audit_chain.detects_tamper` (info) — {"ok": false, "chain_key": "redteam-fcba1243", "records_verified": 3, "broken_at": 3, "reason": "payload_tampered", "expected_payload_hash": "023b90e2389b4168e94490e16e03883224f926670e1f1c748f10aeb791
+- ✅ `audit_chain.detects_tamper` (info) — {"ok": false, "chain_key": "redteam-cf3f11d2", "records_verified": 3, "broken_at": 3, "reason": "payload_tampered", "expected_payload_hash": "023b90e2389b4168e94490e16e03883224f926670e1f1c748f10aeb791
 - ✅ `vault.available` (info) — {}
-- ✅ `vault.set_secret` (info) — {"ok": true, "name": "redteam_secret_1cf40f", "scope": "global", "updated_at": "2026-06-10T23:51:33.990038+00:00"}
-- ✅ `vault.persisted_encrypted` (info) — {"ciphertext_prefix": "gAAAAABqKfiF6FhecZ-yTQrm_eI4Gz"}
+- ✅ `vault.set_secret` (info) — {"ok": true, "name": "redteam_secret_f0c806", "scope": "global", "updated_at": "2026-06-11T02:44:16.133407+00:00"}
+- ✅ `vault.persisted_encrypted` (info) — {"ciphertext_prefix": "gAAAAABqKiEA4rpw8RZdmOkGDaUzCt"}
 - ✅ `vault.get_decrypts` (info) — {"decrypted_ok": true}
 - ✅ `vault.rotate` (info) — {"ok": true, "version": 2}
 - ✅ `vault.audit_trail` (info) — {"entries": 2, "purposes": ["rotation", "redteam_test"]}
-- ✅ `backup.runs_mongodump` (info) — {"path": "/app/backups/20260610T235134", "files": 813, "bytes": 358435503, "elapsed_s": 1.83}
-- ✅ `backup.verify_integrity_post` (info) — {"ok": true, "last_backup_ts": "2026-06-10T23:51:35.902509+00:00", "path": "/app/backups/20260610T235134", "files": 813, "bytes": 358435503, "expected_files": 813, "expected_bytes": 358435503}
-- ✅ `dr.drill_completed` (info) — {"rto_s": 16.96, "rpo_s": 0, "counts": [{"collection": "subscribers", "src": 26842, "dst": 26842, "delta": 0}, {"collection": "tickets", "src": 4496, "dst": 4496, "delta": 0}, {"collection": "subscrib
-- ✅ `dr.restore_counts_match` (info) — {"fidelity_pct": 100.0, "total_src": 42393, "total_dst": 42393, "sample_counts": [{"collection": "subscribers", "src": 26842, "dst": 26842, "delta": 0}, {"collection": "tickets", "src": 4496, "dst": 4
-- ✅ `observability.concurrency_50` (info) — {"requests": 50, "success_rate": 1.0, "p50_ms": 387.23600000000005, "p95_ms": 415.337, "throughput_rps": 117.33}
-- ✅ `observability.aggregate_persists` (info) — {"total": 186, "error_rate": 0.0, "top_paths_n": 17}
+- ✅ `backup.runs_mongodump` (info) — {"path": "/app/backups/20260611T024416", "files": 821, "bytes": 364587581, "elapsed_s": 1.79}
+- ✅ `backup.verify_integrity_post` (info) — {"ok": true, "last_backup_ts": "2026-06-11T02:44:18.078329+00:00", "path": "/app/backups/20260611T024416", "files": 821, "bytes": 364587581, "expected_files": 821, "expected_bytes": 364587581}
+- ✅ `dr.drill_completed` (info) — {"rto_s": 16.69, "rpo_s": 0, "counts": [{"collection": "subscribers", "src": 26842, "dst": 26842, "delta": 0}, {"collection": "tickets", "src": 4497, "dst": 4497, "delta": 0}, {"collection": "subscrib
+- ✅ `dr.restore_counts_match` (info) — {"fidelity_pct": 99.983, "total_src": 42394, "total_dst": 42387, "sample_counts": [{"collection": "subscribers", "src": 26842, "dst": 26842, "delta": 0}, {"collection": "tickets", "src": 4497, "dst": 
+- ✅ `observability.concurrency_50` (info) — {"requests": 50, "success_rate": 1.0, "p50_ms": 517.728, "p95_ms": 814.1389999999999, "throughput_rps": 60.58}
+- ✅ `observability.aggregate_persists` (info) — {"total": 278, "error_rate": 0.0, "top_paths_n": 20}
 - ✅ `health.all_subsystems_present` (info) — {"present": ["mongo", "vault", "workers", "collections", "audit_chain", "isabella_data"], "overall": "ONLINE"}
-- ✅ `health.mongo_online` (info) — {"latency_ms": 1.5}
+- ✅ `health.mongo_online` (info) — {"latency_ms": 1.4}
 - ✅ `health.vault_online` (info) — {"secrets": 12, "fernet": true}
 - ✅ `health.chain_no_broken` (info) — {"chains_total": 1, "chains_broken": 0}
 - ✅ `rbac.no_token_rejected` (info) — {"http": 401}

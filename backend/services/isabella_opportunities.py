@@ -138,6 +138,16 @@ async def upsert_opportunity(*,
                 "expires_at": _iso(expires),
                 "source": source,
             }})
+        try:
+            from services.event_bus import emit_event
+            await emit_event(
+                "opportunity.updated",
+                company_id=(existing or {}).get("company_id"),
+                source="isabella_opportunities",
+                payload={},
+            )
+        except Exception:
+            pass
         return {**existing,
                 "score": round(float(score), 2),
                 "probability": round(float(probability), 4),

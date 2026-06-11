@@ -18,8 +18,8 @@ NERVOUS_METADATA = {
     "owner": "infra-team",
     "domain": "rede",
     "criticality": "high",
-    "emits_events": False,
-    "event_types": [],
+    "emits_events": True,
+    "event_types": ["subscriber.updated"],
     "company_id_required": True,
 }
 
@@ -116,6 +116,16 @@ async def _detect_and_apply_for_company(cid: str) -> Dict[str, Any]:
                 "current_vlan_pon": pon,
             }},
         )
+        try:
+            from services.event_bus import emit_event
+            await emit_event(
+                "subscriber.updated",
+                company_id=(sub or {}).get("company_id"),
+                source="smartolt_vlan_sync",
+                payload={},
+            )
+        except Exception:
+            pass
         summary["updated"] += 1
 
         # ---- Histórico -------------------------------------------------

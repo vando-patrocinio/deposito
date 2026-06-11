@@ -191,6 +191,16 @@ async def _send_fallback_and_log(*, cid: str, phone: str,
             )
         except Exception:
             pass
+        try:
+            from services.event_bus import emit_event
+            await emit_event(
+                "wa.message.persisted",
+                company_id=cid,
+                source="isabella_queue",
+                payload={},
+            )
+        except Exception:
+            pass
         await _bump("llm_timeout_count")
         await _bump("twilio_send_count")
     except Exception as e:

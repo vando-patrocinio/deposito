@@ -965,6 +965,16 @@ async def import_csv(file: UploadFile = File(...),
                 await db.subscribers.update_one(
                     {"company_id": cid, "id": existing["id"]},
                     {"$set": sub_payload})
+                try:
+                    from services.event_bus import emit_event
+                    await emit_event(
+                        "subscriber.updated",
+                        company_id=(existing or {}).get("company_id"),
+                        source="subscribers",
+                        payload={},
+                    )
+                except Exception:
+                    pass
                 if phones_in:
                     await _replace_phones(cid, existing["id"], phones_in)
                 if address_payload:
@@ -1288,6 +1298,16 @@ async def bulk_assign_plan(
         "updated_at": now_iso(),
     }
     result = await db.subscribers.update_many(query, {"$set": update_set})
+    try:
+        from services.event_bus import emit_event
+        await emit_event(
+            "subscriber.bulk_updated",
+            company_id=(plan or {}).get("company_id"),
+            source="subscribers",
+            payload={},
+        )
+    except Exception:
+        pass
 
     logger.info("[bulk-assign-plan] cid=%s plan=%s matched=%s modified=%s",
                 cid, plan_id, result.matched_count, result.modified_count)

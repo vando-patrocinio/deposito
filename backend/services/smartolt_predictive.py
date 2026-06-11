@@ -279,6 +279,16 @@ async def auto_create_preventive_tickets(
             )
         except Exception:
             pass
+        try:
+            from services.event_bus import emit_event
+            await emit_event(
+                "ticket.opened",
+                company_id=company_id,
+                source="smartolt_predictive",
+                payload={},
+            )
+        except Exception:
+            pass
         created.append({"ticket_id": tk_id, "zone": c["zone"],
                           "severity": c["severity"]})
 

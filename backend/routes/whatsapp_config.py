@@ -20,8 +20,8 @@ NERVOUS_METADATA = {
     "owner": "isabella-team",
     "domain": "whatsapp",
     "criticality": "high",
-    "emits_events": False,
-    "event_types": [],
+    "emits_events": True,
+    "event_types": ["wa.message.persisted"],
     "company_id_required": True,
 }
 
@@ -330,6 +330,16 @@ async def send_quick_image(
         "auto_reply": False,
         "delivery_status": "sent",
     })
+    try:
+        from services.event_bus import emit_event
+        await emit_event(
+            "wa.message.persisted",
+            company_id=cid,
+            source="whatsapp_config",
+            payload={},
+        )
+    except Exception:
+        pass
     return {"ok": True, "message_id": msg_id}
 
 

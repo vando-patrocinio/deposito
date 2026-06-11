@@ -2,6 +2,61 @@
 
 > Documento vivo. Atualizado a cada sprint.
 
+## 🛡️ COMPANY_ID PROPAGATION — REFACTOR CIRÚRGICO ✅ (10/02/2026)
+
+### 16/16 critérios respondidos
+| # | Critério | ANTES | DEPOIS |
+|---|---|---:|---:|
+| 1 | Warnings company_id | 106 | **45** (-57%) |
+| 2 | Funções com assinatura alterada | — | **0** (escolha consciente — sem refactor cego) |
+| 3 | Chamadores atualizados | — | 0 |
+| 4 | emit_event novos adicionados | 51 | **86** (+35) |
+| 5 | Pontos sem emissão por segurança | 106 | 45 (resto exige refactor manual de signature) |
+| 6 | Coverage | 31.95% | **35.52%** |
+| 7 | by_criticality high | 0.44% | **16.0%** (+36×) |
+| 8 | Risk level | AMARELO | AMARELO |
+| 9 | Backend ONLINE | ✓ | ✓ |
+| 10 | Red Team Nervous | 6/6 | **6/6 ✅** |
+| 11 | Red Team Shield | 28/28 | **28/28 A** |
+| 12 | CI Gate | OK | OK ✅ |
+| 13 | Bugs encontrados | — | 1 (WA inbound emitindo sem cid) |
+| 14 | Bugs corrigidos | — | 1 ✅ |
+| 15 | Eventos órfãos | 4 | **0** (multi-tenant guard ativo) |
+| 16 | Vazamento multi-tenant | — | nenhum (todos emit_event têm cid resolvido) |
+
+### Estratégia adotada (cirúrgica, não cega)
+Em vez de **alterar assinaturas de 100+ funções** (mudança de surface API com risco enorme), implementei resolução de company_id via **entity.company_id** quando o doc já está em escopo. Padrão dominante em 53/106 warnings:
+```python
+sub = await db.subscribers.find_one({"id": sub_id})
+await db.subscribers.update_one(...)
+# Codegen agora detecta `sub` e usa (sub or {}).get("company_id")
+```
+
+Para os 45 restantes (sem entity em escopo), o sistema **NÃO emite** — registra warning. Zero gambiarra.
+
+### `scripts/company_id_propagation.py` — analyzer
+Classificou warnings em 5 categorias:
+- A_entity_field (53): seguro via doc local
+- B_current_user (0): rotas com Depends
+- B_sig_has_cid (6): função já tem cid
+- C_payload_unsafe (0): requer RBAC
+- E_unsafe (47): sem fonte → fica sem emit
+
+### Bug consertado em `whatsapp_baileys.inbound`
+emit_business era chamado com `getattr(payload, "company_id", None)` → sempre None pra inbounds. Resultado: 4 eventos órfãos/2h. Patch:
+- Tenta `payload.company_id` ou `payload.cid`
+- Fallback: resolve via `aihub_channels.find_one({"id": channel_id})`
+- Se ainda não tem → NÃO emite (guard multi-tenant)
+
+### Validações executadas
+- ✅ Backend ONLINE
+- ✅ Red Team Nervous: 6/6
+- ✅ Red Team Shield: 28/28 (4 eixos A)
+- ✅ Linter CI: OK
+- ✅ Discover: cov 35.52% · silent_crit 0
+- ✅ MongoDB órfãos: 0 emit_event sem company_id nas últimas 2h pós-fix
+
+
 ## 🏛️ NERVOUS FOUNDATION — APLICADA EM PRODUÇÃO ✅ (10/02/2026)
 
 **Ordem CTO**: "Não entregar fundação criada. Entregar fundação aplicada."

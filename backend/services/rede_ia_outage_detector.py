@@ -17,8 +17,8 @@ NERVOUS_METADATA = {
     "owner": "infra-team",
     "domain": "rede",
     "criticality": "high",
-    "emits_events": False,
-    "event_types": [],
+    "emits_events": True,
+    "event_types": ["ticket.updated"],
     "company_id_required": True,
 }
 
@@ -89,6 +89,16 @@ async def _detect_company(company_id: str) -> Dict[str, Any]:
                     "last_check_at": now.isoformat(),
                 }},
             )
+            try:
+                from services.event_bus import emit_event
+                await emit_event(
+                    "ticket.updated",
+                    company_id=company_id,
+                    source="rede_ia_outage_detector",
+                    payload={},
+                )
+            except Exception:
+                pass
             continue
 
         # Verifica cooldown (último alerta resolvido recentemente)

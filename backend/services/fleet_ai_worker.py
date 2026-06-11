@@ -11,8 +11,8 @@ NERVOUS_METADATA = {
     "owner": "ops-team",
     "domain": "operacoes",
     "criticality": "high",
-    "emits_events": False,
-    "event_types": [],
+    "emits_events": True,
+    "event_types": ["ticket.opened"],
     "company_id_required": True,
 }
 
@@ -255,6 +255,16 @@ async def _create_fleet_alert_ticket(inspection_id: str, result: dict) -> None:
         "manual_close_only": True,
     }
     await db.tickets.insert_one(ticket)
+    try:
+        from services.event_bus import emit_event
+        await emit_event(
+            "ticket.opened",
+            company_id=(veh or {}).get("company_id"),
+            source="fleet_ai_worker",
+            payload={},
+        )
+    except Exception:
+        pass
 
 
 # =============================================================================

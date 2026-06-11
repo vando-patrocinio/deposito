@@ -212,6 +212,16 @@ async def _send_followup_via_twilio(company_id: str, phone: str,
             )
         except Exception:
             pass
+        try:
+            from services.event_bus import emit_event
+            await emit_event(
+                "wa.message.persisted",
+                company_id=company_id,
+                source="isabella_followup",
+                payload={},
+            )
+        except Exception:
+            pass
         return True
     except Exception as e:
         logger.warning("[followup] _send falhou: %s", e)
@@ -284,6 +294,16 @@ async def detect_and_reopen_case(*, company_id: str, phone: str,
             "user_text": (user_text or "")[:300],
             "created_at": now_iso,
         })
+        try:
+            from services.event_bus import emit_event
+            await emit_event(
+                "ticket.opened",
+                company_id=(last_ticket or {}).get("company_id"),
+                source="isabella_followup",
+                payload={},
+            )
+        except Exception:
+            pass
         await db.executive_ledger.insert_one({
             "id": f"led-{uuid.uuid4().hex[:10]}",
             "action_id": f"reopen-{uuid.uuid4().hex[:12]}",

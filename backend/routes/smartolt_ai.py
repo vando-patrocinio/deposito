@@ -195,6 +195,16 @@ async def _send_draft_via_baileys(cid: str, draft: Dict[str, Any],
         )
     except Exception:
         pass
+    try:
+        from services.event_bus import emit_event
+        await emit_event(
+            "wa.message.persisted",
+            company_id=cid,
+            source="smartolt_ai",
+            payload={},
+        )
+    except Exception:
+        pass
     return {"ok": send_ok, "error": send_error}
 
 

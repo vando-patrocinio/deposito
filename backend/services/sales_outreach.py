@@ -158,6 +158,16 @@ async def _persist_outbound(cid: str, phone: str, text: str,
             )
         except Exception:
             pass
+        try:
+            from services.event_bus import emit_event
+            await emit_event(
+                "wa.message.persisted",
+                company_id=cid,
+                source="sales_outreach",
+                payload={},
+            )
+        except Exception:
+            pass
     except Exception as e:
         log.warning("[sales_outreach] persist_outbound fail: %s", e)
 
@@ -342,6 +352,16 @@ async def schedule_wifi_confirmation(
                     "metadata": {"source": "wifi_confirmation_reminder"},
                     "created_at": now_iso(),
                 })
+                try:
+                    from services.event_bus import emit_event
+                    await emit_event(
+                        "wa.message.persisted",
+                        company_id=cid,
+                        source="sales_outreach",
+                        payload={},
+                    )
+                except Exception:
+                    pass
                 try:
                     from services.event_bus import emit_event
                     await emit_event(

@@ -277,6 +277,16 @@ async def _send_isabella_to_friend(cid: str, owner_first_name: str,
             },
             "created_at": now_iso(),
         })
+        try:
+            from services.event_bus import emit_event
+            await emit_event(
+                "wa.message.persisted",
+                company_id=(exists_col or {}).get("company_id"),
+                source="referrals",
+                payload={},
+            )
+        except Exception:
+            pass
         # Atualiza routed_agent_id pra Isabella já dominar a conversa
         await db.wa_conversations.update_one(
             {"company_id": cid, "phone": friend_phone},
@@ -1439,6 +1449,16 @@ async def _notify_referrer(cid: str, owner_subscriber_id: str,
             "metadata": {"source": "referral_loop", **(meta or {})},
             "created_at": now_iso(),
         })
+        try:
+            from services.event_bus import emit_event
+            await emit_event(
+                "wa.message.persisted",
+                company_id=(sub or {}).get("company_id"),
+                source="referrals",
+                payload={},
+            )
+        except Exception:
+            pass
     except Exception as e:
         logger.warning("[referrals] notify-referrer failed: %s", e)
 
@@ -2084,6 +2104,16 @@ async def credit_referral_if_applies(cid: str, subscriber: Dict[str, Any]) -> No
             {"$set": {"referred_by_subscriber_id": ref["owner_subscriber_id"],
                       "updated_at": now_iso()}},
         )
+        try:
+            from services.event_bus import emit_event
+            await emit_event(
+                "subscriber.updated",
+                company_id=(ref or {}).get("company_id"),
+                source="referrals",
+                payload={},
+            )
+        except Exception:
+            pass
     reward_id = f"rew-{uuid.uuid4().hex[:10]}"
     await db.referral_rewards.insert_one({
         "id": reward_id,

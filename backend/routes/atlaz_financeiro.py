@@ -560,6 +560,16 @@ async def mark_invoice_paid(
                             "paid_atlaz_at": paid_at,
                         }},
                     )
+                    try:
+                        from services.event_bus import emit_event
+                        await emit_event(
+                            "invoice.updated",
+                            company_id=company_id,
+                            source="atlaz_financeiro",
+                            payload={},
+                        )
+                    except Exception:
+                        pass
                 else:
                     await db.subscriber_invoices.update_one(
                         {"company_id": cid, "id": invoice_id},
@@ -568,6 +578,16 @@ async def mark_invoice_paid(
                             "paid_atlaz_last_error": push.get("error"),
                         }},
                     )
+                    try:
+                        from services.event_bus import emit_event
+                        await emit_event(
+                            "invoice.updated",
+                            company_id=company_id,
+                            source="atlaz_financeiro",
+                            payload={},
+                        )
+                    except Exception:
+                        pass
             except Exception as e:
                 logger.exception("[atlaz-fin] push falhou inv=%s", invoice_id)
                 atlaz_push = {
@@ -623,6 +643,16 @@ async def unmark_invoice_paid(
             },
         },
     )
+    try:
+        from services.event_bus import emit_event
+        await emit_event(
+            "invoice.updated",
+            company_id=(inv or {}).get("company_id"),
+            source="atlaz_financeiro",
+            payload={},
+        )
+    except Exception:
+        pass
     try:
         from services.event_bus import emit_event
         await emit_event(

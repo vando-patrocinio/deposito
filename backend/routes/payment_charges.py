@@ -134,6 +134,16 @@ async def sync_customer(
         {"$set": {gw_field: gateway_customer_id,
                    f"{payload.gateway}_synced_at": _now().isoformat()}},
     )
+    try:
+        from services.event_bus import emit_event
+        await emit_event(
+            "subscriber.updated",
+            company_id=(sub or {}).get("company_id"),
+            source="payment_charges",
+            payload={},
+        )
+    except Exception:
+        pass
     return {"ok": True, "gateway_customer_id": gateway_customer_id,
             "created": True}
 

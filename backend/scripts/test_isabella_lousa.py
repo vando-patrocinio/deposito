@@ -9,8 +9,8 @@ NERVOUS_METADATA = {
     "owner": "ops-team",
     "domain": "operacoes",
     "criticality": "high",
-    "emits_events": False,
-    "event_types": [],
+    "emits_events": True,
+    "event_types": ["subscriber.created", "ticket.updated"],
     "company_id_required": True,
 }
 
@@ -59,6 +59,16 @@ async def get_or_create_test_subscriber() -> str:
         "smartolt_onu_zone": "cto-isalousa-test",
         "smartolt_onu_status": "Online",
     })
+    try:
+        from services.event_bus import emit_event
+        await emit_event(
+            "subscriber.created",
+            company_id=(sub or {}).get("company_id"),
+            source="test_isabella_lousa",
+            payload={},
+        )
+    except Exception:
+        pass
     await db.subscriber_phones.insert_one({
         "id": f"sphone-{uuid.uuid4().hex[:10]}",
         "company_id": COMPANY, "subscriber_id": sid,
@@ -212,6 +222,16 @@ async def main():
             {"$set": {"status": "concluida",
                        "closed_at": datetime.now(timezone.utc).isoformat(),
                        "outcome": "resolvido_no_local"}})
+        try:
+            from services.event_bus import emit_event
+            await emit_event(
+                "ticket.updated",
+                company_id=(in_lousa or {}).get("company_id"),
+                source="test_isabella_lousa",
+                payload={},
+            )
+        except Exception:
+            pass
         results["9_os_finalizada"] = {"ticket_id": tk["id"],
                                         "marked_concluida": True}
 
