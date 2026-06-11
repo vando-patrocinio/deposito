@@ -163,6 +163,37 @@ def normalize_priority(value: Any) -> str:
     return "normal"
 
 
+def is_terminal_orphan(doc: Dict[str, Any]) -> bool:
+    """True quando o ticket NÃO tem client_snapshot.name E não tem
+    nenhuma forma de recuperar (sem client_id, subscriber_id, contract_id).
+    Esses casos são lixo terminal e devem ser REJEITADOS no insert.
+    """
+    if not isinstance(doc, dict):
+        return False
+    cs = doc.get("client_snapshot")
+    has_name = isinstance(cs, dict) and bool((cs.get("name") or "").strip())
+    if has_name:
+        return False
+    # Recuperável? Tem algum identificador de cliente?
+    has_ref = bool(
+        doc.get("client_id")
+        or doc.get("subscriber_id")
+        or doc.get("contract_id")
+        or (isinstance(cs, dict) and cs.get("subscriber_id"))
+    )
+    # Bypass para tickets sistêmicos sem cliente (alertas de rede genéricos)
+    # — esses NÃO precisam de client_snapshot porque são about-infra, não about-cliente.
+    SYSTEM_TYPES_NO_CLIENT = {
+        "alerta_geofence", "frota_alerta", "alerta_ia",
+        "outage", "rede_outage", "auto_retargeting",
+    }
+    t = (doc.get("type") or "").strip()
+    if t in SYSTEM_TYPES_NO_CLIENT:
+        return False
+    # Sem cliente E sem nenhuma ref → órfão terminal
+    return not has_ref
+
+
 def normalize_status(value: Any) -> str:
     if value is None:
         return "pendente"

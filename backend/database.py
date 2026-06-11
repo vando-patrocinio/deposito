@@ -53,9 +53,26 @@ class _TicketsGuard:
     # Writes — interceptados
     async def insert_one(self, document, *args, **kwargs):
         from services.ticket_schema import (  # noqa: PLC0415
-            detect_rejections, normalize_ticket_payload,
+            detect_rejections, is_terminal_orphan, normalize_ticket_payload,
         )
         if isinstance(document, dict):
+            # P0 CTO 11/06/2026: REJEITAR órfãos terminais (sem client_snapshot.name
+            # E sem qualquer ref de cliente) — esses só geravam fantasmas na SALA.
+            if is_terminal_orphan(document):
+                await self._emit_rejected(
+                    "insert_one_blocked",
+                    document,
+                    [{"field": "client_snapshot.name",
+                      "value": None,
+                      "reason": "terminal_orphan_blocked",
+                      "doc_id": document.get("id"),
+                      "origin": document.get("origin"),
+                      "type": document.get("type")}],
+                )
+                # Não grava — retorna um stub com inserted_id None
+                class _Stub:  # noqa: D106
+                    inserted_id = None
+                return _Stub()
             rej = detect_rejections(document)
             normalize_ticket_payload(document)
             if rej:
@@ -64,15 +81,30 @@ class _TicketsGuard:
 
     async def insert_many(self, documents, *args, **kwargs):
         from services.ticket_schema import (  # noqa: PLC0415
-            detect_rejections, normalize_ticket_payload,
+            detect_rejections, is_terminal_orphan, normalize_ticket_payload,
         )
         if documents:
+            filtered = []
             for d in documents:
                 if isinstance(d, dict):
+                    if is_terminal_orphan(d):
+                        await self._emit_rejected(
+                            "insert_many_blocked", d,
+                            [{"field": "client_snapshot.name",
+                              "value": None,
+                              "reason": "terminal_orphan_blocked"}],
+                        )
+                        continue
                     rej = detect_rejections(d)
                     normalize_ticket_payload(d)
                     if rej:
                         await self._emit_rejected("insert_many", d, rej)
+                filtered.append(d)
+            documents = filtered
+        if not documents:
+            class _Stub:  # noqa: D106
+                inserted_ids = []
+            return _Stub()
         return await self._raw.insert_many(documents, *args, **kwargs)
 
     async def update_one(self, filter_, update, *args, **kwargs):

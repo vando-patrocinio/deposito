@@ -361,11 +361,38 @@ async def _execute_action(decision: Dict[str, Any]) -> Dict[str, Any]:
         # cria ticket técnico real (não depende de transporte WA)
         sid = decision["action_payload"]["subscriber_id"]
         ticket_id = _uid("tk")
+        # CTO 11/06/2026: enriquecer com client_snapshot + scheduled_time
+        # para evitar "fantasmas" sem cliente nem data na SALA.
+        from datetime import datetime as _dt, timezone as _tz
+        sub = await db.subscribers.find_one(
+            {"id": sid, "company_id": decision["company_id"]},
+            {"_id": 0, "name": 1, "phone": 1, "address": 1,
+             "neighborhood": 1, "document": 1, "email": 1},
+        ) or {}
+        client_snapshot = {
+            "subscriber_id": sid,
+            "name": sub.get("name") or f"Cliente {sid}",
+            "phone": sub.get("phone") or "",
+            "address": sub.get("address") or "",
+            "neighborhood": sub.get("neighborhood") or "",
+            "document": sub.get("document") or "",
+            "email": sub.get("email") or "",
+            "relato": (
+                f"Gerado por SmartProv AutonomousEngine. "
+                f"Causa: {decision.get('cause','—')}. "
+                f"Ação: {decision.get('recommended_action','—')}."
+            ),
+        }
+        # scheduled_time = hoje 09:00 BRT (slot padrão para preventivas)
+        sched_today = _dt.now(_tz.utc).date().isoformat() + "T09:00:00+00:00"
         ticket_doc = {
             "id": ticket_id, "company_id": decision["company_id"],
             "client_id": sid,
-            "status": "aberta",
+            "status": "pendente",
             "priority": decision["action_payload"].get("priority", "MEDIA"),
+            "type": "preventiva",
+            "client_snapshot": client_snapshot,
+            "scheduled_time": sched_today,
             "title": "Ticket preventivo · Autonomous Engine",
             "description": (
                 f"Gerado autonomamente pelo SmartProv AutonomousEngine. "

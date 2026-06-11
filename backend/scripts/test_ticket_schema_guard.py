@@ -116,17 +116,21 @@ async def t5_type_install():
 
 
 async def t6_no_client_snapshot():
+    """Com client_id (recuperável), insert sem client_snapshot deve passar
+    e normalizar a priority (semântica atual: terminal_orphan_blocked só
+    quando NÃO há QUALQUER referência de cliente)."""
     doc = _mk_ticket(with_cs=False)
+    doc["client_id"] = "sub-recoverable"
     try:
         await db.tickets.insert_one(doc)
     except Exception as e:
-        bad(f"6. inserção quebrou sem client_snapshot: {e}")
+        bad(f"6. inserção quebrou sem client_snapshot mas com client_id: {e}")
         return
     found = await db.tickets.find_one({"id": doc["id"]})
     if found and found.get("priority") == "urgente":
-        ok("6. ticket sem client_snapshot persiste e normaliza priority")
+        ok("6. ticket sem client_snapshot + com client_id persiste e normaliza")
     else:
-        bad("6. não persistiu corretamente sem client_snapshot")
+        bad(f"6. esperado persistência+normalização, got {found}")
 
 
 async def t7_update_set():
@@ -227,6 +231,66 @@ async def t10_lousa_grid_200():
         bad(f"10. /api/lousa/grid HTTP {r.status_code} body={r.text[:120]}")
 
 
+async def t11_terminal_orphan_blocked():
+    """Insert com client_snapshot=None E sem client_id deve ser BLOQUEADO."""
+    from database import mongo_client
+    raw_db = mongo_client.get_database(os.environ.get("DB_NAME") or db._raw.name)
+    bad_id = f"tk-orphan-{uuid.uuid4().hex[:10]}"
+    await raw_db["system_events"].delete_many(
+        {"event_type": "TICKET_SCHEMA_REJECTED", "ticket_id": bad_id})
+    result = await db.tickets.insert_one({
+        "id": bad_id, "company_id": CID,
+        "priority": "normal", "status": "pendente", "type": "reparo",
+        # SEM client_snapshot, SEM client_id, SEM subscriber_id → órfão terminal
+    })
+    # Não deve ter sido gravado
+    found = await db.tickets.find_one({"id": bad_id})
+    if found is not None:
+        bad(f"11. esperado bloqueio, mas ticket {bad_id} foi gravado")
+        return
+    if result.inserted_id is not None:
+        bad("11. insert_one retornou inserted_id != None apesar do bloqueio")
+        return
+    # Evento foi emitido?
+    evt = await raw_db["system_events"].find_one(
+        {"event_type": "TICKET_SCHEMA_REJECTED",
+         "rejections.reason": "terminal_orphan_blocked"})
+    if evt:
+        ok("11. órfão terminal BLOQUEADO + evento TICKET_SCHEMA_REJECTED emitido")
+    else:
+        bad("11. ticket bloqueado mas evento de auditoria não foi emitido")
+
+
+async def t12_orphan_with_client_id_passes():
+    """Insert com client_snapshot=None MAS com client_id deve PASSAR (recuperável)."""
+    tid = f"tk-recoverable-{uuid.uuid4().hex[:10]}"
+    await db.tickets.insert_one({
+        "id": tid, "company_id": CID,
+        "client_id": "sub-test-123",
+        "priority": "normal", "status": "pendente", "type": "reparo",
+    })
+    found = await db.tickets.find_one({"id": tid})
+    if found:
+        ok("12. ticket sem client_snapshot mas com client_id PASSA (recuperável)")
+    else:
+        bad("12. ticket recuperável foi bloqueado indevidamente")
+
+
+async def t13_system_type_no_client_passes():
+    """Insert tipo sistêmico (alerta_geofence) sem cliente deve PASSAR."""
+    tid = f"tk-system-{uuid.uuid4().hex[:10]}"
+    await db.tickets.insert_one({
+        "id": tid, "company_id": CID,
+        "type": "alerta_geofence",
+        "priority": "urgente", "status": "aberta",
+    })
+    found = await db.tickets.find_one({"id": tid})
+    if found:
+        ok("13. ticket sistêmico (alerta_geofence) sem cliente PASSA")
+    else:
+        bad("13. ticket sistêmico foi bloqueado indevidamente")
+
+
 async def main():
     print("═" * 70)
     print("RED-TEAM TICKET SCHEMA GUARD — CTO P3 11/06/2026")
@@ -252,6 +316,9 @@ async def main():
     await t8_linter_detects()
     await t9_linter_fix()
     await t10_lousa_grid_200()
+    await t11_terminal_orphan_blocked()
+    await t12_orphan_with_client_id_passes()
+    await t13_system_type_no_client_passes()
 
     passed = sum(1 for ok_, _ in RESULTS if ok_)
     total = len(RESULTS)

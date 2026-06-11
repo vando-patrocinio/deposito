@@ -3213,3 +3213,51 @@ Insert/update com valor totalmente fora do vocab + aliases → emite `TICKET_SCH
 
 ### Relatório
 `/app/docs/RELATORIO_TICKET_SCHEMA_GUARD.md`
+
+---
+
+## [11/06/2026 23:40] HARDENING — Anti-fantasma na Lousa (DONE)
+
+### Ordem CTO
+Bloquear definitivamente a criação de tickets fantasmas (sem cliente nem data) na SALA.
+
+### Causa raiz histórica
+`services/autonomous_engine.py` criava tickets preventivos com:
+- `client_snapshot` ausente (sem nome do cliente)
+- `scheduled_time` ausente (sem data)
+- `priority="MEDIA"` (PT-BR uppercase — agora normalizado)
+- `status="aberta"`
+
+Resultado: 228 fantasmas acumulados na SALA, rotulados erroneamente como "futuras" (def: `future = total - today - overdue` → resíduo).
+
+### Entrega (3 camadas)
+
+**1. Patch no autonomous_engine.py:**
+- Lookup do subscriber via `db.subscribers.find_one({id: sid})` antes de criar ticket
+- `client_snapshot` enriquecido (name, phone, address, neighborhood, doc, email, relato)
+- `scheduled_time = hoje 09:00 BRT` (slot padrão)
+- `type = "preventiva"` · `status = "pendente"`
+
+**2. Schema guard estendido (`services/ticket_schema.py::is_terminal_orphan`):**
+- Detecta inserts sem `client_snapshot.name` E sem `client_id`/`subscriber_id`/`contract_id`
+- Exceção: tipos sistêmicos sem cliente (alerta_geofence, frota_alerta, alerta_ia, outage, rede_outage, auto_retargeting) PASSAM
+
+**3. `_TicketsGuard` (database.py):**
+- `insert_one`/`insert_many` rejeitam órfãos terminais ANTES de gravar
+- Emitem `TICKET_SCHEMA_REJECTED` com `reason="terminal_orphan_blocked"`
+- Retornam stub com `inserted_id=None` (transparente para o caller)
+
+### Validação — Red-team 13/13
+- t11: órfão terminal sem cliente → BLOQUEADO + evento emitido ✅
+- t12: órfão recuperável com `client_id` → PASSA ✅
+- t13: ticket sistêmico (alerta_geofence) sem cliente → PASSA ✅
+
+### Purga histórica
+- 228 tickets `autonomous_engine` órfãos hard-deletados (backup em `/app/backend/scripts/backup_sala_orphans_20260611_233534.json`)
+- Audit event `SALA_ORPHANS_PURGED` gravado
+
+### Estado SALA
+```
+ANTES purga:  244 aguardando triagem (239 fantasmas)
+DEPOIS purga:  16 aguardando triagem (todos válidos ou recuperáveis)
+```
