@@ -2,6 +2,24 @@
 
 > Documento vivo. Atualizado a cada sprint.
 
+## 🛠️ Bug: Colaborador externo "sem permissão" no Cadastro de CTO ✅ (11/06/2026 P0 CTO)
+
+**Sintoma:** técnico Eddy (Ligo Fibra) abre o wizard "Cadastro de CTO" no PWA mobile, escolhe localização, foto, clica Continuar → toast vermelho "Você não tem permissão para acessar este recurso." + Sentinela IA indisponível.
+
+**Root cause:** `/api/rede-ia/public/ctos/{collab_id}` (e demais `/api/rede-ia/public/*`) são endpoints sem `require_role` no handler — o auth é o próprio `collab_id` na URL. Mas o middleware `rbac_policy` aplica longest-prefix match e bate na regra `("/api/rede-ia", {"gestor","auditor","tecnico"})` ANTES de chegar no handler. Como o app externo não envia JWT, retorna 401/403.
+
+**Fix:** adicionado `/api/rede-ia/public/` ao `PUBLIC_PATHS` em `rbac_policy.py`. Middleware agora pula esses paths antes da role-rule.
+
+**Validação ao vivo (todos respondendo sem 401/403):**
+- `POST /api/rede-ia/public/ctos/{collab_id}` → 422 (payload incompleto = ok, RBAC passou)
+- `GET /api/rede-ia/public/bairros/{collab_id}` → 200
+- `GET /api/rede-ia/public/ctos/list/{collab_id}` → 200
+- `GET /api/rede-ia/public/ctos/suggest-name/{collab_id}` → 422 (RBAC passou)
+
+⚠️ **Produção (`ligo.system`) precisa de redeploy** para Eddy e demais técnicos externos conseguirem cadastrar CTO.
+
+---
+
 ## 🎯 Isabella → SALA por Churn ✅ (11/06/2026 P1.2 CTO)
 
 **Objetivo:** converter sinal de churn em ação — clientes em alto risco viram tickets de RETENÇÃO na SALA, com playbook Isabella embedded.
