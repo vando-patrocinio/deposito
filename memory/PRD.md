@@ -2,6 +2,38 @@
 
 > Documento vivo. Atualizado a cada sprint.
 
+## ☀️ Tema fixo LIGHT em todo o sistema ✅ (11/02/2026)
+
+### Decisão CTO
+O sistema é **light-only**. Qualquer tema escuro foi eliminado.
+
+### Mudanças
+| Arquivo | Antes | Depois |
+|---|---|---|
+| `App.js::useTheme` | hook com toggle dark/light + persist em localStorage | retorna sempre `"light"`, remove classe `.dark` no `<html>` |
+| `App.js` topbar | botão Sun/Moon (testid `theme-toggle-btn`) | removido |
+| `App.js` import | `Sun, Moon` de lucide-react | removidos (unused) |
+| `FleetPortalApp.js` | `theme="dark"` em localStorage default | `theme="light"` fixo, `data-fp-theme="light"` |
+| `FleetPortalApp.js` | botão de toggle (testid `fleet-portal-theme`) | removido |
+| `FleetPortalApp.js` | `mapTile="dark"` default | `mapTile="light"` |
+| `FleetPortalApp.js::makeIcon` | param default `theme="dark"` | `theme="light"` |
+| `SecurityPortalApp.js` | `data-fp-theme="dark"` + `className="fp-theme-dark"` | `light` em ambos |
+| `FinanceiroReportsTab.js::ReportsHeader` | gradiente `#0f172a → #1e293b` + `color:white` + `colorScheme:dark` | card branco com borda `#e2e8f0`, texto `#0f172a`, input com `colorScheme:light` |
+
+### Validação visual (Playwright)
+```
+html.dark class: False           ✅
+ponto_theme localStorage: light  (após hook rodar)
+data-fp-theme: light             (após portais montarem)
+theme toggle buttons in DOM: 0   ✅
+```
+
+### Observações
+- Tile dos mapas em `FleetTrackingPage` mantém o seletor light/dark/satellite — é um controle de **visualização do mapa**, não do tema da UI. O default agora é light.
+- Nenhum impacto em `darken`, `darker` (utilitários de cor), filtros, ou módulos do PWA do colaborador (que já são light).
+
+
+
 ## 🚦 SALA = porta unica de TODA nota sistemica ✅ (11/02/2026)
 
 ### Decisão

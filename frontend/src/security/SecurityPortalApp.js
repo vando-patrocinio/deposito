@@ -29,7 +29,8 @@ export default function SecurityPortalApp() {
   const [meta, setMeta] = useState(null);
 
   useEffect(() => {
-    document.documentElement.setAttribute("data-fp-theme", "dark");
+    // Tema fixo: LIGHT (padrao do sistema, 11/02/2026).
+    document.documentElement.setAttribute("data-fp-theme", "light");
     if (!token) { setMeta(null); return; }
     axios.get(`${API}/me`,
                 { headers: { Authorization: `Bearer ${token}` } })
@@ -69,7 +70,7 @@ function Login({ onLogged }) {
     setBusy(false);
   };
   return (
-    <div className="sp-login fp-theme-dark"
+    <div className="sp-login fp-theme-light"
           data-testid="security-portal-login">
       <div className="sp-login-hero">
         <img src="/security-hero.png" alt=""
@@ -260,7 +261,7 @@ function Dashboard({ token, meta, onLogout }) {
   };
 
   return (
-    <div className="fp-app fp-theme-dark"
+    <div className="fp-app fp-theme-light"
           data-testid="security-portal-dashboard">
       <header className="fp-topbar">
         <div className="fp-topbar-left">

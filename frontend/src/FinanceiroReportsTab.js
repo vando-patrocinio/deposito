@@ -108,12 +108,15 @@ function ReportsHeader({ month, setMonth }) {
     <div data-testid="reports-header" style={{
       display: "flex", justifyContent: "space-between", alignItems: "center",
       marginBottom: 16, padding: "10px 14px",
-      background: "linear-gradient(135deg, #0f172a, #1e293b)",
-      borderRadius: 12, color: "white",
+      background: "#ffffff",
+      borderRadius: 12, color: "#0f172a",
+      border: "1px solid #e2e8f0",
+      boxShadow: "0 1px 2px rgba(0,0,0,.04)",
     }}>
       <div>
-        <div style={{ fontSize: 11, opacity: 0.7, fontWeight: 600,
-                         letterSpacing: 0.4, textTransform: "uppercase" }}>
+        <div style={{ fontSize: 11, opacity: 0.6, fontWeight: 600,
+                         letterSpacing: 0.4, textTransform: "uppercase",
+                         color: "#64748b" }}>
           Relatórios Financeiros
         </div>
         <div style={{ fontSize: 18, fontWeight: 800, marginTop: 1 }}>
@@ -129,9 +132,9 @@ function ReportsHeader({ month, setMonth }) {
               data-testid={`reports-month-${b.v}`}
               style={{
                 padding: "6px 12px", borderRadius: 7,
-                background: month === b.v ? "white" : "transparent",
-                color: month === b.v ? "#0f172a" : "white",
-                border: `1px solid ${month === b.v ? "white" : "rgba(255,255,255,.3)"}`,
+                background: month === b.v ? "#0f172a" : "#f8fafc",
+                color: month === b.v ? "white" : "#0f172a",
+                border: `1px solid ${month === b.v ? "#0f172a" : "#cbd5e1"}`,
                 fontSize: 11.5, fontWeight: 700, cursor: "pointer",
               }}>{b.l}</button>
         ))}
@@ -139,10 +142,10 @@ function ReportsHeader({ month, setMonth }) {
             data-testid="reports-month-picker"
             style={{
               padding: "6px 10px", borderRadius: 7,
-              background: "transparent", color: "white",
-              border: "1px solid rgba(255,255,255,.3)",
+              background: "#f8fafc", color: "#0f172a",
+              border: "1px solid #cbd5e1",
               fontSize: 11.5, fontWeight: 600, cursor: "pointer",
-              colorScheme: "dark",
+              colorScheme: "light",
             }} />
       </div>
     </div>

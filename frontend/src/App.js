@@ -14,7 +14,7 @@ import {
   Smartphone, LogOut, ChevronRight, ChevronDown, Brain, BarChart3, Layout,
   Boxes, Sparkles, Users, MapPin, ShieldCheck, ClipboardList,
   FileSpreadsheet, History as HistoryIcon, Settings as SettingsIcon,
-  Building2, Eye, EyeOff, Sun, Moon, Bot, UserCircle, MessageCircle, Cpu,
+  Building2, Eye, EyeOff, Bot, UserCircle, MessageCircle, Cpu,
   Receipt, CalendarDays, Wand2, DollarSign, Megaphone, Calculator,
   ShoppingCart, Trello, FileText, CreditCard, Globe, Car, Database,
   Wifi, BrainCircuit,
@@ -158,25 +158,16 @@ function setSessionMode(mode) {
   } catch { /* ignore */ }
 }
 
-/* Theme (light/dark) — persisted in localStorage, applied on <html> */
+/* Tema fixo: LIGHT (padrao do sistema, 11/02/2026 — request CTO).
+   Mantemos o hook por compatibilidade com componentes que ainda
+   consultam o objeto, mas `theme` e sempre "light" e o toggle e no-op. */
 function useTheme() {
-  const getInitial = () => {
-    if (typeof window === "undefined") return "light";
-    const saved = localStorage.getItem("ponto_theme");
-    if (saved === "dark" || saved === "light") return saved;
-    // Default: SEMPRE light — muitos componentes têm fundo branco hardcoded
-    // e ainda não foram migrados para dark mode.
-    return "light";
-  };
-  const [theme, setTheme] = useState(getInitial);
   useEffect(() => {
     const root = document.documentElement;
-    if (theme === "dark") root.classList.add("dark");
-    else root.classList.remove("dark");
-    try { localStorage.setItem("ponto_theme", theme); } catch { /* ignore */ }
-  }, [theme]);
-  const toggle = () => setTheme((t) => (t === "dark" ? "light" : "dark"));
-  return { theme, toggle };
+    root.classList.remove("dark");
+    try { localStorage.setItem("ponto_theme", "light"); } catch { /* ignore */ }
+  }, []);
+  return { theme: "light", toggle: () => {} };
 }
 
 /* ------------------------------------------------------------
@@ -605,7 +596,7 @@ function SidebarNav({ activeTabs, view, setView, brand, isSuperAdmin, onOpenModa
 function TopBar({ user, companyName, isSuperAdmin, allCompanies, activeCo, onChangeCompany, onLogout, onOpenAIPanel, view, setView, onToggleSidebar }) {
   const tab = ALL_TABS.find((t) => t.id === view);
   const groupName = NAV_GROUPS.find((g) => g.items.some((i) => i.id === view))?.label || "Operação";
-  const { theme, toggle: toggleTheme } = useTheme();
+  useTheme();  // garante <html> sem .dark — tema fixo light
   return (
     <header className="app-topbar">
       <button
@@ -653,16 +644,6 @@ function TopBar({ user, companyName, isSuperAdmin, allCompanies, activeCo, onCha
             ))}
           </select>
         )}
-
-        <button
-          className="btn btn-ghost btn-sm"
-          onClick={toggleTheme}
-          data-testid="theme-toggle-btn"
-          title={theme === "dark" ? "Mudar para tema claro" : "Mudar para tema escuro"}
-          aria-label="Alternar tema claro/escuro"
-        >
-          {theme === "dark" ? <Sun size={14} strokeWidth={1.75} /> : <Moon size={14} strokeWidth={1.75} />}
-        </button>
 
         <button
           className="btn btn-ghost btn-sm"

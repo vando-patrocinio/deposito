@@ -47,7 +47,7 @@ const fmtMin = (ts) => {
   } catch { return "—"; }
 };
 
-const makeIcon = (color, heading = 0, label = "", theme = "dark") => {
+const makeIcon = (color, heading = 0, label = "", theme = "light") => {
   const bg = theme === "dark" ? "#0f172a" : "#f1f5f9";
   const text = theme === "dark" ? "#f1f5f9" : "#0f172a";
   const html = `
@@ -87,12 +87,12 @@ function FlyTo({ position }) {
 export default function FleetPortalApp() {
   const [token, setToken] = useState(() => localStorage.getItem(LS_KEY) || "");
   const [meta, setMeta] = useState(null);
-  const [theme, setTheme] = useState(
-    () => localStorage.getItem(LS_THEME) || "dark");
+  // Tema fixo: LIGHT (padrao do sistema, 11/02/2026 — request CTO).
+  const [theme, setTheme] = useState("light");
 
   useEffect(() => {
-    document.documentElement.setAttribute("data-fp-theme", theme);
-    localStorage.setItem(LS_THEME, theme);
+    document.documentElement.setAttribute("data-fp-theme", "light");
+    localStorage.setItem(LS_THEME, "light");
   }, [theme]);
 
   useEffect(() => {
@@ -284,7 +284,7 @@ function Dashboard({ token, meta, theme, setTheme, onLogout }) {
   const [statusFilter, setStatusFilter] = useState(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [detailOpen, setDetailOpen] = useState(true);
-  const [mapTile, setMapTile] = useState("dark");
+  const [mapTile, setMapTile] = useState("light");
   const [cmdBusy, setCmdBusy] = useState(false);
   const [cmdSent, setCmdSent] = useState(null);  // {kind, ts}
   const headers = { Authorization: `Bearer ${token}` };
@@ -359,12 +359,6 @@ function Dashboard({ token, meta, theme, setTheme, onLogout }) {
           </div>
         </div>
         <div className="fp-topbar-right">
-          <button className="fp-icon-btn"
-                   title={theme === "dark" ? "Tema claro" : "Tema escuro"}
-                   onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
-                   data-testid="fleet-portal-theme">
-            {theme === "dark" ? "" : ""}
-          </button>
           <div className="fp-user-chip">
             <div className="fp-user-avatar">
               {(meta.user?.name || meta.user?.email || "?")[0].toUpperCase()}
