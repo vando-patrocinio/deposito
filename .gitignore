@@ -1003,3 +1003,12 @@ frontend/node_modules/.cache/default-development/200.pack
 frontend/node_modules/.cache/default-development/202.pack
 frontend/node_modules/.cache/default-development/203.pack
 frontend/node_modules/.cache/default-development/207.pack
+
+# ─── Database backups (mongodump output) ───
+backups/
+*.bson
+*.archive
+*.gz
+*.dump
+*.bak
+*.zip
