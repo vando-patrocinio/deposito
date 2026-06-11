@@ -1,0 +1,37 @@
+{
+  "summary": "Validated /treasury IA Tesoureira panel end-to-end via UI. All 5 blocks render with real backend data: safety banner (SANDBOX + Auto-aprovação OFF + Asaas key não configurada), 8 KPI cards with BRL values matching GET /api/treasury/kpis, queue table (6 rows), history table (2 rows: 1 paid + 1 failed), forecast view (7d/15d/30d bars + 4 próximos vencimentos). Detail modal opens correctly with status, AI decision (risk score 70, REQUIRE_HUMAN, sinais AMOUNT_ABOVE_HUMAN_REQUIRED_THRESHOLD), audit timeline (3 events: payment_created → ai_review:REQUIRE_HUMAN). Refresh button works, tab navigation works, super_admin gating works (colaborador@empresa.com cannot see tab and direct nav to /treasury returns 403s + no panel rendered). Fixed Card component to forward data-testid prop (was being dropped, breaking 4 required testids). Found one real bug: approve action sends invalid reason payload → 422 backend rejection + uncaught axios error overlay.",
+  "backend_issues": {
+    "critical": [
+      {"endpoint": "POST /api/treasury/payments/{id}/approve", "issue": "Returns 422 'Input should be a valid string' when reason field is empty/null. Frontend sends {reason: null|undefined} when user confirms empty in-app prompt. Either backend should accept optional/empty reason, or frontend must coerce to '' before POST. Reproduced on pay-demo-1c228ef974.", "priority": "HIGH"}
+    ],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "PaymentDetailModal.doAction('approve')", "issue": "AxiosError on 422 is uncaught → triggers CRA red error overlay (Uncaught runtime errors). Should catch and show inline toast/error message instead.", "selector": "[data-testid='treasury-action-approve']", "priority": "HIGH"},
+      {"component": "PaymentDetailModal.doAction('approve')", "issue": "Uses window.prompt() but app appears to override it with a custom modal that returns null/undefined for empty input, bypassing the `|| ''` fallback. Should send reason explicitly as String(reason ?? '') or use a controlled input.", "selector": "n/a", "priority": "HIGH"}
+    ],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [],
+  "action_items": [
+    "Fix /api/treasury/payments/{id}/approve to accept optional reason (Pydantic: reason: Optional[str] = '' or default_factory), OR fix frontend to always send reason as a string (String(reason ?? '')).",
+    "Wrap doAction() calls in try/catch in PaymentDetailModal to handle API errors gracefully and prevent the CRA Uncaught error overlay.",
+    "Validate approve → status='approved' → send button appears → /send flow end-to-end after the 422 fix (could not be completed in this iteration because approve never succeeded)."
+  ],
+  "critical_code_review_comments": [
+    "Card component was dropping data-testid prop (only accepted children + style). FIXED by spreading ...rest onto the root div. Without fix, treasury-safety-banner / treasury-audit-timeline / treasury-queue-table / treasury-history-table testids were all unreachable.",
+    "TreasuryPanel.jsx is 848 lines — within limits but recommend splitting PaymentDetailModal, PaymentsTable and ForecastView into separate files for maintainability.",
+    "doAction() in PaymentDetailModal has no error handling — any failing POST silently leaks an AxiosError and blocks user (no toast, no UI feedback). Wrap each branch in try/catch with user-visible error.",
+    "window.prompt() is fragile because the app overrides it with a custom dialog. Replace with a controlled input + setReason state for predictable behavior."
+  ],
+  "updated_files": ["/app/frontend/src/TreasuryPanel.jsx"],
+  "success_rate": {"backend": "n/a (frontend-only test, but 1 endpoint observed failing)", "frontend": "85% (15/17 requirements pass, approve+send blocked by 422)"},
+  "test_credentials": "admin@empresa.com / 123456 (super_admin); colaborador@empresa.com / 123456 (non-super_admin — used to verify tab gating)",
+  "seed_data_creation": "Used existing seed (3 payees + 8 payments). Confirmed visible: 6 in queue tab (2 AGUARDA CTO 'Fornecedora Fibras Ópticas LTDA', 1 RASCUNHO, 1 BLOQUEADO 'Empresa Desconhecida ME', 1 APROVADO 'João Técnico', 1 AGUARDA CTO 'Light Energia'); 2 in histórico (1 FALHOU R$150, 1 PAGO R$580).",
+  "retest_needed": true,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Card component already patched to forward data-testid (line ~90 of TreasuryPanel.jsx). After main agent fixes the approve 422 + adds try/catch, retest: (1) click treasury-action-approve on a pending_human_approval row, confirm reason prompt accepts empty, status should flip to 'approved', send button appears; (2) click treasury-action-send, confirm /send is called, expect status='failed' with last_error visible (ASAAS_API_KEY absent — expected behavior). To test approve POST manually: curl -X POST $URL/api/treasury/payments/pay-demo-1c228ef974/approve -H 'Content-Type: application/json' -d '{\"reason\":\"\"}' with auth cookie.",
+  "rca of the issue": "Two RCAs: (1) Card component bug: defined as `({children, style}) => <div style={...}>` — explicitly named props only, no rest spread, so any data-testid passed by parent was silently dropped. Fix: destructure `({children, style, ...rest})` and spread `{...rest}` on the div. (2) Approve 422: window.prompt is shimmed by app's custom modal which returns null when user clicks Confirmar without typing. The `|| ''` coalesces null to '' BUT screenshot shows the request still ended in 422 — likely the custom prompt resolves with `undefined` or the field name expected by backend differs from 'reason'. Need to inspect backend /approve Pydantic model and the prompt shim's resolution value. Mitigation: hard-coerce `client.post(url, { reason: String(reason ?? '') })` AND make backend reason field Optional[str]='' to be defensive."
+}

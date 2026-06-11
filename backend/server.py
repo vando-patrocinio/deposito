@@ -78,6 +78,7 @@ from routes import (
     user_magic_links as routes_user_magic_links,
     sala_orphan_health as routes_sala_orphan_health,
     isabella_churn as routes_isabella_churn,
+    treasury as routes_treasury,
     audit_log_panel as routes_audit_log,
     backend_health_routes as routes_backend_health,
     warroom as routes_warroom,
@@ -1221,6 +1222,7 @@ app.include_router(routes_aihub_prompts.router)
 app.include_router(routes_user_magic_links.router)
 app.include_router(routes_sala_orphan_health.router)
 app.include_router(routes_isabella_churn.router)
+app.include_router(routes_treasury.router)
 app.include_router(routes_audit_log.router)
 app.include_router(routes_backend_health.router)
 app.include_router(routes_warroom.router)

@@ -36,6 +36,7 @@ import SettingsPanel from "@/SettingsPanel";
 import IntegrationCredsCard from "@/IntegrationCredsCard";
 import FinanceiroPanel from "@/FinanceiroPanel";
 import BudgetPanel from "@/BudgetPanel";
+import TreasuryPanel from "@/TreasuryPanel";
 import BillingPanel from "@/BillingPanel";
 import RedeIaPanel from "@/RedeIaPanel";
 import RadiusPanel from "@/RadiusPanel";
@@ -330,6 +331,9 @@ const NAV_GROUPS = [
         roles: ["auditor", "administrador", "financeiro"],
         superAdminOnly: true },
       { id: "billing", icon: Receipt, label: "Faturamento",
+        roles: ["gestor", "auditor", "administrador", "financeiro"],
+        superAdminOnly: true },
+      { id: "treasury", icon: Brain, label: "IA Tesoureira",
         roles: ["gestor", "auditor", "administrador", "financeiro"],
         superAdminOnly: true },
     ],
@@ -1255,6 +1259,7 @@ function AppContent() {
           {view === "feriados" && <FeriadosPanel />}
           {view === "financeiro" && <FinanceiroPanel />}
           {view === "budget" && <BudgetPanel />}
+          {view === "treasury" && <TreasuryPanel />}
           {view === "billing" && <BillingPanel />}
           {view === "rede-ia" && <RedeIaPanel currentUser={user} />}
           {view === "smartolt-push" && <SmartOltPushPanel />}
