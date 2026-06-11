@@ -158,6 +158,15 @@ async def humanize_reply(*, reply_text: str,
                               phone, vio)
     except Exception as e:
         log.info("[humanizer] anti_cpf rewrite skip: %s", e)
+    # 3) Anti-AI-SLOP — remove os 13 vícios que denunciam IA
+    # (narração, confirmações vazias, frases corporativas, empatia
+    # genérica, manual de instruções, blacklist). REGRA: entregue a
+    # resposta. Pare de narrar que está trabalhando.
+    try:
+        from services.anti_ai_slop import deslop
+        reply_text = deslop(reply_text)
+    except Exception as e:
+        log.info("[humanizer] deslop skip: %s", e)
     return reply_text
 
 

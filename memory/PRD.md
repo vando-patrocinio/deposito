@@ -2,6 +2,92 @@
 
 > Documento vivo. Atualizado a cada sprint.
 
+## 🤖 ANTI-IA-SLOP — 13 VÍCIOS BANIDOS ✅ (10/02/2026)
+
+**Ordem CTO**: "Se o objetivo é fazer a Isabella parecer real, elimine
+os vícios que denunciam IA em poucos segundos." Lista de 13 vícios
+fornecida. Filosofia: PARE de explicar que está trabalhando. ENTREGUE
+A RESPOSTA. Depois explique apenas o necessário.
+
+### Entregas
+- `services/anti_ai_slop.py` (NOVO · 168 LoC) — reescritor mecânico
+  com 3 camadas:
+  1. `_OPENER_DROP` — 25 padrões que removem aberturas descartáveis
+     (Entendi/Compreendo/Perfeito/Verifiquei/Consultei/Lamento...)
+  2. `_REWRITES` — 8 reescritas semânticas (manual de instruções →
+     "Preciso de", solicitação encaminhada → "Abri o chamado",
+     "Peço gentilmente que aguarde..." → "Só um instante",
+     "Sua satisfação é importante" → vazio, "Após análise aprofundada
+     do cenário, encontrei a causa" → "Encontrei a causa")
+  3. `_BLACKLIST_RX` — frases que removem a SENTENÇA inteira (Entendo
+     sua solicitação / Como posso ajudar / Em que posso ajudar)
+- `deslop(text)` — pipeline idempotente · `detect_slop(text)` — lista
+  violações para painel de qualidade futuro
+- Integrado em `services/humanizer.humanize_reply` → roda em **todos
+  os canais** (Twilio + Baileys + canais futuros)
+
+### System prompt da Isabella & Jerusa atualizado
+Bloco "REGRA ÚNICA ANTI-IA (PRIORIDADE ABSOLUTA)" com:
+- Formato humano: resposta direta → explicação curta → próxima ação
+- Lista de palavras/frases PROIBIDAS (13 grupos)
+- Anti-narração: "Verifiquei seu plano" → "Seu plano é 700 Mega"
+- Anti-rephrase: "Entendo que você está sem internet" → "Vamos resolver"
+- Empatia sem clichê: "Entendo sua frustração" → "Você tem razão em cobrar"
+- Educação sem excesso: "Peço gentilmente que aguarde alguns instantes" → "Só um instante"
+
+### Validação Zero Mock (`scripts/test_anti_ai_slop.py`)
+**17/17 reescritas + idempotência + preservação + detect_slop ✅**
+
+Exemplos reescritos no teste:
+| Vício | Reescrito |
+|---|---|
+| "Verifiquei seu cadastro. Seu plano é 700 Mega." | "Seu plano é 700 Mega." |
+| "Entendi. Sua instalação está agendada para amanhã." | "Sua instalação está agendada para amanhã." |
+| "Sua solicitação foi recebida e será encaminhada para a equipe." | "Abri o chamado." |
+| "Entendo que você está sem internet. Vamos resolver agora." | "Vamos resolver agora." |
+| "Agradecemos o seu contato. Sua satisfação é muito importante para nós." | "" (removido) |
+| "Peço gentilmente que aguarde mais alguns instantes enquanto realizo a verificação." | "Só um instante." |
+| "Após análise aprofundada do cenário apresentado, encontrei a causa." | "Encontrei a causa." |
+| "Lamento o ocorrido. A equipe está atuando." | "A equipe está atuando." |
+| "Estou aqui para ajudar. Em que posso ajudar?" | "" (removido) |
+
+### Preservação validada
+Texto humano limpo NÃO é alterado:
+- "Seu plano é 700 Mega." → idem
+- "Existe uma fatura pendente." → idem
+- "Você tem razão em cobrar isso. Vamos resolver." → idem
+
+### Regressão preservada
+- `test_humanizer.py` 5/5 ✅
+- `test_pamela_scenario.py` 6/6 ✅
+- `test_isabella_listening.py` 5/5 ✅
+- `test_short_term_memory.py` 11/11 ✅
+- Shield Health ONLINE · Red Team 28/28 A
+
+### Onde o deslop roda
+1. `humanizer.humanize_reply()` aplica `deslop()` no reply_text.
+2. Twilio + Baileys (e qualquer canal que use o humanizer) recebem
+   automaticamente o filtro.
+3. Independente do LLM ignorar as regras do prompt: o filtro mecânico
+   pós-LLM garante que o cliente NUNCA recebe os vícios.
+
+### Arquitetura final do pipeline de reply
+```
+LLM gera reply
+    ↓
+humanize_reply:
+    [1] listening_guard.rewrite_if_violates  (remove pergunta recusada)
+    [2] anti_cpf_guardian.rewrite_if_violates (remove "passa o CPF" se identificado)
+    [3] anti_ai_slop.deslop  (remove 13 vícios)
+    ↓
+bubbles_for_send:
+    [4] bubble_splitter.split_into_bubbles  (≤180c, 1 pergunta/bolha, nome 1x)
+    [5] _strip_repeated_greetings  (se conversa contínua <30min)
+    ↓
+N bolhas sequenciais com typing_delay
+```
+
+
 ## 🌐 HUMANIZER — CAMADA ÚNICA PARA TODOS OS CANAIS ✅ (10/02/2026)
 
 **Ordem CTO**: "Essas regras são para todos os canais." Refatorar para
