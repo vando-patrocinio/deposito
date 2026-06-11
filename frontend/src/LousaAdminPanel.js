@@ -175,6 +175,8 @@ const ACTION_LABEL = {
   transferida: { icon: "↔", color: "#0d9488", label: "Transferida" },
 };
 
+import LousaSalaTab from "./components/LousaSalaTab";
+
 export default function LousaAdminPanel({ systemStatus = { offline: false, drift_blocked: false }, currentUser = null }) {
   const isAuditor = !!currentUser
     && (currentUser.is_super_admin
@@ -1130,6 +1132,7 @@ export default function LousaAdminPanel({ systemStatus = { offline: false, drift
                       borderBottom: "1px solid #e2e8f0", marginBottom: 14 }}>
         {[
           { id: "board", label: "Quadro" },
+          { id: "sala", label: "🟦 SALA" },
           { id: "insights", label: "PAINEL IA" },
           { id: "central_ont", label: "️ CENTRAL_ONT" },
           { id: "gestao_metas", label: "GESTÃO E METAS" },
@@ -1165,9 +1168,10 @@ export default function LousaAdminPanel({ systemStatus = { offline: false, drift
         (activeSubTab === "central_ont" ? <CentralOntPanel /> :
         (activeSubTab === "quality_notes" ? <LousaQualityNotesPanel /> :
         (activeSubTab === "callbacks" ? <ManagerCallbacksPanel /> :
+        (activeSubTab === "sala" ? <LousaSalaTab /> :
         (activeSubTab === "insights"
           ? <InsightsPanel onJumpTicket={(t) => setEditingTicket(t)} />
-          : <></>))))}
+          : <></>)))))}
       {activeSubTab === "board" && <>
       {/* Grade horizontal — coluna por técnico */}
       <div style={{
