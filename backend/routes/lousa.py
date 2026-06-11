@@ -979,6 +979,8 @@ async def lousa_grid(
         {"cargo": None},
         {"cargo": ""},
     ]
+    # EXCLUI Lousa virtuais (SALA etc) — elas têm view própria.
+    q["is_virtual"] = {"$ne": True}
     collabs = await db.collaborators.find(q, {"_id": 0}).to_list(500)
     collabs.sort(key=lambda c: c.get("name", ""))
 

@@ -319,6 +319,8 @@ async def list_collaborators(request: Request):
     except Exception:
         user = None
     q = tenant_filter(user) if user else {}
+    # Lousas virtuais (SALA etc) não aparecem em listagens convencionais.
+    q["is_virtual"] = {"$ne": True}
     return await db.collaborators.find(q, {"_id": 0, "reference_face": 0}).to_list(500)
 
 
