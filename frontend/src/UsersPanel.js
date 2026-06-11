@@ -40,13 +40,22 @@ export default function UsersPanel() {
   const [mlData, setMlData] = useState(null);     // {active, reserve}
   const [mlLoading, setMlLoading] = useState(false);
   const [mlCopied, setMlCopied] = useState("");
+  const [mlExpiresIn, setMlExpiresIn] = useState(0);
+  const [mlPhone, setMlPhone] = useState("");
   async function openMagicLink(u) {
     setMlUser(u);
     setMlData(null);
     setMlLoading(true);
+    setMlPhone("");
+    setMlExpiresIn(0);
     try {
       const d = await api.getUserMagicLink(u.id);
       setMlData(d);
+      // Pré-preenche telefone do colaborador vinculado, se houver
+      if (u.collaborator_id) {
+        const c = collabs.find((x) => x.id === u.collaborator_id);
+        if (c?.phone) setMlPhone(c.phone);
+      }
     } catch (e) {
       setFlash("❌ " + (e?.response?.data?.detail || e.message));
     } finally {
@@ -58,9 +67,24 @@ export default function UsersPanel() {
     if (!await window.confirm("Renovar o link?\n\nO link ATIVO será revogado IMEDIATAMENTE. O link RESERVA assumirá o lugar e um novo reserva será gerado. Quem ainda usar o link antigo verá 'Link expirado'.")) return;
     setMlLoading(true);
     try {
-      const d = await api.rotateUserMagicLink(mlUser.id, "rotação manual via painel");
+      const body = { reason: "rotação manual via painel" };
+      if (mlExpiresIn > 0) body.expires_in_days = mlExpiresIn;
+      const d = await api.rotateUserMagicLink(mlUser.id, body);
       setMlData({ active: d.active, reserve: d.reserve, user_id: mlUser.id, user_email: mlUser.email, user_name: mlUser.name });
-      setFlash("✅ Link renovado. Antigo ativo morreu, reserva virou ativo, novo reserva criado.");
+      setFlash("✅ Link renovado." + (mlExpiresIn > 0 ? ` Expira em ${mlExpiresIn} dias.` : ""));
+      setTimeout(() => setFlash(""), 5000);
+    } catch (e) {
+      setFlash("❌ " + (e?.response?.data?.detail || e.message));
+    } finally {
+      setMlLoading(false);
+    }
+  }
+  async function sendMagicLink() {
+    if (!mlUser) return;
+    setMlLoading(true);
+    try {
+      const r = await api.sendUserMagicLink(mlUser.id, { phone: mlPhone || null, channel: "whatsapp" });
+      setFlash(`✅ Enviado por WhatsApp para ${r.phone}.`);
       setTimeout(() => setFlash(""), 5000);
     } catch (e) {
       setFlash("❌ " + (e?.response?.data?.detail || e.message));
@@ -556,6 +580,42 @@ export default function UsersPanel() {
                       Ao <strong>Renovar</strong>: o ATIVO atual morre, o RESERVA vira ATIVO e um novo RESERVA é gerado.
                       Quem ainda usar o antigo verá &quot;Link expirado&quot;.
                     </p>
+                  </div>
+                  {/* Expiração + envio via WhatsApp */}
+                  <div style={{ background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 14, padding: 14, marginBottom: 12 }}>
+                    <strong style={{ color: "#1e40af", fontSize: 13, display: "block", marginBottom: 8 }}>⏱ Expiração no próximo Renovar</strong>
+                    <select
+                      data-testid="ml-expires-select"
+                      style={{ ...inputStyle, marginBottom: 10 }}
+                      value={mlExpiresIn}
+                      onChange={(e) => setMlExpiresIn(Number(e.target.value))}
+                    >
+                      <option value={0}>Sem expiração (até o próximo renovar)</option>
+                      <option value={7}>Expirar em 7 dias</option>
+                      <option value={30}>Expirar em 30 dias</option>
+                      <option value={90}>Expirar em 90 dias</option>
+                    </select>
+                    {mlData?.active?.expires_at && (
+                      <p style={{ margin: "0 0 8px", fontSize: 12, color: "#1e40af" }}>
+                        Link atual expira em: <strong>{new Date(mlData.active.expires_at).toLocaleString("pt-BR")}</strong>
+                      </p>
+                    )}
+                    <strong style={{ color: "#1e40af", fontSize: 13, display: "block", marginBottom: 6 }}>📱 Enviar por WhatsApp</strong>
+                    <input
+                      data-testid="ml-phone-input"
+                      placeholder="ex: 5511999998888 (com DDD/DDI)"
+                      style={{ ...inputStyle, marginBottom: 8 }}
+                      value={mlPhone}
+                      onChange={(e) => setMlPhone(e.target.value)}
+                    />
+                    <Button
+                      variant="soft"
+                      onClick={sendMagicLink}
+                      disabled={mlLoading}
+                      data-testid="ml-send-whatsapp-btn"
+                    >
+                      📤 Enviar link ativo via WhatsApp
+                    </Button>
                   </div>
                 </>
               )}

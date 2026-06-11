@@ -153,6 +153,14 @@ async def get_magic_link(uid: str, user: dict = Depends(require_role("auditor"))
 # ─────────────────── Rotate ───────────────────
 class RotateIn(BaseModel):
     reason: Optional[str] = None
+    expires_in_days: Optional[int] = None  # None = sem expiração
+
+
+def _expires_at_iso(days: Optional[int]) -> Optional[str]:
+    if not days or days <= 0:
+        return None
+    from datetime import timedelta
+    return (datetime.now(timezone.utc) + timedelta(days=int(days))).isoformat()
 
 
 @router.post("/users/{uid}/magic-link/rotate")
@@ -163,7 +171,7 @@ async def rotate_magic_link(
 ):
     """Rotaciona o link:
       1. ATIVO atual → REVOGADO (revoked_at, revoked_by)
-      2. RESERVA atual → ATIVO
+      2. RESERVA atual → ATIVO (herda expires_at se passado)
       3. Gera novo RESERVA
     Idempotência via generation. Quase-atômico (3 steps em sequência).
     """
@@ -175,6 +183,7 @@ async def rotate_magic_link(
 
     now = now_iso()
     actor = user.get("email") or user.get("id") or "system"
+    expires_at = _expires_at_iso(payload.expires_in_days)
 
     # 1. Revoga ATIVO atual (se existe)
     await db[COL].update_many(
@@ -199,6 +208,7 @@ async def rotate_magic_link(
                 "promoted_at": now,
                 "promoted_by": actor,
                 "promoted_reason": payload.reason or "rotation",
+                "expires_at": expires_at,
             }},
         )
     else:
@@ -213,8 +223,9 @@ async def rotate_magic_link(
             "generation": gen,
             "created_at": now,
             "reason": "rotation_no_reserve",
+            "expires_at": expires_at,
         })
-    # 3. Gera novo RESERVA
+    # 3. Gera novo RESERVA (sem expiração — só herda ao virar ativo)
     gen = await _next_generation(uid)
     await db[COL].insert_one({
         "id": f"mlk-{uuid.uuid4().hex[:14]}",
@@ -275,6 +286,22 @@ async def magic_login(payload: MagicLoginIn, request: Request = None):
     if not doc:
         raise HTTPException(401, "Link inválido ou expirado. Peça ao admin para gerar um novo.")
 
+    # Verifica expires_at (string ISO) — se expirou, revoga e nega.
+    exp = doc.get("expires_at")
+    if exp:
+        try:
+            exp_dt = datetime.fromisoformat(exp.replace("Z", "+00:00"))
+            if datetime.now(timezone.utc) >= exp_dt:
+                await db[COL].update_one(
+                    {"_id": doc["_id"]},
+                    {"$set": {"status": "revoked", "revoked_at": now_iso(), "revoked_reason": "expired"}},
+                )
+                raise HTTPException(401, "Link expirado. Peça ao admin para gerar um novo.")
+        except HTTPException:
+            raise
+        except Exception:
+            pass  # data malformada → ignora e prossegue
+
     user = await db.users.find_one({"id": doc["user_id"]}, {"password_hash": 0})
     if not user or not user.get("active", True):
         raise HTTPException(401, "Usuário desativado")
@@ -296,3 +323,106 @@ async def magic_login(payload: MagicLoginIn, request: Request = None):
     )
     user.pop("_id", None)
     return {"ok": True, "access_token": jwt, "user": user}
+
+
+
+# ─────────────────── Send via WhatsApp ───────────────────
+class SendMagicLinkIn(BaseModel):
+    phone: Optional[str] = None  # ex: 5511999998888. Se vazio, tenta do collaborator
+    channel: str = "whatsapp"    # 'whatsapp' (default) — 'sms' = pendente Twilio
+    base_url: Optional[str] = None  # URL pública (ex: https://ligo.system). Default = backend FRONT_BASE_URL
+
+
+def _normalize_phone(p: Optional[str]) -> Optional[str]:
+    if not p:
+        return None
+    digits = "".join(ch for ch in str(p) if ch.isdigit())
+    if not digits:
+        return None
+    # Garante prefixo Brasil (55) se número parecer local
+    if len(digits) <= 11 and not digits.startswith("55"):
+        digits = "55" + digits
+    return digits
+
+
+@router.post("/users/{uid}/magic-link/send")
+async def send_magic_link(
+    uid: str,
+    payload: SendMagicLinkIn = SendMagicLinkIn(),
+    user: dict = Depends(require_role("auditor")),
+):
+    """Envia o link ATIVO atual via WhatsApp (e/ou SMS futuramente).
+
+    Procura telefone na seguinte ordem:
+      1. payload.phone (override manual)
+      2. collaborators.phone (se user vinculado a um colaborador)
+    """
+    target = await _can_manage(user, uid)
+    if not target:
+        raise HTTPException(404, "Usuário não encontrado")
+    await _ensure_indexes()
+    await _bootstrap_for_user(uid, target.get("company_id") or DEMO_COMPANY_ID)
+
+    active = await db[COL].find_one(
+        {"user_id": uid, "status": "active"},
+        sort=[("generation", -1)],
+    )
+    if not active:
+        raise HTTPException(409, "Sem link ativo. Renove primeiro.")
+
+    # Resolver telefone
+    phone = _normalize_phone(payload.phone)
+    if not phone and target.get("collaborator_id"):
+        coll = await db.collaborators.find_one(
+            {"id": target["collaborator_id"]},
+            {"_id": 0, "phone": 1, "whatsapp": 1},
+        )
+        phone = _normalize_phone((coll or {}).get("phone") or (coll or {}).get("whatsapp"))
+    if not phone:
+        raise HTTPException(400, "Telefone não informado e cadastro do colaborador não tem telefone.")
+
+    # Monta a URL final
+    import os
+    base = (payload.base_url or os.environ.get("PUBLIC_APP_URL") or "https://ligo.system").rstrip("/")
+    url = f"{base}/?ml={active['token']}"
+
+    text = (
+        f"Olá, {target.get('name') or ''}!\n\n"
+        f"Seu acesso ao painel SmartProv:\n{url}\n\n"
+        f"⚠ Link pessoal — não compartilhe. "
+        f"Se parar de funcionar, peça ao admin para renovar."
+    )
+
+    if payload.channel != "whatsapp":
+        raise HTTPException(400, "Apenas canal 'whatsapp' está habilitado nesta versão.")
+
+    # Envio via Baileys sidecar
+    try:
+        from services.wa.sidecar import _sidecar_post_silent
+        result = await _sidecar_post_silent("/send", {"phone": phone, "text": text})
+    except Exception as e:
+        log.warning("magic-link send falhou: %s", e)
+        raise HTTPException(502, f"Falha ao enviar via WhatsApp: {e}")
+
+    # Audit
+    try:
+        await db.audit_log.insert_one({
+            "id": f"aud-{uuid.uuid4().hex[:14]}",
+            "actor_email": user.get("email") or user.get("id") or "system",
+            "action": "magic_link.send",
+            "target_user_id": uid,
+            "target_email": target.get("email"),
+            "phone": phone,
+            "channel": payload.channel,
+            "created_at": now_iso(),
+        })
+    except Exception:
+        pass
+
+    return {
+        "ok": True,
+        "channel": payload.channel,
+        "phone": phone,
+        "sent_at": now_iso(),
+        "sidecar_response": result if isinstance(result, dict) else None,
+    }

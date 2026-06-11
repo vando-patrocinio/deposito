@@ -1,0 +1,35 @@
+{
+  "summary": "CTO Vando enhancement (expiração opcional + WhatsApp) 100% APROVADO. Backend: 6/6 testes novos PASSAM + 11/11 regressão magic-links/collaborator-link inalterados (17/17 total). Frontend: modal magic-link mostra todos os data-testid solicitados (ml-expires-select com opções 0/7/30/90, ml-phone-input, ml-send-whatsapp-btn). Fluxo end-to-end OK: dropdown=30 → Renovar → backend recebeu {expires_in_days:30} → resposta active.expires_at=2026-07-11T18:40:48 → modal exibe 'Link atual expira em: 11/07/2026, 18:40:48'.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_user_magic_links_enhancements.py",
+    "/app/backend/tests/test_user_magic_links_p0.py",
+    "/app/test_reports/pytest/iter100_enhancements.xml",
+    "/app/test_reports/pytest/iter100_regression.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "user_magic_links.py:286 — magic_login lê expires_at e revoga via update_one. Bug-de-borda: se o doc estiver com expires_at presente mas em formato não-ISO (corrupção/migração manual), o except Exception: pass deixa o login passar mesmo expirado. Sugestão: tratar como expirado por segurança (fail-closed) ou logar warning.",
+    "send_magic_link não exige link ATIVO existente antes de validar canal — a checagem 'channel != whatsapp' (linha 397) acontece DEPOIS do bootstrap+phone-resolution. Não é bug funcional (400 sai antes do envio), só ineficiência: cliente pagando o custo de DB sem necessidade. Mover a validação de canal pro topo do handler.",
+    "_normalize_phone aceita qualquer número >2 dígitos e prefixa 55 — número internacional não-BR vai virar BR garbled. OK por agora (homolog BR-only), mas vale documentar.",
+    "Audit de send: 'audit_log.insert_one' não inclui se sidecar bloqueou (sidecar_response.blocked_by_gateway). Idealmente persistir o status do envio pra rastrear gateway-blocks."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_user_magic_links_enhancements.py (novo, 6 testes)"
+  ],
+  "success_rate": {"backend": "100% (17/17 — 6 novos + 11 regressão)", "frontend": "100% (todos os data-testid presentes e fluxo de 30 dias funcionando)"},
+  "test_credentials": "admin@empresa.com / 123456 — lido de /app/memory/test_credentials.md (NÃO alterado).",
+  "seed_data_creation": "Test cria/deleta usuário efêmero TEST_exp_xxx@example.com (fixture fresh_user). Test de expiração insere/deleta user_magic_links + users com id=usr-fake-test (cleanup garantido em finally). Mayara (msaldanhavargasmiranda@gmail.com) teve link rotacionado durante UI test — geração 9 ativo, geração 10 reserva, expires_at=11/07/2026.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Cobertura completa em /app/backend/tests/test_user_magic_links_enhancements.py (pytest, 6 testes, ~8s) + /app/backend/tests/test_user_magic_links_p0.py (11 testes, ~3s). Modal usa modal HTML in-app de Confirmação (não window.confirm) — usar button:has-text('Confirmar') após clicar ml-rotate-btn. Para forçar painel users: localStorage.setItem('ponto_active_tab','users') + reload. Para forçar token expirado no DB use motor com mongo_url=os.environ['MONGO_URL'] e db_name=os.environ['DB_NAME'] (test_database). Importante: usar 'export $(grep -v ^# .env | xargs)' antes do pytest para carregar MONGO_URL/DB_NAME.",
+  "rca of the issue": "N/A — todos os 9 cenários do review_request validados sem nenhum bug. Em homolog o sidecar de WhatsApp respondeu sem blocked_by_gateway flag (mas o teste aceita qualquer dict/None em sidecar_response, como instruído pelo CTO)."
+}
