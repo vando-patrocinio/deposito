@@ -59,6 +59,41 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+async def _pick_default_collaborator(company_id: str) -> Optional[str]:
+    """Escolhe o técnico que recebe a bolha quando Isabella agenda.
+    Heurística: collaborator da empresa com MENOS bolhas pendentes hoje.
+    Fallback: primeiro collaborator ativo da empresa.
+    """
+    today = (datetime.now(timezone.utc).strftime("%Y-%m-%d"))
+    # candidatos = colaboradores ativos da empresa
+    try:
+        cands = []
+        async for c in db.collaborators.find(
+                {"company_id": company_id,
+                 "$or": [{"clock_in_enabled": True},
+                         {"clock_in_enabled": {"$exists": False}}]},
+                {"_id": 0, "id": 1, "name": 1}):
+            cands.append(c)
+        if not cands:
+            return None
+        # contagem de pendentes por candidato
+        scored = []
+        for c in cands:
+            n = await db.tickets.count_documents({
+                "company_id": company_id,
+                "assigned_collaborator_id": c["id"],
+                "status": {"$in": ["pendente", "aberta",
+                                      "aguardando_atendimento"]},
+                "scheduled_time": {"$regex": f"^{today}"},
+            })
+            scored.append((n, c["id"]))
+        scored.sort()
+        return scored[0][1]
+    except Exception as e:
+        log.warning("[isabella_actions] pick collaborator falhou: %s", e)
+        return None
+
+
 async def _create_visit_ticket(*, company_id: str, phone: str,
                                   subscriber_id: Optional[str],
                                   subscriber_name: Optional[str],
@@ -66,27 +101,61 @@ async def _create_visit_ticket(*, company_id: str, phone: str,
                                   window: str,
                                   motivo: str) -> Dict[str, Any]:
     win_time, win_label = WINDOWS.get(window, WINDOWS["manha"])
-    scheduled = f"{date_iso}T{win_time.strftime('%H:%M:%S')}"
-    ticket_id = f"tk-{uuid.uuid4().hex[:14]}"
-    short = ticket_id.replace("tk-", "TK-")[:10].upper()
+    scheduled = f"{date_iso}T{win_time.strftime('%H:%M:%S')}+00:00"
+    ticket_id = f"tkt-{uuid.uuid4().hex[:10]}"
+    short = f"TK-{uuid.uuid4().hex[:7].upper()}"
+    assigned = await _pick_default_collaborator(company_id)
+    # próxima posição na fila do técnico, se houver
+    next_pos = 0
+    if assigned:
+        last = await db.tickets.find(
+            {"assigned_collaborator_id": assigned,
+             "status": {"$in": ["pendente", "aberta",
+                                  "aguardando_atendimento"]}},
+            {"_id": 0, "position": 1}).sort("position", -1).to_list(1)
+        next_pos = ((last[0].get("position") or 0) + 1) if last else 0
+
     ticket = {
         "id": ticket_id,
         "short_id": short,
         "company_id": company_id,
-        "type": "visita_tecnica",
+        "client_id": subscriber_id or str(uuid.uuid4()),
+        "client_snapshot": {
+            "name": subscriber_name or "Cliente WhatsApp",
+            "address": "",
+            "neighborhood": "",
+            "phone": phone,
+            "latitude": None, "longitude": None,
+            "relato": motivo or "",
+            "pppoe_user": "",
+            "test_history": [],
+        },
+        "type": "reparo",
         "subject": (f"Visita técnica — {motivo[:80]}"
                      if motivo else "Visita técnica solicitada via WhatsApp"),
         "description": motivo or "",
-        "priority": "media",
-        "status": "AGENDADO",
+        "priority": "horario",
         "scheduled_time": scheduled,
         "scheduled_window": window,
         "scheduled_window_label": win_label,
         "scheduled_date": date_iso,
+        "position": next_pos,
+        "status": "pendente",
+        "assigned_collaborator_id": assigned,
         "phone": phone,
         "subscriber_id": subscriber_id,
         "subscriber_name": subscriber_name,
         "source": "isabella_whatsapp",
+        "auto_created_by_isabella": True,
+        "needs_assignment_review": assigned is None,
+        "opened_at": None, "closed_at": None, "closed_by": None,
+        "close_location": None, "outcome": None,
+        "whatsapp_status": "nao_enviado",
+        "whatsapp_last_message": None,
+        "completion_data": None, "admin_action": None, "admin_notes": None,
+        "ai_triage_pending": True,
+        "signal_at_open": None, "signal_at_open_at": None,
+        "signal_at_close": None, "signal_at_close_at": None,
         "created_at": _now_iso(),
         "created_by": "isabella",
     }
@@ -97,15 +166,20 @@ async def _create_visit_ticket(*, company_id: str, phone: str,
             "ticket.opened",
             company_id=company_id,
             source="isabella_actions",
-            payload={},
+            payload={"ticket_id": ticket_id, "short_id": short,
+                       "type": "visita_tecnica",
+                       "scheduled_date": date_iso,
+                       "assigned_collaborator_id": assigned},
         )
     except Exception:
         pass
-    log.info("[isabella_actions] visita criada ticket=%s phone=%s "
-              "date=%s window=%s", ticket_id, phone, date_iso, window)
+    log.info("[isabella_actions] visita criada ticket=%s short=%s phone=%s "
+              "date=%s window=%s assigned=%s", ticket_id, short, phone,
+              date_iso, window, assigned)
     return {"ticket_id": ticket_id, "short_id": short,
             "scheduled_date": date_iso, "window": window,
             "window_label": win_label,
+            "assigned_collaborator_id": assigned,
             "br_date": _format_br_date(date_iso)}
 
 
@@ -115,22 +189,54 @@ async def _create_chamado(*, company_id: str, phone: str,
                             tipo: str,
                             motivo: str) -> Dict[str, Any]:
     tipo_norm = "tecnico" if "tec" in tipo.lower() else tipo.lower()
-    ticket_id = f"tk-{uuid.uuid4().hex[:14]}"
-    short = ticket_id.replace("tk-", "TK-")[:10].upper()
+    ticket_id = f"tkt-{uuid.uuid4().hex[:10]}"
+    short = f"TK-{uuid.uuid4().hex[:7].upper()}"
+    assigned = await _pick_default_collaborator(company_id)
+    next_pos = 0
+    if assigned:
+        last = await db.tickets.find(
+            {"assigned_collaborator_id": assigned,
+             "status": {"$in": ["pendente", "aberta",
+                                  "aguardando_atendimento"]}},
+            {"_id": 0, "position": 1}).sort("position", -1).to_list(1)
+        next_pos = ((last[0].get("position") or 0) + 1) if last else 0
     ticket = {
         "id": ticket_id,
         "short_id": short,
         "company_id": company_id,
-        "type": f"chamado_{tipo_norm}",
+        "client_id": subscriber_id or str(uuid.uuid4()),
+        "client_snapshot": {
+            "name": subscriber_name or "Cliente WhatsApp",
+            "address": "",
+            "neighborhood": "",
+            "phone": phone,
+            "latitude": None, "longitude": None,
+            "relato": motivo or "",
+            "pppoe_user": "",
+            "test_history": [],
+        },
+        "type": "reparo" if tipo_norm == "tecnico" else "instalacao",
         "subject": (f"Chamado {tipo_norm} — {motivo[:80]}"
                      if motivo else f"Chamado {tipo_norm} via WhatsApp"),
         "description": motivo or "",
-        "priority": "media",
-        "status": "ABERTO",
+        "priority": "normal",
+        "status": "pendente",
+        "position": next_pos,
+        "assigned_collaborator_id": assigned,
         "phone": phone,
         "subscriber_id": subscriber_id,
         "subscriber_name": subscriber_name,
         "source": "isabella_whatsapp",
+        "auto_created_by_isabella": True,
+        "needs_assignment_review": assigned is None,
+        "opened_at": None, "closed_at": None, "closed_by": None,
+        "close_location": None, "outcome": None,
+        "whatsapp_status": "nao_enviado",
+        "whatsapp_last_message": None,
+        "completion_data": None, "admin_action": None, "admin_notes": None,
+        "ai_triage_pending": True,
+        "signal_at_open": None, "signal_at_open_at": None,
+        "signal_at_close": None, "signal_at_close_at": None,
         "created_at": _now_iso(),
         "created_by": "isabella",
     }
@@ -141,13 +247,17 @@ async def _create_chamado(*, company_id: str, phone: str,
             "ticket.opened",
             company_id=company_id,
             source="isabella_actions",
-            payload={},
+            payload={"ticket_id": ticket_id, "short_id": short,
+                       "tipo": tipo_norm,
+                       "assigned_collaborator_id": assigned},
         )
     except Exception:
         pass
-    log.info("[isabella_actions] chamado criado ticket=%s phone=%s tipo=%s",
-              ticket_id, phone, tipo_norm)
-    return {"ticket_id": ticket_id, "short_id": short, "tipo": tipo_norm}
+    log.info("[isabella_actions] chamado criado ticket=%s short=%s "
+              "phone=%s tipo=%s assigned=%s",
+              ticket_id, short, phone, tipo_norm, assigned)
+    return {"ticket_id": ticket_id, "short_id": short, "tipo": tipo_norm,
+            "assigned_collaborator_id": assigned}
 
 
 def _format_br_date(date_iso: str) -> str:
