@@ -2,6 +2,46 @@
 
 > Documento vivo. Atualizado a cada sprint.
 
+## 🔴 BUGFIX P0 — Mobile colaborador preso em "Carregando lousa…" ✅ (11/02/2026)
+
+### Root cause (auditado)
+O middleware RBAC global em `server.py::_rbac_middleware` (linha 438+) consulta `rbac_policy.ROLE_RULES` para decidir quem pode acessar cada prefixo. Para `/api/lousa` o set permitido era `{gestor, tecnico, atendimento, auditor}` — **sem `colaborador`**.
+
+O usuário DIOGO HENRIQUE tem `users.role = "colaborador"` (cargo é `tecnico`, mas role do user é a categoria mais baixa). Logo o endpoint `/api/lousa/by-collaborator/col-30aafc3c` retornava **403 "Você não tem permissão para acessar este recurso."** ANTES de bater no handler. O `LousaMobile.js` linha 90 capturava o erro silenciosamente (interceptor de 403 suprimido pra não-admin) → spinner infinito.
+
+### Fix aplicado em `/app/backend/rbac_policy.py`
+| Prefixo | Antes | Depois |
+|---|---|---|
+| `/api/lousa` | gestor, tecnico, atendimento, auditor | **+colaborador** |
+| `/api/tickets` | gestor, tecnico, atendimento, auditor | **+colaborador** |
+| `/api/fleet` | gestor, tecnico, auditor | **+colaborador** |
+| `/api/tech-tracking` | gestor, tecnico, auditor | **+colaborador** |
+| `/api/vehicle-checklist` | gestor, tecnico | **+colaborador** |
+| `/api/vehicle-silhouettes` | gestor, tecnico | **+colaborador** |
+| `/api/locations` | gestor, tecnico, atendimento, auditor | **+colaborador** |
+| `/api/collaborators` | administrador, gestor | **+colaborador** (próprio cadastro; admins têm guard próprio no handler) |
+| `/api/clock-records` | gestor, auditor, atendimento | **+colaborador** |
+| `/api/collab-assets` | gestor, tecnico | **+colaborador** |
+
+Endpoints destrutivos/administrativos (`POST /lousa/tickets/wipe-all`, `DELETE /lousa/tickets/{id}`, `PUT /collaborators/{id}` etc.) **continuam bloqueados** porque mantêm `Depends(require_role("gestor"))` no próprio handler.
+
+### Auditoria HTTP (DIOGO, JWT real, role=colaborador)
+| Endpoint | Antes | Depois |
+|---|---:|---:|
+| GET /api/lousa/by-collaborator/{cid} | **403** | **200** (4 tickets) |
+| GET /api/lousa/me | 403 | 200 |
+| GET /api/clock-records?collaborator_id={cid} | 403 | 200 |
+| GET /api/collaborators/{próprio_id} | 403 | 200 |
+| GET /api/fleet/odom/today/public/{cid} | 403 | 404 (sem dado — ok) |
+
+### Red Team (regressão)
+- `/app/backend/scripts/red_team_colaborador_rbac.py` — 5/5 PASS, lock-in pra impedir recorrência.
+
+### Status do colaborador
+- DIOGO HENRIQUE: `clock_in_enabled=False`, `cargo=tecnico`, `role=colaborador`, ativo → **Lousa Mobile carrega normalmente, mostra os 4 tickets do dia sem exigir clock-in**.
+
+
+
 ## 🚦 SALA Triage Badge — pressão de triagem visível em tempo real ✅ (11/02/2026)
 
 ### Decisão

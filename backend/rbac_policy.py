@@ -121,10 +121,14 @@ ROLE_RULES: List[Tuple[str, Set[str]]] = [
     ("/api/voice",               {"gestor", "atendimento", "auditor"}),
 
     # ─── Operação / Lousa / Tickets ───
+    # `colaborador` (tecnico em campo) precisa ler a propria lousa via mobile.
+    # Endpoints destrutivos/administrativos em /api/lousa/* tem guard proprio
+    # (require_role("gestor"/"administrador")), portanto o middleware so libera
+    # leitura — qualquer escrita continua bloqueada pelo handler.
     ("/api/lousa",               {"gestor", "tecnico", "atendimento",
-                                    "auditor"}),
+                                    "auditor", "colaborador"}),
     ("/api/tickets",             {"gestor", "tecnico", "atendimento",
-                                    "auditor"}),
+                                    "auditor", "colaborador"}),
     ("/api/ticket-quality",      {"gestor", "auditor"}),
     ("/api/preventive-os",       {"gestor", "tecnico"}),
     ("/api/projects",            {"gestor", "tecnico"}),
@@ -149,20 +153,24 @@ ROLE_RULES: List[Tuple[str, Set[str]]] = [
     ("/api/gps-vlan-suggest",    {"gestor", "tecnico"}),
 
     # ─── Frota ───
-    ("/api/fleet",               {"gestor", "tecnico", "auditor"}),
-    ("/api/tech-tracking",       {"gestor", "tecnico", "auditor"}),
-    ("/api/vehicle-checklist",   {"gestor", "tecnico"}),
-    ("/api/vehicle-silhouettes", {"gestor", "tecnico"}),
+    # `colaborador` (tecnico em campo) precisa odom/checklist/tracking do dia via mobile.
+    ("/api/fleet",               {"gestor", "tecnico", "auditor", "colaborador"}),
+    ("/api/tech-tracking",       {"gestor", "tecnico", "auditor", "colaborador"}),
+    ("/api/vehicle-checklist",   {"gestor", "tecnico", "colaborador"}),
+    ("/api/vehicle-silhouettes", {"gestor", "tecnico", "colaborador"}),
     ("/api/locations",           {"gestor", "tecnico", "atendimento",
-                                    "auditor"}),
+                                    "auditor", "colaborador"}),
     ("/api/geofences",           {"administrador", "gestor"}),
 
     # ─── Ponto eletrônico / Colaboradores ───
-    ("/api/collaborators",       {"administrador", "gestor"}),
-    ("/api/clock-records",       {"gestor", "auditor", "atendimento"}),
+    # `colaborador` precisa: bater ponto, ver proprio cadastro,
+    # ver pertences vinculados. Endpoints de admin (criar/editar outros
+    # colaboradores) continuam com guard proprio no handler.
+    ("/api/collaborators",       {"administrador", "gestor", "colaborador"}),
+    ("/api/clock-records",       {"gestor", "auditor", "atendimento", "colaborador"}),
     ("/api/timesheets",          {"gestor", "auditor", "financeiro"}),
     ("/api/timesheets-collective", {"gestor", "auditor", "financeiro"}),
-    ("/api/collab-assets",       {"gestor", "tecnico"}),
+    ("/api/collab-assets",       {"gestor", "tecnico", "colaborador"}),
     ("/api/cargo",               {"administrador", "gestor"}),
 
     # ─── Estoque ───
