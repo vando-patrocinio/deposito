@@ -70,6 +70,23 @@ POINTS_BY_TYPE: Dict[str, float] = {
     "rompimento": 2.5,
 }
 PRIORITY_RANK = {"urgente": -1, "prioridade": 0, "horario": 1, "normal": 2}
+# Aliases PT-BR uppercase usados pelos serviços de IA (autonomous_engine,
+# isabella_churn_to_sala, financial_foundation, smartolt_predictive).
+# Mantém o lookup defensivo para nunca crashar a Lousa com KeyError.
+PRIORITY_ALIASES = {
+    "ALTA": -1, "MEDIA": 0, "MÉDIA": 0, "BAIXA": 2,
+    "CRITICA": -2, "CRÍTICA": -2, "BLOCKER": -2,
+    "alta": -1, "media": 0, "média": 0, "baixa": 2,
+}
+
+
+def _prio_rank(value):
+    """Lookup defensivo de prioridade — nunca crasha, default 99."""
+    if value in PRIORITY_RANK:
+        return PRIORITY_RANK[value]
+    if value in PRIORITY_ALIASES:
+        return PRIORITY_ALIASES[value]
+    return 99
 ADMIN_RESOLVED = ("encerrada", "reagendada", "cancelada")
 TECH_RESOLVED = ("finalizada",)
 
@@ -1104,7 +1121,7 @@ async def lousa_grid(
         else:
             tickets = sorted(
                 [t for t in all_active if t["assigned_collaborator_id"] == cid],
-                key=lambda t: (PRIORITY_RANK[t["priority"]], t["position"]),
+                key=lambda t: (_prio_rank(t.get("priority")), t.get("position", 0)),
             )
             recent_resolved = sorted(
                 [t for t in all_resolved if t["assigned_collaborator_id"] == cid],
@@ -3215,7 +3232,7 @@ async def reorder_tickets(payload: ReorderIn, user: dict = Depends(get_current_u
          "status": {"$in": ["pendente", "aberta", "aguardando_atendimento"]}},
         {"_id": 0},
     ).to_list(500)
-    raw.sort(key=lambda t: (PRIORITY_RANK[t["priority"]], t["position"]))
+    raw.sort(key=lambda t: (_prio_rank(t.get("priority")), t.get("position", 0)))
     by_id = {t["id"]: t for t in raw}
     locked_ids = {raw[i]["id"] for i in compute_locked_positions(raw)}
 
@@ -3226,23 +3243,6 @@ async def reorder_tickets(payload: ReorderIn, user: dict = Depends(get_current_u
         is_locked = t["priority"] != "normal" or t["id"] in locked_ids
         if is_locked and item.position != raw.index(t):
             raise HTTPException(400, f"Bolha travada não pode ser movida ({t['client_snapshot']['name']})")
-
-    for item in payload.items:
-        t = by_id[item.id]
-        if t["priority"] == "normal" and item.id not in locked_ids:
-            await db.tickets.update_one({"id": item.id}, {"$set": {"position": item.position}})
-            try:
-                from services.event_bus import emit_event
-                await emit_event(
-                    "ticket.updated",
-                    company_id=cid,
-                    source="lousa",
-                    payload={},
-                )
-            except Exception:
-                pass
-    return {"ok": True}
-
 
     for item in payload.items:
         t = by_id[item.id]
@@ -4446,7 +4446,7 @@ async def public_reorder_tickets(payload: PublicReorderIn):
          "status": {"$in": ["pendente", "aberta", "aguardando_atendimento"]}},
         {"_id": 0},
     ).to_list(500)
-    raw.sort(key=lambda t: (PRIORITY_RANK[t["priority"]], t["position"]))
+    raw.sort(key=lambda t: (_prio_rank(t.get("priority")), t.get("position", 0)))
     by_id = {t["id"]: t for t in raw}
     locked_ids = {raw[i]["id"] for i in compute_locked_positions(raw)}
 
@@ -5254,7 +5254,7 @@ async def admin_open_ticket(ticket_id: str, user: dict = Depends(require_role("g
         from services.event_bus import emit_event
         await emit_event(
             "ticket.updated",
-            company_id=company_id,
+            company_id=t.get("company_id") or DEMO_COMPANY_ID,
             source="lousa",
             payload={},
         )

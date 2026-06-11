@@ -1972,20 +1972,21 @@ function BubbleCard({ ticket, slotHour, blinkOverdue, isDragging, onDragStart, o
   }
 
   // Tooltip rico (nativo) — mostra quando passar mouse
+  const cs = ticket.client_snapshot || {};
   const tooltipText = selectMode
     ? (isSelectable ? (isSelected ? "Clique para desmarcar" : "Clique para selecionar") : "Não selecionável neste status")
     : [
         `${TYPE_LABELS[ticket.type] || ticket.type}`,
-        `Cliente: ${fmtName(ticket.client_snapshot.name)}`,
-        ticket.client_snapshot.phone ? `Tel: ${fmtPhone(ticket.client_snapshot.phone)}` : null,
-        ticket.client_snapshot.address ? `End.: ${fmtAddress(ticket.client_snapshot.address)}` : null,
-        ticket.client_snapshot.neighborhood ? `Bairro: ${safeText(ticket.client_snapshot.neighborhood)}` : null,
+        `Cliente: ${fmtName(cs.name)}`,
+        cs.phone ? `Tel: ${fmtPhone(cs.phone)}` : null,
+        cs.address ? `End.: ${fmtAddress(cs.address)}` : null,
+        cs.neighborhood ? `Bairro: ${safeText(cs.neighborhood)}` : null,
         ticket.scheduled_time ? `Horário: ${ticket.scheduled_time.substr(11, 5)}` : null,
         ticket.atlaz_slot_original && ticket.scheduled_time
           && ticket.atlaz_slot_original !== ticket.scheduled_time
           ? `⏰ Atlaz original: ${ticket.atlaz_slot_original.substr(11, 5)} (slot cheio — movida)`
           : null,
-        ticket.client_snapshot.relato ? `\nRelato:\n${fmtRelato(ticket.client_snapshot.relato)}` : null,
+        cs.relato ? `\nRelato:\n${fmtRelato(cs.relato)}` : null,
         ai.score != null ? `\nIA: ${ai.score.toFixed(1)}/10 (${ai.label || ""})` : null,
         ticket.in_execution ? "\n▶ Em execução pelo técnico" : null,
         ticket.atlaz_external_id ? `\nAtlaz #${ticket.atlaz_external_id}` : null,
@@ -2139,13 +2140,13 @@ function BubbleCard({ ticket, slotHour, blinkOverdue, isDragging, onDragStart, o
             fontSize: 13.5, fontWeight: 800, color: c.text,
             lineHeight: 1.25, letterSpacing: -0.1,
             overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-          }}>{fmtName(ticket.client_snapshot.name)}</div>
+          }}>{fmtName(cs.name)}</div>
           <div style={{
             fontSize: 11, color: "#64748b", marginTop: 1,
             overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
           }}>
             {TYPE_LABELS[ticket.type]?.replace(/^\S+\s/, "") || ticket.type}
-            {ticket.client_snapshot.neighborhood ? ` · ${safeText(ticket.client_snapshot.neighborhood)}` : ""}
+            {cs.neighborhood ? ` · ${safeText(cs.neighborhood)}` : ""}
           </div>
         </div>
       </div>
