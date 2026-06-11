@@ -867,6 +867,11 @@ async def transfer_ticket(ticket_id: str, payload: TransferIn,
     if t["status"] == "aberta":
         raise HTTPException(409, "Serviço em execução pelo técnico — não pode ser movido. Aguarde a finalização ou encerre antes.")
 
+    # company_id resolvido cedo — usado por emit_event + validacao de slot.
+    company_id = (user.get("company_id")
+                    or t.get("company_id")
+                    or DEMO_COMPANY_ID)
+
     update = {}
     target_cid = payload.new_collaborator_id or t["assigned_collaborator_id"]
 
@@ -894,7 +899,6 @@ async def transfer_ticket(ticket_id: str, payload: TransferIn,
     # Mudança de slot (mesmo técnico ou novo)
     if payload.new_grid_slot is not None:
         # Valida capacidade (max_per_slot)
-        company_id = user.get("company_id") or DEMO_COMPANY_ID
         settings = await db.settings.find_one({"id": company_id}, {"_id": 0}) or {}
         max_per_slot = int(settings.get("lousa_grid_max_per_slot", 2))
         if payload.new_grid_slot != "sem_horario":
