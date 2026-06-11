@@ -2,6 +2,72 @@
 
 > Documento vivo. Atualizado a cada sprint.
 
+## 👂 ISABELLA — ESCUTA, AGREGADOR E BOLHAS HUMANAS ✅ (10/02/2026)
+
+**Ordem CTO**: cliente mandou 3 "Oi" → Isabella ignorou os 2 primeiros.
+Cliente disse "só quero instalar" → Isabella continuou perguntando
+"quantas pessoas usam". Respostas grudadas em 1 bolha gigante. Resolver
+no código + prompt, com aprendizado, 180 chars max, aguardar bursts.
+
+### Entregas
+- `services/message_aggregator.py` — debounce de 6s entre bolhas inbound.
+  Webhook só enfileira UM job; bolhas extras vão ao buffer e são
+  colhidas pelo worker via `wait_for_quiet_window()`. Dedup automático
+  de "Oi" consecutivo. TTL 1h.
+- `services/bubble_splitter.py` — quebra resposta em bolhas ≤180c,
+  com regras humanas:
+  - 1 pergunta por bolha
+  - saudação ("Oi Pamela!") em bolha própria
+  - frases <50c agrupam, frases ≥50c em bolha separada
+  - hard cap 3 bolhas/turn
+  - emoji duplicado removido
+  - **nome do cliente só 1x por turn inteiro** (stopword list para
+    não confundir "Perfeito" / "Beleza" com nome próprio)
+  - typing delay realista (30 chars/s, cap 4.5s entre bolhas)
+- `services/listening_guard.py` — detecta intenção direta e injeta
+  diretiva no prompt:
+  - "só quero X" / "vc tem X?" / "apenas quero" → `intent_direct`
+  - "mas pra que essa pergunta" → `questions_question`
+  - "não me pergunte X" → `rejects_questions`
+  - **Bloqueia perguntas qualificatórias** (pessoas/dispositivos/
+    streamings/jogos) quando cliente já recusou
+  - **Detecta pergunta repetida** entre 2 últimos outbounds
+  - Rewriter pós-LLM remove sentenças que violam intenção
+- `isabella_queue.has_pending_for_phone()` — dedup de job por phone
+  (evita criar 3 jobs quando cliente manda 3 bolhas).
+- Worker agora chama `wait_for_quiet_window()` antes de gerar reply →
+  Isabella "escuta" a rajada antes de responder.
+- `_generate_and_send_twilio_reply()` agora envia **N bolhas
+  sequenciais com delay** em vez de monólito.
+- **System prompt da Isabella atualizado** em todas as Isabellas
+  (`aihub_agents.name=Isabella`) com 7 regras de escuta e formato.
+
+### Bug fix no caso da Pamela (screenshot CTO)
+| Comportamento ANTES | Comportamento DEPOIS |
+|---|---|
+| Cliente "Oi" 3x → Isabella ignora 2 e responde 1 | 3 bolhas → 1 job → 1 resposta após silêncio |
+| "Oi Pamela! 😊 Vi que... É pra... ou ...?" (93c, 1 bolha) | "Oi Pamela! 😊 Vi que você quer instalação." + "É pra um novo endereço ou upgrade?" (2 bolhas) |
+| "Perfeito, Pamela! Pamela, quantas pessoas..." (nome 2x) | "Perfeito, Pamela!" + "quantas pessoas usam a internet aí?" |
+| Cliente "So quero instalar vc tem" → Isabella pergunta endereço atual | Listening guard injeta diretiva: "Confirme a ação que ele pediu e SIGA" |
+
+### Validação Zero Mock (`scripts/test_isabella_listening.py`)
+**5/5 suítes ✅**:
+1. Aggregator: 3 bolhas em 6s → joined_text único após `wait_for_quiet_window`
+1.b. Dedup consecutivo: 3x "Oi" → "Oi" (não "Oi | Oi | Oi")
+2. Bubble splitter: respostas ≥120c quebradas em 2 bolhas, ≤180c cada, nome só 1x
+3. Listening guard: "So quero instalar vc tem?" detecta `intent_direct + asks_availability`, gera bloco de diretiva e remove pergunta qualificatória do reply
+4. "Mas pra que essa pergunta?" detecta `questions_question` e injeta "EXPLICAR o motivo em 1 frase curta"
+
+### Regressão preservada
+- `test_short_term_memory.py` 11/11 ✅ ("Quero", "Sim", "Pode", etc.)
+- Backend health: `overall=ONLINE`, 6/6 subsistemas
+- Red Team Shield ainda 28/28 A
+
+### Configuração nova (.env opcional)
+- `WA_AGGREGATE_WINDOW_S=6` — janela de silêncio antes de processar
+- `WA_AGGREGATE_MAX_MSGS=10` — máximo de bolhas no buffer por phone
+
+
 ## 🔁 SHIELD DAILY AUDIT — LOOP AUTÔNOMO ✅ (10/02/2026)
 
 **Ordem CTO**: agendar Red Team Shield diário 04h + histórico em DB +

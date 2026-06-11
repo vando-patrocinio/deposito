@@ -131,6 +131,18 @@ async def enqueue_job(
     return job_id
 
 
+async def has_pending_for_phone(cid: str, phone: str) -> bool:
+    """Verifica se já existe job queued/processing para este phone.
+    Usado pelo webhook para deduplicar (anti-burst): se houver pending,
+    a mensagem nova fica só no aggregator e o job existente vai colhê-la.
+    """
+    doc = await db[QUEUE_COLL].find_one(
+        {"company_id": cid, "phone": phone,
+         "status": {"$in": ["queued", "processing"]}},
+        {"_id": 1})
+    return bool(doc)
+
+
 # ─── Fallback rápido quando LLM demora ──────────────────────────
 FALLBACK_TEXT = ("Recebi sua mensagem. Já estou verificando e te respondo "
                   "em instantes.")
@@ -175,6 +187,26 @@ async def _process_one_job(job: Dict[str, Any]) -> None:
         if job.get("channel", "twilio") != "twilio":
             raise RuntimeError(f"channel não suportado: {job.get('channel')}")
 
+        # AGREGADOR — espera janela de silêncio do cliente (default 6s)
+        # e coleta todas as bolhas inbound em rajada
+        from services.message_aggregator import wait_for_quiet_window
+        agg = await wait_for_quiet_window(
+            company_id=job["company_id"], phone=job["phone"],
+            max_wait_s=12.0)
+        # joined_text = todas as bolhas concatenadas (anti-burst)
+        if agg and agg.get("joined_text"):
+            user_text = agg["joined_text"]
+            await db[QUEUE_COLL].update_one(
+                {"_id": job_id},
+                {"$set": {
+                    "aggregated_count": agg.get("count", 1),
+                    "aggregated_text": user_text[:500],
+                }})
+            logger.info("[isabella_queue] job=%s agregou %d msgs: %s",
+                          job_id, agg.get("count", 1), user_text[:120])
+        else:
+            user_text = job["user_text"]
+
         # Import lazy para não puxar FastAPI no worker
         from routes.whatsapp_twilio import _generate_and_send_twilio_reply
 
@@ -183,7 +215,7 @@ async def _process_one_job(job: Dict[str, Any]) -> None:
                 _generate_and_send_twilio_reply(
                     cid=job["company_id"],
                     phone=job["phone"],
-                    user_text=job["user_text"],
+                    user_text=user_text,
                     subscriber_id=job.get("subscriber_id"),
                     subscriber_ctx=job.get("subscriber_ctx"),
                 ),
@@ -194,8 +226,6 @@ async def _process_one_job(job: Dict[str, Any]) -> None:
             logger.warning(
                 "[isabella_queue] job=%s LLM timeout %.1fs → fallback canned",
                 job_id, timeout_s)
-            # Spawn fallback em paralelo; main task original pode continuar
-            # rodando em background e completará a outbound real depois.
             asyncio.create_task(_send_fallback_and_log(
                 cid=job["company_id"],
                 phone=job["phone"],

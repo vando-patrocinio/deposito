@@ -424,13 +424,26 @@ async def webhook(request: Request):
 
     # Enfileira em isabella_queue (worker pool dedicado consome).
     # Webhook NUNCA chama LLM ou Twilio diretamente — só persiste e enfileira.
+    # NOTA: ANTES de enfileirar, empurra mensagem ao AGREGADOR. Se já houver
+    # job pending pra esse phone, o worker vai esperar a janela de silêncio
+    # e processar o bloco inteiro de uma vez (anti-burst).
     try:
-        from services.isabella_queue import enqueue_job
-        await enqueue_job(
-            cid=cid, phone=phone, user_text=text,
-            subscriber_id=subscriber_id, subscriber_ctx=subscriber_ctx,
-            channel="twilio", message_sid=message_sid,
-        )
+        from services.message_aggregator import push as _agg_push
+        await _agg_push(company_id=cid, phone=phone,
+                          message_sid=message_sid or "", text=text)
+    except Exception as e:
+        logger.warning("[twilio] aggregator push falhou: %s", e)
+    try:
+        from services.isabella_queue import enqueue_job, has_pending_for_phone
+        # Dedup: se já existe job pending para esse phone, não cria outro.
+        # O job pending vai colher TODAS as bolhas via aggregator.pop_ready().
+        already_pending = await has_pending_for_phone(cid, phone)
+        if not already_pending:
+            await enqueue_job(
+                cid=cid, phone=phone, user_text=text,
+                subscriber_id=subscriber_id, subscriber_ctx=subscriber_ctx,
+                channel="twilio", message_sid=message_sid,
+            )
     except Exception as e:
         logger.warning("[twilio] enqueue falhou: %s", e)
     return {"ok": True, "queued": True, "message_sid": message_sid}
@@ -498,6 +511,20 @@ async def _generate_and_send_twilio_reply(
             sys_prompt += "\n\n" + mem_block
     except Exception as e:
         logger.warning("[twilio] short_term_memory inject falhou: %s", e)
+
+    # LISTENING GUARD — detecta intenção direta + perguntas repetidas
+    listening_analysis: dict = {}
+    try:
+        from services.listening_guard import (
+            analyze_listening, inject_listening_block,
+        )
+        listening_analysis = await analyze_listening(
+            company_id=cid, phone=phone, user_text=user_text)
+        lb = inject_listening_block(listening_analysis)
+        if lb:
+            sys_prompt += "\n\n" + lb
+    except Exception as e:
+        logger.warning("[twilio] listening_guard analyze falhou: %s", e)
 
     # MEMÓRIA DE LONGO PRAZO — Operação Memória Total (15/30/60 dias)
     try:
@@ -686,26 +713,56 @@ async def _generate_and_send_twilio_reply(
     except Exception as e:
         logger.warning("[twilio] universo_ligo_pitch falhou: %s", e)
 
-    # Envia via Twilio
-    send_result = await send_via_twilio(cid, phone, reply_text)
-    # Persiste outbound
-    await db.aihub_wa_messages.insert_one({
-        "id": f"wam-{uuid.uuid4().hex[:10]}",
-        "company_id": cid,
-        "direction": "outbound",
-        "channel": "twilio",
-        "phone": phone,
-        "text": reply_text,
-        "agent_id": agent.get("id"),
-        "agent_name": agent.get("name"),
-        "auto_reply": True,
-        "delivery_status": (send_result.get("status")
-                            if send_result.get("ok") else "failed_twilio"),
-        "delivery_error": send_result.get("error"),
-        "message_id": send_result.get("message_sid"),
-        "subscriber_id": subscriber_id,
-        "created_at": now_iso(),
-    })
+    # LISTENING GUARD — reescreve resposta se Isabella violou intenção
+    try:
+        if listening_analysis:
+            from services.listening_guard import rewrite_if_violates as _lg_rewrite
+            reply_text = _lg_rewrite(reply_text, listening_analysis)
+    except Exception as e:
+        logger.warning("[twilio] listening_guard rewrite falhou: %s", e)
+
+    # BUBBLE SPLITTER — quebra em bolhas ≤180 chars e envia múltiplas
+    # mensagens com delay realista entre elas (anti-monolito).
+    try:
+        from services.bubble_splitter import (
+            split_into_bubbles, estimate_typing_delay,
+        )
+        bubbles = split_into_bubbles(reply_text) or [reply_text[:180]]
+    except Exception as e:
+        logger.warning("[twilio] bubble_splitter falhou: %s", e)
+        bubbles = [reply_text[:180]]
+
+    # Envia cada bolha com pequeno delay humano (sleep 0.6-4.5s)
+    send_results = []
+    for i, bubble in enumerate(bubbles):
+        if i > 0:
+            try:
+                await asyncio.sleep(estimate_typing_delay(bubble))
+            except Exception:
+                pass
+        sr = await send_via_twilio(cid, phone, bubble)
+        send_results.append(sr)
+        # Persiste outbound POR BOLHA (para auditoria e history)
+        await db.aihub_wa_messages.insert_one({
+            "id": f"wam-{uuid.uuid4().hex[:10]}",
+            "company_id": cid,
+            "direction": "outbound",
+            "channel": "twilio",
+            "phone": phone,
+            "text": bubble,
+            "agent_id": agent.get("id"),
+            "agent_name": agent.get("name"),
+            "auto_reply": True,
+            "bubble_index": i,
+            "bubble_total": len(bubbles),
+            "delivery_status": (sr.get("status")
+                                if sr.get("ok") else "failed_twilio"),
+            "delivery_error": sr.get("error"),
+            "message_id": sr.get("message_sid"),
+            "subscriber_id": subscriber_id,
+            "created_at": now_iso(),
+        })
+    send_result = send_results[0] if send_results else {"ok": False}
     # Isabella CEO Follow-up: registra outcome em ai_evaluations
     try:
         from services.isabella_ceo_followup import register_followup

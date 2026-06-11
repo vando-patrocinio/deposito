@@ -1044,10 +1044,12 @@ async def _startup() -> None:
         from services.observability import ensure_indexes as _oi
         from services.shield_daily_audit import (
             ensure_indexes as _sda_idx, register_scheduler as _sda_reg)
+        from services.message_aggregator import ensure_indexes as _ma_idx
         asyncio.create_task(_aci())
         asyncio.create_task(_esi())
         asyncio.create_task(_oi())
         asyncio.create_task(_sda_idx())
+        asyncio.create_task(_ma_idx())
         _sda_reg(scheduler)
     except Exception as e:
         logger.warning("[startup] shield indexes: %s", e)
