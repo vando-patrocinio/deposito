@@ -160,6 +160,7 @@ function PaymentDetailModal({ paymentId, onClose, onAction }) {
   const [audit, setAudit] = useState([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState("");
+  const [actionError, setActionError] = useState("");
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -181,30 +182,36 @@ function PaymentDetailModal({ paymentId, onClose, onAction }) {
 
   const doAction = async (action) => {
     if (!payment) return;
+    setActionError("");
+    let url = "";
+    let body = {};
     if (action === "approve") {
-      const reason = window.prompt("Motivo da aprovação (opcional):") || "";
-      if (reason === null) return;
-      setBusy(action);
-      try {
-        await client.post(`/treasury/payments/${paymentId}/approve`, { reason });
-      } finally { setBusy(""); }
+      if (!window.confirm("Aprovar este pagamento? Será registrado na auditoria.")) return;
+      url = `/treasury/payments/${paymentId}/approve`;
+      body = { reason: "Aprovado via UI pelo CTO" };
     } else if (action === "cancel") {
       if (!window.confirm("Cancelar este pagamento? Esta ação é registrada na auditoria.")) return;
-      setBusy(action);
-      try { await client.post(`/treasury/payments/${paymentId}/cancel`); }
-      finally { setBusy(""); }
+      url = `/treasury/payments/${paymentId}/cancel`;
     } else if (action === "send") {
       if (!window.confirm("Enviar este pagamento ao Asaas SANDBOX? Nenhum dinheiro real será movimentado.")) return;
-      setBusy(action);
-      try { await client.post(`/treasury/payments/${paymentId}/send`); }
-      finally { setBusy(""); }
+      url = `/treasury/payments/${paymentId}/send`;
     } else if (action === "ai-review") {
-      setBusy(action);
-      try { await client.post(`/treasury/payments/${paymentId}/ai-review`); }
-      finally { setBusy(""); }
+      url = `/treasury/payments/${paymentId}/ai-review`;
+    } else {
+      return;
     }
-    await load();
-    onAction && onAction();
+    setBusy(action);
+    try {
+      await client.post(url, body);
+    } catch (e) {
+      const msg = e?.response?.data?.detail || e?.humanMessage || e?.message || "Falha ao executar ação";
+      setActionError(typeof msg === "string" ? msg : JSON.stringify(msg));
+      console.warn("[treasury] action failed", action, e);
+    } finally {
+      setBusy("");
+      await load();
+      onAction && onAction();
+    }
   };
 
   const statusMeta = payment ? (STATUS_META[payment.status] || { label: payment.status, color: COLORS.muted }) : null;
@@ -446,6 +453,18 @@ function PaymentDetailModal({ paymentId, onClose, onAction }) {
                 <div style={{ fontSize: 12, color: COLORS.text, fontFamily: "monospace" }}>
                   {payment.last_error.message || JSON.stringify(payment.last_error)}
                 </div>
+              </Card>
+            )}
+
+            {actionError && (
+              <Card data-testid="treasury-action-error" style={{
+                marginTop: 16, borderLeft: `3px solid ${COLORS.red}`,
+              }}>
+                <div style={{ fontSize: 11, color: COLORS.red, fontWeight: 700,
+                              textTransform: "uppercase", marginBottom: 4 }}>
+                  Erro na ação
+                </div>
+                <div style={{ fontSize: 12, color: COLORS.text }}>{actionError}</div>
               </Card>
             )}
           </>

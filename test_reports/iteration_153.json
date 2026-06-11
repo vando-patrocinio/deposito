@@ -1,0 +1,29 @@
+{
+  "summary": "Retest of IA Tesoureira after iteration_152 fixes - ALL CRITICAL BUGS RESOLVED. Logged in as admin@empresa.com, navigated to Financeiro > IA Tesoureira (data-testid='treasury-panel' rendered). On AGUARDA CTO row pay-demo-53366b336a (Fornecedora Fibras Ópticas LTDA R$1.850,00): (1) Approve → 200 POST /approve body={ok:true,new_status:'approved'}, status pill flipped to APROVADO, Enviar ao Asaas Sandbox button appeared, no CRA overlay, no inline error. (2) Send → 200 POST /send body={ok:false,asaas:{ok:false,error:'asaas_key_missing',message:'ASAAS_API_KEY ausente...'}}, status flipped to FALHOU, ULTIMO ERRO showing asaas_key_missing message inline, NO 500 and NO CRA overlay. (3) AI Review → 200 POST /ai-review, decision reloaded (REQUER CTO, risk 0). (4) Cancel → 200 POST /cancel, status became CANCELADO, audit timeline shows payment_cancelled event. History tab (treasury-history-table) and Forecast tab (treasury-forecast-view) both render correctly. Zero uncaught page errors, zero JWT/ASAAS_API_KEY value leaks in console.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "GET /api/events/stream", "issue": "SSE stream returns 401 (token in URL works initially but log shows recurring 401 unrelated to treasury flow). Not blocking but noisy. Investigate session refresh for EventSource."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": ["/app/test_reports/iteration_153.json"],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "TreasuryPanel.jsx is now 868 lines - recommend splitting PaymentDetailModal, PaymentsTable, ForecastView into separate files for maintainability (non-blocking).",
+    "Note: app overrides window.confirm with a custom dialog component (data-testid='dialog-backdrop' + 'Confirmar' button). This works correctly but is non-obvious - consider documenting in component README, or replacing with a controlled in-app modal in PaymentDetailModal for predictability.",
+    "asaas_client.py graceful degradation pattern (_AsaasNoKey -> {ok:false,error:'asaas_key_missing'}) is correctly applied to all 5 endpoints. Good defensive coding."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "100% (all 4 treasury action POSTs returned expected 200)", "frontend": "100% (9/9 tested requirements pass)"},
+  "test_credentials": "admin@empresa.com / 123456 (super_admin co-demo) - from /app/memory/test_credentials.md",
+  "seed_data_creation": "Used existing seed (3 payees + 8 payments). Tested on pay-demo-53366b336a (Fornecedora Fibras Opticas LTDA R$1.850, infraestrutura, pending_human_approval).",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "iteration_152 HIGH bugs CONFIRMED FIXED. Approve flow no longer 422s (frontend sends fixed reason 'Aprovado via UI pelo CTO'). Send no longer 500s when ASAAS_API_KEY missing (returns {ok:false,error:'asaas_key_missing'} gracefully and modal shows inline ULTIMO ERRO). doAction wrapped in try/catch with setActionError state + data-testid='treasury-action-error' rendering when applicable (was empty in happy path since /send returned 200 not error). Note: SEND returns 200 with ok:false rather than non-2xx, so the catch block never triggered - the error is shown via payment.last_error field in modal body (ULTIMO ERRO section), which is correct UX. Custom confirm dialog requires clicking data-testid='dialog-backdrop' >> button 'Confirmar' to advance (not native window.confirm). No further retest needed for this scope.",
+  "rca of the issue": "Both iteration_152 HIGH bugs validated as resolved: (1) Approve 422: fixed by hard-coding reason='Aprovado via UI pelo CTO' (no more window.prompt with undefined/null payload). (2) Uncaught axios overlay: fixed by try/catch wrapping client.post in doAction + setActionError state + inline treasury-action-error Card render. (3) Asaas 500 risk: asaas_client._request now raises _AsaasNoKey when ASAAS_API_KEY missing, caught by create_transfer_pix/get_balance/etc returning {ok:false,error:'asaas_key_missing'} - confirmed via observed /send 200 response body."
+}

@@ -49,11 +49,26 @@ def _redact(s: str) -> str:
 async def _request(method: str, path: str, **kwargs) -> httpx.Response:
     if _env() != "sandbox":
         raise RuntimeError("ASAAS_ENV != sandbox — operação bloqueada")
+    if not os.environ.get("ASAAS_API_KEY"):
+        # Sinaliza ausência de chave de forma estruturada
+        raise _AsaasNoKey()
     url = f"{_base_url()}{path}"
     log.info("asaas %s %s", method, path)  # NÃO loga payload nem key
     async with httpx.AsyncClient(timeout=15.0) as client:
         resp = await client.request(method, url, headers=_headers(), **kwargs)
     return resp
+
+
+class _AsaasNoKey(Exception):
+    pass
+
+
+def _no_key_response() -> Dict[str, Any]:
+    return {
+        "ok": False,
+        "error": "asaas_key_missing",
+        "message": "ASAAS_API_KEY ausente — modo sandbox sem chave. Configure ASAAS_API_KEY no backend/.env.",
+    }
 
 
 def normalize_error(resp: httpx.Response) -> Dict[str, Any]:
@@ -71,7 +86,10 @@ def normalize_error(resp: httpx.Response) -> Dict[str, Any]:
 
 async def get_balance() -> Dict[str, Any]:
     """GET /finance/balance"""
-    r = await _request("GET", "/finance/balance")
+    try:
+        r = await _request("GET", "/finance/balance")
+    except _AsaasNoKey:
+        return _no_key_response()
     if r.status_code == 200:
         return {"ok": True, **r.json()}
     return normalize_error(r)
@@ -98,28 +116,40 @@ async def create_transfer_pix(
         payload["description"] = description[:140]
     if external_reference:
         payload["externalReference"] = external_reference[:60]
-    r = await _request("POST", "/transfers", json=payload)
+    try:
+        r = await _request("POST", "/transfers", json=payload)
+    except _AsaasNoKey:
+        return _no_key_response()
     if r.status_code in (200, 201):
         return {"ok": True, **r.json()}
     return normalize_error(r)
 
 
 async def get_transfer_status(transfer_id: str) -> Dict[str, Any]:
-    r = await _request("GET", f"/transfers/{transfer_id}")
+    try:
+        r = await _request("GET", f"/transfers/{transfer_id}")
+    except _AsaasNoKey:
+        return _no_key_response()
     if r.status_code == 200:
         return {"ok": True, **r.json()}
     return normalize_error(r)
 
 
 async def list_transfers(limit: int = 20, offset: int = 0) -> Dict[str, Any]:
-    r = await _request("GET", "/transfers", params={"limit": limit, "offset": offset})
+    try:
+        r = await _request("GET", "/transfers", params={"limit": limit, "offset": offset})
+    except _AsaasNoKey:
+        return _no_key_response()
     if r.status_code == 200:
         return {"ok": True, **r.json()}
     return normalize_error(r)
 
 
 async def cancel_transfer_if_possible(transfer_id: str) -> Dict[str, Any]:
-    r = await _request("POST", f"/transfers/{transfer_id}/cancel")
+    try:
+        r = await _request("POST", f"/transfers/{transfer_id}/cancel")
+    except _AsaasNoKey:
+        return _no_key_response()
     if r.status_code in (200, 201):
         return {"ok": True, **r.json()}
     return normalize_error(r)
