@@ -259,6 +259,23 @@ export default function LousaAdminPanel({ systemStatus = { offline: false, drift
       window.localStorage.removeItem("lousa_visible_techs");
     }
   }, [visibleTechIds]);
+
+  // Auto-poda: se o filtro de técnicos persistido aponta para IDs que NÃO
+  // existem mais no grid (técnicos sem bolha hoje, removidos do cadastro,
+  // etc.), remove esses IDs silenciosamente. Se a interseção zerar, limpa
+  // o filtro inteiro — caso contrário o Quadro fica visualmente vazio
+  // mesmo havendo técnicos+bolhas reais para mostrar.
+  useEffect(() => {
+    if (!grid?.columns?.length) return;
+    if (visibleTechIds.length === 0) return;
+    const validIds = new Set(grid.columns.map((c) => c.collaborator.id));
+    const pruned = visibleTechIds.filter((id) => validIds.has(id));
+    if (pruned.length === 0) {
+      setVisibleTechIds([]);  // mostra todos
+    } else if (pruned.length !== visibleTechIds.length) {
+      setVisibleTechIds(pruned);
+    }
+  }, [grid?.columns, visibleTechIds]);
   const [techMenuOpen, setTechMenuOpen] = useState(false);
   const [overflowOpen, setOverflowOpen] = useState(false);
   const [showPdfPopover, setShowPdfPopover] = useState(false);
@@ -1160,6 +1177,26 @@ export default function LousaAdminPanel({ systemStatus = { offline: false, drift
         {grid.columns.length === 0 && (
           <div style={{ background: "white", padding: 30, borderRadius: 14, color: "#94a3b8", flex: 1, textAlign: "center" }}>
             Nenhum técnico cadastrado.
+          </div>
+        )}
+        {grid.columns.length > 0
+          && (focusTechId
+            ? grid.columns.filter((c) => c.collaborator.id === focusTechId).length === 0
+            : (visibleTechIds.length > 0
+                && grid.columns.filter((c) => visibleTechIds.includes(c.collaborator.id)).length === 0))
+          && (
+          <div data-testid="lousa-empty-filter-state"
+               style={{ background: "white", padding: 30, borderRadius: 14, color: "#64748b", flex: 1, textAlign: "center" }}>
+            Filtro de técnicos sem resultado para esta data.
+            <br/>
+            <button
+              data-testid="lousa-clear-filter-btn"
+              onClick={() => { setVisibleTechIds([]); setFocusTechId(null); }}
+              style={{ marginTop: 12, padding: "8px 16px", borderRadius: 8,
+                        border: "1px solid #e2e8f0", background: "#f8fafc",
+                        cursor: "pointer", color: "#0f172a" }}>
+              Mostrar todos os técnicos
+            </button>
           </div>
         )}
         {(focusTechId
