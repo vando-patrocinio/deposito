@@ -235,6 +235,8 @@ export default function LousaAdminPanel({ systemStatus = { offline: false, drift
   const lastAlertRef = useRef(new Set()); // ticket_ids que já tocaram
   const [tick, setTick] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
+  const [lastSyncAt, setLastSyncAt] = useState(null);
+  const [syncError, setSyncError] = useState(false);
   const [refreshFlash, setRefreshFlash] = useState(false);
   const [alertsOn, setAlertsOnState] = useState(() => isAlertsEnabled());
   const [selectMode, setSelectMode] = useState(false);
@@ -392,8 +394,10 @@ export default function LousaAdminPanel({ systemStatus = { offline: false, drift
       setLogs(lg.items || []);
       setRefreshFlash(true);
       setTimeout(() => setRefreshFlash(false), 1200);
-      // sucesso → reseta contador silencioso
+      // sucesso → reseta contador silencioso + atualiza saúde
       window.__lousaPollFails = 0;
+      setLastSyncAt(Date.now());
+      setSyncError(false);
     } catch (e) {
       console.error("Erro lousa", e);
       // CTO P0: erros transitórios (5xx/timeout/520-Cloudflare/network) durante
@@ -406,6 +410,8 @@ export default function LousaAdminPanel({ systemStatus = { offline: false, drift
         || status === 520 || status === 521 || status === 522
         || status === 523 || status === 524 || status === 525;
       window.__lousaPollFails = (window.__lousaPollFails || 0) + 1;
+      // marca erro de sync apenas após 2 falhas consecutivas (pra não piscar)
+      if (window.__lousaPollFails >= 2) setSyncError(true);
       if (isTransient && window.__lousaPollFails < 3) {
         // silencia — próxima iteração de 8s resolve sozinha
       } else {
@@ -716,6 +722,11 @@ export default function LousaAdminPanel({ systemStatus = { offline: false, drift
                 {overdueCount} atrasada(s)
               </span>
             )}
+            <SyncHealthDot
+              lastSyncAt={lastSyncAt}
+              syncError={syncError}
+              tick={tick}
+            />
           </p>
         </div>
         <div data-testid="lousa-toolbar" style={{
@@ -1898,6 +1909,73 @@ function AgentBadge({ ticket }) {
       }}>{cfg.letter}</span>
   );
 }
+
+// ─────────── Indicador de saúde do polling ───────────
+// Bolinha discreta no header da Lousa que mostra quando foi a última sync.
+// 🟢 verde   → < 12s (sync saudável, dentro do ciclo de 8s)
+// 🟡 amarelo → 12–30s (atrasado, mas pode ser jitter de rede)
+// 🔴 vermelho → > 30s OU 2+ falhas consecutivas (problema real)
+// Hover mostra "Última sync: Xs atrás".
+function SyncHealthDot({ lastSyncAt, syncError, tick }) {  // eslint-disable-line no-unused-vars
+  // `tick` é recebido só para forçar re-render — não usamos o valor.
+  if (!lastSyncAt) {
+    return (
+      <span
+        data-testid="lousa-sync-dot"
+        data-status="loading"
+        title="Aguardando primeira sincronização…"
+        style={{
+          display: "inline-block", width: 8, height: 8, borderRadius: "50%",
+          background: "#94a3b8", marginLeft: 10, verticalAlign: "middle",
+        }}
+      />
+    );
+  }
+  const elapsedSec = Math.floor((Date.now() - lastSyncAt) / 1000);
+  let color = "#10b981";   // verde
+  let status = "ok";
+  let label = "Sincronização saudável";
+  if (syncError || elapsedSec > 30) {
+    color = "#ef4444"; status = "error";
+    label = syncError ? "Falha de sincronização" : "Sincronização atrasada";
+  } else if (elapsedSec > 12) {
+    color = "#f59e0b"; status = "warn"; label = "Sincronização lenta";
+  }
+  const display = elapsedSec < 60
+    ? `${elapsedSec}s atrás`
+    : elapsedSec < 3600
+      ? `${Math.floor(elapsedSec / 60)}min atrás`
+      : `${Math.floor(elapsedSec / 3600)}h atrás`;
+  return (
+    <span
+      data-testid="lousa-sync-dot"
+      data-status={status}
+      title={`${label} · Última sync: ${display}`}
+      style={{
+        display: "inline-flex", alignItems: "center", gap: 6,
+        marginLeft: 10, fontSize: 11, color: "#64748b", fontWeight: 600,
+        verticalAlign: "middle",
+      }}
+    >
+      <span style={{
+        width: 8, height: 8, borderRadius: "50%", background: color,
+        boxShadow: status === "ok" ? `0 0 6px ${color}88` : "none",
+        animation: status === "ok" ? "lousa-sync-pulse 2s infinite ease-in-out" : "none",
+      }} />
+      <span style={{ fontVariantNumeric: "tabular-nums" }}>
+        {display}
+      </span>
+      <style>{`
+        @keyframes lousa-sync-pulse {
+          0%, 100% { opacity: 1; }
+          50% { opacity: 0.5; }
+        }
+      `}</style>
+    </span>
+  );
+}
+
+
 
 function BubbleCard({ ticket, slotHour, blinkOverdue, isDragging, onDragStart, onDragEnd, onAdminClose, onAdminOpen, onEdit, onReschedule, busy, selectMode, isSelected, onToggleSelect, forceExpanded }) {
   const c = PRIORITY_COLORS[ticket.priority] || PRIORITY_COLORS.normal;
