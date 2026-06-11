@@ -197,6 +197,15 @@ async def _worker_loop():
                     await _run_for_company(cid)
                     # iter219 — Café com a IA do CEO (briefing matinal)
                     await _maybe_send_presidente_briefing(cid)
+                    # COMPLIANCE — Auto-sync diário da Equipe IA
+                    try:
+                        from services.agent_compliance_scheduler import (
+                            run_compliance_pass,
+                        )
+                        await run_compliance_pass(cid)
+                    except Exception as e:
+                        logger.exception(
+                            "[agent-compliance] cron err %s: %s", cid, e)
                     _last_run_per_company[cid] = now.date().isoformat()
                 except Exception as e:
                     logger.exception(

@@ -159,6 +159,40 @@ async def discover_now(request: Request,
     return await discover_and_score()
 
 
+# ─── Orphan Watcher + Quarantine ───────────────────────────────
+@router.post("/orphan/scan-now")
+@limiter.limit(get_limit("isabella_write"))
+async def orphan_scan(request: Request,
+                         user: dict = Depends(get_current_user)):
+    _require_super(user)
+    from services.orphan_event_watcher import scan_orphans
+    return await scan_orphans(window_minutes=10)
+
+
+@router.get("/quarantine")
+@limiter.limit(get_limit("isabella_read"))
+async def quarantine_list(request: Request,
+                              user: dict = Depends(get_current_user)):
+    _require_admin(user)
+    from services.orphan_event_watcher import quarantined_list, orphan_status_24h
+    return {"active": await quarantined_list(),
+              "status_24h": await orphan_status_24h()}
+
+
+@router.post("/quarantine/{source}/release")
+@limiter.limit(get_limit("isabella_write"))
+async def quarantine_release(request: Request, source: str,
+                                 justificativa: str = "",
+                                 user: dict = Depends(get_current_user)):
+    _require_super(user)
+    if not justificativa or len(justificativa) < 10:
+        raise HTTPException(400, "justificativa é obrigatória (≥10 chars)")
+    from services.orphan_event_watcher import release_source
+    return await release_source(
+        source=source, justificativa=justificativa,
+        released_by=(user.get("email") or user.get("id") or "?"))
+
+
 @router.get("/presidente/brief")
 @limiter.limit(get_limit("isabella_read"))
 async def presidente_brief(request: Request,

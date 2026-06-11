@@ -67,7 +67,7 @@ def _calls_emit_event(file_path: Path) -> bool:
     except Exception:
         return False
     return ("emit_event(" in src or "event_bus.publish" in src
-            or "publish_event(" in src)
+            or "publish_event(" in src or "record_event(" in src)
 
 
 def _scan_files() -> List[Path]:

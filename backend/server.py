@@ -69,6 +69,7 @@ from routes import (
     motor_ia as routes_motor_ia,
     conselho_ia as routes_conselho_ia,
     presidente_ia as routes_presidente_ia,
+    presidente_agentes as routes_presidente_agentes,
     audit_log_panel as routes_audit_log,
     backend_health_routes as routes_backend_health,
     warroom as routes_warroom,
@@ -1048,14 +1049,18 @@ async def _startup() -> None:
         from services.message_aggregator import ensure_indexes as _ma_idx
         from services.nervous_autodiscovery import (
             ensure_indexes as _nva_idx, register_scheduler as _nva_reg)
+        from services.orphan_event_watcher import (
+            ensure_indexes as _oew_idx, register_scheduler as _oew_reg)
         asyncio.create_task(_aci())
         asyncio.create_task(_esi())
         asyncio.create_task(_oi())
         asyncio.create_task(_sda_idx())
         asyncio.create_task(_ma_idx())
         asyncio.create_task(_nva_idx())
+        asyncio.create_task(_oew_idx())
         _sda_reg(scheduler)
         _nva_reg(scheduler)
+        _oew_reg(scheduler)
     except Exception as e:
         logger.warning("[startup] shield indexes: %s", e)
     # NOTE: o worker da isabella_queue foi SEPARADO em processo dedicado
@@ -1180,6 +1185,7 @@ app.include_router(routes_aihub.router)
 app.include_router(routes_motor_ia.router)
 app.include_router(routes_conselho_ia.router)
 app.include_router(routes_presidente_ia.router)
+app.include_router(routes_presidente_agentes.router)
 app.include_router(routes_audit_log.router)
 app.include_router(routes_backend_health.router)
 app.include_router(routes_warroom.router)

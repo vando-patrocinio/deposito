@@ -134,6 +134,14 @@ async def snapshot() -> Dict[str, Any]:
         "overall": overall,
         "subsystems": by_name,
     }
+    # Adiciona orphan_events_status
+    try:
+        from services.orphan_event_watcher import orphan_status_24h
+        snap["orphan_events_status"] = await orphan_status_24h()
+        if snap["orphan_events_status"]["status"] == "RED":
+            snap["overall"] = "DEGRADADO"
+    except Exception:
+        pass
     try:
         await db.health_snapshots.insert_one(dict(snap))
     except Exception:

@@ -86,12 +86,25 @@ async def daily_natural(company_id: str) -> Dict[str, Any]:
                 "regressions": regs,
                 "risk_level": risk,
             }
+            # Orphan watcher status
+            try:
+                from services.orphan_event_watcher import orphan_status_24h
+                orph = await orphan_status_24h()
+                nervous_brief["orphan_status"] = orph
+                if orph["status"] == "RED":
+                    nervous_brief["risk_level"] = "VERMELHO"
+            except Exception:
+                orph = None
             line = (f"Sistema Nervoso: {cov}% cobertura · sustained 30d "
-                     f"{sustained}% · risco {risk}.")
+                     f"{sustained}% · risco {nervous_brief['risk_level']}.")
             if silent_n > 0:
                 line += f" 🚨 {silent_n} módulo(s) crítico(s) sem metadata."
             if regs > 0:
                 line += f" 🔴 {regs} regressão(ões) detectada(s)."
+            if orph and orph.get("active_quarantines", 0) > 0:
+                line += (f" 🛑 {orph['active_quarantines']} source(s) em "
+                          f"QUARENTENA por evento órfão "
+                          f"({orph['orphans_24h']} em 24h).")
             narrative.append(line)
     except Exception:
         pass

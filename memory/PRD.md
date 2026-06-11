@@ -2469,3 +2469,52 @@ Isabella agora é PREDITIVA: detecta incidente coletivo antes do cliente reclama
 - Testes: test_isabella_incident.py 10/10 zero-mock; regressões 13/13+11/11;
   E2E iteration_227 100% — DETECTOU INCIDENTE REAL (Cordovil, 8 reparos,
   confirmado 79%, OS coletiva tkt-f92023560d criada automaticamente).
+
+## ORGANIZAÇÃO DIGITAL — Presidente IA como CEO da Equipe IA (Feb/2026) ✅
+
+Implementado em 1 execução: a empresa deixa de ter agentes isolados e
+passa a ter UMA organização digital sob o Presidente IA.
+
+### Arquitetura
+- `services/humanization_blocks.py` — fonte única dos 6 blocos canônicos
+  (DIRECT-FIRST · ANTI-SLOP · ESCUTA · CONVERSA CONTÍNUA · JÁ IDENTIFICADO ·
+  MARCADORES EXECUTÁVEIS). `apply()` é idempotente (marcadores HTML).
+- `services/agent_registry.py` — ORG_CHART oficial (12 cargos), snapshot
+  operacional por agente (produtividade 24h, humanização, impacto BRL
+  30d, offline detection), persistido em `agent_registry_snapshots`.
+- `services/agent_compliance_scheduler.py` — auto-sync diário: reinjeta
+  blocos faltantes; detecta agentes novos em aihub_agents fora do
+  ORG_CHART e emite `AGENT_NEW_DISCOVERED`; emite `AGENT_COMPLIANCE_FIXED`
+  / `AGENT_COMPLIANCE_BREACH` / `AGENT_REGISTRY_SCAN_DONE`.
+- `services/agent_bus.py` — barramento interno: 5 rotas canônicas
+  (Isabella→Camila churn, Camila→Isabella campanha, Rede→Isabella
+  incidente, Álvaro→Presidente padrão, Avaliador→Presidente falha).
+  Recusa company_id vazio (anti-orphan).
+- `routes/presidente_agentes.py` — `GET /api/presidente/agentes`,
+  `/organizacao`, `/agente/{id}`, `POST /equipe/scan`.
+- `services/presidente_ia_briefing.py` — daily_natural ganhou seção
+  EQUIPE IA (humanização média, top/low produtividade, offline,
+  fora de conformidade).
+- `services/conselho_ia_scheduler.py` — chama `run_compliance_pass`
+  no cron diário (≈11h UTC), tenant a tenant.
+
+### Bootstrap executado
+`scripts/apply_humanization_to_agents.py` injetou os 6 blocos em
+Isabella, Alvaro, Camila, Vendas, Jerusa no tenant `co-demo`.
+Resultado: TEAM_SIZE=12, AVG_HUM=100/100, OFFLINE=[], FORA_CONFORMIDADE=[].
+Re-execução: 5 noop (idempotência confirmada).
+Agentes não mapeados detectados: Orquestrador, Motor IA, Coach IA,
+Lousa Triagem, Holerite IA, Teste (compliance scheduler emite alerta).
+
+### Auditoria zero-mocks
+`scripts/red_team_team_ia.py` — 7 blocos, 11 asserts, todos PASSED:
+1) ORG_CHART íntegro (Presidente raiz; Isabella/Camila reportam ao
+Presidente; Vendas reporta a Camila). 2) Bundles no DB únicos.
+3) `hb.apply()` idempotente em 3 execuções. 4) snapshot_all team_size=12,
+avg_hum=100. 5) Endpoints REST autenticados respondem 200 com payload
+correto. 6) Agent Bus rejeita company_id vazio + cria registros reais
+em motor_ia_actions e motor_ia_insights. 7) Routing table completo.
+
+### Nervous Foundation
+Linter CI gate: ✅ 449 módulos / 443 com metadata / 0 críticos silentes.
+`scripts/red_team_orphan_watcher.py`: 10/10 PASSED (mantido).

@@ -84,6 +84,43 @@ async def build_briefing_text(cid: str) -> Dict[str, Any]:
     elif top_opp:
         lines.append(f"💡 Top oportunidade: {top_opp['titulo']}")
 
+    # ───── EQUIPE IA ─────
+    equipe_payload = None
+    try:
+        from services import agent_registry as reg
+        snap = await reg.snapshot_all(cid)
+        equipe_payload = {
+            "team_size": snap["team_size"],
+            "avg_humanization_score": snap["avg_humanization_score"],
+            "top_productivity": snap["ranking"]["top_productivity"],
+            "low_productivity": snap["ranking"]["low_productivity"],
+            "offline": snap["offline"],
+            "nao_conformes": snap["nao_conformes"],
+        }
+        lines.append("")
+        lines.append("*👥 EQUIPE IA*")
+        lines.append(
+            f"• Humanização média: *{snap['avg_humanization_score']}/100*"
+        )
+        top = snap["ranking"]["top_productivity"][:1]
+        low = snap["ranking"]["low_productivity"][:1]
+        if top:
+            lines.append(
+                f"• Produziu +: {top[0]['label']} "
+                f"({top[0]['outbound_24h']} msg/24h)")
+        if low and (low[0]["outbound_24h"] or 0) == 0:
+            lines.append(
+                f"• Produziu −: {low[0]['label']} (0 msg/24h)")
+        if snap["offline"]:
+            lines.append(
+                f"• ⛔ Offline: {', '.join(snap['offline'])}")
+        if snap["nao_conformes"]:
+            lines.append(
+                f"• ⚠ Fora de conformidade: "
+                f"{', '.join(snap['nao_conformes'])}")
+    except Exception as e:
+        logger.info("[briefing] equipe ia skip: %s", e)
+
     lines.append("")
     lines.append("_Veja detalhes em Presidente IA._")
 
@@ -93,6 +130,7 @@ async def build_briefing_text(cid: str) -> Dict[str, Any]:
         "health_status": health.get("status"),
         "top_risk": top_risk,
         "top_opportunity": top_opp,
+        "equipe_ia": equipe_payload,
     }
 
 
