@@ -1341,40 +1341,41 @@ export default function LousaAdminPanel({ systemStatus = { offline: false, drift
                     background: "linear-gradient(180deg, #f0f9ff 0%, #ffffff 60%)",
                     padding: 4,
                   } : { display: "contents" }}>
-              {isVirtualSala && (
-                <>
+              {isVirtualSala && (() => {
+                const lvl = salaTriage.level || "calm";
+                const hasTriage = salaTriage.total > 0;
+                const bg = lvl === "hot" ? "#dc2626"
+                         : lvl === "warn" ? "#f59e0b" : "#10b981";
+                const pulse = lvl === "hot";
+                return (
                   <div style={{
-                    position: "absolute", top: -10, left: 14,
-                    background: "#0ea5e9", color: "white",
-                    padding: "2px 8px", borderRadius: 6,
-                    fontSize: 10, fontWeight: 800, letterSpacing: 0.5,
-                    zIndex: 2,
-                  }}>SALA · FIXA</div>
-                  {salaTriage.total > 0 && (() => {
-                    const lvl = salaTriage.level || "calm";
-                    const bg = lvl === "hot" ? "#dc2626"
-                             : lvl === "warn" ? "#f59e0b" : "#10b981";
-                    const pulse = lvl === "hot";
-                    return (
+                    display: "flex", alignItems: "center", gap: 8,
+                    padding: "8px 10px 4px",
+                    flexWrap: "wrap",
+                  }}>
+                    <div style={{
+                      background: "#0ea5e9", color: "white",
+                      padding: "3px 9px", borderRadius: 6,
+                      fontSize: 10, fontWeight: 800, letterSpacing: 0.5,
+                    }}>SALA · FIXA</div>
+                    {hasTriage && (
                       <div
                         data-testid="lousa-sala-triage-badge"
-                        title={`SALA aguardando triagem · ${salaTriage.total} total ` +
+                        title={`Triagem · ${salaTriage.total} total ` +
                                `(hoje: ${salaTriage.today}, atrasadas: ${salaTriage.overdue}, ` +
                                `futuras: ${salaTriage.future})`}
                         style={{
-                          position: "absolute", top: -10, right: 14,
                           background: bg, color: "white",
-                          padding: "2px 10px", borderRadius: 999,
+                          padding: "3px 10px", borderRadius: 999,
                           fontSize: 11, fontWeight: 800, letterSpacing: 0.3,
-                          zIndex: 3, display: "flex", alignItems: "center", gap: 6,
-                          boxShadow: pulse ? `0 0 0 0 ${bg}` : "0 1px 3px rgba(0,0,0,.15)",
+                          display: "flex", alignItems: "center", gap: 6,
+                          boxShadow: pulse ? `0 0 0 0 ${bg}` : "0 1px 3px rgba(0,0,0,.12)",
                           animation: pulse ? "salaTriagePulse 1.6s infinite" : undefined,
                           cursor: "default",
-                        }}
-                      >
+                        }}>
                         <span style={{
                           width: 6, height: 6, borderRadius: 999,
-                          background: "white", opacity: 0.85,
+                          background: "white", opacity: 0.9,
                         }} />
                         {salaTriage.total} aguardando triagem
                         {salaTriage.overdue > 0 && (
@@ -1384,12 +1385,13 @@ export default function LousaAdminPanel({ systemStatus = { offline: false, drift
                           }}>{salaTriage.overdue} atrasada{salaTriage.overdue > 1 ? "s" : ""}</span>
                         )}
                       </div>
-                    );
-                  })()}
-                </>
-              )}
+                    )}
+                  </div>
+                );
+              })()}
               <TechColumn
                 column={col}
+                salaTriage={isVirtualSala ? salaTriage : null}
                 isDropTarget={dragOverCol === col.collaborator.id}
                 blinkOverdue={grid.sla_blink_when_overdue}
                 maxPerSlot={grid.grid?.max_per_slot || 2}
@@ -1566,14 +1568,15 @@ function OptimizeRouteButton({ collaboratorId }) {
 }
 
 
-function TechColumn({ column, isDropTarget, blinkOverdue, onDragOver, onDragLeave, onDrop, onDragStart, onDragEnd, draggingId, onAdminClose, onAdminOpen, onEdit, onReschedule, busy, maxPerSlot, onSlotDrop, selectMode, selectedIds, onToggleSelect, onEmptySlotDblClick, wide }) {
+function TechColumn({ column, salaTriage, isDropTarget, blinkOverdue, onDragOver, onDragLeave, onDrop, onDragStart, onDragEnd, draggingId, onAdminClose, onAdminOpen, onEdit, onReschedule, busy, maxPerSlot, onSlotDrop, selectMode, selectedIds, onToggleSelect, onEmptySlotDblClick, wide }) {
   const c = column.collaborator;
   const state = column.clock_state;
   const slots = column.slots || [];
   const unscheduled = column.unscheduled || [];
   const recentResolved = column.recent_resolved || [];
   const totalTickets = column.tickets?.length || 0;
-  const isOnline = state.is_online === true || (state.is_online === undefined && state.has_entrada && !state.ended_day && !state.in_intervalo);
+  const isVirtual = !!c.is_virtual;
+  const isOnline = !isVirtual && (state.is_online === true || (state.is_online === undefined && state.has_entrada && !state.ended_day && !state.in_intervalo));
   const [closedDetailTicket, setClosedDetailTicket] = useState(null);
 
   return (
@@ -1593,20 +1596,24 @@ function TechColumn({ column, isDropTarget, blinkOverdue, onDragOver, onDragLeav
       }}
     >
       <div style={{ display: "flex", gap: 10, alignItems: "center", paddingBottom: 10, borderBottom: "1px solid var(--border-default)" }}>
-        <div data-testid={`tech-avatar-${c.id}`} title={isOnline ? "Dispositivo online" : "Dispositivo offline"} style={{
+        <div data-testid={`tech-avatar-${c.id}`} title={isVirtual ? "Coluna virtual de triagem" : (isOnline ? "Dispositivo online" : "Dispositivo offline")} style={{
           width: 38, height: 38, borderRadius: "50%",
-          background: c.avatar ? `url(${c.avatar}) center/cover` : "linear-gradient(135deg,#0d9488,#0f766e)",
-          display: "grid", placeItems: "center", color: "white", fontWeight: 700, fontSize: 14,
-          border: `2px solid ${isOnline ? "#16a34a" : "#d97706"}`,
+          background: c.avatar ? `url(${c.avatar}) center/cover` : (isVirtual
+            ? "linear-gradient(135deg,#0ea5e9,#0369a1)"
+            : "linear-gradient(135deg,#0d9488,#0f766e)"),
+          display: "grid", placeItems: "center", color: "white", fontWeight: 700, fontSize: isVirtual ? 16 : 14,
+          border: `2px solid ${isVirtual ? "#0369a1" : (isOnline ? "#16a34a" : "#d97706")}`,
           position: "relative", flexShrink: 0,
         }}>
-          {!c.avatar && (c.name?.[0] || "?").toUpperCase()}
-          <span data-testid={`tech-online-dot-${c.id}`} style={{
-            position: "absolute", bottom: -2, right: -2,
-            width: 14, height: 14, borderRadius: "50%",
-            background: isOnline ? "#10b981" : "#f59e0b",
-            border: "2px solid white",
-          }} />
+          {!c.avatar && (isVirtual ? "🛎️" : (c.name?.[0] || "?").toUpperCase())}
+          {!isVirtual && (
+            <span data-testid={`tech-online-dot-${c.id}`} style={{
+              position: "absolute", bottom: -2, right: -2,
+              width: 14, height: 14, borderRadius: "50%",
+              background: isOnline ? "#10b981" : "#f59e0b",
+              border: "2px solid white",
+            }} />
+          )}
         </div>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontSize: 14, fontWeight: 800, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
@@ -1615,27 +1622,66 @@ function TechColumn({ column, isDropTarget, blinkOverdue, onDragOver, onDragLeav
             {c.praca_id === "NOTA" && <span title="Praça Nota: bate ponto no endereço do serviço aberto" style={{ marginLeft: 4, fontSize: 9, background: "var(--accent-soft)", color: "var(--accent-soft-fg)", padding: "1px 6px", borderRadius: 6, fontWeight: 700, letterSpacing: "0.04em", textTransform: "uppercase" }}>nota</span>}
           </div>
           <div style={{ fontSize: 11, color: "#64748b" }}>
-            {totalTickets} serviço(s) · {c.praca || "—"}
+            {isVirtual
+              ? `Triagem · ${totalTickets} aguardando · arraste para o técnico`
+              : `${totalTickets} serviço(s) · ${c.praca || "—"}`}
           </div>
         </div>
-        <OptimizeRouteButton collaboratorId={c.id} />
+        {!isVirtual && <OptimizeRouteButton collaboratorId={c.id} />}
       </div>
 
-      <div data-testid={`schedule-${c.id}`} style={{
-        marginTop: 10, padding: "6px 8px", background: "white", borderRadius: 10,
-        border: "1px solid #e2e8f0", fontSize: 10, display: "flex", flexWrap: "wrap", gap: 4,
-      }}>
-        {state.records?.length === 0 && <span style={{ color: "#94a3b8" }}>Sem ponto hoje</span>}
-        {state.records?.map((r, i) => (
-          <span key={i} style={{
-            padding: "1px 6px", borderRadius: 6, fontWeight: 700,
-            background: r.type === "Entrada" ? "#dcfce7" : r.type === "Saída" ? "#fee2e2" : "#fef3c7",
-            color: r.type === "Entrada" ? "#166534" : r.type === "Saída" ? "#7f1d1d" : "#78350f",
-          }}>
-            {r.type === "Entrada" ? "" : r.type === "Início intervalo" ? "️" : r.type === "Fim intervalo" ? "" : ""} {r.time}
-          </span>
-        ))}
-      </div>
+      {isVirtual ? (
+        <div data-testid={`sala-triage-breakdown-${c.id}`} style={{
+          marginTop: 10, padding: "8px 10px",
+          background: "linear-gradient(180deg,#f0f9ff,#e0f2fe)",
+          border: "1px solid #bae6fd", borderRadius: 10,
+          display: "flex", gap: 8, alignItems: "center",
+          fontSize: 11, color: "#0c4a6e", fontWeight: 600,
+        }}>
+          {(() => {
+            const t = salaTriage || { today: 0, overdue: 0, future: 0, total: totalTickets };
+            const pill = (label, val, bg, fg) => (
+              <span style={{
+                display: "inline-flex", alignItems: "center", gap: 4,
+                padding: "3px 8px", borderRadius: 999,
+                background: bg, color: fg, fontWeight: 800, fontSize: 11,
+              }}>
+                <span style={{ fontSize: 13, lineHeight: 1, fontWeight: 900 }}>{val}</span>
+                <span style={{ fontWeight: 600, opacity: 0.9 }}>{label}</span>
+              </span>
+            );
+            return (
+              <>
+                {pill("atrasadas", t.overdue || 0,
+                       t.overdue > 0 ? "#fecaca" : "#f1f5f9",
+                       t.overdue > 0 ? "#7f1d1d" : "#64748b")}
+                {pill("hoje", t.today || 0,
+                       t.today > 0 ? "#fde68a" : "#f1f5f9",
+                       t.today > 0 ? "#78350f" : "#64748b")}
+                {pill("futuras", t.future || 0,
+                       t.future > 0 ? "#bae6fd" : "#f1f5f9",
+                       t.future > 0 ? "#075985" : "#64748b")}
+              </>
+            );
+          })()}
+        </div>
+      ) : (
+        <div data-testid={`schedule-${c.id}`} style={{
+          marginTop: 10, padding: "6px 8px", background: "white", borderRadius: 10,
+          border: "1px solid #e2e8f0", fontSize: 10, display: "flex", flexWrap: "wrap", gap: 4,
+        }}>
+          {state.records?.length === 0 && <span style={{ color: "#94a3b8" }}>Sem ponto hoje</span>}
+          {state.records?.map((r, i) => (
+            <span key={i} style={{
+              padding: "1px 6px", borderRadius: 6, fontWeight: 700,
+              background: r.type === "Entrada" ? "#dcfce7" : r.type === "Saída" ? "#fee2e2" : "#fef3c7",
+              color: r.type === "Entrada" ? "#166534" : r.type === "Saída" ? "#7f1d1d" : "#78350f",
+            }}>
+              {r.type === "Entrada" ? "" : r.type === "Início intervalo" ? "️" : r.type === "Fim intervalo" ? "" : ""} {r.time}
+            </span>
+          ))}
+        </div>
+      )}
 
       {/* Serviços encerrados nas últimas 24h — texto simples para conferência (gap entre serviços) */}
       {recentResolved.length > 0 && (

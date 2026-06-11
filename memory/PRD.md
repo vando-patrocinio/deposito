@@ -2,6 +2,41 @@
 
 > Documento vivo. Atualizado a cada sprint.
 
+## 🎨 SALA card — layout otimizado pra triagem ✅ (11/02/2026)
+
+### Problemas identificados no print do user
+1. **Pills clipping** — `SALA · FIXA` e `8 aguardando triagem` ficavam `position: absolute; top: -10` extrapolando o topo da coluna, sendo cortados pelo container scroll.
+2. **"Sem ponto hoje"** — SALA é virtual (`is_virtual=true`), não bate ponto. Espaço dedicado a `clock_records` era ruído.
+3. **"Rota"** — botão de otimização GPS não faz sentido pra coluna virtual.
+4. **Avatar "S" verde com bolinha online** — sugeria dispositivo conectado, mas SALA é fila, não pessoa.
+
+### Solução entregue
+**Header (sem mais clipping):**
+- Pills agora são uma **flex row inline** dentro do padding da coluna (`padding: 8px 10px 4px`). Sem overflow negativo, sem clipping. `SALA · FIXA` à esquerda, badge de triagem ao lado.
+
+**Card body (SALA-specific):**
+- Avatar: 🛎️ (bell) com gradiente azul `#0ea5e9→#0369a1`. Sem bolinha de online/offline.
+- Subtítulo: `"Triagem · X aguardando · arraste para o técnico"` (em vez de `"X serviço(s) · —"`)
+- Botão **Rota removido** (não aplicável)
+- Bloco de clock records substituído por **breakdown de triagem em pílulas coloridas**:
+  - 🔴 `X atrasadas` (vermelho se >0, cinza se 0)
+  - 🟡 `X hoje` (âmbar se >0, cinza se 0)
+  - 🔵 `X futuras` (céu se >0, cinza se 0)
+- Fundo do breakdown: gradiente `#f0f9ff→#e0f2fe` com borda `#bae6fd` (cohesão visual com a SALA azul).
+
+### Arquivo modificado
+- `/app/frontend/src/LousaAdminPanel.js`:
+  - `TechColumn` agora recebe prop `salaTriage`. Quando `c.is_virtual`, renderiza variante de SALA.
+  - Pills do header refatorados de `position: absolute; top: -10` para flex row dentro do container.
+- `data-testid`s adicionados: `sala-triage-breakdown-{cid}`, `lousa-sala-triage-badge` (já existia).
+
+### Garantias
+- Lint: zero erros novos (6 warnings pre-existentes em outras linhas).
+- DOM verificado via Playwright: `lousa-board-sala-col`, `sala-triage-breakdown`, `lousa-sala-triage-badge` todos presentes.
+- Backend `/api/lousa/sala/count` continua respondendo `total:8 level:warn` — alimenta o breakdown ao vivo (poll 30s).
+
+
+
 ## 🛠️ Enhancement — Mobile loading com timeout + telemetria ✅ (11/02/2026)
 
 ### Problema
