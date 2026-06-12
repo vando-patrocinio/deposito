@@ -52,6 +52,7 @@ const EMPTY = {
   active: true,
   can_attend_whatsapp: false,  // só auditor libera (UI condicional)
   requires_vehicle: false,  // Frota: técnico/instalador opera veículo (gera vistoria semanal)
+  profile_id: "",  // CTO 12/06/2026 — perfil de acesso RBAC (opcional)
 };
 
 export default function CadastroPanel() {
@@ -61,6 +62,7 @@ export default function CadastroPanel() {
                        || currentUser?.role === "administrador";
   const [list, setList] = useState([]);
   const [pracas, setPracas] = useState([]);
+  const [profiles, setProfiles] = useState([]); // CTO 12/06/2026 — perfis de acesso (RBAC)
   const [editing, setEditing] = useState(null);
   const [form, setForm] = useState(EMPTY);
   const [error, setError] = useState("");
@@ -117,9 +119,14 @@ export default function CadastroPanel() {
 
   async function reload() {
     try {
-      const [cs, ps] = await Promise.all([api.listCollaborators(), api.listPracas()]);
+      const [cs, ps, profs] = await Promise.all([
+        api.listCollaborators(),
+        api.listPracas(),
+        api.accessProfilesList().catch(() => []),
+      ]);
       setList(cs);
       setPracas(ps);
+      setProfiles(Array.isArray(profs) ? profs : []);
       // Carrega cercas em paralelo: contagem + catálogo único para reaproveitar
       const counts = {};
       const fencesByCid = {};
@@ -173,6 +180,7 @@ export default function CadastroPanel() {
       active: c.active !== false,  // default true
       can_attend_whatsapp: !!c.can_attend_whatsapp,
       requires_vehicle: !!c.requires_vehicle,
+      profile_id: c.profile_id || "",
       avatar_data_url: c.avatar_data_url || c.foto_id || "",
       foto_id: c.foto_id || c.avatar_data_url || "",
     });
@@ -378,6 +386,26 @@ export default function CadastroPanel() {
                         {cargoEmoji(c.cargo)} {cargoLabel(c.cargo)}
                       </span>
                     )}
+                    {c.profile_id && (() => {
+                      const p = profiles.find((x) => x.id === c.profile_id);
+                      if (!p) return null;
+                      const isSuper = !!p.is_super_admin_profile;
+                      return (
+                        <span
+                          data-testid={`collab-profile-${c.id}`}
+                          title={p.description || `${(p.access_tags || []).length} tag(s)`}
+                          style={{
+                            padding: "2px 9px", borderRadius: 999,
+                            background: isSuper ? "linear-gradient(90deg,#facc15,#f59e0b)" : "#ede9fe",
+                            color: isSuper ? "#7c2d12" : "#5b21b6",
+                            border: isSuper ? "1px solid #b45309" : "1px solid #ddd6fe",
+                            fontSize: 11, fontWeight: 800,
+                            letterSpacing: ".02em",
+                          }}>
+                          🛡 {p.name}
+                        </span>
+                      );
+                    })()}
                     <span style={{ color: "#475569" }}>{c.role}</span>
                     {(praca || c.company) && (
                       <span style={{ color: "#94a3b8" }}>·</span>
@@ -715,6 +743,47 @@ export default function CadastroPanel() {
             <input style={inputStyle} value={form.role}
               onChange={(e) => setForm({ ...form, role: e.target.value })}
               placeholder="Ex: Técnico Senior, Coordenador..." />
+          </Field>
+          <Field label="Perfil de Acesso (RBAC — define o que ele(a) vê no sistema)">
+            <select
+              data-testid="inp-profile-id"
+              style={inputStyle}
+              value={form.profile_id || ""}
+              onChange={(e) => setForm({ ...form, profile_id: e.target.value })}
+            >
+              <option value="">— Nenhum perfil (acesso só de campo) —</option>
+              {profiles.map((p) => (
+                <option
+                  key={p.id}
+                  value={p.id}
+                  data-testid={`opt-profile-${p.key || p.id}`}
+                >
+                  {p.is_super_admin_profile ? "★ " : ""}{p.name}
+                  {p.is_seed ? " (padrão)" : ""}
+                </option>
+              ))}
+            </select>
+            {form.profile_id && (() => {
+              const p = profiles.find((x) => x.id === form.profile_id);
+              if (!p) return null;
+              return (
+                <div data-testid="profile-hint" style={{
+                  marginTop: 6, padding: "6px 10px",
+                  background: p.is_super_admin_profile ? "#fef3c7" : "#ecfeff",
+                  border: `1px solid ${p.is_super_admin_profile ? "#fcd34d" : "#67e8f9"}`,
+                  borderRadius: 8, fontSize: 11,
+                  color: p.is_super_admin_profile ? "#92400e" : "#155e75",
+                }}>
+                  {p.is_super_admin_profile && <strong>⚠ Super Admin — </strong>}
+                  {p.description || `${(p.access_tags || []).length} tag(s) de acesso`}
+                  {p.access_tags && p.access_tags.length > 0 && (
+                    <span style={{ marginLeft: 6, opacity: 0.7 }}>
+                      ({p.access_tags.length} tags)
+                    </span>
+                  )}
+                </div>
+              );
+            })()}
           </Field>
           <Field label="Praça principal (local onde trabalha a maior parte do tempo)">
             {pracas.length === 0 ? (

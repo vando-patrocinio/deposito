@@ -138,6 +138,7 @@ class CollaboratorIn(BaseModel):
     requires_vehicle: bool = False  # Frota: técnico/instalador que precisa operar veículo (gera vistoria semanal)
     current_vehicle_id: Optional[str] = None  # ID do veículo vinculado atualmente (auto-atualizado pelo /fleet/assign)
     fleet_block_reason: Optional[str] = None  # Bloqueio frota (transferência pendente, sinistro etc)
+    profile_id: Optional[str] = None  # CTO 12/06/2026: perfil de acesso RBAC (access_profiles). Espalha para o User vinculado.
 
 
 class Collaborator(CollaboratorIn):
@@ -505,6 +506,32 @@ async def migrate_cargo(user: dict = Depends(require_role("administrador"))):
         updated += 1
     return {"updated": updated}
 
+async def _validate_profile_assignment(
+    profile_id: str, company_id: str, requester: dict,
+) -> dict:
+    """Valida que profile_id existe no tenant + aplica guard Super Admin.
+
+    - Profile_id deve existir em `access_profiles` do tenant.
+    - Se o perfil é Super Admin, apenas requester com flag is_super_admin
+      legado OU já vinculado ao perfil Super Admin pode atribuir.
+    Retorna o doc do profile validado.
+    """
+    from services.access_profiles import get_profile, user_has_super_admin_profile
+    p = await get_profile(profile_id, company_id)
+    if not p:
+        raise HTTPException(404, "Perfil de acesso não encontrado neste tenant")
+    if p.get("is_super_admin_profile") or p.get("key") == "super_admin":
+        allowed = is_super_admin(requester) or await user_has_super_admin_profile(requester)
+        if not allowed:
+            raise HTTPException(
+                403,
+                "Apenas um Super Admin pode atribuir o perfil Super Admin a "
+                "um colaborador.",
+            )
+    return p
+
+
+
 
 @router.post("/collaborators")
 async def create_collaborator(payload: CollaboratorIn, user: dict = Depends(require_role("gestor"))):
@@ -522,6 +549,9 @@ async def create_collaborator(payload: CollaboratorIn, user: dict = Depends(requ
         payload.can_attend_whatsapp = False
     # Aplica regras automáticas derivadas do `cargo`
     _apply_cargo_rules(payload, user)
+    # CTO 12/06/2026 — valida profile_id se informado e aplica guard Super Admin
+    if payload.profile_id:
+        await _validate_profile_assignment(payload.profile_id, cid_company, user)
     cid = f"col-{uuid.uuid4().hex[:8]}"
     now = now_iso()
     coll = Collaborator(id=cid, **payload.model_dump(), created_at=now, updated_at=now)
@@ -565,6 +595,18 @@ async def update_collaborator(cid: str, payload: CollaboratorIn, user: dict = De
     # colaborador aparecia como "COLABORADOR EXTERNO" no painel.
     if data.get("cargo") in (None, "", "null") and (prev or {}).get("cargo"):
         data["cargo"] = prev["cargo"]
+    # CTO 12/06/2026: blindagem similar para profile_id — toggles parciais
+    # (toggleClockInEnabled, etc.) enviam payload completo do CollaboratorIn
+    # com profile_id=None por default, o que zeraria o vínculo. Só zera de
+    # fato se o cliente passou explicitamente uma string vazia "".
+    cur_pid = await db.collaborators.find_one(
+        {"id": cid}, {"_id": 0, "profile_id": 1},
+    )
+    cur_pid_val = (cur_pid or {}).get("profile_id")
+    if data.get("profile_id") is None and cur_pid_val:
+        data["profile_id"] = cur_pid_val
+    elif data.get("profile_id") == "":
+        data["profile_id"] = None
     # Marca quando foi desativado (para o KPI de perdas pendentes)
     if data.get("active") is False and (prev or {}).get("active") is not False:
         data["deactivated_at"] = now_iso()
@@ -575,14 +617,40 @@ async def update_collaborator(cid: str, payload: CollaboratorIn, user: dict = De
         data["can_attend_whatsapp"] = prev_flag
     # Reaplica regras de cargo (mesma lógica do POST)
     _apply_cargo_rules_dict(data, user)
+    # CTO 12/06/2026 — valida profile_id se mudou e aplica guard Super Admin
+    company_id = (prev or {}).get("company_id") or user.get("company_id") or DEMO_COMPANY_ID
+    if "profile_id" in data:
+        new_pid = data.get("profile_id") or None
+        # Busca o profile_id atual no Mongo para comparar (prev no select acima
+        # não inclui profile_id, então busca diretamente)
+        cur = await db.collaborators.find_one(
+            {"id": cid}, {"_id": 0, "profile_id": 1},
+        )
+        prev_pid = (cur or {}).get("profile_id")
+        if new_pid != prev_pid:
+            # Atribuição/troca: valida o NOVO perfil (se não nulo)
+            if new_pid:
+                await _validate_profile_assignment(new_pid, company_id, user)
+            # Revogação de Super Admin: também exige Super Admin no solicitante
+            if prev_pid:
+                from services.access_profiles import (
+                    is_super_admin_profile_id,
+                    user_has_super_admin_profile,
+                )
+                if await is_super_admin_profile_id(prev_pid, company_id):
+                    allowed = is_super_admin(user) or await user_has_super_admin_profile(user)
+                    if not allowed:
+                        raise HTTPException(
+                            403,
+                            "Apenas um Super Admin pode revogar o perfil Super "
+                            "Admin de um colaborador.",
+                        )
     res = await db.collaborators.update_one({"id": cid}, {"$set": data})
     if res.matched_count == 0:
         raise HTTPException(404, "Colaborador não encontrado")
     # Sincroniza permissão com User vinculado (se houver) — assim a sidebar
     # do colaborador vê o menu "Atendimento IA" imediatamente após salvar.
     try:
-        company_id = (prev or {}).get("company_id") or user.get("company_id") \
-                          or DEMO_COMPANY_ID
         await db.users.update_many(
             {"company_id": company_id, "collaborator_id": cid},
             {"$set": {
@@ -592,6 +660,29 @@ async def update_collaborator(cid: str, payload: CollaboratorIn, user: dict = De
         )
     except Exception as _e:
         logger.warning("[collab] sync can_attend_whatsapp falhou: %s", _e)
+    # CTO 12/06/2026 — espalha o profile_id (e suas access_tags) para o User vinculado.
+    if "profile_id" in data:
+        try:
+            new_pid = data.get("profile_id") or None
+            if new_pid:
+                from services.access_profiles import get_profile
+                p = await get_profile(new_pid, company_id)
+                if p:
+                    await db.users.update_many(
+                        {"company_id": company_id, "collaborator_id": cid},
+                        {"$set": {
+                            "profile_id": new_pid,
+                            "access_tags": list(p.get("access_tags") or []),
+                            "updated_at": now_iso(),
+                        }},
+                    )
+            else:
+                await db.users.update_many(
+                    {"company_id": company_id, "collaborator_id": cid},
+                    {"$set": {"profile_id": None, "updated_at": now_iso()}},
+                )
+        except Exception as _e:  # noqa: BLE001
+            logger.warning("[collab] sync profile_id falhou: %s", _e)
     # Notifica gestor se desativou e há pertences ativos pendentes de devolução
     if data.get("active") is False and (prev or {}).get("active") is not False:
         try:

@@ -7812,3 +7812,25 @@ Relatório: `/app/docs/RELATORIO_RELACIONAMENTO_360.md`
   - Curl: gestor lista 4 perfis (sem super_admin) | admin lista 5 | gestor GET super_admin direto → 404 | admin GET → 200.
   - Pytest expandido: `tests/test_super_admin_profile.py` agora **5/5 passing** (seed, atribuição/revogação, helpers, filtro lista de perfis, filtro lista de users).
 - **Risco**: zero regressão para users sem perfil. Nenhuma mudança em write paths (já estavam protegidos).
+
+---
+## 2026-06-12 (parte 6) — Perfil de Acesso no Cadastro de Colaborador (AUTORIZADO A1)
+- **Autorização CTO**: opção (a) A1 — sync passivo. Colaborador grava profile_id, User vinculado herda automaticamente; User ainda é criado em fluxo separado (não cria sozinho).
+- **Backend**:
+  - `CollaboratorIn` (`routes/clock.py`): novo campo `profile_id: Optional[str] = None`.
+  - Helper `_validate_profile_assignment()`: valida que o perfil existe no tenant + aplica guard Super Admin.
+  - `create_collaborator`: valida profile_id antes de inserir.
+  - `update_collaborator`:
+    1. Blindagem contra zero-out acidental: payload com profile_id=None preserva valor anterior (mesma lógica do `cargo`); só zera com string "" explícita.
+    2. Guard Super Admin: atribuir/revogar Super Admin exige solicitante Super Admin.
+    3. Sync: ao mudar profile_id, atualiza `users.profile_id` + `users.access_tags` de TODOS os users vinculados.
+  - `create_user` (`routes/users.py`): herança passiva — se payload sem profile_id mas collaborator_id tem profile_id, herda.
+- **Frontend** (`CadastroPanel.js`):
+  - Carrega `accessProfilesList()` no reload (paralelo).
+  - Novo `<select>` "Perfil de Acesso (RBAC)" no form, após "Cargo livre". Mostra ★ no Super Admin, badge "padrão" nos seeds, hint com descrição e contagem de tags.
+  - Chip 🛡 com nome do perfil no card de cada colaborador (gradient âmbar para Super Admin).
+- **Validação**:
+  - Curl: criar colaborador com profile_id ✅ | gestor tenta atribuir Super Admin → 403 ✅ | atualizar profile_id no colab → User vinculado herda (profile_id+tags) ✅ | criar User sem profile_id mas colaborador tem → User herda ✅ | PUT sem profile_id preserva valor ✅.
+  - Pytest novo `tests/test_collaborator_profile_link.py` — **5/5 passing** (criação, sync, herança, guard SA, blindagem partial-update).
+  - Pytest combinado RBAC + collab-profile: **10/10 passing**.
+- **Risco**: zero regressão. Campo é Optional, blindagem prevê toggles parciais.

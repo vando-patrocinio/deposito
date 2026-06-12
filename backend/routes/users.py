@@ -425,9 +425,18 @@ async def create_user(payload: UserIn, user: dict = Depends(require_role("audito
             logger.warning("[create_user] falha ao garantir code: %s", e)
     # Tags: prioridade = perfil > payload explícito > default do papel
     profile_doc = None
-    if payload.profile_id:
+    # CTO 12/06/2026 — Herança passiva: se profile_id não foi passado mas o
+    # colaborador vinculado já tem profile_id, herda dele.
+    effective_profile_id = payload.profile_id
+    if not effective_profile_id and payload.collaborator_id:
+        coll_doc = await db.collaborators.find_one(
+            {"id": payload.collaborator_id, "company_id": cid},
+            {"_id": 0, "profile_id": 1},
+        )
+        effective_profile_id = (coll_doc or {}).get("profile_id")
+    if effective_profile_id:
         from services.access_profiles import get_profile
-        profile_doc = await get_profile(payload.profile_id, cid)
+        profile_doc = await get_profile(effective_profile_id, cid)
         if not profile_doc:
             raise HTTPException(404, "Perfil de acesso não encontrado")
         # Guard: atribuir perfil Super Admin exige que o solicitante
@@ -455,7 +464,7 @@ async def create_user(payload: UserIn, user: dict = Depends(require_role("audito
         "collaborator_id": payload.collaborator_id, "active": True,
         "can_attend_whatsapp": bool(payload.can_attend_whatsapp),
         "access_tags": tags,
-        "profile_id": payload.profile_id,
+        "profile_id": effective_profile_id,
         "company_id": cid,
         "created_at": now_iso(), "updated_at": now_iso(),
     }
