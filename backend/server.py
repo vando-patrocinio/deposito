@@ -801,6 +801,15 @@ async def _startup() -> None:
                           replace_existing=True)
     except Exception as _e:
         logger.warning("[startup] score_recovery snapshot job falhou: %r", _e)
+    # iter242 — Snapshot diário do PRESIDENT_SCORE_ENGINE (12 áreas) 03:30
+    try:
+        from services.presidente_score_engine import (
+            daily_snapshot_job as _eng_snap)
+        scheduler.add_job(_eng_snap, CronTrigger(hour=3, minute=30),
+                          id="president_score_engine_daily",
+                          replace_existing=True)
+    except Exception as _e:
+        logger.warning("[startup] score_engine cron falhou: %r", _e)
     scheduler.add_job(location_logs_cleanup_job, CronTrigger(hour="*/6", minute=10),
                       id="location_cleanup", replace_existing=True)
     scheduler.add_job(dwell_push_job, "interval", minutes=2,

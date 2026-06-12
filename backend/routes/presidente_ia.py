@@ -1089,3 +1089,29 @@ async def score_history_snapshot_manual(
     quando ainda não há histórico)."""
     from services import score_recovery as sr
     return await sr.snapshot_score(_cid(user), source="manual")
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# iter242 — SCORE ENGINE V1.0: 12 áreas com fonte rastreável
+# ════════════════════════════════════════════════════════════════════════════
+@router.get("/score-engine")
+async def score_engine_compute(user: dict = Depends(require_ai_access())):
+    """Calcula o President Score nas 12 áreas, sem persistir."""
+    from services import presidente_score_engine as eng
+    return await eng.compute_score(_cid(user))
+
+
+@router.post("/score-engine/snapshot")
+async def score_engine_snapshot(user: dict = Depends(require_ai_access())):
+    """Calcula e persiste em president_score_snapshots."""
+    from services import presidente_score_engine as eng
+    return await eng.compute_and_save(_cid(user))
+
+
+@router.get("/score-engine/snapshots")
+async def score_engine_snapshots(
+        days: int = Query(30, ge=1, le=365),
+        user: dict = Depends(require_ai_access())):
+    """Time-series do score (sem components, leve)."""
+    from services import presidente_score_engine as eng
+    return {"days": days, "history": await eng.history(_cid(user), days=days)}
