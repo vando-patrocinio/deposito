@@ -737,389 +737,422 @@ async def _startup() -> None:
     except Exception as e:
         logger.warning("[startup] não foi possível gravar owner_fingerprint: %s", e)
 
-    # ─── OPERAÇÃO ESCALA HTTP: SCHEDULER LEADER LOCK ───
-    # Quando rodando com uvicorn --workers N, somente o leader executa
-    # APScheduler e background tasks (evita N× duplicação de jobs).
-    try:
-        from services.scheduler_lock import try_acquire_leader, renew_leader
-        _is_leader = await try_acquire_leader()
-    except Exception as _e:
-        logger.warning("[startup] scheduler_lock falhou (%s) — assumindo leader p/ não quebrar", _e)
-        _is_leader = True
+    # ─── OPERAÇÃO ESCALA HTTP: ELECTION LOOP (CTO fix 12/06/2026) ───
+    # Bug anterior: try_acquire_leader() era chamado UMA VEZ no startup.
+    # Se um restart sujo deixava lock zumbi, TODOS os workers viravam
+    # FOLLOWER permanente e jobs/workers (Atlaz sync, Baileys watchdog,
+    # holidays, dwell push, autonomy, backup) ficavam órfãos até o
+    # próximo deploy. Agora cada worker roda uma election loop; quando
+    # vira leader (após lock expirar), promove-se e inicia os jobs de
+    # forma idempotente. A renovação acontece naturalmente porque
+    # try_acquire_leader() atualiza expires_at quando holder == self.
+    _leader_state = {"started": False}
 
-    if not _is_leader:
-        logger.info("[startup] FOLLOWER worker (pid=%s) — schedulers e background tasks DESATIVADOS", os.getpid())
-        return
-
-    logger.info("[startup] LEADER worker (pid=%s) — iniciando schedulers e background tasks", os.getpid())
-
-    # Renew loop em background pra manter o lock
-    async def _renew_lock_loop():
-        import asyncio as _a
-        while True:
-            await _a.sleep(20)
-            try:
-                await renew_leader()
-            except Exception:
-                pass
-    asyncio.create_task(_renew_lock_loop(), name="scheduler-lock-renew")
-
-    scheduler.start()
-    scheduler.add_job(monthly_email_job, CronTrigger(day="last", hour=23, minute=30),
-                      id="monthly_email", replace_existing=True)
-    # OLT SNMP polling — atualiza cache a cada 5min
-    try:
-        from services.olt_polling_scheduler import setup_olt_polling
-        setup_olt_polling(scheduler)
-    except Exception as e:
-        logger.warning("[startup] olt_polling falhou: %r", e)
-    # OPERAÇÃO 90% — Sistema Nervoso 100% (refresh dos synthesized 1h)
-    try:
-        from services import nervous_coverage_job as _ncj
-        _ncj.register(scheduler)
-    except Exception as e:
-        logger.warning("[startup] nervous_coverage_job falhou: %r", e)
-    # OPERAÇÃO CAIXA REAL — fechamento diário 23:59 + indexes
-    try:
-        from services import presidente_cash as _cash
-        await _cash.ensure_indexes()
-        _cash.register_scheduler(scheduler)
-    except Exception as e:
-        logger.warning("[startup] presidente_cash falhou: %r", e)
-    # OPERAÇÃO MATURIDADE COMERCIAL — reconciliador 03:00
-    try:
-        from services import cash_reconciler as _rec
-        _rec.register_scheduler(scheduler)
-    except Exception as e:
-        logger.warning("[startup] cash_reconciler falhou: %r", e)
-    scheduler.add_job(holidays_refresh_job, CronTrigger(day="1", hour=3, minute=0),
-                      id="holidays_refresh", replace_existing=True)
-    # iter241 — Snapshot diário do President Score às 03:00
-    try:
-        from services.score_recovery import daily_snapshot_job as _score_snap
-        scheduler.add_job(_score_snap, CronTrigger(hour=3, minute=15),
-                          id="president_score_daily_snapshot",
-                          replace_existing=True)
-    except Exception as _e:
-        logger.warning("[startup] score_recovery snapshot job falhou: %r", _e)
-    # iter242 — Snapshot diário do PRESIDENT_SCORE_ENGINE (12 áreas) 03:30
-    try:
-        from services.presidente_score_engine import (
-            daily_snapshot_job as _eng_snap)
-        scheduler.add_job(_eng_snap, CronTrigger(hour=3, minute=30),
-                          id="president_score_engine_daily",
-                          replace_existing=True)
-    except Exception as _e:
-        logger.warning("[startup] score_engine cron falhou: %r", _e)
-    scheduler.add_job(location_logs_cleanup_job, CronTrigger(hour="*/6", minute=10),
-                      id="location_cleanup", replace_existing=True)
-    scheduler.add_job(dwell_push_job, "interval", minutes=2,
-                      id="dwell_push", replace_existing=True)
-    # iter216b — WiFi Hotspot: marca sessões pending_whatsapp expiradas
-    # (>2min) como abandoned + retarget WhatsApp 48h depois
-    from routes.wifi_hotspot import (
-        mark_abandoned_sessions_job, retarget_abandoned_sessions_job,
-    )
-    scheduler.add_job(mark_abandoned_sessions_job, "interval", minutes=2,
-                      id="wifi_mark_abandoned", replace_existing=True)
-    scheduler.add_job(retarget_abandoned_sessions_job, "interval", hours=1,
-                      id="wifi_retarget_48h", replace_existing=True)
-    # FASE 10 sprint final V5.0 — Autonomy scheduler integrado
-    if os.environ.get("AUTONOMY_SCHEDULER_DISABLED", "0") != "1":
-        from services import autonomy_scheduler_jobs as _autosch
-        scheduler.add_job(_autosch.drives, "interval", minutes=30,
-                           id="autonomy_drives_30m", replace_existing=True,
-                           max_instances=1)
-        scheduler.add_job(_autosch.reconcile, "interval", hours=4,
-                           id="autonomy_reconcile_4h",
-                           replace_existing=True, max_instances=1)
-        scheduler.add_job(_autosch.briefing_07h,
-                           CronTrigger(hour=7, minute=0),
-                           id="autonomy_briefing_07h",
-                           replace_existing=True)
-        scheduler.add_job(_autosch.briefing_12h,
-                           CronTrigger(hour=12, minute=0),
-                           id="autonomy_briefing_12h",
-                           replace_existing=True)
-        scheduler.add_job(_autosch.briefing_18h,
-                           CronTrigger(hour=18, minute=0),
-                           id="autonomy_briefing_18h",
-                           replace_existing=True)
-        scheduler.add_job(_autosch.self_healing_auto,
-                           "interval", hours=1,
-                           id="autonomy_self_heal_1h",
-                           replace_existing=True,
-                           max_instances=1)
-        logger.info("[startup] autonomy scheduler jobs registered "
-                      "(drives/30m, reconcile/4h, briefings 07/12/18, "
-                      "self_heal/1h)")
-    # Atlaz: sync de assinantes diário às 22h00 (America/Sao_Paulo)
-    scheduler.add_job(routes_atlaz.nightly_customers_sync_job,
-                      CronTrigger(hour=22, minute=0),
-                      id="atlaz_customers_sync_nightly", replace_existing=True)
-    # Integrations: auto-reconnect canais mortos a cada 2 min
-    scheduler.add_job(routes_integrations.auto_reconnect_job,
-                      "interval", minutes=2,
-                      id="integrations_auto_reconnect", replace_existing=True)
-    # Baileys: watchdog detecta socket zumbi e força reload preventivo
-    from routes.whatsapp_baileys import baileys_watchdog_job
-    scheduler.add_job(baileys_watchdog_job,
-                      "interval", minutes=2,
-                      id="baileys_watchdog", replace_existing=True)
-    # Baileys: restart preventivo diário 04:00 (evita memory leak, garante uptime)
-    from routes.whatsapp_baileys import baileys_nightly_restart_job
-    scheduler.add_job(baileys_nightly_restart_job,
-                      CronTrigger(hour=4, minute=0),
-                      id="baileys_nightly_restart", replace_existing=True)
-    # iter205c — Backup diário do MongoDB 03:00 UTC, rotação 7 últimos
-    from routes.backup import daily_backup_job, weekly_migrate_job
-    scheduler.add_job(daily_backup_job,
-                      CronTrigger(hour=3, minute=0),
-                      id="mongo_daily_backup", replace_existing=True)
-    # iter205g — Migração automática semanal PROD → este ambiente (domingo 04:00 UTC)
-    scheduler.add_job(weekly_migrate_job,
-                      CronTrigger(day_of_week="sun", hour=4, minute=0),
-                      id="mongo_weekly_migrate", replace_existing=True)
-    # CTO 11/06/2026: health check de tickets órfãos (a cada 15 min)
-    from services.sala_orphan_health import run_orphan_health_check
-    scheduler.add_job(run_orphan_health_check, "interval", minutes=15,
-                      id="sala_orphan_health", replace_existing=True,
-                      max_instances=1, coalesce=True)
-    # CTO P1.2 11/06/2026: Isabella → SALA por churn (diário 06:00 UTC)
-    from services.isabella_churn_to_sala import run_churn_to_sala
-    scheduler.add_job(run_churn_to_sala, CronTrigger(hour=6, minute=0),
-                      id="isabella_churn_to_sala", replace_existing=True,
-                      max_instances=1, coalesce=True)
-    asyncio.create_task(holidays_refresh_job())
-    asyncio.create_task(location_logs_cleanup_job())
-    routes_atlaz.start_worker()
-    await routes_smartolt.start_worker()
-    await routes_ai_preventive.start_worker()
-    # iter186 — Vision AI auto-link de cabos órfãos (cron noturno)
-    await routes_rede_ia.start_vision_worker()
-    await routes_aihub.start_worker()
-    await routes_central_ia.start_worker()
-    # SmartOLT AI worker — detecta outages a cada 90s
-    from services.smartolt_ai import start_worker as start_smartolt_ai
-    start_smartolt_ai()
-    # iter180 — SmartOLT VLAN sync worker: detecta mudanças de VLAN e
-    # emite ticket vlan_change_unexpected
-    from services.smartolt_vlan_sync import start_worker as start_vlan_sync
-    start_vlan_sync()
-    from services.sentinela_lousa import start_worker as start_sentinela_lousa
-    start_sentinela_lousa()
-    from services.lousa_ai_triagem import start_worker as start_lousa_ai
-    start_lousa_ai()
-    # iter211bd — Worker que empurra CTOs locais para o SmartOLT
-    # (chama add_zone) — só atua em CTOs marcadas smartolt_eligible=True.
-    routes_smartolt_push_ctos.start_worker()
-    # Lousa Map — geocoding noturno de tickets sem coordenadas
-    await routes_lousa_map.start_worker()
-    # Outage Detector — detecta rupturas em massa e abre bolha automática
-    from services.rede_ia_outage_detector import start_worker as start_outage
-    await start_outage()
-    # Contracts Aging Worker — aplica REDUZIDO/WALL_GARDEN/SUSPENSO conforme
-    # invoices vencidas + dispara CoA pra reaplicar perfil no Mikrotik
-    from services.contracts_aging_worker import worker_loop as _aging_loop
-    asyncio.create_task(_aging_loop())
-    from services.churn_scheduler import start_worker as start_churn_scheduler
-    start_churn_scheduler()
-    # iter215bx — Cron do Conselho Estratégico IA (8h BRT)
-    from services.conselho_ia_scheduler import (
-        start_worker as start_conselho_ia_cron)
-    start_conselho_ia_cron()
-    from services.readjustment_scheduler import (
-        start_worker as start_readjustment_scheduler,
-    )
-    start_readjustment_scheduler()
-    from services.ai_training_scheduler import (
-        start_worker as start_ai_training_scheduler,
-    )
-    start_ai_training_scheduler()
-    # Sales outreach worker — Isabella IA proativa em leads de wifi self-service
-    from services.sales_outreach import (
-        start_worker as start_sales_outreach,
-    )
-    await start_sales_outreach()
-    routes_mass_messaging.start_worker()
-    # Cron: auto-marca contas a pagar vencidas — diário 03:00
-    from routes.financeiro_ops import auto_mark_overdue
-    scheduler.add_job(auto_mark_overdue, CronTrigger(hour=3, minute=0),
-                      id="fin_overdue_daily", replace_existing=True)
-    # Cron: sync Atlaz financeiro — a cada 2 horas
-    from routes.atlaz_financeiro import auto_sync_atlaz_financeiro
-    scheduler.add_job(auto_sync_atlaz_financeiro,
-                      CronTrigger(minute=15, hour="*/2"),
-                      id="atlaz_fin_auto_sync", replace_existing=True)
-    # Cron: auditoria CTO ↔ SmartOLT — diário 03:15
-    from services.cto_audit import nightly_audit_job
-    scheduler.add_job(nightly_audit_job, CronTrigger(hour=3, minute=15),
-                      id="cto_audit_nightly", replace_existing=True)
-    # Cron: REAJUSTE ANUAL automático — diário 04:00, aplica reajustes vencidos
-    async def _readjustment_daily_all_companies():
-        from services.inflation import refresh_index_cache, SGS_CODES
-        from services.readjustment import apply_all_due
-        # 1) atualiza índices de inflação
-        for name in SGS_CODES.keys():
-            try:
-                await refresh_index_cache(name)
-            except Exception as e:
-                logger.warning("[readjustment-cron] refresh %s falhou: %s",
-                               name, e)
-        # 2) aplica reajustes pendentes em cada empresa
-        async for c in db.companies.find({}, {"_id": 0, "id": 1}):
-            try:
-                r = await apply_all_due(c["id"], actor="cron")
-                if r.get("applied"):
-                    logger.info("[readjustment-cron] %s: %s aplicados (+R$ %.2f)",
-                                c["id"], r["applied"], r["total_revenue_increase"])
-            except Exception as e:
-                logger.warning("[readjustment-cron] empresa %s falhou: %s",
-                               c.get("id"), e)
-    scheduler.add_job(_readjustment_daily_all_companies,
-                      CronTrigger(hour=4, minute=0),
-                      id="readjustment_daily", replace_existing=True)
-    # Cron: NOTIFICAÇÃO WhatsApp 30d antes do reajuste — diário 09:00
-    async def _readjustment_notify_all_companies():
-        from services.readjustment_notifications import (
-            notify_upcoming_readjustments,
+    async def _start_leader_jobs() -> None:
+        if _leader_state["started"]:
+            return
+        _leader_state["started"] = True
+        logger.info(
+            "[startup] LEADER worker (pid=%s) — iniciando schedulers e "
+            "background tasks", os.getpid())
+        scheduler.start()
+        scheduler.add_job(monthly_email_job, CronTrigger(day="last", hour=23, minute=30),
+                          id="monthly_email", replace_existing=True)
+        # OLT SNMP polling — atualiza cache a cada 5min
+        try:
+            from services.olt_polling_scheduler import setup_olt_polling
+            setup_olt_polling(scheduler)
+        except Exception as e:
+            logger.warning("[startup] olt_polling falhou: %r", e)
+        # OPERAÇÃO 90% — Sistema Nervoso 100% (refresh dos synthesized 1h)
+        try:
+            from services import nervous_coverage_job as _ncj
+            _ncj.register(scheduler)
+        except Exception as e:
+            logger.warning("[startup] nervous_coverage_job falhou: %r", e)
+        # OPERAÇÃO CAIXA REAL — fechamento diário 23:59 + indexes
+        try:
+            from services import presidente_cash as _cash
+            await _cash.ensure_indexes()
+            _cash.register_scheduler(scheduler)
+        except Exception as e:
+            logger.warning("[startup] presidente_cash falhou: %r", e)
+        # OPERAÇÃO MATURIDADE COMERCIAL — reconciliador 03:00
+        try:
+            from services import cash_reconciler as _rec
+            _rec.register_scheduler(scheduler)
+        except Exception as e:
+            logger.warning("[startup] cash_reconciler falhou: %r", e)
+        scheduler.add_job(holidays_refresh_job, CronTrigger(day="1", hour=3, minute=0),
+                          id="holidays_refresh", replace_existing=True)
+        # iter241 — Snapshot diário do President Score às 03:00
+        try:
+            from services.score_recovery import daily_snapshot_job as _score_snap
+            scheduler.add_job(_score_snap, CronTrigger(hour=3, minute=15),
+                              id="president_score_daily_snapshot",
+                              replace_existing=True)
+        except Exception as _e:
+            logger.warning("[startup] score_recovery snapshot job falhou: %r", _e)
+        # iter242 — Snapshot diário do PRESIDENT_SCORE_ENGINE (12 áreas) 03:30
+        try:
+            from services.presidente_score_engine import (
+                daily_snapshot_job as _eng_snap)
+            scheduler.add_job(_eng_snap, CronTrigger(hour=3, minute=30),
+                              id="president_score_engine_daily",
+                              replace_existing=True)
+        except Exception as _e:
+            logger.warning("[startup] score_engine cron falhou: %r", _e)
+        scheduler.add_job(location_logs_cleanup_job, CronTrigger(hour="*/6", minute=10),
+                          id="location_cleanup", replace_existing=True)
+        scheduler.add_job(dwell_push_job, "interval", minutes=2,
+                          id="dwell_push", replace_existing=True)
+        # iter216b — WiFi Hotspot: marca sessões pending_whatsapp expiradas
+        # (>2min) como abandoned + retarget WhatsApp 48h depois
+        from routes.wifi_hotspot import (
+            mark_abandoned_sessions_job, retarget_abandoned_sessions_job,
         )
-        async for c in db.companies.find({}, {"_id": 0, "id": 1}):
+        scheduler.add_job(mark_abandoned_sessions_job, "interval", minutes=2,
+                          id="wifi_mark_abandoned", replace_existing=True)
+        scheduler.add_job(retarget_abandoned_sessions_job, "interval", hours=1,
+                          id="wifi_retarget_48h", replace_existing=True)
+        # FASE 10 sprint final V5.0 — Autonomy scheduler integrado
+        if os.environ.get("AUTONOMY_SCHEDULER_DISABLED", "0") != "1":
+            from services import autonomy_scheduler_jobs as _autosch
+            scheduler.add_job(_autosch.drives, "interval", minutes=30,
+                               id="autonomy_drives_30m", replace_existing=True,
+                               max_instances=1)
+            scheduler.add_job(_autosch.reconcile, "interval", hours=4,
+                               id="autonomy_reconcile_4h",
+                               replace_existing=True, max_instances=1)
+            scheduler.add_job(_autosch.briefing_07h,
+                               CronTrigger(hour=7, minute=0),
+                               id="autonomy_briefing_07h",
+                               replace_existing=True)
+            scheduler.add_job(_autosch.briefing_12h,
+                               CronTrigger(hour=12, minute=0),
+                               id="autonomy_briefing_12h",
+                               replace_existing=True)
+            scheduler.add_job(_autosch.briefing_18h,
+                               CronTrigger(hour=18, minute=0),
+                               id="autonomy_briefing_18h",
+                               replace_existing=True)
+            scheduler.add_job(_autosch.self_healing_auto,
+                               "interval", hours=1,
+                               id="autonomy_self_heal_1h",
+                               replace_existing=True,
+                               max_instances=1)
+            logger.info("[startup] autonomy scheduler jobs registered "
+                          "(drives/30m, reconcile/4h, briefings 07/12/18, "
+                          "self_heal/1h)")
+        # Atlaz: sync de assinantes diário às 22h00 (America/Sao_Paulo)
+        scheduler.add_job(routes_atlaz.nightly_customers_sync_job,
+                          CronTrigger(hour=22, minute=0),
+                          id="atlaz_customers_sync_nightly", replace_existing=True)
+        # Integrations: auto-reconnect canais mortos a cada 2 min
+        scheduler.add_job(routes_integrations.auto_reconnect_job,
+                          "interval", minutes=2,
+                          id="integrations_auto_reconnect", replace_existing=True)
+        # Baileys: watchdog detecta socket zumbi e força reload preventivo
+        from routes.whatsapp_baileys import baileys_watchdog_job
+        scheduler.add_job(baileys_watchdog_job,
+                          "interval", minutes=2,
+                          id="baileys_watchdog", replace_existing=True)
+        # Baileys: restart preventivo diário 04:00 (evita memory leak, garante uptime)
+        from routes.whatsapp_baileys import baileys_nightly_restart_job
+        scheduler.add_job(baileys_nightly_restart_job,
+                          CronTrigger(hour=4, minute=0),
+                          id="baileys_nightly_restart", replace_existing=True)
+        # iter205c — Backup diário do MongoDB 03:00 UTC, rotação 7 últimos
+        from routes.backup import daily_backup_job, weekly_migrate_job
+        scheduler.add_job(daily_backup_job,
+                          CronTrigger(hour=3, minute=0),
+                          id="mongo_daily_backup", replace_existing=True)
+        # iter205g — Migração automática semanal PROD → este ambiente (domingo 04:00 UTC)
+        scheduler.add_job(weekly_migrate_job,
+                          CronTrigger(day_of_week="sun", hour=4, minute=0),
+                          id="mongo_weekly_migrate", replace_existing=True)
+        # CTO 11/06/2026: health check de tickets órfãos (a cada 15 min)
+        from services.sala_orphan_health import run_orphan_health_check
+        scheduler.add_job(run_orphan_health_check, "interval", minutes=15,
+                          id="sala_orphan_health", replace_existing=True,
+                          max_instances=1, coalesce=True)
+        # CTO P1.2 11/06/2026: Isabella → SALA por churn (diário 06:00 UTC)
+        from services.isabella_churn_to_sala import run_churn_to_sala
+        scheduler.add_job(run_churn_to_sala, CronTrigger(hour=6, minute=0),
+                          id="isabella_churn_to_sala", replace_existing=True,
+                          max_instances=1, coalesce=True)
+        asyncio.create_task(holidays_refresh_job())
+        asyncio.create_task(location_logs_cleanup_job())
+        routes_atlaz.start_worker()
+        await routes_smartolt.start_worker()
+        await routes_ai_preventive.start_worker()
+        # iter186 — Vision AI auto-link de cabos órfãos (cron noturno)
+        await routes_rede_ia.start_vision_worker()
+        await routes_aihub.start_worker()
+        await routes_central_ia.start_worker()
+        # SmartOLT AI worker — detecta outages a cada 90s
+        from services.smartolt_ai import start_worker as start_smartolt_ai
+        start_smartolt_ai()
+        # iter180 — SmartOLT VLAN sync worker: detecta mudanças de VLAN e
+        # emite ticket vlan_change_unexpected
+        from services.smartolt_vlan_sync import start_worker as start_vlan_sync
+        start_vlan_sync()
+        from services.sentinela_lousa import start_worker as start_sentinela_lousa
+        start_sentinela_lousa()
+        from services.lousa_ai_triagem import start_worker as start_lousa_ai
+        start_lousa_ai()
+        # iter211bd — Worker que empurra CTOs locais para o SmartOLT
+        # (chama add_zone) — só atua em CTOs marcadas smartolt_eligible=True.
+        routes_smartolt_push_ctos.start_worker()
+        # Lousa Map — geocoding noturno de tickets sem coordenadas
+        await routes_lousa_map.start_worker()
+        # Outage Detector — detecta rupturas em massa e abre bolha automática
+        from services.rede_ia_outage_detector import start_worker as start_outage
+        await start_outage()
+        # Contracts Aging Worker — aplica REDUZIDO/WALL_GARDEN/SUSPENSO conforme
+        # invoices vencidas + dispara CoA pra reaplicar perfil no Mikrotik
+        from services.contracts_aging_worker import worker_loop as _aging_loop
+        asyncio.create_task(_aging_loop())
+        from services.churn_scheduler import start_worker as start_churn_scheduler
+        start_churn_scheduler()
+        # iter215bx — Cron do Conselho Estratégico IA (8h BRT)
+        from services.conselho_ia_scheduler import (
+            start_worker as start_conselho_ia_cron)
+        start_conselho_ia_cron()
+        from services.readjustment_scheduler import (
+            start_worker as start_readjustment_scheduler,
+        )
+        start_readjustment_scheduler()
+        from services.ai_training_scheduler import (
+            start_worker as start_ai_training_scheduler,
+        )
+        start_ai_training_scheduler()
+        # Sales outreach worker — Isabella IA proativa em leads de wifi self-service
+        from services.sales_outreach import (
+            start_worker as start_sales_outreach,
+        )
+        await start_sales_outreach()
+        routes_mass_messaging.start_worker()
+        # Cron: auto-marca contas a pagar vencidas — diário 03:00
+        from routes.financeiro_ops import auto_mark_overdue
+        scheduler.add_job(auto_mark_overdue, CronTrigger(hour=3, minute=0),
+                          id="fin_overdue_daily", replace_existing=True)
+        # Cron: sync Atlaz financeiro — a cada 2 horas
+        from routes.atlaz_financeiro import auto_sync_atlaz_financeiro
+        scheduler.add_job(auto_sync_atlaz_financeiro,
+                          CronTrigger(minute=15, hour="*/2"),
+                          id="atlaz_fin_auto_sync", replace_existing=True)
+        # Cron: auditoria CTO ↔ SmartOLT — diário 03:15
+        from services.cto_audit import nightly_audit_job
+        scheduler.add_job(nightly_audit_job, CronTrigger(hour=3, minute=15),
+                          id="cto_audit_nightly", replace_existing=True)
+        # Cron: REAJUSTE ANUAL automático — diário 04:00, aplica reajustes vencidos
+        async def _readjustment_daily_all_companies():
+            from services.inflation import refresh_index_cache, SGS_CODES
+            from services.readjustment import apply_all_due
+            # 1) atualiza índices de inflação
+            for name in SGS_CODES.keys():
+                try:
+                    await refresh_index_cache(name)
+                except Exception as e:
+                    logger.warning("[readjustment-cron] refresh %s falhou: %s",
+                                   name, e)
+            # 2) aplica reajustes pendentes em cada empresa
+            async for c in db.companies.find({}, {"_id": 0, "id": 1}):
+                try:
+                    r = await apply_all_due(c["id"], actor="cron")
+                    if r.get("applied"):
+                        logger.info("[readjustment-cron] %s: %s aplicados (+R$ %.2f)",
+                                    c["id"], r["applied"], r["total_revenue_increase"])
+                except Exception as e:
+                    logger.warning("[readjustment-cron] empresa %s falhou: %s",
+                                   c.get("id"), e)
+        scheduler.add_job(_readjustment_daily_all_companies,
+                          CronTrigger(hour=4, minute=0),
+                          id="readjustment_daily", replace_existing=True)
+        # Cron: NOTIFICAÇÃO WhatsApp 30d antes do reajuste — diário 09:00
+        async def _readjustment_notify_all_companies():
+            from services.readjustment_notifications import (
+                notify_upcoming_readjustments,
+            )
+            async for c in db.companies.find({}, {"_id": 0, "id": 1}):
+                try:
+                    r = await notify_upcoming_readjustments(c["id"], days_ahead=30)
+                    if r.get("sent"):
+                        logger.info("[readjustment-notify-cron] %s: %s WhatsApps "
+                                    "enviados", c["id"], r["sent"])
+                except Exception as e:
+                    logger.warning("[readjustment-notify-cron] %s falhou: %s",
+                                   c.get("id"), e)
+        scheduler.add_job(_readjustment_notify_all_companies,
+                          CronTrigger(hour=9, minute=0),
+                          id="readjustment_notify_daily", replace_existing=True)
+        # Cron: ALVARO IA daily — análise consolidada às 06:00 (próximas 24h)
+        async def _alvaro_daily_all_companies():
+            from services.alvaro_ai import run_daily_analysis
+            async for cdoc in db.companies.find({}, {"_id": 0, "id": 1}):
+                cid = cdoc.get("id")
+                if not cid:
+                    continue
+                try:
+                    await run_daily_analysis(cid, hours_back=24)
+                except Exception as e:
+                    logger.warning("[alvaro] daily run company=%s falhou: %s", cid, e)
+        scheduler.add_job(_alvaro_daily_all_companies,
+                          CronTrigger(hour=6, minute=0),
+                          id="alvaro_ia_daily", replace_existing=True)
+        # Cron: DISPARO IA daily — 06:30 (30min após o Alvaro fechar o relatório)
+        # Gera sugestões de campanhas automaticamente para cada company.
+        async def _disparo_daily_all_companies():
+            from services.disparo_ai import generate_campaign_suggestions
+            async for cdoc in db.companies.find({}, {"_id": 0, "id": 1}):
+                cid = cdoc.get("id")
+                if not cid:
+                    continue
+                try:
+                    result = await generate_campaign_suggestions(
+                        cid, max_suggestions=6,
+                    )
+                    logger.info(
+                        "[disparo_ia] daily run company=%s gerou %d sugestões",
+                        cid, result.get("suggestions_created", 0),
+                    )
+                except Exception as e:
+                    logger.warning(
+                        "[disparo_ia] daily run company=%s falhou: %s", cid, e,
+                    )
+        scheduler.add_job(_disparo_daily_all_companies,
+                          CronTrigger(hour=6, minute=30),
+                          id="disparo_ia_daily", replace_existing=True)
+        asyncio.create_task(routes_plans.adjustment_scheduler_worker())
+        # Cron: BILLING DUNNING — todo dia 07:00 avalia régua de cobrança em todas
+        # as empresas. Não envia mensagens reais ainda (apenas grava eventos);
+        # essa flag será habilitada por empresa quando Meta WhatsApp Cloud estiver
+        # estável (Módulo P1 do roadmap ISP).
+        async def _billing_dunning_all_companies():
+            from routes.billing import _evaluate_dunning_for_company
+            async for cdoc in db.companies.find({}, {"_id": 0, "id": 1}):
+                cid = cdoc.get("id")
+                if not cid:
+                    continue
+                try:
+                    result = await _evaluate_dunning_for_company(cid, actor_email="system_cron")
+                    logger.info(
+                        "[billing] dunning company=%s events=%d invoices=%d",
+                        cid, result.get("events_triggered", 0),
+                        result.get("invoices_evaluated", 0),
+                    )
+                except Exception as e:
+                    logger.warning("[billing] dunning company=%s falhou: %s", cid, e)
+        scheduler.add_job(_billing_dunning_all_companies,
+                          CronTrigger(hour=7, minute=0),
+                          id="billing_dunning_daily", replace_existing=True)
+        # NEO • Relatórios Agendados — dispatcher a cada 5 min
+        from routes.neo_reports import dispatch_due_schedules_job
+        scheduler.add_job(dispatch_due_schedules_job,
+                          "interval", minutes=5,
+                          id="neo_reports_dispatcher", replace_existing=True)
+        from services.drive_backup import daily_backup_worker as drive_daily_worker
+        asyncio.create_task(drive_daily_worker())
+        # iter215ab — Preventive OS worker (verifica a cada minuto se é
+        # 08:30 BRT pra empresas com preventive_os.enabled=True)
+        from routes.preventive_os import preventive_os_daily_worker
+        asyncio.create_task(preventive_os_daily_worker())
+        # iter215am — Worker que analisa fotos de ONT (retirada/troca sem SN
+        # SmartOLT) com Claude Sonnet 4.6 e atualiza estoque do técnico.
+        from services.sn_photo_worker import sn_photo_worker
+        asyncio.create_task(sn_photo_worker())
+        # Isabella Incident Commander — varredura preditiva de incidentes
+        # coletivos (CTO/bairro/ONU) a cada 15 min sobre dados reais.
+        from services.isabella_incident import isabella_incident_worker
+        asyncio.create_task(isabella_incident_worker())
+        # Isabella Commanders (Churn/Dunning/Revenue/Twin/Expansion + Conselho)
+        # — varredura unificada a cada 30 min + reunião diária do conselho.
+        from services.isabella_commanders_worker import isabella_commanders_worker
+        asyncio.create_task(isabella_commanders_worker())
+        # Migração one-shot — unifica OpenRouter keys em motor_ia_config
+        try:
+            from services.openrouter_unify_migration import run_once as _ourun
+            asyncio.create_task(_ourun())
+        except Exception as e:
+            logger.warning("[startup] openrouter_unify: %s", e)
+        # Shield indexes (audit chain / event signing anti-replay / observ.)
+        try:
+            from services.audit_chain import ensure_indexes as _aci
+            from services.event_signing import ensure_indexes as _esi
+            from services.observability import ensure_indexes as _oi
+            from services.shield_daily_audit import (
+                ensure_indexes as _sda_idx, register_scheduler as _sda_reg)
+            from services.message_aggregator import ensure_indexes as _ma_idx
+            from services.nervous_autodiscovery import (
+                ensure_indexes as _nva_idx, register_scheduler as _nva_reg)
+            from services.orphan_event_watcher import (
+                ensure_indexes as _oew_idx, register_scheduler as _oew_reg)
+            asyncio.create_task(_aci())
+            asyncio.create_task(_esi())
+            asyncio.create_task(_oi())
+            asyncio.create_task(_sda_idx())
+            asyncio.create_task(_ma_idx())
+            asyncio.create_task(_nva_idx())
+            asyncio.create_task(_oew_idx())
+            _sda_reg(scheduler)
+            _nva_reg(scheduler)
+            _oew_reg(scheduler)
+        except Exception as e:
+            logger.warning("[startup] shield indexes: %s", e)
+        # NOTE: o worker da isabella_queue foi SEPARADO em processo dedicado
+        # (programa supervisor `isabella-worker`). NÃO inicialize aqui — webhook
+        # HTTP deve ficar isolado do processamento LLM/Twilio.
+        logger.info("Scheduler iniciado.")
+
+    async def _leader_election_loop() -> None:
+        from services.scheduler_lock import try_acquire_leader
+        import asyncio as _a
+        first_tick = True
+        while True:
             try:
-                r = await notify_upcoming_readjustments(c["id"], days_ahead=30)
-                if r.get("sent"):
-                    logger.info("[readjustment-notify-cron] %s: %s WhatsApps "
-                                "enviados", c["id"], r["sent"])
+                is_leader = await try_acquire_leader()
+                if is_leader and not _leader_state["started"]:
+                    try:
+                        await _start_leader_jobs()
+                    except Exception as e:
+                        logger.exception(
+                            "[election] _start_leader_jobs falhou: %s", e)
+                        _leader_state["started"] = False
+                elif not is_leader and first_tick:
+                    logger.info(
+                        "[startup] FOLLOWER worker (pid=%s) — leader já "
+                        "eleito; tentará reassumir a cada 15s se lock "
+                        "expirar", os.getpid())
             except Exception as e:
-                logger.warning("[readjustment-notify-cron] %s falhou: %s",
-                               c.get("id"), e)
-    scheduler.add_job(_readjustment_notify_all_companies,
-                      CronTrigger(hour=9, minute=0),
-                      id="readjustment_notify_daily", replace_existing=True)
-    # Cron: ALVARO IA daily — análise consolidada às 06:00 (próximas 24h)
-    async def _alvaro_daily_all_companies():
-        from services.alvaro_ai import run_daily_analysis
-        async for cdoc in db.companies.find({}, {"_id": 0, "id": 1}):
-            cid = cdoc.get("id")
-            if not cid:
-                continue
-            try:
-                await run_daily_analysis(cid, hours_back=24)
-            except Exception as e:
-                logger.warning("[alvaro] daily run company=%s falhou: %s", cid, e)
-    scheduler.add_job(_alvaro_daily_all_companies,
-                      CronTrigger(hour=6, minute=0),
-                      id="alvaro_ia_daily", replace_existing=True)
-    # Cron: DISPARO IA daily — 06:30 (30min após o Alvaro fechar o relatório)
-    # Gera sugestões de campanhas automaticamente para cada company.
-    async def _disparo_daily_all_companies():
-        from services.disparo_ai import generate_campaign_suggestions
-        async for cdoc in db.companies.find({}, {"_id": 0, "id": 1}):
-            cid = cdoc.get("id")
-            if not cid:
-                continue
-            try:
-                result = await generate_campaign_suggestions(
-                    cid, max_suggestions=6,
-                )
-                logger.info(
-                    "[disparo_ia] daily run company=%s gerou %d sugestões",
-                    cid, result.get("suggestions_created", 0),
-                )
-            except Exception as e:
-                logger.warning(
-                    "[disparo_ia] daily run company=%s falhou: %s", cid, e,
-                )
-    scheduler.add_job(_disparo_daily_all_companies,
-                      CronTrigger(hour=6, minute=30),
-                      id="disparo_ia_daily", replace_existing=True)
-    asyncio.create_task(routes_plans.adjustment_scheduler_worker())
-    # Cron: BILLING DUNNING — todo dia 07:00 avalia régua de cobrança em todas
-    # as empresas. Não envia mensagens reais ainda (apenas grava eventos);
-    # essa flag será habilitada por empresa quando Meta WhatsApp Cloud estiver
-    # estável (Módulo P1 do roadmap ISP).
-    async def _billing_dunning_all_companies():
-        from routes.billing import _evaluate_dunning_for_company
-        async for cdoc in db.companies.find({}, {"_id": 0, "id": 1}):
-            cid = cdoc.get("id")
-            if not cid:
-                continue
-            try:
-                result = await _evaluate_dunning_for_company(cid, actor_email="system_cron")
-                logger.info(
-                    "[billing] dunning company=%s events=%d invoices=%d",
-                    cid, result.get("events_triggered", 0),
-                    result.get("invoices_evaluated", 0),
-                )
-            except Exception as e:
-                logger.warning("[billing] dunning company=%s falhou: %s", cid, e)
-    scheduler.add_job(_billing_dunning_all_companies,
-                      CronTrigger(hour=7, minute=0),
-                      id="billing_dunning_daily", replace_existing=True)
-    # NEO • Relatórios Agendados — dispatcher a cada 5 min
-    from routes.neo_reports import dispatch_due_schedules_job
-    scheduler.add_job(dispatch_due_schedules_job,
-                      "interval", minutes=5,
-                      id="neo_reports_dispatcher", replace_existing=True)
-    from services.drive_backup import daily_backup_worker as drive_daily_worker
-    asyncio.create_task(drive_daily_worker())
-    # iter215ab — Preventive OS worker (verifica a cada minuto se é
-    # 08:30 BRT pra empresas com preventive_os.enabled=True)
-    from routes.preventive_os import preventive_os_daily_worker
-    asyncio.create_task(preventive_os_daily_worker())
-    # iter215am — Worker que analisa fotos de ONT (retirada/troca sem SN
-    # SmartOLT) com Claude Sonnet 4.6 e atualiza estoque do técnico.
-    from services.sn_photo_worker import sn_photo_worker
-    asyncio.create_task(sn_photo_worker())
-    # Isabella Incident Commander — varredura preditiva de incidentes
-    # coletivos (CTO/bairro/ONU) a cada 15 min sobre dados reais.
-    from services.isabella_incident import isabella_incident_worker
-    asyncio.create_task(isabella_incident_worker())
-    # Isabella Commanders (Churn/Dunning/Revenue/Twin/Expansion + Conselho)
-    # — varredura unificada a cada 30 min + reunião diária do conselho.
-    from services.isabella_commanders_worker import isabella_commanders_worker
-    asyncio.create_task(isabella_commanders_worker())
-    # Migração one-shot — unifica OpenRouter keys em motor_ia_config
-    try:
-        from services.openrouter_unify_migration import run_once as _ourun
-        asyncio.create_task(_ourun())
-    except Exception as e:
-        logger.warning("[startup] openrouter_unify: %s", e)
-    # Shield indexes (audit chain / event signing anti-replay / observ.)
-    try:
-        from services.audit_chain import ensure_indexes as _aci
-        from services.event_signing import ensure_indexes as _esi
-        from services.observability import ensure_indexes as _oi
-        from services.shield_daily_audit import (
-            ensure_indexes as _sda_idx, register_scheduler as _sda_reg)
-        from services.message_aggregator import ensure_indexes as _ma_idx
-        from services.nervous_autodiscovery import (
-            ensure_indexes as _nva_idx, register_scheduler as _nva_reg)
-        from services.orphan_event_watcher import (
-            ensure_indexes as _oew_idx, register_scheduler as _oew_reg)
-        asyncio.create_task(_aci())
-        asyncio.create_task(_esi())
-        asyncio.create_task(_oi())
-        asyncio.create_task(_sda_idx())
-        asyncio.create_task(_ma_idx())
-        asyncio.create_task(_nva_idx())
-        asyncio.create_task(_oew_idx())
-        _sda_reg(scheduler)
-        _nva_reg(scheduler)
-        _oew_reg(scheduler)
-    except Exception as e:
-        logger.warning("[startup] shield indexes: %s", e)
-    # NOTE: o worker da isabella_queue foi SEPARADO em processo dedicado
-    # (programa supervisor `isabella-worker`). NÃO inicialize aqui — webhook
-    # HTTP deve ficar isolado do processamento LLM/Twilio.
-    logger.info("Scheduler iniciado.")
+                logger.warning("[election] tick falhou: %s", e)
+            first_tick = False
+            await _a.sleep(15)
+
+    asyncio.create_task(_leader_election_loop(), name="leader-election")
 
 
 @app.on_event("shutdown")
 async def _shutdown() -> None:
-    scheduler.shutdown(wait=False)
-    routes_atlaz.stop_worker()
-    routes_mass_messaging.stop_worker()
+    # CTO 12/06/2026 fix: libera o lock para que o próximo restart
+    # eleja leader limpo (evita FOLLOWER permanente em todos workers).
+    try:
+        from services.scheduler_lock import release_leader
+        await release_leader()
+    except Exception as _e:
+        logger.warning("[shutdown] release_leader falhou: %s", _e)
+    try:
+        scheduler.shutdown(wait=False)
+    except Exception:
+        pass
+    try:
+        routes_atlaz.stop_worker()
+    except Exception:
+        pass
+    try:
+        routes_mass_messaging.stop_worker()
+    except Exception:
+        pass
     client.close()
 
 

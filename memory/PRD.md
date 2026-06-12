@@ -2,6 +2,35 @@
 
 > Documento vivo. Atualizado a cada sprint.
 
+## 🔥 BugFix CTO P0: Atlaz sync órfão — Election Loop contínuo (12/06/2026 · iter244)
+
+**Demanda (em CTO Mode):** "as notas criadas no atlaz não estão replicando para a lousa"
+
+**Evidência dura:**
+- API Atlaz devolvia 66 chamados abertos, 58 sobreviviam ao filtro de filial; só 55 estavam no banco. 3 chamados novos travados.
+- `atlaz_sync_logs` parou às 12:05:14 UTC; `last_auto_sync_bubbles_at` congelado por ~50min.
+- Supervisor: `13:00:52 FOLLOWER worker (pid=7159/7160/7161/7162)` — **TODOS os 4 workers FOLLOWER**, **nenhum LEADER**.
+
+**Root cause:** `server.py:744` chamava `try_acquire_leader()` **uma vez no startup**. Quando um restart sujo deixava lock zumbi (TTL 60s, holder de PID morto), todos os 4 workers viam o lock válido e viravam FOLLOWER permanente. O lock expirava 60s depois mas ninguém retentava → **órfão até o próximo deploy**. Atingia Atlaz sync, Baileys watchdog, holidays, dwell push, autonomy, backup MongoDB, isabella commanders, etc.
+
+**Fix:**
+- `services/scheduler_lock.py` mantido (lógica de upsert atômica já é segura — `try_acquire_leader` é idempotente para o próprio holder).
+- `server.py` `_startup`: bloco LEADER (linhas 754-1115) extraído para nested `async _start_leader_jobs()` com guard `_leader_state["started"]`. Substituído `if not _is_leader: return` por `asyncio.create_task(_leader_election_loop())` rodando em **TODOS os workers**.
+- `_leader_election_loop` chama `try_acquire_leader()` a cada **15s** em todos os processos: quando um FOLLOWER detecta lock expirado, vence eleição, promove-se a LEADER e dispara `_start_leader_jobs()` (idempotente).
+- `_shutdown`: adicionado `release_leader()` para evitar lock zumbi no próximo restart.
+
+**Validação:**
+- 4/4 pytest em `tests/test_leader_election_resilience.py` (acquire-when-expired, renew idempotência, release-protege-lock-alheio, takeover-after-A-dies).
+- E2E em produção: injetei lock zumbi (`holder=fake-zombie-pid-99999`), reiniciei backend, todos workers viraram FOLLOWER (esperado), e **~45s depois** o PID 7946 (FOLLOWER) **assumiu LEADER automaticamente** e o `[atlaz] worker started`. Sync retomou.
+- Auto-healing E2E: apaguei o lock manualmente, **18s depois** o PID 7944 reassumiu sozinho sem perder ciclos de sync.
+
+**Arquivos:**
+- `backend/server.py` (refactor `_startup` + `_shutdown`)
+- `backend/tests/test_leader_election_resilience.py` (regressão)
+
+---
+
+
 ## 🚀 Feature: Score Recovery — recuperação automática do President Score (12/06/2026 — iter241 · CTO P0)
 
 **Demanda:** "Score 61,3 — estava melhor antes — crie ações para subir, no mínimo 90%."
