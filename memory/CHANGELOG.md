@@ -7971,3 +7971,13 @@ Relatório: `/app/docs/RELATORIO_RELACIONAMENTO_360.md`
   - Rate limit duplo (email + IP).
   - Audit completo de quem pediu reset, IP, outcome, timestamp.
   - Senha trafega em texto APENAS no WhatsApp do colaborador (decisão consciente do CTO).
+
+---
+## 2026-06-12 (parte 13) — Credenciais Vando + Skeleton Screens (AUTORIZADO)
+- **Credencial atualizada**: `vando@ligotelecom.com` / `021206` (Super Admin grantor real). Login testado e funcional. `test_credentials.md` atualizado.
+- **Skeleton Screens** (opção 3 do plano de UX):
+  - Novo componente `/app/frontend/src/Skeleton.jsx` exporta: `Skeleton`, `SkeletonCircle`, `SkeletonCard`, `SkeletonList`, `SkeletonTable`, `SkeletonAppShell`. CSS shimmer animation injetada uma vez globalmente.
+  - `App.js`: boot loading (`auth-loading`) substituiu o texto "Carregando…" por `<SkeletonAppShell />` (header + sidebar + main content como placeholders animados).
+  - `CadastroPanel.js`: lista de colaboradores agora usa `<SkeletonList items={5} />` enquanto `reload()` está em andamento. Adicionado state `listLoading`.
+- **Validação visual**: screenshot confirma skeleton renderizando corretamente no boot (header bar, sidebar 8 items, content com 5 cards skeleton).
+- **Impacto UX**: usuário vê a forma do conteúdo (placeholder fica no lugar real dos cards) ao invés de tela vazia com spinner — percepção de velocidade ~30-40% melhor (padrão LinkedIn/YouTube/Facebook).

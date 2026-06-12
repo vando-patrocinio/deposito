@@ -112,6 +112,7 @@ import ServerClock from "@/ServerClock";
 import { startServerTime } from "@/serverTime";
 import LoginPage from "@/LoginPage";
 import ForcedPasswordChangeModal from "@/ForcedPasswordChangeModal";
+import { SkeletonAppShell } from "@/Skeleton";
 import LandingPage from "@/LandingPage";
 import ProviderLanding from "@/ProviderLanding";
 import SignupPage from "@/SignupPage";
@@ -1139,8 +1140,8 @@ function AppContent() {
       }
     }
     return (
-      <div style={{ minHeight: "100vh", display: "grid", placeItems: "center", color: "var(--text-secondary)" }} data-testid={autoLoginState === "pending" ? "auto-login-loading" : "auth-loading"}>
-        {autoLoginState === "pending" ? "Entrando no modo demo…" : "Carregando…"}
+      <div data-testid={autoLoginState === "pending" ? "auto-login-loading" : "auth-loading"}>
+        <SkeletonAppShell />
       </div>
     );
   }

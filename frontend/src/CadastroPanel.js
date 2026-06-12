@@ -7,6 +7,7 @@ import {
   cargoLabel, cargoEmoji,
 } from "@/cargo";
 import { AvatarZoomModal, Button, Card, Field, Icon, inputStyle, Row, StatusBadge } from "@/ui";
+import { SkeletonList } from "@/Skeleton";
 import OdometerConfigCard from "@/OdometerConfigCard";
 import GeofenceMap from "@/GeofenceMap";
 import useEventStream from "@/useEventStream";
@@ -61,6 +62,7 @@ export default function CadastroPanel() {
                        || currentUser?.role === "admin"
                        || currentUser?.role === "administrador";
   const [list, setList] = useState([]);
+  const [listLoading, setListLoading] = useState(true);  // CTO 12/06/2026 — skeleton enquanto reload
   const [pracas, setPracas] = useState([]);
   const [profiles, setProfiles] = useState([]); // CTO 12/06/2026 — perfis de acesso (RBAC)
   const [editing, setEditing] = useState(null);
@@ -118,6 +120,7 @@ export default function CadastroPanel() {
   }
 
   async function reload() {
+    setListLoading(true);
     try {
       const [cs, ps, profs] = await Promise.all([
         api.listCollaborators(),
@@ -141,6 +144,8 @@ export default function CadastroPanel() {
       setAllFences(Object.values(fencesByCid).flat());
     } catch (e) {
       setError(e?.response?.data?.detail || e.message);
+    } finally {
+      setListLoading(false);
     }
   }
   useEffect(() => { reload(); }, []);
@@ -298,7 +303,8 @@ export default function CadastroPanel() {
               {atlazFlash}
             </div>
           )}
-          {list.length === 0 && <p style={{ color: "#64748b" }}>Nenhum colaborador cadastrado.</p>}
+          {listLoading && list.length === 0 && <SkeletonList items={5} />}
+          {!listLoading && list.length === 0 && <p style={{ color: "#64748b" }}>Nenhum colaborador cadastrado.</p>}
           {list.map((c) => {
             const clockOn = c.clock_in_enabled !== false;
             const indiv = fenceCounts[c.id] ?? 0;
