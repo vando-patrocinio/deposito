@@ -134,6 +134,7 @@ export default function AccessProfilesPanel() {
           <ProfileCard
             key={p.id}
             profile={p}
+            allTags={allTags}
             onEdit={() => setEditing(p)}
             onDelete={() => handleDelete(p)}
           />
@@ -152,7 +153,17 @@ export default function AccessProfilesPanel() {
   );
 }
 
-function ProfileCard({ profile, onEdit, onDelete }) {
+function ProfileCard({ profile, allTags, onEdit, onDelete }) {
+  const [expanded, setExpanded] = React.useState(false);
+  const tagKeys = profile.access_tags || [];
+  const tagsByKey = React.useMemo(() => {
+    const m = {};
+    for (const t of allTags || []) m[t.key] = t;
+    return m;
+  }, [allTags]);
+  const visible = expanded ? tagKeys : tagKeys.slice(0, 8);
+  const hiddenCount = Math.max(0, tagKeys.length - visible.length);
+
   return (
     <div
       data-testid={`profile-card-${profile.id}`}
@@ -166,37 +177,88 @@ function ProfileCard({ profile, onEdit, onDelete }) {
         {profile.is_seed && <span style={SEED_BADGE}>padrão</span>}
         {profile.is_admin_level && <span style={ADMIN_BADGE}>admin</span>}
       </div>
-      <div style={{ fontSize: 12, color: "#64748b", margin: "6px 0 12px",
-                      minHeight: 32 }}>
+      <div style={{ fontSize: 12, color: "#64748b", margin: "6px 0 10px",
+                      minHeight: 24 }}>
         {profile.description || "—"}
       </div>
-      <div style={{ display: "flex", gap: 14, fontSize: 11, color: "#475569" }}>
-        <div>
-          <span style={{ color: "#94a3b8" }}>Tags</span>{" "}
-          <strong style={{ fontSize: 14, color: "#0f172a" }}>
-            {(profile.access_tags || []).length}
-          </strong>
+
+      {/* Tags visíveis (chips) */}
+      <div style={{ marginBottom: 10 }}>
+        <div style={{ display: "flex", justifyContent: "space-between",
+                        alignItems: "baseline", marginBottom: 6 }}>
+          <span style={{
+            fontSize: 9, fontWeight: 800, color: "#94a3b8",
+            letterSpacing: ".08em", textTransform: "uppercase",
+          }}>Tags de acesso ({tagKeys.length})</span>
+          {hiddenCount > 0 && (
+            <button
+              onClick={() => setExpanded(true)}
+              data-testid={`profile-expand-${profile.id}`}
+              style={{
+                fontSize: 10, color: "#0d9488",
+                background: "none", border: "none", cursor: "pointer",
+                padding: 0, fontWeight: 700,
+              }}>ver +{hiddenCount}</button>
+          )}
+          {expanded && tagKeys.length > 8 && (
+            <button
+              onClick={() => setExpanded(false)}
+              style={{
+                fontSize: 10, color: "#64748b",
+                background: "none", border: "none", cursor: "pointer",
+                padding: 0, fontWeight: 700,
+              }}>↑ recolher</button>
+          )}
         </div>
+        {tagKeys.length === 0 ? (
+          <div style={{ fontSize: 11, color: "#94a3b8", fontStyle: "italic",
+                          padding: 8, background: "#f8fafc",
+                          borderRadius: 6, textAlign: "center" }}>
+            sem tags — clique em Editar para liberar módulos
+          </div>
+        ) : (
+          <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+            {visible.map((k) => {
+              const t = tagsByKey[k];
+              return (
+                <span
+                  key={k}
+                  title={t ? `${t.label} (${t.category})` : k}
+                  style={{
+                    padding: "2px 8px", borderRadius: 999,
+                    background: "#f0fdfa", border: "1px solid #99f6e4",
+                    color: "#0f766e", fontSize: 10, fontWeight: 600,
+                    display: "inline-flex", alignItems: "center", gap: 4,
+                  }}
+                >
+                  {t?.icon} {t?.label || k}
+                </span>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      <div style={{ display: "flex", gap: 14, fontSize: 11, color: "#475569",
+                      borderTop: "1px solid #f1f5f9", paddingTop: 10 }}>
         <div>
           <span style={{ color: "#94a3b8" }}>Usuários</span>{" "}
           <strong style={{ fontSize: 14, color: "#0f172a" }}>
             {profile.user_count ?? 0}
           </strong>
         </div>
-      </div>
-      <div style={{ marginTop: 14, paddingTop: 10,
-                      borderTop: "1px solid #f1f5f9",
-                      display: "flex", gap: 8 }}>
-        <button onClick={onEdit} style={btnSoft}
-                  data-testid={`profile-edit-${profile.id}`}>
-          ⚙ Editar
-        </button>
-        {!profile.is_seed && (
-          <button onClick={onDelete} style={btnDanger}
-                    data-testid={`profile-delete-${profile.id}`}>
-            🗑 Excluir
+        <div style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
+          <button onClick={onEdit} style={btnSoft}
+                    data-testid={`profile-edit-${profile.id}`}>
+            ⚙ Editar tags
           </button>
-        )}
+          {!profile.is_seed && (
+            <button onClick={onDelete} style={btnDanger}
+                      data-testid={`profile-delete-${profile.id}`}>
+              🗑
+            </button>
+          )}
+        </div>
       </div>
     </div>
   );
