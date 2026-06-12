@@ -817,8 +817,6 @@ export const api = {
     client.delete(`/access-profiles/${id}`).then((r) => r.data),
   accessProfileSeed: () =>
     client.post(`/access-profiles/seed`).then((r) => r.data),
-  accessTagsCatalog: () =>
-    client.get(`/users/access-tags/catalog`).then((r) => r.data?.tags || r.data || []),
 
   // ========= Estoque por Praça =========
   stokPracaSummary: () =>

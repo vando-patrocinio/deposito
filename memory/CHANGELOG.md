@@ -7797,3 +7797,18 @@ Relatório: `/app/docs/RELATORIO_RELACIONAMENTO_360.md`
 2. WhatsApp Baileys daily cron (executive_scheduler) — `POST {WA_SIDECAR_URL}/admin/reset-session` 03:00 UTC.
 3. prompt_manual_override no DB para evitar overwrite pelo `.md` no restart.
 4. Lousa Mobile — bug "foto fantasma" (precisa texto exato/OS ID).
+
+---
+## 2026-06-12 (parte 5) — Bug Tags + RBAC visual Super Admin (AUTORIZADO)
+- **Bug fix A (Tags vazias no editor de perfis)**:
+  - `api.js`: removida 2ª definição duplicada de `accessTagsCatalog` que apontava para endpoint inexistente `/users/access-tags/catalog` (404). Sobrescrevia a definição correta da linha 221.
+  - `AccessProfilesPanel.jsx`: normaliza response (aceita `{tags}` ou array direto) antes de popular `allTags`.
+- **RBAC visual B (Super Admin só Super Admin vê)**:
+  - `GET /api/access-profiles`: filtra `super_admin` da lista quando solicitante não é Super Admin (perfil ou flag legado).
+  - `GET /api/access-profiles/{id}`: retorna 404 (não 403, para não vazar existência) quando solicitante não é Super Admin e o perfil é Super Admin.
+  - `GET /api/users`: oculta usuários com `profile_id` = Super Admin OU `is_super_admin=true` do response quando solicitante não é Super Admin.
+  - Admin/Vando (flag legado) continuam vendo tudo.
+- **Validação**:
+  - Curl: gestor lista 4 perfis (sem super_admin) | admin lista 5 | gestor GET super_admin direto → 404 | admin GET → 200.
+  - Pytest expandido: `tests/test_super_admin_profile.py` agora **5/5 passing** (seed, atribuição/revogação, helpers, filtro lista de perfis, filtro lista de users).
+- **Risco**: zero regressão para users sem perfil. Nenhuma mudança em write paths (já estavam protegidos).

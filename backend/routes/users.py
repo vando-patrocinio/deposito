@@ -317,6 +317,24 @@ async def list_users(user: dict = Depends(require_role("auditor"))):
             {"_id": 0, "id": 1, "code": 1, "name": 1},
         ):
             code_map[c["id"]] = {"code": c.get("code"), "name": c.get("name")}
+    # CTO 12/06/2026 — RBAC Super Admin: só Super Admin vê outros Super Admin.
+    # Se solicitante NÃO é Super Admin (perfil nem flag legado), oculta users
+    # vinculados ao perfil seed 'super_admin'.
+    from services.access_profiles import user_has_super_admin_profile
+    requester_is_super = is_super_admin(user) or await user_has_super_admin_profile(user)
+    if not requester_is_super:
+        super_pids = set()
+        async for p in db.access_profiles.find(
+            {"$or": [{"key": "super_admin"}, {"is_super_admin_profile": True}]},
+            {"_id": 0, "id": 1},
+        ):
+            super_pids.add(p["id"])
+        if super_pids:
+            docs = [
+                d for d in docs
+                if d.get("profile_id") not in super_pids
+                and not d.get("is_super_admin")
+            ]
     # Anexa tags efetivas (já considerando o papel) para o frontend
     for d in docs:
         d["effective_tags"] = effective_tags(d)

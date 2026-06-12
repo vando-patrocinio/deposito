@@ -50,12 +50,13 @@ export default function AccessProfilesPanel() {
   async function load() {
     setLoading(true); setError(null);
     try {
-      const [ps, tags] = await Promise.all([
+      const [ps, tagsResp] = await Promise.all([
         api.accessProfilesList(),
-        api.accessTagsCatalog().catch(() => []),
+        api.accessTagsCatalog().catch(() => ({ tags: [] })),
       ]);
       setProfiles(ps);
-      setAllTags(tags);
+      // accessTagsCatalog retorna { tags, defaults_by_role, current_user_tags }
+      setAllTags(Array.isArray(tagsResp) ? tagsResp : (tagsResp?.tags || []));
     } catch (e) {
       setError(e?.response?.data?.detail || e.message);
     }
