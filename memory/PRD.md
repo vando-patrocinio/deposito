@@ -2,31 +2,39 @@
 
 > Documento vivo. Atualizado a cada sprint.
 
-## 🐞 Bug Fix: OS do Atlaz "sumindo" da Lousa do dia (12/06/2026 · CTO P0 audit)
+## 🐞 Bug Fix: OS do Atlaz "sumindo" da Lousa do dia (12/06/2026 · CTO P0 audit · regra do gestor)
 
-**Reportado:** Gestor criou nota "TESTE" no Atlaz e não viu cair na Lousa de hoje ("não caiu em lugar nenhum"). PROD env (https://ligo.system).
+**Reportado:** Gestor criou nota "TESTE" no Atlaz (12/06 sex 18:58) e a Lousa pulou pra 15/06 seg 18:00 sem critério ("não caiu em lugar nenhum").
 
-**Investigação CTO:**
-- `db.tickets` continha `tkt-640d8e0d19` com `atlaz_external_id=6542237, atlaz_assunto=TESTE`. Bolha importada ✅.
-- Atlaz `visit_date=2026-06-12 18:58:00` (HOJE 18:58 BRT).
-- `scheduled_time` final no DB: `2026-06-15T21:00:00+00:00` (= **DOMINGO 15/06 18:00 BRT**, 3 dias depois).
-- `atlaz_slot_original=2026-06-12T21:58:00+00:00` confirmou o deslocamento.
+**Regra de negócio definida pelo gestor:**
+- `lousa_atlaz_cutoff_hour` (default 17h): se Atlaz `visit_date` >= cutoff → empurra pro PRÓXIMO DIA ÚTIL no PRIMEIRO SLOT LIVRE da grade.
+- Dia útil = SEG-SÁB (DOMINGO pula).
+- Atlaz `visit_date` < cutoff → encaixa no MESMO dia, slot ≥ `grid_start`, avançando slot-a-slot até achar vaga.
+- Dia inteiro lotado → próximo dia útil, 1º slot livre.
 
-**Root cause:** Função `_next_available_slot()` em `routes/atlaz.py` linha 339-441. Quando Atlaz manda OS com horário `>= lousa_grid_end_hour` (ex.: 18:58 com grid_end=18), a condição `while cur.hour < grid_end` NUNCA executa (18 < 18 = False) e o algoritmo cai em "próximo dia útil" — empurrando silenciosamente a OS 3 dias pra frente (sex→sáb skip→dom skip→seg). Mesma falha simétrica em horários antes de `grid_start`.
+**Root cause do algoritmo antigo (`iter211aa`):** Quando Atlaz mandava horário >= `grid_end_hour` (18h), `while cur.hour < grid_end` excluía o próprio slot, e o algoritmo caía em "próximo dia útil mesmo horário" — pulando sex→sáb→dom→seg (interpretando sábado como NÃO útil, contra a regra do gestor) e mantendo 18:00 (fora da grade) no destino.
 
 **Correção:**
-- `routes/atlaz.py`: novo guard no início do algoritmo — se `target_hour >= grid_end` ou `target_hour < grid_start`, respeita o slot original do Atlaz desde que não esteja realmente lotado (`cnt < max_per_slot`). Log INFO de auditoria emitido.
-- Correção imediata no DB: `tkt-640d8e0d19` movida de `2026-06-15T21:00:00` → `2026-06-12T21:58:00`. Campos novos: `atlaz_slot_restored_at`, `atlaz_slot_restored_by=cto_audit_fix`.
+- `routes/atlaz.py::_next_available_slot()` completamente reescrito conforme a regra do gestor. Cutoff configurável via `settings.lousa_atlaz_cutoff_hour`.
+- Função `_find_first_free_slot_on_day` varre `grid_start..grid_end` slot-a-slot.
+- Função `_is_business_day` = `weekday() < 6` (apenas domingo pula).
+- Correção imediata no DB: `tkt-640d8e0d19` movida 3 vezes:
+  1. Estado original: `2026-06-15T21:00:00` (seg 18:00 BRT — bug)
+  2. Restauração temp: `2026-06-12T21:58:00` (sex 18:58 — quase certo, mas fora da grade)
+  3. Aplicação da regra final: `2026-06-13T12:00:00` (sáb 09:00 BRT — correto).
 
-**Validação:**
-- `tests/test_atlaz_slot_outside_grid.py` (2/2 PASS isolados):
-  1. `test_slot_outside_grid_respects_atlaz`: Atlaz 18:58 com grid_end=18 → respeita 18:00 BRT do MESMO dia (não pula).
-  2. `test_slot_before_grid_start_respects_atlaz`: Atlaz 07:30 com grid_start=9 → respeita 07:00 BRT do MESMO dia.
-- Backend restartado, sem erros.
+**Validação:** `tests/test_atlaz_slot_outside_grid.py` 6/6 PASS (isolados):
+1. Após cutoff → próximo dia útil 1º slot livre (sex 18:58 → sáb 09:00).
+2. Sábado após cutoff → pula domingo → segunda 09:00.
+3. Antes do cutoff → mesmo dia, slot livre da grade (sex 14:30 → sex 14:00).
+4. Antes do `grid_start` → mesmo dia, normaliza pra `grid_start` (07:00 → 09:00).
+5. Cutoff EXATO (17:00) → conta como "após" (>=).
+6. Sem técnico (inbox) → retorna ISO original sem alterar.
 
-**Pendente:** Gestor precisa redeployar PROD pra pegar o fix de código (correção de DB já está aplicada).
+**Pendente:** Redeploy PROD pra travar o algoritmo (correção do registro atual já aplicada no DB compartilhado).
 
 ---
+
 
 
 ## 🛡️ Feature: Modo Teste WhatsApp via UI (12/06/2026 · iter246 · P0 safety)

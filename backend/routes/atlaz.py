@@ -343,14 +343,15 @@ async def _next_available_slot(
     *,
     exclude_ticket_id: Optional[str] = None,
 ) -> str:
-    """iter211aa — Distribui bolhas dentro dos horários disponíveis quando o
-    slot pedido já está cheio (max_per_slot por horário, default 2).
+    """CTO 12/06/2026 — Regra de negócio do gestor (substitui iter211aa):
 
-    Regras:
-      • Procura no MESMO dia, partindo do horário pedido, andando 1 slot
-        pra frente até achar um slot com `count < max_per_slot`.
-      • Se chegou no fim do expediente (grid_end_hour) e tudo está cheio,
-        rola pro próximo DIA ÚTIL no MESMO horário original (3a).
+      • cutoff_hour (default 17): Atlaz `visit_date` >= cutoff → empurra
+        pro PRÓXIMO DIA ÚTIL no PRIMEIRO SLOT LIVRE da grade.
+      • Dia útil = SEG a SÁB (DOMINGO pula, weekday==6).
+      • Atlaz visit_date < cutoff → encaixa no MESMO dia, no slot da grade
+        (≥ grid_start), avançando slot-a-slot até achar vaga.
+      • Esgotou o dia inteiro lotado → empurra pro próximo dia útil no
+        primeiro slot livre.
       • Tickets sem `technician_id` (inbox) não competem por slot — retorna
         o ISO original.
 
@@ -367,8 +368,10 @@ async def _next_available_slot(
 
     settings = await db.settings.find_one({"id": company_id}, {"_id": 0}) or {}
     max_per_slot = int(settings.get("lousa_grid_max_per_slot", 2))
+    grid_start = int(settings.get("lousa_grid_start_hour", 9))
     grid_end = int(settings.get("lousa_grid_end_hour", 18))
     slot_minutes = int(settings.get("lousa_grid_slot_minutes", 60)) or 60
+    cutoff_hour = int(settings.get("lousa_atlaz_cutoff_hour", 17))
 
     try:
         from zoneinfo import ZoneInfo
@@ -411,48 +414,66 @@ async def _next_available_slot(
                 continue
         return n
 
+    def _is_business_day(dt: datetime) -> bool:
+        """SEG-SÁB úteis (0..5), DOM (6) não é útil."""
+        return dt.weekday() < 6
+
+    async def _find_first_free_slot_on_day(day_local: datetime) -> Optional[datetime]:
+        """Procura o 1º slot livre na grade do dia (≥ grid_start, < grid_end)."""
+        slots_per_day = max(1, ((grid_end - grid_start) * 60) // slot_minutes)
+        cur = day_local.replace(hour=grid_start, minute=0, second=0, microsecond=0)
+        for _ in range(slots_per_day):
+            if cur.hour >= grid_end:
+                return None
+            if await _count_at(cur) < max_per_slot:
+                return cur
+            cur = cur + timedelta(minutes=slot_minutes)
+        return None
+
     local_target = target_dt.astimezone(tz_br)
-    minutes = (local_target.hour * 60 + local_target.minute) // slot_minutes * slot_minutes
-    local_target = local_target.replace(hour=minutes // 60, minute=minutes % 60,
-                                          second=0, microsecond=0)
     target_hour = local_target.hour
-    grid_start = int(settings.get("lousa_grid_start_hour", 9))
 
-    # FIX CTO 12/06/2026: Atlaz é fonte de verdade do horário da visita.
-    # Se o horário pedido cai FORA da grid (antes de grid_start ou >= grid_end),
-    # respeita o slot original em vez de empurrar pra próximo dia útil
-    # — desde que o slot original não esteja realmente lotado.
-    if target_hour >= grid_end or target_hour < grid_start:
-        cnt_orig = await _count_at(local_target)
-        if cnt_orig < max_per_slot:
-            logger.info(
-                "[atlaz] _next_available_slot: target %s está fora da grid "
-                "(%02d:00 vs grid %02d-%02d), mas slot livre — respeitando Atlaz.",
-                target_iso, target_hour, grid_start, grid_end,
-            )
-            return local_target.astimezone(timezone.utc).isoformat()
+    # ROTA A: visit_date >= cutoff_hour → empurra pro próximo dia útil
+    # ROTA B: visit_date <  cutoff_hour → mesmo dia, slot livre da grade
+    push_next_day = target_hour >= cutoff_hour
 
-    # Tenta MESMO dia primeiro: do horário pedido até grid_end
-    cur = local_target
-    safety = 24
-    while safety > 0 and cur.hour < grid_end:
-        cnt = await _count_at(cur)
-        if cnt < max_per_slot:
-            return cur.astimezone(timezone.utc).isoformat()
-        cur = cur + timedelta(minutes=slot_minutes)
-        safety -= 1
+    if not push_next_day:
+        # Normaliza horário pedido pro slot da grade do MESMO dia
+        normalized_hour = max(grid_start, target_hour)
+        if normalized_hour < grid_end:
+            minutes = (normalized_hour * 60 + local_target.minute) // slot_minutes * slot_minutes
+            cur = local_target.replace(hour=minutes // 60, minute=minutes % 60,
+                                          second=0, microsecond=0)
+            # Avança slot a slot dentro do mesmo dia
+            while cur.hour < grid_end:
+                if await _count_at(cur) < max_per_slot:
+                    logger.info(
+                        "[atlaz] slot encaixado MESMO DIA target=%s → %s",
+                        target_iso, cur.isoformat(),
+                    )
+                    return cur.astimezone(timezone.utc).isoformat()
+                cur = cur + timedelta(minutes=slot_minutes)
+        # Dia inteiro cheio → cai pra rota A
 
-    # Mesmo dia lotado → próximo DIA ÚTIL no MESMO horário original (regra 3a)
+    # Rota A: próximo dia útil, primeiro slot livre da grade
     next_day = local_target + timedelta(days=1)
-    for _ in range(14):
-        if next_day.weekday() < 5:  # 0..4 = seg..sex
-            anchor = next_day.replace(hour=target_hour, minute=0,
-                                        second=0, microsecond=0)
-            cnt = await _count_at(anchor)
-            if cnt < max_per_slot:
-                return anchor.astimezone(timezone.utc).isoformat()
+    for _ in range(14):  # janela de 14 dias é mais que suficiente
+        if _is_business_day(next_day):
+            free_slot = await _find_first_free_slot_on_day(next_day)
+            if free_slot is not None:
+                logger.info(
+                    "[atlaz] slot encaixado DIA+N target=%s (cutoff=%dh) → %s",
+                    target_iso, cutoff_hour, free_slot.isoformat(),
+                )
+                return free_slot.astimezone(timezone.utc).isoformat()
         next_day = next_day + timedelta(days=1)
 
+    # Fallback extremo (improvável): mantém o ISO original
+    logger.warning(
+        "[atlaz] _next_available_slot: nenhum slot livre em 14 dias úteis "
+        "para target=%s tech=%s — mantendo ISO original.",
+        target_iso, technician_id,
+    )
     return target_iso
 
 
