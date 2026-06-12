@@ -113,7 +113,12 @@ class PaymentIn(BaseModel):
     due_date: Optional[str] = None
     category: Optional[str] = None
     description: Optional[str] = None
+    # ── Pix (default) ──
     pix_key: Optional[str] = None  # se vazio, usa do payee
+    # ── Boleto (iter235) ──
+    method: str = "pix"  # "pix" | "bill"
+    identification_field: Optional[str] = None  # linha digitável boleto
+    bar_code: Optional[str] = None              # código de barras boleto
 
 
 class ApproveIn(BaseModel):
@@ -163,15 +168,31 @@ async def create_payment(p: PaymentIn, user: dict = Depends(require_role("gestor
     payee = await db.whitelisted_payees.find_one({"payee_id": p.payee_id, "company_id": cid})
     pix_key = p.pix_key or (payee or {}).get("pix_key")
 
+    # Validação por método
+    method = (p.method or "pix").lower()
+    if method == "bill":
+        if not p.identification_field and not p.bar_code:
+            raise HTTPException(400,
+                "Pagamento via boleto exige identification_field (linha digitável) OU bar_code.")
+    elif method == "pix":
+        if not pix_key:
+            raise HTTPException(400, "Pagamento via Pix exige pix_key no payment ou no payee.")
+    else:
+        raise HTTPException(400, f"method inválido: {method}. Use 'pix' ou 'bill'.")
+
     payment_id = f"pay-{uuid.uuid4().hex[:14]}"
     doc = {
         "company_id": cid, "payment_id": payment_id,
         "payee_id": p.payee_id, "payee_name": (payee or {}).get("name"),
         "payee_document": (payee or {}).get("document"),
+        "method": method,
         "pix_key": pix_key, "pix_key_type": (payee or {}).get("pix_key_type", "CPF"),
+        "identification_field": p.identification_field,
+        "bar_code": p.bar_code,
         "amount_brl": p.amount_brl, "scheduled_for": p.scheduled_for,
         "due_date": p.due_date, "category": p.category, "description": p.description,
         "provider": "asaas", "provider_transfer_id": None,
+        "provider_bill_id": None,
         "status": "draft",
         "created_by": user.get("email"), "created_at": now_iso(),
         "updated_at": now_iso(),
@@ -339,7 +360,7 @@ async def cancel_payment(payment_id: str, user: dict = Depends(require_role("ges
 
 @router.post("/payments/{payment_id}/send")
 async def send_payment(payment_id: str, user: dict = Depends(require_role("gestor"))):
-    """Envia transferência ao Asaas Sandbox. Idempotente."""
+    """Envia ao Asaas. Idempotente. Ramifica entre Pix e Boleto."""
     _check_sandbox_guard()
     cid = user.get("company_id") or DEMO_COMPANY_ID
     doc = await db.scheduled_payments.find_one({"payment_id": payment_id, "company_id": cid})
@@ -347,41 +368,89 @@ async def send_payment(payment_id: str, user: dict = Depends(require_role("gesto
         raise HTTPException(404, "Pagamento não encontrado")
     if doc["status"] != "approved":
         raise HTTPException(409, f"Só envia pagamentos APROVADOS. Atual: {doc['status']}")
+    # Idempotência por provider id (Pix ou Boleto)
     if doc.get("provider_transfer_id"):
-        return {"ok": True, "already_sent": True, "transfer_id": doc["provider_transfer_id"]}
+        return {"ok": True, "already_sent": True, "method": "pix",
+                "transfer_id": doc["provider_transfer_id"]}
+    if doc.get("provider_bill_id"):
+        return {"ok": True, "already_sent": True, "method": "bill",
+                "bill_id": doc["provider_bill_id"]}
 
-    result = await asaas_client.create_transfer_pix(
-        value=doc["amount_brl"],
-        pix_key=doc["pix_key"],
-        pix_key_type=doc.get("pix_key_type", "CPF"),
-        schedule_date=doc.get("scheduled_for"),
-        description=doc.get("description") or f"Pagamento {doc.get('payee_name','')}",
-        external_reference=payment_id,
-    )
+    method = (doc.get("method") or "pix").lower()
+
+    if method == "bill":
+        result = await asaas_client.create_bill_payment(
+            identification_field=doc.get("identification_field"),
+            bar_code=doc.get("bar_code"),
+            value=doc["amount_brl"],
+            due_date=doc.get("due_date"),
+            schedule_date=doc.get("scheduled_for"),
+            description=doc.get("description") or f"Boleto {doc.get('payee_name','')}",
+            external_reference=payment_id,
+        )
+    else:
+        result = await asaas_client.create_transfer_pix(
+            value=doc["amount_brl"],
+            pix_key=doc["pix_key"],
+            pix_key_type=doc.get("pix_key_type", "CPF"),
+            schedule_date=doc.get("scheduled_for"),
+            description=doc.get("description") or f"Pagamento {doc.get('payee_name','')}",
+            external_reference=payment_id,
+        )
+
     if not result.get("ok"):
         await db.scheduled_payments.update_one(
             {"payment_id": payment_id},
             {"$set": {"status": "failed", "last_error": result, "updated_at": now_iso()}},
         )
-        await _audit("payment_send_failed", payment_id, user.get("email") or "?", cid, {"error": result})
-        await _emit_event("treasury.payment_failed", cid, {"payment_id": payment_id, "error": result})
-        return {"ok": False, "asaas": result}
+        await _audit("payment_send_failed", payment_id, user.get("email") or "?", cid, {"error": result, "method": method})
+        await _emit_event("treasury.payment_failed", cid, {"payment_id": payment_id, "method": method, "error": result})
+        return {"ok": False, "method": method, "asaas": result}
 
-    transfer_id = result.get("id")
-    await db.scheduled_payments.update_one(
-        {"payment_id": payment_id},
-        {"$set": {
-            "status": "sent_to_bank",
-            "provider_transfer_id": transfer_id,
-            "sent_at": now_iso(),
-            "sent_by": user.get("email"),
-            "asaas_response": {k: v for k, v in result.items() if k != "ok"},
-            "updated_at": now_iso(),
-        }},
+    provider_id = result.get("id")
+    update_fields: Dict[str, Any] = {
+        "status": "sent_to_bank",
+        "sent_at": now_iso(),
+        "sent_by": user.get("email"),
+        "asaas_response": {k: v for k, v in result.items() if k != "ok"},
+        "updated_at": now_iso(),
+    }
+    if method == "bill":
+        update_fields["provider_bill_id"] = provider_id
+    else:
+        update_fields["provider_transfer_id"] = provider_id
+    await db.scheduled_payments.update_one({"payment_id": payment_id}, {"$set": update_fields})
+    await _audit("payment_sent", payment_id, user.get("email") or "?", cid,
+                 {"provider_id": provider_id, "method": method})
+    await _emit_event("treasury.payment_sent", cid,
+                      {"payment_id": payment_id, "provider_id": provider_id, "method": method})
+    return {"ok": True, "method": method, "provider_id": provider_id, "asaas_status": result.get("status")}
+
+
+# ─────────── Boleto: utilidades ───────────
+class BillSimulateIn(BaseModel):
+    identification_field: Optional[str] = None
+    bar_code: Optional[str] = None
+
+
+@router.post("/bill/simulate")
+async def bill_simulate(p: BillSimulateIn, user: dict = Depends(require_role("gestor"))):
+    """Valida linha digitável/cód de barras antes de criar pagamento.
+    Retorna valor, vencimento e cedente — útil pra UI confirmar com o gestor."""
+    _check_sandbox_guard()
+    if not p.identification_field and not p.bar_code:
+        raise HTTPException(400, "Informe identification_field ou bar_code.")
+    return await asaas_client.simulate_bill_payment(
+        identification_field=p.identification_field,
+        bar_code=p.bar_code,
     )
-    await _audit("payment_sent", payment_id, user.get("email") or "?", cid, {"transfer_id": transfer_id})
-    await _emit_event("treasury.payment_sent", cid, {"payment_id": payment_id, "transfer_id": transfer_id})
-    return {"ok": True, "transfer_id": transfer_id, "asaas_status": result.get("status")}
+
+
+@router.get("/balance")
+async def asaas_balance(user: dict = Depends(require_role("gestor"))):
+    """Consulta saldo da conta Asaas (sandbox/homologação/produção)."""
+    _check_sandbox_guard()
+    return await asaas_client.get_balance()
 
 
 # ─────────── Webhook ───────────
@@ -397,28 +466,44 @@ async def asaas_webhook(request: Request):
         "received_at": now_iso(),
         "payload": payload,
     })
-    transfer = payload.get("transfer") or payload
+    transfer = payload.get("transfer") or payload.get("bill") or payload
     asaas_id = transfer.get("id")
     event = payload.get("event") or transfer.get("status")
     if asaas_id:
         new_status = None
+        # Eventos de transferência Pix
         if event in ("TRANSFER_DONE", "DONE"):
             new_status = "paid"
         elif event in ("TRANSFER_FAILED", "FAILED"):
             new_status = "failed"
         elif event in ("TRANSFER_CANCELLED", "CANCELLED"):
             new_status = "cancelled"
+        # Eventos de boleto (Bill Payment)
+        elif event in ("PAYMENT_BILL_PAID", "BILL_PAID", "PAID"):
+            new_status = "paid"
+        elif event in ("PAYMENT_BILL_FAILED", "BILL_FAILED"):
+            new_status = "failed"
+        elif event in ("PAYMENT_BILL_CANCELLED", "BILL_CANCELLED"):
+            new_status = "cancelled"
         if new_status:
+            # Casa por provider_transfer_id OU provider_bill_id
             res = await db.scheduled_payments.update_one(
-                {"provider_transfer_id": asaas_id},
+                {"$or": [
+                    {"provider_transfer_id": asaas_id},
+                    {"provider_bill_id": asaas_id},
+                ]},
                 {"$set": {"status": new_status, "updated_at": now_iso(),
                           "last_webhook_event": event}},
             )
             if res.modified_count and new_status == "paid":
-                doc = await db.scheduled_payments.find_one({"provider_transfer_id": asaas_id})
+                doc = await db.scheduled_payments.find_one({"$or": [
+                    {"provider_transfer_id": asaas_id},
+                    {"provider_bill_id": asaas_id},
+                ]})
                 if doc:
                     await _emit_event("treasury.payment_paid", doc["company_id"],
-                                      {"payment_id": doc["payment_id"]})
+                                      {"payment_id": doc["payment_id"],
+                                       "method": doc.get("method", "pix")})
     return {"ok": True}
 
 

@@ -172,6 +172,96 @@ async def cancel_transfer_if_possible(transfer_id: str) -> Dict[str, Any]:
     return normalize_error(r)
 
 
+# ───────────────────────── BOLETO (Conta a Pagar) ─────────────────────────
+# Asaas chama isso de "Bill" — pagamento de boletos/concessionárias por linha
+# digitável ou código de barras. Doc: https://docs.asaas.com/reference/criar-um-pagamento-de-conta
+
+async def create_bill_payment(
+    *,
+    identification_field: Optional[str] = None,  # linha digitável (47/48 dígitos)
+    bar_code: Optional[str] = None,              # cód barras (44 dígitos) — alternativa
+    value: Optional[float] = None,               # alguns boletos exigem valor
+    due_date: Optional[str] = None,              # YYYY-MM-DD do vencimento
+    schedule_date: Optional[str] = None,         # YYYY-MM-DD agendamento
+    description: Optional[str] = None,
+    external_reference: Optional[str] = None,
+    discount: Optional[float] = None,            # desconto em R$ (se aplicável)
+) -> Dict[str, Any]:
+    """POST /bill — paga boleto (concessionária, fornecedor, tributo).
+
+    Para boletos de concessionária a Asaas calcula o valor pelo código.
+    Para boletos de fornecedor é obrigatório passar `value`.
+    """
+    if not identification_field and not bar_code:
+        return {"ok": False, "error": "missing_code",
+                "message": "Informe identification_field (linha digitável) OU bar_code."}
+    payload: Dict[str, Any] = {}
+    if identification_field:
+        payload["identificationField"] = identification_field.replace(" ", "").replace(".", "")
+    if bar_code:
+        payload["barCode"] = bar_code.replace(" ", "")
+    if value is not None:
+        payload["value"] = float(value)
+    if due_date:
+        payload["dueDate"] = due_date
+    if schedule_date:
+        payload["scheduleDate"] = schedule_date
+    if description:
+        payload["description"] = description[:140]
+    if external_reference:
+        payload["externalReference"] = external_reference[:60]
+    if discount is not None:
+        payload["discount"] = float(discount)
+    try:
+        r = await _request("POST", "/bill", json=payload)
+    except _AsaasNoKey:
+        return _no_key_response()
+    if r.status_code in (200, 201):
+        return {"ok": True, **r.json()}
+    return normalize_error(r)
+
+
+async def get_bill_payment_status(bill_id: str) -> Dict[str, Any]:
+    try:
+        r = await _request("GET", f"/bill/{bill_id}")
+    except _AsaasNoKey:
+        return _no_key_response()
+    if r.status_code == 200:
+        return {"ok": True, **r.json()}
+    return normalize_error(r)
+
+
+async def cancel_bill_payment(bill_id: str) -> Dict[str, Any]:
+    try:
+        r = await _request("POST", f"/bill/{bill_id}/cancel")
+    except _AsaasNoKey:
+        return _no_key_response()
+    if r.status_code in (200, 201):
+        return {"ok": True, **r.json()}
+    return normalize_error(r)
+
+
+async def simulate_bill_payment(
+    identification_field: Optional[str] = None,
+    bar_code: Optional[str] = None,
+) -> Dict[str, Any]:
+    """POST /bill/simulate — valida o boleto antes de criar (vencimento/valor)."""
+    payload: Dict[str, Any] = {}
+    if identification_field:
+        payload["identificationField"] = identification_field.replace(" ", "").replace(".", "")
+    if bar_code:
+        payload["barCode"] = bar_code.replace(" ", "")
+    if not payload:
+        return {"ok": False, "error": "missing_code"}
+    try:
+        r = await _request("POST", "/bill/simulate", json=payload)
+    except _AsaasNoKey:
+        return _no_key_response()
+    if r.status_code in (200, 201):
+        return {"ok": True, **r.json()}
+    return normalize_error(r)
+
+
 def verify_webhook_token(provided: str) -> bool:
     expected = os.environ.get("ASAAS_WEBHOOK_TOKEN", "")
     if not expected or not provided:
