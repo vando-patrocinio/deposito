@@ -1027,3 +1027,65 @@ async def evo_audit(sprint_id: str,
                         user: dict = Depends(require_ai_access())):
     from services import presidente_evolution as ev
     return await ev.auditor_execucao_sprint(sprint_id)
+
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# iter241 — SCORE RECOVERY: limpa débito técnico que afunda o President Score
+# ════════════════════════════════════════════════════════════════════════════
+@router.get("/score-recovery/simulate")
+async def score_recovery_simulate(user: dict = Depends(require_ai_access())):
+    """Calcula o score projetado SE rodar a limpeza. NÃO muta nada."""
+    from services import score_recovery as sr
+    return await sr.simulate(_cid(user))
+
+
+@router.post("/score-recovery/execute")
+async def score_recovery_execute(
+        payload: Dict[str, Any] = Body(default_factory=dict),
+        user: dict = Depends(require_ai_access())):
+    """Executa a limpeza (REVERSÍVEL via rollback)."""
+    from services import score_recovery as sr
+    reason = (payload or {}).get("reason", "").strip()
+    if len(reason) < 10:
+        raise HTTPException(400, "Informe um motivo com pelo menos 10 caracteres.")
+    summary = await sr.execute(_cid(user),
+                                  executed_by=(user.get("email")
+                                                or user.get("name") or "?"),
+                                  reason=reason)
+    return summary
+
+
+@router.post("/score-recovery/rollback/{batch_id}")
+async def score_recovery_rollback(batch_id: str,
+                                    user: dict = Depends(require_ai_access())):
+    """Devolve documentos arquivados pelo batch ao estado original."""
+    from services import score_recovery as sr
+    return await sr.rollback(batch_id)
+
+
+@router.get("/score-recovery/batches")
+async def score_recovery_batches(user: dict = Depends(require_ai_access())):
+    """Lista batches de recuperação executados."""
+    rows = []
+    async for d in db.score_recovery_batches.find(
+            {"company_id": _cid(user)}, {"_id": 0}).sort("executed_at", -1):
+        rows.append(d)
+    return {"batches": rows}
+
+
+@router.get("/score-history")
+async def score_history(days: int = Query(30, ge=1, le=365),
+                          user: dict = Depends(require_ai_access())):
+    """Time-series do President Score (snapshots diários)."""
+    from services import score_recovery as sr
+    return {"days": days, "history": await sr.history(_cid(user), days=days)}
+
+
+@router.post("/score-history/snapshot")
+async def score_history_snapshot_manual(
+        user: dict = Depends(require_ai_access())):
+    """Força um snapshot imediato (útil pra debug e pra alimentar gráfico
+    quando ainda não há histórico)."""
+    from services import score_recovery as sr
+    return await sr.snapshot_score(_cid(user), source="manual")

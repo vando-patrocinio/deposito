@@ -793,6 +793,14 @@ async def _startup() -> None:
         logger.warning("[startup] cash_reconciler falhou: %r", e)
     scheduler.add_job(holidays_refresh_job, CronTrigger(day="1", hour=3, minute=0),
                       id="holidays_refresh", replace_existing=True)
+    # iter241 — Snapshot diário do President Score às 03:00
+    try:
+        from services.score_recovery import daily_snapshot_job as _score_snap
+        scheduler.add_job(_score_snap, CronTrigger(hour=3, minute=15),
+                          id="president_score_daily_snapshot",
+                          replace_existing=True)
+    except Exception as _e:
+        logger.warning("[startup] score_recovery snapshot job falhou: %r", _e)
     scheduler.add_job(location_logs_cleanup_job, CronTrigger(hour="*/6", minute=10),
                       id="location_cleanup", replace_existing=True)
     scheduler.add_job(dwell_push_job, "interval", minutes=2,

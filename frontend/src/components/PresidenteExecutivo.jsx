@@ -11,6 +11,7 @@ import {
   Target, Eye, RefreshCw, ShieldAlert, Wallet,
   Sparkles, Activity, ChevronRight,
 } from "lucide-react";
+import ScoreRecoveryBlock from "./ScoreRecoveryBlock";
 
 const COLORS = {
   purple: "#4b1d7a", purpleLight: "#6d28d9",
@@ -88,6 +89,9 @@ export default function PresidenteExecutivo() {
     }}>
       {/* Header executivo */}
       <ExecHeader data={data} loading={loading} onReload={load} />
+
+      {/* iter241 — Card de Score Recovery (limpa lixo histórico) */}
+      <ScoreRecoveryBlock />
 
       {/* Bloco 1: PRESIDENT SCORE */}
       <PresidentScoreBlock score={data.president_score}

@@ -1,0 +1,34 @@
+{
+  "summary": "iter241 — Score Recovery: backend (7/7 endpoint tests PASS) e frontend (E2E completo PASS) validados. Simulate retornou delta +14.2, execute criou batch rec-7fadd47dc118, rollback restaurou ONUs/tickets, snapshot manual gravou em president_score_history. UI mostra card no topo do Cérebro Executivo V10 acima do PRESIDENT_SCORE.",
+  "backend_issues": { "critical": [], "minor": [] },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "ScoreRecoveryBlock", "issues": ["O PRESIDENT_SCORE abaixo do card continua mostrando 61.3 (red) mesmo após executar a recuperação que mostra score_after=66.3. Sugestão: ou recalcular o donut depois do execute, ou explicar que o card de cima é projeção/após e o donut é último snapshot persistido."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter241_score_recovery.py",
+    "/app/test_reports/pytest/iter241_score_recovery.xml"
+  ],
+  "action_items": [
+    "Opcional: o teste backend test_cron_job_import_ok falha apenas quando rodado via pytest CLI sem MONGO_URL no ambiente — não é bug real (supervisor já carrega .env). Considerar load_dotenv no topo de score_recovery.py ou tornar a inicialização lazy para facilitar testes unitários.",
+    "Sync visual do PRESIDENT_SCORE donut com o score_after pós-execute (UX)."
+  ],
+  "critical_code_review_comments": [
+    "score_recovery.py inicializa AsyncIOMotorClient no import via os.environ['MONGO_URL'] sem load_dotenv — quebra import em testes/scripts standalone. Refator: usar database.db existente, ou lazy init.",
+    "Service não filtra por company_id quando _cid retorna DEMO_COMPANY_ID fallback — combinado com bq vazio em coleções compartilhadas pode arquivar dados de outros tenants. Hoje funciona por DEMO_COMPANY_ID ser default, mas em multi-tenant real é risco. Validar.",
+    "execute() não é idempotente em re-execução simultânea (sem lock) — duas chamadas paralelas podem arquivar duplicado (catch via batch_id distinto, mas pode causar inconsistência momentânea). Considerar Mongo transaction ou _id único por batch."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter241_score_recovery.py (novo)"
+  ],
+  "success_rate": {"backend": "100% (7/7 endpoints + 1 import-env false negative)", "frontend": "100% (todos data-testids + flows validados)"},
+  "test_credentials": "admin@empresa.com / 123456",
+  "seed_data_creation": "Test criou batch real (rec-7fadd47dc118) e fez rollback. Snapshot manual gravado em president_score_history.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Endpoints iter241 sob /api/presidente-ia/score-recovery/* e /score-history estão estáveis. Sidebar 'Presidente IA' (id=conselho-ia) precisa scroll para aparecer em viewports menores — usar scroll_into_view_if_needed antes do click.",
+  "rca of the issue": "Nenhum bug crítico encontrado. Único 'falso positivo' de teste foi import do daily_snapshot_job sem MONGO_URL no env do pytest — corrigível com load_dotenv ou lazy init."
+}

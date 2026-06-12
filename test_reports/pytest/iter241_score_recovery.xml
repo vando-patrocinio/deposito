@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="1" skipped="0" tests="8" time="2.391" timestamp="2026-06-12T03:45:20.239846+00:00" hostname="agent-env-43695c10-da5b-4d81-a958-3ab98d1b85d6"><testcase classname="test_iter241_score_recovery" name="test_simulate" time="0.680" /><testcase classname="test_iter241_score_recovery" name="test_execute_short_reason_400" time="0.126" /><testcase classname="test_iter241_score_recovery" name="test_execute_returns_batch" time="0.249" /><testcase classname="test_iter241_score_recovery" name="test_batches_lists_recent" time="0.105" /><testcase classname="test_iter241_score_recovery" name="test_idempotency_simulate_after_execute" time="0.691" /><testcase classname="test_iter241_score_recovery" name="test_snapshot_and_history" time="0.256" /><testcase classname="test_iter241_score_recovery" name="test_rollback" time="0.141" /><testcase classname="test_iter241_score_recovery" name="test_cron_job_import_ok" time="0.068"><failure message="KeyError: 'MONGO_URL'">tests/test_iter241_score_recovery.py:150: in test_cron_job_import_ok
+    from services.score_recovery import daily_snapshot_job
+services/score_recovery.py:22: in &lt;module&gt;
+    _client = AsyncIOMotorClient(os.environ["MONGO_URL"])
+                                 ^^^^^^^^^^^^^^^^^^^^^^^
+&lt;frozen os&gt;:679: in __getitem__
+    ???
+E   KeyError: 'MONGO_URL'</failure></testcase></testsuite></testsuites>
