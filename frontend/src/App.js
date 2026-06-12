@@ -111,6 +111,7 @@ import OfflineTimeBanner from "@/OfflineTimeBanner";
 import ServerClock from "@/ServerClock";
 import { startServerTime } from "@/serverTime";
 import LoginPage from "@/LoginPage";
+import ForcedPasswordChangeModal from "@/ForcedPasswordChangeModal";
 import LandingPage from "@/LandingPage";
 import ProviderLanding from "@/ProviderLanding";
 import SignupPage from "@/SignupPage";
@@ -885,7 +886,7 @@ function AppShell({ view, setView, children }) {
 
 function AppContent() {
   useEffect(() => { startServerTime(); }, []);
-  const { user, loading, logout, login, isPublicAccess } = useAuth();
+  const { user, loading, logout, login, isPublicAccess, mustChangePassword } = useAuth();
   const mobile = useMobileMode();
 
   // Lógica de tabs centralizada aqui para que tanto o sidebar (AppShell)
@@ -1227,6 +1228,12 @@ function AppContent() {
   // feature flags do user, e fallback DEFAULT_TAB_PERMISSIONS). Usamos ele
   // como única fonte de verdade — se a aba não está lá, BlockedPage.
   const allowed = !!(activeTab && tabs.find((t) => t.id === view));
+
+  // CTO 12/06/2026 — Senha temporária via WhatsApp: bloqueia o app inteiro
+  // até o user trocar pela nova senha.
+  if (mustChangePassword) {
+    return <ForcedPasswordChangeModal />;
+  }
 
   if (needsOnboarding === null) {
     return <div style={{ minHeight: "100vh", display: "grid", placeItems: "center", color: "var(--text-secondary)" }}>Carregando…</div>;

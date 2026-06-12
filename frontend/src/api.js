@@ -818,6 +818,13 @@ export const api = {
   accessProfileSeed: () =>
     client.post(`/access-profiles/seed`).then((r) => r.data),
 
+  // ========= Password Recovery via WhatsApp (CTO 12/06/2026) =========
+  forgotPassword: (email) =>
+    client.post(`/auth/forgot-password`, { email }).then((r) => r.data),
+  changePasswordForced: (newPassword) =>
+    client.post(`/auth/change-password-forced`, { new_password: newPassword })
+      .then((r) => r.data),
+
   // ========= User ↔ Collaborator Link (CTO 12/06/2026) =========
   listUnlinkedUsers: () =>
     client.get(`/users/unlinked`).then((r) => r.data),

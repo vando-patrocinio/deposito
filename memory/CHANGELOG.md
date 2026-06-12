@@ -7940,3 +7940,34 @@ Relatório: `/app/docs/RELATORIO_RELACIONAMENTO_360.md`
   - count agora retorna `{total:82, today:79, overdue:3, future:0, visible_now:82, level:"hot"}`.
   - lista agora retorna 82 tickets distribuídos: 2 de 15-mai + 1 de 11-jun + 79 de hoje.
   - Match perfeito badge ↔ lista. Pytest combinado: 14/14 passing.
+
+---
+## 2026-06-12 (parte 12) — Recuperação de Senha via WhatsApp (AUTORIZADO opção A)
+- **Fluxo autorizado**: senha aleatória nova via WhatsApp + força trocar no primeiro login.
+- **Integration playbook** consultado antes (regra obrigatória de auth): playbook custom email/JWT, bcrypt já em uso, anti-enumeração.
+- **Backend** (novo `services/password_recovery.py`):
+  - Geração de senha 8 chars secrets-cryptosafe sem caracteres ambíguos (sem 0/O/1/l/I).
+  - Phone normalization (Brasil DDI 55, valida tamanho mínimo).
+  - Rate limit 3/hora por email **E** por IP (Mongo `password_reset_attempts`).
+  - Audit log em `audit_log_password_resets` com outcomes: `no_such_user`, `user_inactive`, `blocked_super_admin_flag`, `blocked_super_admin_profile`, `no_collaborator_linked`, `collaborator_not_found`, `no_phone_or_invalid`, `success`, `whatsapp_send_failed`, `whatsapp_exception`.
+  - Resposta sempre genérica 200 OK (anti-enumeração; só 429 em rate limit).
+  - WhatsApp send via Baileys sidecar (`services.wa.sidecar._sidecar_post_silent`) com texto formatado em PT-BR.
+- **Backend** (`routes/users.py`):
+  - `POST /api/auth/forgot-password` — public, body `{email}`.
+  - `POST /api/auth/change-password-forced` — autenticado, exige flag `password_reset_pending=True` (segurança extra: 400 se não tiver pendência).
+  - `POST /api/auth/login` — retorno acrescido de `must_change_password: bool`.
+- **Frontend**:
+  - `LoginPage.js`: link "Esqueceu a senha?" abre modal com input email; submit → POST forgot-password; sempre mostra feedback genérico exceto em 429.
+  - `AuthContext.js`: detecta `must_change_password` no login, anexa `_must_change_password` flag ao user; expõe `mustChangePassword` e `clearMustChangePassword()`.
+  - `ForcedPasswordChangeModal.js`: overlay full-screen, bloqueia app inteiro até trocar; valida senha ≥8 chars + confirmação; POST `/auth/change-password-forced`.
+  - `App.js`: renderiza modal antes do shell quando `mustChangePassword=true`.
+  - `api.js`: novos métodos `forgotPassword(email)` e `changePasswordForced(newPassword)`.
+- **Validação**:
+  - Curl: response genérico para email inexistente ✅ | Super Admin bloqueado ✅ | audit log gravado ✅.
+  - Pytest novo `tests/test_password_recovery_whatsapp.py` (5 testes) + combinado: **19/19 passing**.
+- **Segurança**:
+  - Anti-enumeração: nunca vaza se o user existe; sempre 200 OK genérico.
+  - Super Admins (flag legado OU perfil Super Admin) NÃO podem resetar via WhatsApp.
+  - Rate limit duplo (email + IP).
+  - Audit completo de quem pediu reset, IP, outcome, timestamp.
+  - Senha trafega em texto APENAS no WhatsApp do colaborador (decisão consciente do CTO).

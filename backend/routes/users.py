@@ -80,6 +80,8 @@ async def login(request: Request, payload: LoginIn):
         raise HTTPException(401, "E-mail ou senha incorretos")
     await record_login_attempt(db, email, success=True)
     cid = user.get("company_id") or DEMO_COMPANY_ID
+    # CTO 12/06/2026 — Password reset pending: força troca antes de continuar.
+    must_change = bool(user.get("password_reset_pending"))
     # Session singleton: gera novo SID e grava no user. Qualquer JWT anterior
     # com SID diferente vira inválido no get_current_user.
     sid = uuid.uuid4().hex
@@ -96,7 +98,59 @@ async def login(request: Request, payload: LoginIn):
     # Flags computadas (não persistir, são derivadas)
     user["is_super_admin"] = is_super_admin(user)
     user["can_grant_super_admin"] = can_grant_super_admin(user)
-    return {"ok": True, "access_token": token, "user": user}
+    return {
+        "ok": True, "access_token": token, "user": user,
+        "must_change_password": must_change,
+    }
+
+
+# ───────────────────────────────────────────────────────────────────────
+# CTO 12/06/2026 — Password Recovery via WhatsApp
+# ───────────────────────────────────────────────────────────────────────
+
+class ForgotPasswordIn(BaseModel):
+    email: str
+
+
+@router.post("/auth/forgot-password")
+async def forgot_password(payload: ForgotPasswordIn, request: Request):
+    """Reset de senha self-service via WhatsApp do colaborador vinculado.
+
+    Sempre retorna 200 OK genérico (anti-enumeração). Erros reais só em
+    rate limit (429). Detalhes do fluxo em services/password_recovery.py.
+    """
+    ip = (request.client.host if request.client else "") or "unknown"
+    from services.password_recovery import forgot_password_flow
+    return await forgot_password_flow(payload.email, ip)
+
+
+class ChangePasswordForcedIn(BaseModel):
+    new_password: str
+
+
+@router.post("/auth/change-password-forced")
+async def change_password_forced(
+    payload: ChangePasswordForcedIn,
+    user: dict = Depends(get_current_user),
+):
+    """Chamado pelo frontend QUANDO `must_change_password=true` retornou no
+    login. Troca a senha e limpa o flag `password_reset_pending`.
+
+    Só funciona se o flag estiver setado (segurança extra — impede uso fora
+    do fluxo de recovery).
+    """
+    if not user.get("password_reset_pending"):
+        raise HTTPException(
+            400,
+            "Esta rota só é chamada quando há uma troca pendente após "
+            "recuperação de senha.",
+        )
+    from services.password_recovery import consume_password_reset_pending
+    await consume_password_reset_pending(user["id"], payload.new_password)
+    return {"ok": True, "message": "Senha alterada com sucesso."}
+
+
+
 
 
 @router.post("/auth/logout")

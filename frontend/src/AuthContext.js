@@ -166,7 +166,9 @@ export function AuthProvider({ children }) {
     purgeUserState();
     const r = await api.login(email, password);
     setToken(r.access_token);
-    setUser(r.user);
+    // CTO 12/06/2026 — Password reset pending: anexa flag no user pro UI mostrar
+    // modal de troca forçada antes de liberar a app.
+    setUser({ ...r.user, _must_change_password: !!r.must_change_password });
     return r.user;
   }, []);
 
@@ -228,11 +230,17 @@ export function AuthProvider({ children }) {
     return r.user;
   }, []);
 
+  const clearMustChangePassword = useCallback(() => {
+    setUser((u) => u ? { ...u, _must_change_password: false } : u);
+  }, []);
+
   return (
     <AuthCtx.Provider value={{
       user, token, loading, login, loginWithGoogle, logout, impersonate, endImpersonation,
       isAuthed: !!user,
       isImpersonating: !!user?.impersonator,
+      mustChangePassword: !!user?._must_change_password,
+      clearMustChangePassword,
       // Public token mode (link público sem login)
       isPublicAccess: !!publicToken && !token,
       publicToken,

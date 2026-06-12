@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { useAuth } from "@/AuthContext";
 import { ArrowLeft, ShieldCheck, Activity, Layers, Map } from "lucide-react";
+import { api } from "@/api";
 
 export default function LoginPage({ onBack }) {
   const { login } = useAuth();
@@ -8,6 +9,11 @@ export default function LoginPage({ onBack }) {
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  // CTO 12/06/2026 — Modal "Esqueci a senha"
+  const [forgotOpen, setForgotOpen] = useState(false);
+  const [forgotEmail, setForgotEmail] = useState("");
+  const [forgotBusy, setForgotBusy] = useState(false);
+  const [forgotMsg, setForgotMsg] = useState("");
   // Mostra aviso quando o usuário cai aqui após sessão invalidada (login em outro device)
   const sessionExpired = typeof window !== "undefined"
     && new URLSearchParams(window.location.search).get("session_expired") === "1";
@@ -22,6 +28,25 @@ export default function LoginPage({ onBack }) {
       setError(typeof detail === "string" ? detail : (err.message || "Erro ao entrar."));
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function submitForgot(e) {
+    e?.preventDefault?.();
+    if (!forgotEmail.trim() || !forgotEmail.includes("@")) return;
+    setForgotBusy(true); setForgotMsg("");
+    try {
+      const r = await api.forgotPassword(forgotEmail.trim().toLowerCase());
+      setForgotMsg(r?.message || "Se a conta existir, uma nova senha será enviada por WhatsApp em instantes.");
+    } catch (err) {
+      if (err?.response?.status === 429) {
+        const detail = err?.response?.data?.detail;
+        setForgotMsg("⚠ " + (typeof detail === "string" ? detail : "Muitas tentativas. Aguarde 1 hora."));
+      } else {
+        setForgotMsg("Se a conta existir, uma nova senha será enviada por WhatsApp em instantes.");
+      }
+    } finally {
+      setForgotBusy(false);
     }
   }
 
@@ -132,9 +157,92 @@ export default function LoginPage({ onBack }) {
           </form>
 
           <p style={{ color: "var(--text-muted)", fontSize: 11.5, marginTop: 18, lineHeight: 1.6 }}>
-            Esqueceu a senha? Procure o auditor para redefini-la.<br />
+            <button
+              type="button"
+              data-testid="forgot-password-link"
+              onClick={() => { setForgotOpen(true); setForgotEmail(email || ""); setForgotMsg(""); }}
+              style={{
+                background: "none", border: 0, padding: 0, cursor: "pointer",
+                color: "#7c3aed", fontWeight: 600, fontSize: 11.5,
+                textDecoration: "underline",
+              }}
+            >Esqueceu a senha?</button> Receba uma nova senha por WhatsApp.<br />
             O Google deve usar o mesmo e-mail cadastrado no sistema.
           </p>
+          {forgotOpen && (
+            <div
+              data-testid="forgot-password-modal"
+              onClick={(e) => { if (e.target === e.currentTarget) setForgotOpen(false); }}
+              style={{
+                position: "fixed", inset: 0, zIndex: 1000,
+                background: "rgba(0,0,0,0.5)",
+                display: "flex", alignItems: "center", justifyContent: "center",
+                padding: 20,
+              }}
+            >
+              <div style={{
+                background: "white", borderRadius: 16, padding: 24,
+                maxWidth: 420, width: "100%",
+                boxShadow: "0 20px 50px rgba(0,0,0,0.2)",
+              }}>
+                <h3 style={{ margin: "0 0 8px 0", fontSize: 20, fontWeight: 700 }}>
+                  🔐 Recuperar senha
+                </h3>
+                <p style={{ margin: "0 0 16px 0", fontSize: 13, color: "#475569", lineHeight: 1.5 }}>
+                  Digite seu email. Se houver um colaborador vinculado com
+                  telefone cadastrado, uma nova senha será enviada para o
+                  WhatsApp dele.
+                </p>
+                <form onSubmit={submitForgot}>
+                  <input
+                    data-testid="forgot-email-input"
+                    type="email"
+                    value={forgotEmail}
+                    onChange={(e) => setForgotEmail(e.target.value)}
+                    placeholder="seu@email.com"
+                    autoFocus
+                    style={{
+                      width: "100%", padding: "10px 14px",
+                      border: "1px solid #cbd5e1", borderRadius: 10,
+                      fontSize: 14, marginBottom: 12,
+                    }}
+                  />
+                  {forgotMsg && (
+                    <div data-testid="forgot-feedback" style={{
+                      padding: 10, borderRadius: 8,
+                      background: forgotMsg.startsWith("⚠") ? "#fef3c7" : "#dcfce7",
+                      color: forgotMsg.startsWith("⚠") ? "#92400e" : "#166534",
+                      fontSize: 12, marginBottom: 12,
+                    }}>{forgotMsg}</div>
+                  )}
+                  <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+                    <button
+                      type="button"
+                      data-testid="forgot-cancel"
+                      onClick={() => setForgotOpen(false)}
+                      style={{
+                        padding: "8px 16px", borderRadius: 8,
+                        border: "1px solid #e2e8f0", background: "white",
+                        cursor: "pointer", fontSize: 13,
+                      }}
+                    >Fechar</button>
+                    <button
+                      type="submit"
+                      data-testid="forgot-submit"
+                      disabled={forgotBusy || !forgotEmail.includes("@")}
+                      style={{
+                        padding: "8px 20px", borderRadius: 8,
+                        background: forgotBusy ? "#cbd5e1" : "#7c3aed",
+                        color: "white", border: 0, fontWeight: 600,
+                        cursor: forgotBusy ? "not-allowed" : "pointer",
+                        fontSize: 13,
+                      }}
+                    >{forgotBusy ? "Enviando…" : "Enviar"}</button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
