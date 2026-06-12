@@ -7834,3 +7834,22 @@ Relatório: `/app/docs/RELATORIO_RELACIONAMENTO_360.md`
   - Pytest novo `tests/test_collaborator_profile_link.py` — **5/5 passing** (criação, sync, herança, guard SA, blindagem partial-update).
   - Pytest combinado RBAC + collab-profile: **10/10 passing**.
 - **Risco**: zero regressão. Campo é Optional, blindagem prevê toggles parciais.
+
+---
+## 2026-06-12 (parte 7) — Vínculo Manual User↔Colaborador + Remoção da aba "Usuários" (AUTORIZADO)
+- **Contexto**: análise por nome retornou ZERO matches automáticos (122 users, 116 órfãos, nomes genéricos tipo "Técnico 000"). User pediu vínculo MANUAL via Cadastro + remoção da aba.
+- **Backend** (`routes/users.py`):
+  - `GET /api/users/unlinked` — lista users SEM collaborator_id no tenant; aplica filtro RBAC Super Admin.
+  - `POST /api/collaborators/{cid}/link-user/{uid}` — vincula com validação de tenant, unicidade (collab só 1 user, user só 1 collab) e guard Super Admin. Se collaborator tem profile_id, propaga para o user (profile_id + access_tags).
+  - `DELETE /api/collaborators/{cid}/link-user` — desvincula (requer auditor).
+- **Frontend** (`CadastroPanel.js`):
+  - Novo componente `LinkedUserSection`: aparece no form do colaborador (modo edit). Mostra user já vinculado (chip verde com email/role/SA flag/INATIVO) com botão "Desvincular", OU dropdown de users disponíveis + botão "Vincular".
+  - Posicionado entre "Perfil de Acesso" e "Praça principal".
+- **Frontend** (`App.js`):
+  - Item "Usuários" REMOVIDO do menu lateral (linha 365 comentada). Acesso emergencial preservado via `/?view=users` (UsersPanel.jsx mantido — nada deletado, soft-removal reversível).
+- **Frontend** (`api.js`):
+  - 3 métodos novos: `listUnlinkedUsers`, `linkUserToCollaborator`, `unlinkUserFromCollaborator`.
+- **Validação**:
+  - Curl: GET unlinked retorna 116 órfãos | POST link cria vínculo + propaga profile_id+tags | GET unlinked depois mostra 115 (user saiu) | DELETE unlink restaura.
+  - Pytest novo `tests/test_user_collaborator_link.py` (4 testes) + combinados: **14/14 passing**.
+- **Reversibilidade**: descomentar linha 365 do App.js restaura aba. Nenhuma collection foi deletada. Vínculos podem ser desfeitos via DELETE endpoint.

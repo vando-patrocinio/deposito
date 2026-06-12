@@ -818,6 +818,14 @@ export const api = {
   accessProfileSeed: () =>
     client.post(`/access-profiles/seed`).then((r) => r.data),
 
+  // ========= User ↔ Collaborator Link (CTO 12/06/2026) =========
+  listUnlinkedUsers: () =>
+    client.get(`/users/unlinked`).then((r) => r.data),
+  linkUserToCollaborator: (collabId, userId) =>
+    client.post(`/collaborators/${collabId}/link-user/${userId}`).then((r) => r.data),
+  unlinkUserFromCollaborator: (collabId) =>
+    client.delete(`/collaborators/${collabId}/link-user`).then((r) => r.data),
+
   // ========= Estoque por Praça =========
   stokPracaSummary: () =>
     client.get(`/stok/praca-summary`).then((r) => r.data),

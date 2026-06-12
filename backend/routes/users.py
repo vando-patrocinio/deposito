@@ -345,6 +345,151 @@ async def list_users(user: dict = Depends(require_role("auditor"))):
     return docs
 
 
+@router.get("/users/unlinked")
+async def list_unlinked_users(user: dict = Depends(require_role("gestor"))):
+    """CTO 12/06/2026 — Lista usuários do tenant SEM collaborator_id vinculado.
+    Usado pelo CadastroPanel para o gestor escolher manualmente qual user
+    associar a um colaborador.
+
+    Aplica o mesmo filtro de visibilidade Super Admin (gestor comum NÃO vê
+    users com perfil Super Admin).
+    """
+    q = tenant_filter(user)
+    q["$or"] = [{"collaborator_id": None}, {"collaborator_id": {"$exists": False}}]
+    docs = await db.users.find(
+        q, {"_id": 0, "id": 1, "email": 1, "name": 1, "role": 1,
+             "active": 1, "profile_id": 1, "is_super_admin": 1},
+    ).to_list(500)
+
+    # Filtro RBAC visual: oculta users com Super Admin profile/flag dos não-super.
+    from services.access_profiles import user_has_super_admin_profile
+    requester_is_super = is_super_admin(user) or await user_has_super_admin_profile(user)
+    if not requester_is_super:
+        super_pids = set()
+        async for p in db.access_profiles.find(
+            {"$or": [{"key": "super_admin"}, {"is_super_admin_profile": True}]},
+            {"_id": 0, "id": 1},
+        ):
+            super_pids.add(p["id"])
+        if super_pids:
+            docs = [
+                d for d in docs
+                if d.get("profile_id") not in super_pids
+                and not d.get("is_super_admin")
+            ]
+    return docs
+
+
+@router.post("/collaborators/{cid}/link-user/{uid}")
+async def link_user_to_collaborator(
+    cid: str, uid: str,
+    user: dict = Depends(require_role("gestor")),
+):
+    """CTO 12/06/2026 — Vincula um User existente a um Colaborador.
+
+    - Valida tenant (user/collab devem estar na mesma empresa do solicitante).
+    - Valida unicidade: collaborator só pode ter 1 user, user só pode ter 1 collab.
+    - Após linkar: se o colaborador tem profile_id, espalha para o user.
+    - Se o user tem perfil Super Admin, exige solicitante Super Admin.
+    """
+    cid_company = user.get("company_id") or DEMO_COMPANY_ID
+    if is_super_admin(user):
+        cid_company = (user.get("_active_company") or cid_company)
+
+    coll = await db.collaborators.find_one(
+        {"id": cid}, {"_id": 0, "id": 1, "name": 1, "company_id": 1, "profile_id": 1},
+    )
+    if not coll or (not is_super_admin(user) and coll.get("company_id") != cid_company):
+        raise HTTPException(404, "Colaborador não encontrado neste tenant")
+
+    target_user = await db.users.find_one({"id": uid}, {"_id": 0})
+    if not target_user:
+        raise HTTPException(404, "Usuário não encontrado")
+    if not is_super_admin(user) and target_user.get("company_id") != cid_company:
+        raise HTTPException(404, "Usuário não encontrado neste tenant")
+
+    # Guard Super Admin: se o user-alvo tem perfil/flag Super Admin, só Super Admin linka
+    from services.access_profiles import user_has_super_admin_profile, is_super_admin_profile_id
+    if target_user.get("is_super_admin") or (
+        target_user.get("profile_id")
+        and await is_super_admin_profile_id(
+            target_user["profile_id"], target_user.get("company_id") or cid_company,
+        )
+    ):
+        allowed = is_super_admin(user) or await user_has_super_admin_profile(user)
+        if not allowed:
+            raise HTTPException(
+                403,
+                "Apenas um Super Admin pode vincular um usuário Super Admin "
+                "a um colaborador.",
+            )
+
+    # Unicidade
+    if target_user.get("collaborator_id") and target_user["collaborator_id"] != cid:
+        raise HTTPException(409, "Este usuário já está vinculado a outro colaborador")
+    existing = await db.users.find_one(
+        {"collaborator_id": cid, "id": {"$ne": uid}},
+        {"_id": 0, "email": 1, "name": 1},
+    )
+    if existing:
+        raise HTTPException(
+            409,
+            f"Este colaborador já está vinculado ao usuário "
+            f"{existing.get('name')} <{existing.get('email')}>.",
+        )
+
+    update: dict = {
+        "collaborator_id": cid,
+        "updated_at": now_iso(),
+    }
+    # Se colaborador já tem profile_id, propaga para o user
+    if coll.get("profile_id"):
+        from services.access_profiles import get_profile
+        p = await get_profile(coll["profile_id"], coll.get("company_id") or cid_company)
+        if p:
+            update["profile_id"] = p["id"]
+            update["access_tags"] = list(p.get("access_tags") or [])
+
+    await db.users.update_one({"id": uid}, {"$set": update})
+
+    # Garante code LIGO-NNNN no colaborador
+    try:
+        from services.collaborator_code import get_or_assign_code
+        await get_or_assign_code(cid, coll.get("company_id") or cid_company)
+    except Exception as e:  # noqa: BLE001
+        logger.warning("[link_user] code falhou: %s", e)
+
+    doc = await db.users.find_one({"id": uid}, {"_id": 0, "password_hash": 0})
+    return {"ok": True, "user": doc, "collaborator_id": cid}
+
+
+@router.delete("/collaborators/{cid}/link-user")
+async def unlink_user_from_collaborator(
+    cid: str,
+    user: dict = Depends(require_role("auditor")),
+):
+    """Remove o vínculo user↔colaborador (zera users.collaborator_id).
+    Não deleta nem o user nem o colaborador, só desvincula.
+
+    Requer AUDITOR (mesma escala do delete_user) — gestor não pode quebrar
+    o vínculo unilateralmente.
+    """
+    coll = await db.collaborators.find_one(
+        {"id": cid}, {"_id": 0, "id": 1, "company_id": 1},
+    )
+    if not coll:
+        raise HTTPException(404, "Colaborador não encontrado")
+    if not is_super_admin(user) and coll.get("company_id") != user.get("company_id"):
+        raise HTTPException(404, "Colaborador não encontrado neste tenant")
+
+    res = await db.users.update_many(
+        {"collaborator_id": cid},
+        {"$set": {"collaborator_id": None, "updated_at": now_iso()}},
+    )
+    return {"ok": True, "unlinked": res.modified_count}
+
+
+
 @router.get("/access-tags/catalog")
 async def access_tags_catalog(user: dict = Depends(get_current_user)):
     """Catálogo público (para auditor montar a tela). Retorna lista de tags

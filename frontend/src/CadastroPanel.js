@@ -785,6 +785,13 @@ export default function CadastroPanel() {
               );
             })()}
           </Field>
+          {editing !== "new" && (
+            <LinkedUserSection
+              collaboratorId={editing}
+              collaboratorName={form.name}
+              onChanged={reload}
+            />
+          )}
           <Field label="Praça principal (local onde trabalha a maior parte do tempo)">
             {pracas.length === 0 ? (
               <div style={{ background: "#fffbeb", border: "1px dashed #fde68a", color: "#92400e", padding: 10, borderRadius: 12, fontSize: 13 }}>
@@ -1190,6 +1197,160 @@ export default function CadastroPanel() {
     </div>
   );
 }
+
+function LinkedUserSection({ collaboratorId, collaboratorName, onChanged }) {
+  const [linked, setLinked] = useState(null); // {id, email, name, role, ...} | null
+  const [available, setAvailable] = useState([]);
+  const [selected, setSelected] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(true);
+
+  async function reload() {
+    setLoading(true); setError("");
+    try {
+      const [allUsers, unlinked] = await Promise.all([
+        api.listUsers().catch(() => []),
+        api.listUnlinkedUsers().catch(() => []),
+      ]);
+      const cur = (allUsers || []).find((u) => u.collaborator_id === collaboratorId) || null;
+      setLinked(cur);
+      setAvailable(unlinked || []);
+    } catch (e) {
+      setError(e?.response?.data?.detail || e.message || "Falha ao carregar");
+    }
+    setLoading(false);
+  }
+  useEffect(() => {
+    if (collaboratorId && collaboratorId !== "new") reload();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [collaboratorId]);
+
+  async function handleLink() {
+    if (!selected) return;
+    if (!window.confirm(
+      `Vincular o usuário selecionado ao colaborador "${collaboratorName}"?\n\n` +
+      `Após vincular, este user fará login mas o que ele(a) vê no sistema ` +
+      `passará a ser determinado pelo perfil deste colaborador.`,
+    )) return;
+    setBusy(true); setError("");
+    try {
+      await api.linkUserToCollaborator(collaboratorId, selected);
+      setSelected("");
+      await reload();
+      if (onChanged) onChanged();
+    } catch (e) {
+      setError(e?.response?.data?.detail || e.message);
+    }
+    setBusy(false);
+  }
+
+  async function handleUnlink() {
+    if (!linked) return;
+    if (!window.confirm(
+      `Desvincular o usuário "${linked.email}" deste colaborador?\n\n` +
+      `O usuário continuará podendo fazer login, mas voltará a ser "órfão" ` +
+      `(sem colaborador associado). Use esta opção se foi vinculado por engano.`,
+    )) return;
+    setBusy(true); setError("");
+    try {
+      await api.unlinkUserFromCollaborator(collaboratorId);
+      await reload();
+      if (onChanged) onChanged();
+    } catch (e) {
+      setError(e?.response?.data?.detail || e.message);
+    }
+    setBusy(false);
+  }
+
+  if (loading) {
+    return (
+      <Field label="Usuário do sistema (login)">
+        <div style={{ fontSize: 12, color: "#94a3b8" }}>Carregando…</div>
+      </Field>
+    );
+  }
+
+  return (
+    <Field label="Usuário do sistema (login)">
+      {error && (
+        <div data-testid="link-user-error" style={{
+          background: "#fee2e2", color: "#991b1b",
+          padding: 8, borderRadius: 8, fontSize: 12, marginBottom: 6,
+        }}>{error}</div>
+      )}
+
+      {linked ? (
+        <div data-testid="link-user-current" style={{
+          padding: 10, borderRadius: 10, background: "#f0fdf4",
+          border: "1px solid #86efac", display: "flex",
+          alignItems: "center", gap: 10, flexWrap: "wrap",
+        }}>
+          <div style={{ flex: 1, minWidth: 200 }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: "#14532d" }}>
+              ✅ {linked.email}
+            </div>
+            <div style={{ fontSize: 11, color: "#15803d" }}>
+              {linked.name} · role: <strong>{linked.role}</strong>
+              {linked.is_super_admin && " · ★ Super Admin"}
+              {linked.active === false && " · ⚠ INATIVO"}
+            </div>
+          </div>
+          <button
+            data-testid="btn-unlink-user"
+            onClick={handleUnlink}
+            disabled={busy}
+            style={{
+              padding: "6px 12px", borderRadius: 8,
+              background: "#fef2f2", color: "#991b1b",
+              border: "1px solid #fecaca", fontSize: 12,
+              fontWeight: 600, cursor: busy ? "not-allowed" : "pointer",
+            }}
+          >Desvincular</button>
+        </div>
+      ) : (
+        <div>
+          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+            <select
+              data-testid="select-link-user"
+              style={{ ...inputStyle, flex: 1, minWidth: 200 }}
+              value={selected}
+              onChange={(e) => setSelected(e.target.value)}
+            >
+              <option value="">— Selecionar usuário existente —</option>
+              {available.map((u) => (
+                <option key={u.id} value={u.id} data-testid={`opt-user-${u.id}`}>
+                  {u.email} · {u.name} ({u.role}{u.active === false ? " · INATIVO" : ""})
+                </option>
+              ))}
+            </select>
+            <button
+              data-testid="btn-link-user"
+              onClick={handleLink}
+              disabled={!selected || busy}
+              style={{
+                padding: "7px 16px", borderRadius: 8,
+                background: selected ? "#0d9488" : "#cbd5e1",
+                color: "white", border: "none", fontSize: 12,
+                fontWeight: 700, cursor: (!selected || busy) ? "not-allowed" : "pointer",
+              }}
+            >{busy ? "Vinculando…" : "Vincular"}</button>
+          </div>
+          <div style={{
+            fontSize: 11, color: "#64748b", marginTop: 6, lineHeight: 1.4,
+          }}>
+            Nenhum usuário vinculado. Selecione um usuário existente (criado
+            anteriormente em "Usuários" ou via Atlaz/import) para que ele possa
+            logar no app como este colaborador. O perfil de acesso aqui definido
+            será aplicado automaticamente. {available.length} usuário(s) disponível(is).
+          </div>
+        </div>
+      )}
+    </Field>
+  );
+}
+
+
 
 function GeofencesModal({ collaboratorId, collaborator, allCollaborators = [], onClose }) {
   const [fences, setFences] = useState([]);

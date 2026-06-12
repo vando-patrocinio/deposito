@@ -362,7 +362,11 @@ const NAV_GROUPS = [
   {
     label: "Sistema",
     items: [
-      { id: "users", icon: ShieldCheck, label: "Usuários", roles: ["auditor", "administrador"] },
+      // CTO 12/06/2026 — aba "Usuários" REMOVIDA do menu (substituída pelo
+      // vínculo direto no Cadastro do Colaborador). Backend continua ativo
+      // para login e endpoints internos. Acesso emergencial via URL
+      // /?view=users continua disponível para Super Admin.
+      // { id: "users", icon: ShieldCheck, label: "Usuários", roles: ["auditor", "administrador"] },
       { id: "access-profiles", icon: ShieldCheck, label: "Perfil Usuário", roles: ["auditor", "administrador"] },
       { id: "motor-ia", icon: Cpu, label: "Motor IA", roles: ["administrador"] },
       { id: "conselho-ia", icon: BrainCircuit, label: "Presidente IA", roles: ["administrador"] },
