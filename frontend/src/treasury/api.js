@@ -81,9 +81,9 @@ export const treasuryApi = {
 };
 
 export const C = {
-  bg: "#0f1419", card: "#1a1f2e", cardSoft: "#1e2436",
-  border: "#2a3142", accent: "#ff6b1a", accent2: "#a855f7",
-  text: "#e5e7eb", muted: "#94a3b8",
+  bg: "#f8fafc", card: "#ffffff", cardSoft: "#f1f5f9",
+  border: "#e2e8f0", accent: "#ff6b1a", accent2: "#a855f7",
+  text: "#0f172a", muted: "#64748b",
   green: "#10b981", amber: "#f59e0b", red: "#ef4444", blue: "#3b82f6",
 };
 
