@@ -17,13 +17,14 @@ NERVOUS_METADATA = {
     "company_id_required": True,
 }
 
+import base64
 import logging
 import os
 import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
 from pydantic import BaseModel, Field
 
 from core import DEMO_COMPANY_ID, is_super_admin, now_iso, require_role
@@ -1188,3 +1189,148 @@ async def kpis_by_month(month: Optional[str] = None,
             "total": await _count({}),
         },
     }
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# ITER239 — Config Card: template de comprovante WhatsApp + anexo PDF/logo
+# ════════════════════════════════════════════════════════════════════════════
+from services.treasury_receipts import (  # noqa: E402
+    DEFAULT_SIGNATURE, DEFAULT_TEMPLATE, get_template, render_template,
+)
+
+ALLOWED_RECEIPT_MIMES = {"application/pdf", "image/png", "image/jpeg"}
+MAX_RECEIPT_BYTES = 5 * 1024 * 1024  # 5 MB
+
+# Sample payload usado pra preview do template (sem hit no DB de pagamentos)
+_SAMPLE_PAYMENT = {
+    "payee_name": "ACME Fornecimentos LTDA",
+    "payee_document": "12.345.678/0001-90",
+    "amount_brl": 1850.0,
+    "method": "pix",
+    "provider_transfer_id": "tx-exemplo-AB12CD34",
+    "description": "NF 12345 — Internet dedicada Fev/2026",
+    "category": "Telecom",
+}
+
+
+class ReceiptTemplateIn(BaseModel):
+    template_text: Optional[str] = None
+    signature: Optional[str] = None
+    attach_pdf: Optional[bool] = None
+
+
+def _strip_pdf(doc: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    if not doc:
+        return {}
+    out = {k: v for k, v in doc.items() if k != "pdf_b64"}
+    out["has_pdf"] = bool((doc or {}).get("pdf_b64"))
+    return out
+
+
+@router.get("/config/receipt")
+async def get_receipt_config(user: dict = Depends(require_role("gestor"))):
+    """Retorna template atual (sem o binário do PDF)."""
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+    doc = await db.treasury_receipt_templates.find_one(
+        {"company_id": cid}, {"_id": 0})
+    if not doc:
+        return {
+            "company_id": cid,
+            "template_text": DEFAULT_TEMPLATE,
+            "signature": DEFAULT_SIGNATURE,
+            "attach_pdf": False,
+            "pdf_filename": None,
+            "pdf_mimetype": None,
+            "pdf_size_bytes": 0,
+            "has_pdf": False,
+            "is_default": True,
+        }
+    return {**_strip_pdf(doc), "is_default": False}
+
+
+@router.put("/config/receipt")
+async def update_receipt_config(p: ReceiptTemplateIn,
+                                 user: dict = Depends(require_role("gestor"))):
+    """Salva texto/assinatura/flag de anexo. NÃO mexe no PDF armazenado."""
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+    update = {k: v for k, v in p.model_dump(exclude_none=True).items()}
+    if not update:
+        raise HTTPException(400, "Nenhum campo enviado.")
+    update["company_id"] = cid
+    update["updated_at"] = now_iso()
+    update["updated_by"] = user.get("email") or "?"
+    await db.treasury_receipt_templates.update_one(
+        {"company_id": cid}, {"$set": update}, upsert=True)
+    doc = await db.treasury_receipt_templates.find_one(
+        {"company_id": cid}, {"_id": 0})
+    return _strip_pdf(doc)
+
+
+@router.post("/config/receipt/upload")
+async def upload_receipt_pdf(file: UploadFile = File(...),
+                              user: dict = Depends(require_role("gestor"))):
+    """Recebe PDF/PNG/JPG e armazena base64 no template."""
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+    mime = (file.content_type or "").lower()
+    if mime not in ALLOWED_RECEIPT_MIMES:
+        raise HTTPException(400, f"Tipo inválido: {mime}. Aceito: PDF, PNG, JPG.")
+    raw = await file.read()
+    if not raw:
+        raise HTTPException(400, "Arquivo vazio.")
+    if len(raw) > MAX_RECEIPT_BYTES:
+        raise HTTPException(413,
+            f"Arquivo {len(raw)//1024}KB excede limite de {MAX_RECEIPT_BYTES//1024}KB.")
+    b64 = base64.b64encode(raw).decode("ascii")
+    await db.treasury_receipt_templates.update_one(
+        {"company_id": cid},
+        {"$set": {
+            "company_id": cid,
+            "pdf_b64": b64,
+            "pdf_filename": file.filename or "comprovante.pdf",
+            "pdf_mimetype": mime,
+            "pdf_size_bytes": len(raw),
+            "attach_pdf": True,
+            "updated_at": now_iso(),
+            "updated_by": user.get("email") or "?",
+        }},
+        upsert=True,
+    )
+    return {
+        "ok": True,
+        "filename": file.filename,
+        "mimetype": mime,
+        "size_bytes": len(raw),
+        "attach_pdf": True,
+    }
+
+
+@router.delete("/config/receipt/pdf")
+async def delete_receipt_pdf(user: dict = Depends(require_role("gestor"))):
+    """Remove PDF/logo do template e desliga attach_pdf."""
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+    res = await db.treasury_receipt_templates.update_one(
+        {"company_id": cid},
+        {"$unset": {"pdf_b64": "", "pdf_filename": "",
+                    "pdf_mimetype": "", "pdf_size_bytes": ""},
+         "$set": {"attach_pdf": False, "updated_at": now_iso(),
+                  "updated_by": user.get("email") or "?"}},
+    )
+    if not res.matched_count:
+        raise HTTPException(404, "Nenhum template configurado.")
+    return {"ok": True}
+
+
+@router.get("/config/receipt/preview")
+async def preview_receipt_template(user: dict = Depends(require_role("gestor"))):
+    """Renderiza o template com um pagamento de exemplo."""
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+    tpl = await get_template(cid)
+    sample = {
+        **_SAMPLE_PAYMENT,
+        "company_id": cid,
+        "paid_at": now_iso(),
+    }
+    return {"text": render_template(sample, tpl),
+            "has_pdf": bool(tpl.get("pdf_b64")),
+            "pdf_filename": tpl.get("pdf_filename")}
+

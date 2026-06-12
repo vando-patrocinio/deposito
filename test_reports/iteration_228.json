@@ -1,0 +1,42 @@
+{
+  "summary": "iter239 — Tested Treasury Receipt WhatsApp Config Card (backend + frontend E2E). 7/7 backend pytest tests pass and 7/7 frontend Playwright assertions pass. Card renders correctly at top of 'Fornecedores IA' tab with light theme; all data-testids present; CRUD on template + PDF upload/remove + preview overlay all functional and integrated with backend.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {
+        "screen": "ReceiptConfigCard upload info",
+        "issues": ["PDF size rendered as '0 KB' for a 40-byte file because Math.round(40/1024)=0. Cosmetic only — backend persists exact pdf_size_bytes; consider showing bytes when <1KB."]
+      }
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_treasury_receipt_config.py",
+    "/app/test_reports/pytest/iter239_receipt_config.xml"
+  ],
+  "action_items": [
+    "Optional: tweak ReceiptConfigCard size display to show '<1 KB' or actual bytes when pdf_size_bytes < 1024 (cosmetic).",
+    "Optional: 'IA Tesoureira' link sits inside 'Financeiro' group which is below the fold in sidebar — fine, but if QA scripts need direct nav, consider adding data-testid='sidebar-link-treasury' (current click-by-text works)."
+  ],
+  "critical_code_review_comments": [
+    "Backend: auth correctly enforced via require_role('gestor'); PUT/PATCH preserves pdf_b64 (uses $set, not full replace) — good.",
+    "Backend: ALLOWED_RECEIPT_MIMES correctly rejects non PDF/PNG/JPG with 400; 5MB cap enforced (413).",
+    "Backend: _strip_pdf excludes pdf_b64 from GET response — no large payload sent unnecessarily. Mongo _id excluded via projection {'_id':0}.",
+    "Frontend: ReceiptConfigCard uses window.confirm for destructive remove — acceptable; could be a custom modal long-term.",
+    "Frontend: file size displays as 'Math.round(size/1024) KB' which rounds <512B to 0 KB (only impacts our fake 40B test PDF; real uploads will be much larger)."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_treasury_receipt_config.py (new)"
+  ],
+  "success_rate": {"backend": "100%", "frontend": "100%"},
+  "test_credentials": "admin@empresa.com / 123456 (super_admin) — used for both backend JWT and frontend login.",
+  "seed_data_creation": "Created/modified treasury_receipt_templates singleton for admin's company_id during tests. PDF cleaned up at end (DELETE /config/receipt/pdf). Template_text/signature persisted as last-edited state ('Olá *{payee_name}*, ...' + 'LIGO Fibra').",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Backend pytest file at /app/backend/tests/test_treasury_receipt_config.py — re-runnable. Frontend: navigate via login -> click 'IA Tesoureira' in sidebar (inside FINANCEIRO group, below the fold — use JS click by exact text if Playwright); then click [data-testid=treasury-tab-fornecedores]; card has data-testid=receipt-config-card with testids btn-save-receipt-config, btn-preview-receipt, input-template-text, input-signature, btn-ph-<name>, input-receipt-file, btn-upload-pdf, btn-remove-pdf, receipt-pdf-info, toggle-attach-pdf, receipt-preview-overlay, btn-close-preview, receipt-config-ok/err. Window.confirm dialog appears on remove — auto-accept.",
+  "rca_of_the_issue": "N/A — feature delivered correctly end-to-end. No blocking issues."
+}

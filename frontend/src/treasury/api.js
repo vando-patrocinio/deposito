@@ -109,6 +109,22 @@ export const treasuryApi = {
   createRecurring: (body) => client.post("/treasury/recurring", body).then((r) => r.data),
   cancelRecurring: (id) => client.post(`/treasury/recurring/${id}/cancel`)
       .then((r) => r.data),
+
+  // config: template de comprovante WhatsApp + anexo PDF/logo (iter239)
+  getReceiptConfig: () => client.get("/treasury/config/receipt").then((r) => r.data),
+  updateReceiptConfig: (body) => client.put("/treasury/config/receipt", body)
+      .then((r) => r.data),
+  uploadReceiptPdf: (file) => {
+    const fd = new FormData();
+    fd.append("file", file);
+    return client.post("/treasury/config/receipt/upload", fd, {
+      headers: { "Content-Type": "multipart/form-data" },
+    }).then((r) => r.data);
+  },
+  deleteReceiptPdf: () => client.delete("/treasury/config/receipt/pdf")
+      .then((r) => r.data),
+  previewReceiptConfig: () => client.get("/treasury/config/receipt/preview")
+      .then((r) => r.data),
 };
 
 export const C = {

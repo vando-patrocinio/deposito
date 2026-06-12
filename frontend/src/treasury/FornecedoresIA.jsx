@@ -16,6 +16,7 @@ import {
   ToggleRight, Users,
 } from "lucide-react";
 import { treasuryApi, C } from "./api";
+import ReceiptConfigCard from "./ReceiptConfigCard";
 
 export default function FornecedoresIA() {
   const [payees, setPayees] = useState([]);
@@ -45,6 +46,8 @@ export default function FornecedoresIA() {
 
   return (
     <div data-testid="treasury-fornecedores-tab" style={{ padding: 20 }}>
+      <ReceiptConfigCard />
+
       <div style={{ display: "flex", justifyContent: "space-between",
         alignItems: "center", marginBottom: 14 }}>
         <div>

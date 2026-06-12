@@ -1,8 +1,10 @@
 """treasury_receipts — gera mensagem de comprovante e dispara WhatsApp.
 
-A mensagem é "assinada by SmartProv" e enviada via o sidecar Baileys
-através do helper `_sidecar_post_silent` (mesma stack do resto do sistema).
-Sem JWT — operação interna.
+iter239: Suporta TEMPLATE customizado por empresa + anexo PDF.
+- Template salvo em db.treasury_receipt_templates (singleton por company_id)
+- Variáveis suportadas: {payee_name} {document} {amount} {method} {datetime}
+  {transaction_id} {description} {category} {signature}
+- Anexo PDF (b64) é enviado junto pelo /send-document do sidecar.
 """
 from __future__ import annotations
 
@@ -11,9 +13,27 @@ import re
 from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 
+from database import db
 from services.wa.sidecar import _sidecar_post_silent
 
 log = logging.getLogger("treasury_receipts")
+
+
+DEFAULT_TEMPLATE = """✅ *COMPROVANTE DE PAGAMENTO*
+
+*Beneficiário:* {payee_name}
+*CPF/CNPJ:* {document}
+*Valor:* {amount}
+*Forma:* {method}
+*Data/hora:* {datetime}
+*ID transação:* `{transaction_id}`
+*Descrição:* {description}
+
+_Operação processada e auditada pela IA Tesoureira._
+─────────────────────
+{signature}"""
+
+DEFAULT_SIGNATURE = "*by SmartProv* — Tesouraria autônoma"
 
 
 def _fmt_brl(v: float) -> str:
@@ -33,36 +53,60 @@ def _fmt_dt(iso: Optional[str]) -> str:
         return iso[:16]
 
 
-def build_receipt_text(payment: Dict[str, Any]) -> str:
-    """Comprovante texto formal — assinatura SmartProv obrigatória."""
+async def get_template(company_id: str) -> Dict[str, Any]:
+    """Retorna template salvo ou default."""
+    doc = await db.treasury_receipt_templates.find_one(
+        {"company_id": company_id}, {"_id": 0})
+    if doc:
+        return doc
+    return {
+        "company_id": company_id,
+        "template_text": DEFAULT_TEMPLATE,
+        "signature": DEFAULT_SIGNATURE,
+        "attach_pdf": False,
+        "pdf_filename": None,
+        "pdf_b64": None,
+    }
+
+
+def render_template(payment: Dict[str, Any],
+                    template: Dict[str, Any]) -> str:
+    text = template.get("template_text") or DEFAULT_TEMPLATE
+    signature = template.get("signature") or DEFAULT_SIGNATURE
     method = (payment.get("method") or "pix").upper()
     when = (payment.get("paid_at") or payment.get("sent_at")
             or payment.get("updated_at") or datetime.now(timezone.utc).isoformat())
     provider_id = (payment.get("provider_transfer_id")
                    or payment.get("provider_bill_id") or "-")
-    lines = [
-        "✅ *COMPROVANTE DE PAGAMENTO*",
-        "",
-        f"*Beneficiário:* {payment.get('payee_name') or '-'}",
-        f"*CPF/CNPJ:* {payment.get('payee_document') or '-'}",
-        f"*Valor:* {_fmt_brl(payment.get('amount_brl', 0))}",
-        f"*Forma:* {method}",
-        f"*Data/hora:* {_fmt_dt(when)}",
-        f"*ID transação:* `{provider_id}`",
-    ]
-    if payment.get("description"):
-        lines.append(f"*Descrição:* {payment['description']}")
-    if payment.get("category"):
-        lines.append(f"*Categoria:* {payment['category']}")
-    lines.append("")
-    lines.append("_Operação processada e auditada pela IA Tesoureira._")
-    lines.append("─────────────────────")
-    lines.append("*by SmartProv* — Tesouraria autônoma")
-    return "\n".join(lines)
+    placeholders = {
+        "payee_name": payment.get("payee_name") or "-",
+        "document": payment.get("payee_document") or "-",
+        "amount": _fmt_brl(payment.get("amount_brl", 0)),
+        "method": method,
+        "datetime": _fmt_dt(when),
+        "transaction_id": provider_id,
+        "description": payment.get("description") or "-",
+        "category": payment.get("category") or "-",
+        "signature": signature,
+    }
+    out = text
+    for k, v in placeholders.items():
+        out = out.replace("{" + k + "}", str(v))
+    return out
+
+
+def build_receipt_text(payment: Dict[str, Any],
+                        template: Optional[Dict[str, Any]] = None) -> str:
+    """Compatibilidade: aceita chamada sem template (usa default)."""
+    if template is None:
+        template = {
+            "template_text": DEFAULT_TEMPLATE,
+            "signature": DEFAULT_SIGNATURE,
+        }
+    return render_template(payment, template)
 
 
 def _normalize_phone(raw: str) -> Optional[str]:
-    """E.164 BR. Aceita '11999999999', '+5511999999999', '(11) 99999-9999'."""
     if not raw:
         return None
     digits = re.sub(r"\D+", "", raw)
@@ -70,28 +114,56 @@ def _normalize_phone(raw: str) -> Optional[str]:
         return None
     if digits.startswith("55") and len(digits) >= 12:
         return digits
-    if len(digits) in (10, 11):  # DDD + número
+    if len(digits) in (10, 11):
         return f"55{digits}"
     return digits
 
 
-async def send_receipt_whatsapp(payment: Dict[str, Any], phone: str) -> Dict[str, Any]:
-    """Envia comprovante texto via sidecar Baileys.
+async def send_receipt_whatsapp(payment: Dict[str, Any],
+                                 phone: str) -> Dict[str, Any]:
+    """Envia comprovante texto + (opcional) anexo PDF do template.
 
-    Retorna {ok, message_id?, error?}. NUNCA levanta exceção.
+    Retorna {ok, message_id?, document_sent?, error?}. NUNCA levanta.
     """
     norm = _normalize_phone(phone)
     if not norm:
         return {"ok": False, "error": "phone_invalid"}
-    text = build_receipt_text(payment)
+    cid = payment.get("company_id")
+    template = await get_template(cid) if cid else {
+        "template_text": DEFAULT_TEMPLATE, "signature": DEFAULT_SIGNATURE,
+    }
+    text = render_template(payment, template)
+    out_text: Dict[str, Any] = {}
     try:
-        out = await _sidecar_post_silent("/send", {"phone": norm, "text": text})
+        out_text = await _sidecar_post_silent("/send", {"phone": norm, "text": text})
     except Exception as e:  # pragma: no cover
-        log.warning("send_receipt_whatsapp falhou: %s", e)
+        log.warning("send text falhou: %s", e)
         return {"ok": False, "error": str(e)}
-    if not isinstance(out, dict):
-        return {"ok": False, "error": "sidecar_unknown_response"}
-    if out.get("ok"):
-        return {"ok": True, "message_id": out.get("message_id"),
-                "phone": norm, "text_preview": text[:160]}
-    return {"ok": False, "error": out.get("error") or "sidecar_failed", "raw": out}
+    if not isinstance(out_text, dict) or not out_text.get("ok"):
+        return {"ok": False, "error": (out_text or {}).get("error")
+                or "sidecar_failed", "raw": out_text}
+
+    result: Dict[str, Any] = {
+        "ok": True,
+        "message_id": out_text.get("message_id"),
+        "phone": norm,
+        "text_preview": text[:160],
+        "document_sent": False,
+    }
+
+    # Anexo PDF
+    if template.get("attach_pdf") and template.get("pdf_b64"):
+        try:
+            doc_out = await _sidecar_post_silent("/send-document", {
+                "phone": norm,
+                "document_b64": template["pdf_b64"],
+                "filename": template.get("pdf_filename") or "comprovante.pdf",
+                "mimetype": "application/pdf",
+            })
+            result["document_sent"] = bool((doc_out or {}).get("ok"))
+            if not result["document_sent"]:
+                result["document_error"] = (doc_out or {}).get("error")
+        except Exception as e:
+            log.warning("send_document falhou: %s", e)
+            result["document_error"] = str(e)
+    return result
