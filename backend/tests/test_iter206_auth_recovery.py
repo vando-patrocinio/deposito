@@ -12,7 +12,7 @@ def test_seed_default_users_force_resets_owner():
     """Seed force-reseta a senha do owner em todo startup (idempotente)."""
     src = Path("/app/backend/auth.py").read_text()
     assert 'OWNER_EMAIL = "vando@ligotelecom.com"' in src
-    assert 'OWNER_PASSWORD = "Vs5879@@@"' in src
+    assert 'OWNER_PASSWORD = os.environ.get("OWNER_PASSWORD")' in src
     # Lock cleanup
     assert "locked_until" in src
     assert "failed_attempts" in src

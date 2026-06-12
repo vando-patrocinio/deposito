@@ -141,7 +141,7 @@ async def seed_default_users(db) -> None:
     """
     DEMO = "co-demo"
     OWNER_EMAIL = "vando@ligotelecom.com"
-    OWNER_PASSWORD = "Vs5879@@@"
+    OWNER_PASSWORD = os.environ.get("OWNER_PASSWORD")
     base = [
         ("admin@empresa.com", "123456", "administrador", "Administrador"),
         ("gestor@empresa.com", "123456", "gestor", "Gestor"),
@@ -151,10 +151,12 @@ async def seed_default_users(db) -> None:
         ("admin@example.com", os.environ.get("ADMIN_PASSWORD", "admin123"), "gestor", "Gestor padrão"),
         ("auditor@example.com", os.environ.get("AUDITOR_PASSWORD", "auditor123"), "auditor", "Auditor padrão"),
         # iter180 — conta corporativa do super-admin (Vando · Ligo Telecom).
-        # Senha hardcoded por decisão direta do usuário (não é uma demo pública).
+        # Senha vem do .env (OWNER_PASSWORD) — deploy readiness fix.
         (OWNER_EMAIL, OWNER_PASSWORD, "auditor", "Vando · Ligo Telecom"),
     ]
     for email, password, role, name in base:
+        if not password:
+            continue  # OWNER_PASSWORD ausente no env → pula seed do owner
         existing = await db.users.find_one({"email": email})
         if not existing:
             doc = {
