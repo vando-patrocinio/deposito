@@ -15,7 +15,10 @@ import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 
-from motor.motor_asyncio import AsyncIOMotorClient
+from dotenv import load_dotenv
+load_dotenv()  # garante MONGO_URL/DB_NAME em scripts standalone (pytest, etc)
+
+from motor.motor_asyncio import AsyncIOMotorClient  # noqa: E402
 
 logger = logging.getLogger("score_recovery")
 

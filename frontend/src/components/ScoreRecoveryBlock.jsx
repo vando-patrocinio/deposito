@@ -66,6 +66,9 @@ export default function ScoreRecoveryBlock() {
         msg: `Recuperação executada (batch ${r.batch_id}). Score após: ${r.score_after ?? "—"}.` });
       setShowExec(false); setReason("");
       await loadAll();
+      // iter241 — notifica PresidenteExecutivo a recarregar o donut/KPIs
+      window.dispatchEvent(new CustomEvent("president-score-updated",
+        { detail: { batch_id: r.batch_id, score_after: r.score_after } }));
     } catch (e) {
       setFeedback({ kind: "err",
         msg: e?.response?.data?.detail || e.message });
@@ -78,6 +81,8 @@ export default function ScoreRecoveryBlock() {
       await api.post(`/api/presidente-ia/score-recovery/rollback/${batchId}`);
       setFeedback({ kind: "ok", msg: `Batch ${batchId} revertido.` });
       await loadAll();
+      window.dispatchEvent(new CustomEvent("president-score-updated",
+        { detail: { rolled_back: batchId } }));
     } catch (e) {
       setFeedback({ kind: "err",
         msg: e?.response?.data?.detail || e.message });

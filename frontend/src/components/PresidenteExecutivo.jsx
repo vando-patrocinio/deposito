@@ -72,6 +72,14 @@ export default function PresidenteExecutivo() {
     return () => { cancelled = true; };
   }, []);
 
+  // iter241 — recarrega quando o ScoreRecoveryBlock executa/reverte
+  useEffect(() => {
+    const handler = () => { load(); };
+    window.addEventListener("president-score-updated", handler);
+    return () => window.removeEventListener("president-score-updated", handler);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   if (loading && !data) return <ExecSkeleton />;
   if (err && !data) {
     return (

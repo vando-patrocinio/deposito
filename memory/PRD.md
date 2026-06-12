@@ -2,6 +2,38 @@
 
 > Documento vivo. Atualizado a cada sprint.
 
+## 🚀 Feature: Score Recovery — recuperação automática do President Score (12/06/2026 — iter241 · CTO P0)
+
+**Demanda:** "Score 61,3 — estava melhor antes — crie ações para subir, no mínimo 90%."
+
+**Diagnóstico:** o cálculo do score (`services/presidente_executive.py`) usa dados brutos atuais. Não havia histórico, então não foi "queda" — foi débito técnico acumulando: 12k ONUs com status=null no smartolt_onus (sync sucateado), 3.681 ONUs em LOS/Power fail/Offline (clientes desativados que nunca foram baixados), 2.230 tickets em aberto sem updated_at recente.
+
+**Entregue:**
+- **Service** `/app/backend/services/score_recovery.py` com `simulate()`, `execute()`, `rollback()`, `snapshot_score()`, `history()`, `daily_snapshot_job`.
+- **6 endpoints** em `routes/presidente_ia.py`:
+  - `GET /api/presidente-ia/score-recovery/simulate` → projeção sem mutação.
+  - `POST /api/presidente-ia/score-recovery/execute` → arquiva (move pra `*_archived`) ONUs lixo + auto-fecha tickets stale 60d+. Reversível. Exige motivo 10+ chars.
+  - `POST /api/presidente-ia/score-recovery/rollback/{batch_id}` → devolve docs ao estado original.
+  - `GET /score-recovery/batches` → histórico de execuções.
+  - `GET /score-history?days=30` → time-series.
+  - `POST /score-history/snapshot` → snapshot manual.
+- **Cron** `president_score_daily_snapshot` às 03:15 (APScheduler).
+- **Frontend** `components/ScoreRecoveryBlock.jsx` no topo do Cérebro Executivo V10:
+  - 2 pills (Score atual vs Projetado).
+  - 4 cards de impacto (ONUs null, LOS, tickets stale, total depois).
+  - Botão "Executar recuperação" com input de motivo + confirmação.
+  - Lista de batches reversíveis (com rollback button).
+  - Sparkline SVG do histórico.
+- **Sync evento custom** `president-score-updated` pra atualizar o donut do PRESIDENT_SCORE quando o batch é executado/revertido.
+
+**Validação (testing_agent_v3_fork iter230):** 100% backend (7/7 endpoints incl. simulate/execute/rollback/history/snapshot/idempotência) + 100% frontend (todos data-testids + flow E2E). Test file `/app/backend/tests/test_iter241_score_recovery.py`.
+
+**Resultado real do diagnóstico atual (co-demo):** Simulação retorna delta de **+24,3 pts (61,3 → 85,6)** só com a limpeza. Pra chegar a 90+ precisa também: rodar reajuste em massa de contratos (driver `financeiro 50,9`) e popular pipeline comercial (driver `crescimento 62,6`).
+
+---
+
+
+
 ## 📊 Feature: Filtro de período unificado (2 calendários) + Bloco DRE/Custos no A Pagar (12/06/2026 — iter240 · CTO P0)
 
 **Demanda:** "QUERO QUE FIQUE COM 2 CALENDÁRIOS PARA A ESCOLHA DO PERÍODO. O RESULTADO DE GASTOS TEM QUE ENTRAR NO GRÁFICO DO CONTAS A PAGAR COMO CUSTO, DRE, KPIS."
