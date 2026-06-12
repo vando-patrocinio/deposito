@@ -13,6 +13,7 @@ import RetiradaTemplateCard from "@/RetiradaTemplateCard";
 import OsValidationTogglesCard from "@/OsValidationTogglesCard";
 import PhotoRequirementsCard from "@/PhotoRequirementsCard";
 import PreventiveOsCard from "@/PreventiveOsCard";
+import WhatsAppTestModeCard from "@/WhatsAppTestModeCard";
 
 
 function CollabAppFeaturesCard() {
@@ -644,6 +645,7 @@ export default function SettingsPanel() {
 
       <BrandingCard />
       <MotorIaCard />
+      <WhatsAppTestModeCard />
       <RetiradaTemplateCard />
       <OsValidationTogglesCard />
       <PhotoRequirementsCard />

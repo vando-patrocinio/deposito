@@ -2,6 +2,31 @@
 
 > Documento vivo. Atualizado a cada sprint.
 
+## 🛡️ Feature: Modo Teste WhatsApp via UI (12/06/2026 · iter246 · P0 safety)
+
+**Demanda:** Card em Configurações que coloca o WhatsApp em modo de teste, redirecionando TODOS os outbounds APENAS para o número do gestor (`21998176526`), prevenindo envios indevidos a clientes cadastrados durante testes.
+
+**Estado anterior:** Infraestrutura JÁ existia (`services/homologation.py` com `TEST_PHONE=5521998176526` hardcoded, `HOMOLOG_MODE=true` default failsafe, `_gateway_enforce` interceptando 100% dos outbounds em `services/wa/sidecar.py:53-102`). Faltava SOMENTE controle UI — gestor não tinha como ligar/desligar/editar pelo painel.
+
+**Entregue:**
+- `backend/routes/wa_test_mode.py` (novo): `GET/PUT /api/settings/wa-test-mode` com auditoria (`updated_by`, `updated_at`). Validação de telefone (12–13 dígitos com prefixo 55). Auth: admin/gestor/auditor/super_admin.
+- `backend/services/homologation.py`: novas funções async `is_homolog_for(company_id)` e `get_test_phone_for(company_id)` que LEEM do banco (`aihub_settings.wa_test_mode`) com cache TTL 30s, fallback failsafe pro env var legado (`HOMOLOG_MODE`). Helper `_invalidate_settings_cache(cid)` chamado pelo PUT. `safe_send_whatsapp` agora usa as versões async — mesmo chokepoint, comportamento override-able via UI.
+- `frontend/src/WhatsAppTestModeCard.js` (novo): card grande verde/vermelho mostrando o estado (`MODO TESTE ATIVO` vs `MODO TESTE DESLIGADO`), input do número com máscara display `(DD) 99999-9999`, botão de toggle com confirmação ao desligar ("⚠️ Mensagens reais sendo enviadas"), input editável do número de teste. Data-testids: `wa-test-mode-card`, `wa-test-mode-toggle`, `wa-test-mode-phone-input`, `wa-test-mode-phone-save`, `wa-test-mode-current-phone`, `wa-test-mode-msg`, `wa-test-mode-err`.
+- `backend/server.py`: registrado `routes_wa_test_mode.router`.
+- `frontend/src/SettingsPanel.js`: card montado logo após `MotorIaCard` (alta visibilidade).
+
+**Validação:** `tests/test_wa_test_mode.py` (5/5 PASS):
+1. Default failsafe sem setting (enabled=True, número legado).
+2. Setting `enabled=False` libera envio real.
+3. `test_phone` editado é usado pelo redirecionamento.
+4. Cache TTL respeita invalidação manual.
+5. **E2E**: `safe_send_whatsapp(target=5511999990000)` → `blocked=True`, `to_effective=5521998176526` (redirecionado).
+
+**Verificação API em produção** (`/api/settings/wa-test-mode` autenticado): GET devolve `enabled=true, test_phone=5521998176526, test_phone_display="(21) 99817-6526"`; PUT aceita `21998176526` normalizando para `5521998176526`; PUT com `"123"` devolve 400 com erro descritivo. Estado atual: **modo teste ATIVO** — clientes reais bloqueados.
+
+---
+
+
 ## ➕ Feature: Cargo "Instalador / Reparador" (12/06/2026 · iter245 · CTO P2)
 
 **Demanda:** Criar opção combinada no dropdown de cargo do cadastro de colaborador.

@@ -48,6 +48,70 @@ BLOCKED_FIELDS = (
 )
 
 
+# ─── DB-backed overrides (iter246) ─────────────────────────────────────
+# UI em Configurações pode ligar/desligar o modo teste e trocar o número
+# de teste sem mexer em env var. Lemos `aihub_settings.wa_test_mode` por
+# company_id com cache em memória (TTL 30s) para não bater Mongo a cada
+# mensagem. Failsafe: se algo falhar, cai no comportamento legado (env).
+import time as _time
+_SETTINGS_CACHE: Dict[str, tuple[float, Dict[str, Any]]] = {}
+_SETTINGS_TTL = 30.0  # segundos
+
+
+def _invalidate_settings_cache(company_id: Optional[str] = None) -> None:
+    """Chamado pelo endpoint PUT após edição via UI."""
+    if company_id:
+        _SETTINGS_CACHE.pop(company_id, None)
+    else:
+        _SETTINGS_CACHE.clear()
+
+
+async def _get_db_settings(company_id: str) -> Optional[Dict[str, Any]]:
+    """Lê settings do banco com cache TTL. Retorna None se não houver
+    documento (mantém compatibilidade com env-var legacy)."""
+    now = _time.monotonic()
+    cached = _SETTINGS_CACHE.get(company_id)
+    if cached and (now - cached[0]) < _SETTINGS_TTL:
+        return cached[1]
+    try:
+        doc = await db.aihub_settings.find_one(
+            {"company_id": company_id, "key": "wa_test_mode"},
+            {"_id": 0, "value": 1},
+        )
+    except Exception:  # noqa: BLE001
+        return None
+    if not doc:
+        _SETTINGS_CACHE[company_id] = (now, None)  # type: ignore[assignment]
+        return None
+    value = doc.get("value") or {}
+    _SETTINGS_CACHE[company_id] = (now, value)
+    return value
+
+
+async def is_homolog_for(company_id: Optional[str]) -> bool:
+    """Versão async com override do banco. Default: env var (failsafe true)."""
+    if company_id:
+        s = await _get_db_settings(company_id)
+        if s and "enabled" in s:
+            return bool(s["enabled"])
+    return is_homolog()
+
+
+async def get_test_phone_for(company_id: Optional[str]) -> str:
+    """Número de teste efetivo. Override do banco com fallback hardcoded."""
+    if company_id:
+        s = await _get_db_settings(company_id)
+        if s and s.get("test_phone"):
+            digits = re.sub(r"\D", "", str(s["test_phone"]))
+            if digits.startswith("0"):
+                digits = digits.lstrip("0")
+            if len(digits) <= 11 and not digits.startswith("55"):
+                digits = "55" + digits
+            if 12 <= len(digits) <= 13:
+                return digits
+    return TEST_PHONE
+
+
 def is_homolog() -> bool:
     """Modo homologação ativo? Default = TRUE (failsafe)."""
     v = (os.environ.get("HOMOLOG_MODE") or "true").lower()
@@ -144,7 +208,12 @@ async def safe_send_whatsapp(
     block = False
     blocked_reason = None
     pilot_real = False  # V9 P3 — autorização via CAUSALITY_PILOT_PHONES
-    env = "homolog" if is_homolog() else "production"
+
+    # iter246: lê override do banco (UI Configurações). Failsafe: se DB
+    # falhar, cai no env var.
+    homolog_active = await is_homolog_for(company_id)
+    effective_test_phone = await get_test_phone_for(company_id)
+    env = "homolog" if homolog_active else "production"
 
     # ─── KILL SWITCH (P0 safety) ─────────────────────────────
     # Checa ANTES de qualquer envio. Se desligado, bloqueia e audita.
@@ -162,8 +231,8 @@ async def safe_send_whatsapp(
         pass
     # ──────────────────────────────────────────────────────────
 
-    if is_homolog():
-        if requested == TEST_PHONE:
+    if homolog_active:
+        if requested == effective_test_phone:
             pass  # caminho legado: envio mascarado ao número técnico
         elif is_whitelisted(requested):
             # V9 P3 — whitelist causal: número autorizado para piloto
@@ -177,8 +246,8 @@ async def safe_send_whatsapp(
             block = True
             blocked_reason = (
                 f"HOMOLOG_MODE=true · destino {requested[:4]}*** "
-                f"≠ TEST_PHONE {TEST_PHONE} · não whitelistado")
-            effective = TEST_PHONE  # redireciona
+                f"≠ TEST_PHONE {effective_test_phone} · não whitelistado")
+            effective = effective_test_phone  # redireciona
 
     final_text = (message or "") if pilot_real \
         else prefix_message(message or "")
@@ -198,7 +267,7 @@ async def safe_send_whatsapp(
                 "requested_phone_redacted":
                     f"{requested[:4]}***{requested[-2:]}"
                     if len(requested) >= 6 else "INVALID",
-                "redirected_to": TEST_PHONE,
+                "redirected_to": effective_test_phone,
                 "reason": blocked_reason,
                 "decision_id": decision_id,
                 "action_id": action_id,
@@ -260,10 +329,10 @@ async def safe_send_whatsapp(
     sidecar_error: Optional[str] = None
     delivery_status = "blocked_not_sent"
     sent_status = "blocked_homolog" if block else "queued"
-    if effective == TEST_PHONE or pilot_real:
-        # 🛡️ INVARIANTE: só envia se destino efetivo == TEST_PHONE OU
+    if effective == effective_test_phone or pilot_real:
+        # 🛡️ INVARIANTE: só envia se destino efetivo == test_phone OU
         # se é piloto causal autorizado (whitelist CAUSALITY_PILOT_PHONES).
-        # Demais casos foram redirecionados para TEST_PHONE acima.
+        # Demais casos foram redirecionados para test_phone acima.
         try:
             from services.wa.sidecar import _sidecar_post_silent
             sidecar_response = await _sidecar_post_silent(

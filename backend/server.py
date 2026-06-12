@@ -157,6 +157,7 @@ from routes import (
     gps_vlan_suggest as routes_gps_vlan_suggest,
     smartolt_push_ctos as routes_smartolt_push_ctos,
     whatsapp_config as routes_whatsapp_config,
+    wa_test_mode as routes_wa_test_mode,
     mass_messaging as routes_mass_messaging,
     disparo_ia as routes_disparo_ia,
     disparo_boleto as routes_disparo_boleto,
@@ -1391,6 +1392,7 @@ app.include_router(routes_alvaro_os_summary.router)
 app.include_router(routes_gps_vlan_suggest.router)
 app.include_router(routes_smartolt_push_ctos.router)
 app.include_router(routes_whatsapp_config.router)
+app.include_router(routes_wa_test_mode.router)
 app.include_router(routes_wa_channels.router)
 app.include_router(routes_mass_messaging.router)
 app.include_router(routes_disparo_ia.router)
