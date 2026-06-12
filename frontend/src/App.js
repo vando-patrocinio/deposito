@@ -223,9 +223,9 @@ const NAV_GROUPS = [
       { id: "payments", icon: CreditCard, label: "Pagamentos",
         roles: ["gestor", "administrador", "auditor"],
         superAdminOnly: true },
-      { id: "treasury", icon: Banknote, label: "Contas a Pagar",
-        roles: ["gestor", "administrador"],
-        superAdminOnly: true },
+      /* iter238b — entrada "Contas a Pagar" removida deste grupo.
+         O painel agora vive apenas em FINANCEIRO → "IA Tesoureira"
+         (id: treasury). Mesma página, sem duplicidade. */
       { id: "site", icon: Globe, label: "Site do Provedor",
         roles: ["gestor", "administrador"] },
     ],
