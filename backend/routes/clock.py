@@ -531,8 +531,17 @@ async def create_collaborator(payload: CollaboratorIn, user: dict = Depends(requ
         await db.collaborators.insert_one(doc)
     except Exception as e:
         raise HTTPException(400, f"Erro ao criar (CPF duplicado?): {e}")
+    # CTO 12/06/2026 — atribui code LIGO-NNNN ao novo colaborador
+    try:
+        from services.collaborator_code import get_or_assign_code
+        new_code = await get_or_assign_code(cid, cid_company)
+        if new_code:
+            doc["code"] = new_code
+    except Exception as e:  # noqa: BLE001
+        logger.warning("[create_collaborator] code falhou: %s", e)
     out = coll.model_dump(exclude={"reference_face"})
     out["company_id"] = cid_company
+    out["code"] = doc.get("code")
     return out
 
 

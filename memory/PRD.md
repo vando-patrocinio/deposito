@@ -2,7 +2,50 @@
 
 > Documento vivo. Atualizado a cada sprint.
 
-## ✨ Feature: Botão "Validar ONTs" na Lousa Admin (12/06/2026 · pedido CTO)
+## ✨ Feature: Código único de colaborador + Auditoria de usuários (12/06/2026 · CTO)
+
+**Pedido:** "Criar código único pra cada colaborador (identificação SmartProv). Auditar cadastros: só colaboradores podem ser usuários. Há muitos zumbis e ponta solta. Tags de acesso: auditar todos os usuários."
+
+**Implementado em 4 partes (A/B/C/D):**
+
+### A — Código único `LIGO-NNNN`
+- `services/collaborator_code.py`: formato `LIGO-NNNN` sequencial por tenant, idempotente.
+- Backfill rodado: **23 colaboradores** receberam código (co-demo: LIGO-0001..0016, e mais 7 em outros tenants).
+- Auto-atribuição no `POST /api/collaborators` (criação) e no link via `POST/PUT /api/users`.
+- UI: badge verde com `LIGO-NNNN` no form "Editar usuário" e na lista de cards.
+
+### B — Regra dura: usuário SÓ se vinculado a colaborador
+- Whitelist de serviço: `admin@empresa.com` (super admin) + `isabella@ia.local` (IA).
+- `POST /api/users` retorna **400** com mensagem clara se faltar `collaborator_id`.
+- `PUT /api/users/{uid}` bloqueia **remoção** do vínculo (só permite desativar o usuário).
+- Validado via curl: tentativa de criar user sem colaborador foi rejeitada com 400.
+
+### C — Cleanup dos zumbis (idempotente)
+- `POST /api/audit/cleanup-zombie-users` desativa (active=False, NÃO deleta) usuários sem colaborador que estejam na lista `KNOWN_ZOMBIE_EMAILS`.
+- Suporte a `dry_run` e `extra_emails` opcionais.
+- Executado em `co-demo`: **6 zumbis desativados**:
+  `admin@example.com`, `auditor@example.com`, `vando@example.com`, `gestor@empresa.com`, `gestorrede@empresa.com`, `test_gestor_iter72@empresa.com`. Whitelist preservada.
+
+### D — Auditoria de tags de acesso por usuário
+- `GET /api/audit/users-collaborators` — mapa completo: zumbis, vínculos inválidos, duplicatas, candidatos potenciais.
+- `GET /api/audit/access-tags-by-user` — por usuário: tags explícitas vs default do papel vs adicionadas/removidas; resumo `{total, uses_default, custom, empty_role_default}`.
+- Resultado co-demo: 13/14 usam default do papel, só `admin@example.com` tinha custom (já desativado em C).
+
+### Backend
+- `routes/audit_users.py` (NOVO) — 4 endpoints + whitelists declaradas.
+- `routes/users.py` — regra dura em POST/PUT, exposição do `collaborator_code` em GET.
+- `routes/clock.py` — auto-código em `POST /collaborators`.
+- `services/collaborator_code.py` (NOVO).
+- `server.py` — registra `audit_users.router`.
+
+### Frontend
+- `UsersPanel.js` — badge verde `[LIGO-NNNN]` no dropdown + card destacado abaixo do select.
+- Lista de cards mostra o code colado ao nome em monoespaçado.
+
+**Pendente:** Redeploy PROD pra travar a regra dura + cleanup automático em https://ligo.system.
+
+---
+
 
 **Pedido:** "Cria um botão na Lousa pra validar ONTs do estoque (empresa/técnico) contra a OLT. Se a ONT estiver instalada em cliente, faz a saída do colaborador e transfere pro cliente."
 

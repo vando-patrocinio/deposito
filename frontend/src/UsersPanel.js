@@ -363,8 +363,20 @@ export default function UsersPanel() {
                   </div>
                   <div style={{ color: "#64748b", fontSize: 12, marginTop: 2 }}>{u.email}</div>
                   {linked && (
-                    <div style={{ color: "#0d9488", fontSize: 11, marginTop: 4 }}>
-                      vinculado a {linked.name} ({linked.cpf})
+                    <div style={{ color: "#0d9488", fontSize: 11, marginTop: 4,
+                                    display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                      {linked.code && (
+                        <code
+                          data-testid={`u-code-${u.id}`}
+                          style={{
+                            background: "#0d9488", color: "#fff",
+                            padding: "1px 6px", borderRadius: 4,
+                            fontFamily: "ui-monospace, monospace",
+                            fontWeight: 700, fontSize: 10,
+                          }}
+                        >{linked.code}</code>
+                      )}
+                      <span>vinculado a {linked.name} ({linked.cpf})</span>
                     </div>
                   )}
                 </div>
@@ -479,15 +491,44 @@ export default function UsersPanel() {
                 // Marca quem já está vinculado a outro user (não bloqueia, só sinaliza)
                 const other = users.find((uu) => uu.collaborator_id === c.id && uu.id !== editing);
                 const suffix = other ? ` ⚠ já vinculado a ${other.email}` : "";
+                const codePrefix = c.code ? `[${c.code}] ` : "";
                 return (
                   <option key={c.id} value={c.id} disabled={!!other}>
-                    {c.name} · {c.role || c.cargo || "—"}{suffix}
+                    {codePrefix}{c.name} · {c.role || c.cargo || "—"}{suffix}
                   </option>
                 );
               })}
             </select>
+            {/* CTO 12/06/2026 — exibe o code LIGO-NNNN do colaborador vinculado */}
+            {form.collaborator_id && (() => {
+              const linked = collabs.find((c) => c.id === form.collaborator_id);
+              if (!linked) return null;
+              return (
+                <div
+                  data-testid="u-collaborator-code-badge"
+                  style={{
+                    marginTop: 8, padding: "6px 12px",
+                    background: "#f0fdf4", border: "1px solid #bbf7d0",
+                    borderRadius: 6, fontSize: 12, color: "#166534",
+                    display: "inline-flex", alignItems: "center", gap: 8,
+                  }}
+                >
+                  <strong>Código:</strong>
+                  <code style={{ fontFamily: "ui-monospace, monospace",
+                                   fontWeight: 700 }}>
+                    {linked.code || "—"}
+                  </code>
+                  {!linked.code && (
+                    <span style={{ fontSize: 11, color: "#92400e" }}>
+                      (sem código — rode Auditoria)
+                    </span>
+                  )}
+                </div>
+              );
+            })()}
             <p style={{ fontSize: 11, color: "#64748b", margin: "4px 0 0" }}>
-              Cada usuário aceita 1 cadastro de colaborador. Se o vínculo existir, novo usuário não consegue reutilizar.
+              Cada usuário aceita 1 cadastro de colaborador. Apenas
+              colaboradores cadastrados podem virar usuários do sistema.
             </p>
           </Field>
 

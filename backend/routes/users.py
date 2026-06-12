@@ -47,6 +47,7 @@ from access_tags import (
 from services.rate_limit import limiter, get_limit
 
 router = APIRouter(prefix="/api", tags=["auth", "users"])
+logger = logging.getLogger("users")
 
 
 class AdminLogin(BaseModel):
@@ -307,9 +308,22 @@ async def get_impersonation_log(limit: int = 100, user: dict = Depends(require_r
 async def list_users(user: dict = Depends(require_role("auditor"))):
     q = tenant_filter(user)
     docs = await db.users.find(q, {"_id": 0, "password_hash": 0}).to_list(500)
+    # CTO 12/06/2026 — anexa code do colaborador vinculado pra exibir no form
+    col_ids = [d["collaborator_id"] for d in docs if d.get("collaborator_id")]
+    code_map: dict = {}
+    if col_ids:
+        async for c in db.collaborators.find(
+            {"id": {"$in": col_ids}},
+            {"_id": 0, "id": 1, "code": 1, "name": 1},
+        ):
+            code_map[c["id"]] = {"code": c.get("code"), "name": c.get("name")}
     # Anexa tags efetivas (já considerando o papel) para o frontend
     for d in docs:
         d["effective_tags"] = effective_tags(d)
+        col_id = d.get("collaborator_id")
+        if col_id and col_id in code_map:
+            d["collaborator_code"] = code_map[col_id].get("code")
+            d["collaborator_name"] = code_map[col_id].get("name")
     return docs
 
 
@@ -357,6 +371,19 @@ async def create_user(payload: UserIn, user: dict = Depends(require_role("audito
     if await db.users.find_one({"email": email}):
         raise HTTPException(400, "E-mail já cadastrado")
     cid = user.get("company_id") or DEMO_COMPANY_ID
+
+    # CTO 12/06/2026 — Regra dura: usuário SÓ pode existir se vinculado a
+    # colaborador. Whitelist apenas para usuários de serviço (admin de
+    # plataforma, IA Isabella, etc).
+    from routes.audit_users import SERVICE_USER_WHITELIST
+    if not payload.collaborator_id and email not in SERVICE_USER_WHITELIST:
+        raise HTTPException(
+            400,
+            "Todo usuário precisa estar vinculado a um cadastro de "
+            "colaborador. Cadastre o colaborador primeiro em "
+            "Cadastro → Colaboradores e tente novamente.",
+        )
+
     if payload.collaborator_id:
         coll = await db.collaborators.find_one({"id": payload.collaborator_id, "company_id": cid})
         if not coll:
@@ -372,6 +399,12 @@ async def create_user(payload: UserIn, user: dict = Depends(require_role("audito
                 f"Este colaborador já está vinculado ao usuário "
                 f"{already.get('name')} <{already.get('email')}>.",
             )
+        # Garante que o colaborador tem code LIGO-NNNN (idempotente)
+        try:
+            from services.collaborator_code import get_or_assign_code
+            await get_or_assign_code(payload.collaborator_id, cid)
+        except Exception as e:  # noqa: BLE001
+            logger.warning("[create_user] falha ao garantir code: %s", e)
     # Tags: se vieram no payload, valida; senão usa default do papel
     raw_tags = getattr(payload, "access_tags", None)
     tags = sanitize_tags(raw_tags) if raw_tags is not None else list(DEFAULT_TAGS_BY_ROLE.get(payload.role, []))
@@ -426,6 +459,24 @@ async def update_user(uid: str, payload: dict, user: dict = Depends(require_role
                     409,
                     f"Este colaborador já está vinculado ao usuário "
                     f"{already.get('name')} <{already.get('email')}>.",
+                )
+            # Garante code LIGO-NNNN no colaborador vinculado
+            try:
+                from services.collaborator_code import get_or_assign_code
+                await get_or_assign_code(new_coll_id, cid_target)
+            except Exception as e:  # noqa: BLE001
+                logger.warning("[update_user] falha garantir code: %s", e)
+        else:
+            # CTO 12/06/2026 — regra dura: não pode REMOVER o vínculo
+            # de colaborador exceto pra usuários de serviço.
+            from routes.audit_users import SERVICE_USER_WHITELIST
+            target_email = (await db.users.find_one({"id": uid}, {"email": 1}) or {}).get("email") or ""
+            if target_email.lower() not in SERVICE_USER_WHITELIST:
+                raise HTTPException(
+                    400,
+                    "Não é possível remover o vínculo com o colaborador. "
+                    "Para desativar o acesso deste usuário, marque-o como "
+                    "inativo em vez de remover o vínculo.",
                 )
         update["collaborator_id"] = new_coll_id
     if "can_attend_whatsapp" in payload:

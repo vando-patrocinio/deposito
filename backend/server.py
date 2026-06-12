@@ -1163,6 +1163,8 @@ dashboard_overtime = routes_clock.dashboard_overtime  # routes/dashboard.py impo
 
 # Inclui todos os routers (cada um já vem com prefix="/api")
 app.include_router(routes_users.router)
+from routes import audit_users as routes_audit_users  # noqa: E402
+app.include_router(routes_audit_users.router)
 from routes import ai_center_v51 as routes_ai_center_v51  # noqa: E402
 app.include_router(routes_ai_center_v51.router)
 from routes import ai_center_observability as routes_observ  # noqa: E402
