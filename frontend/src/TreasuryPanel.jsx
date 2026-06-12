@@ -7,8 +7,8 @@
 import React, { useEffect, useState } from "react";
 import {
   Inbox, Banknote, Repeat, Wallet, ShieldCheck, ShieldAlert,
-  TrendingDown, AlertTriangle, Clock, CheckCircle2, ChevronLeft, ChevronRight,
-  Users,
+  AlertTriangle, Clock, CheckCircle2, ChevronLeft, ChevronRight,
+  Users, CalendarRange,
 } from "lucide-react";
 import InboxDDA from "./treasury/InboxDDA";
 import PaymentsList from "./treasury/PaymentsList";
@@ -30,52 +30,44 @@ const TABS = [
 export default function TreasuryPanel() {
   const [tab, setTab] = useState("dda");
   const [safety, setSafety] = useState(null);
-  const [kpisMonth, setKpisMonth] = useState(null);
-  const [month, setMonth] = useState(currentMonth());
+  const [kpis, setKpis] = useState(null);
+  const [monthFrom, setMonthFrom] = useState(currentMonth());
+  const [monthTo, setMonthTo] = useState(currentMonth());
   const [refreshKey, setRefreshKey] = useState(0);
 
   const loadHeader = async () => {
     try {
       const [s, k] = await Promise.all([
         treasuryApi.safety(),
-        treasuryApi.kpisByMonth(month),
+        treasuryApi.kpisByRange(monthFrom, monthTo),
       ]);
-      setSafety(s); setKpisMonth(k);
+      setSafety(s); setKpis(k);
     } catch (e) { console.warn("treasury header load:", e); }
   };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => { loadHeader(); }, [refreshKey, month]);
+  useEffect(() => { loadHeader(); }, [refreshKey, monthFrom, monthTo]);
+
+  // Garante from <= to
+  const setFrom = (v) => {
+    setMonthFrom(v);
+    if (v > monthTo) setMonthTo(v);
+  };
+  const setTo = (v) => {
+    setMonthTo(v);
+    if (v < monthFrom) setMonthFrom(v);
+  };
 
   return (
     <div data-testid="treasury-panel" style={{ background: C.bg,
       minHeight: "100vh", color: C.text, padding: 24 }}>
       <SafetyBanner safety={safety} />
 
-      {/* Seletor de mês KPIs */}
-      <div data-testid="kpi-month-selector" style={{
-        display: "flex", justifyContent: "space-between", alignItems: "center",
-        marginBottom: 12, gap: 10,
-      }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <button data-testid="kpi-month-prev"
-            onClick={() => setMonth(addMonths(month, -1))}
-            style={btnNav}><ChevronLeft size={14}/></button>
-          <input type="month" data-testid="kpi-month-input" value={month}
-            onChange={(e) => setMonth(e.target.value)} style={monthInput}/>
-          <button data-testid="kpi-month-next"
-            onClick={() => setMonth(addMonths(month, +1))}
-            style={btnNav}><ChevronRight size={14}/></button>
-          <strong style={{ color: C.text, marginLeft: 6, fontSize: 13 }}>
-            KPIs de {monthLabel(month)}
-          </strong>
-        </div>
-        <button data-testid="kpi-month-now"
-          onClick={() => setMonth(currentMonth())} style={btnGhost}>
-          Mês atual
-        </button>
-      </div>
+      <PeriodRange
+        from={monthFrom} to={monthTo}
+        setFrom={setFrom} setTo={setTo}
+      />
 
-      <KPIRow kpisMonth={kpisMonth} safety={safety} />
+      <KPIRow kpis={kpis} safety={safety} />
 
       <div data-testid="treasury-tabs"
         style={{ display: "flex", gap: 6, marginTop: 20, marginBottom: 0,
@@ -103,11 +95,68 @@ export default function TreasuryPanel() {
 
       <div style={{ background: C.bg }}>
         {tab === "dda" && <InboxDDA onPaymentCreated={() => setRefreshKey((k) => k + 1)} />}
-        {tab === "payments" && <PaymentsList refreshKey={refreshKey} />}
+        {tab === "payments" && <PaymentsList refreshKey={refreshKey}
+          monthFrom={monthFrom} monthTo={monthTo} />}
         {tab === "recurring" && <RecurringList />}
         {tab === "fornecedores" && <FornecedoresIA />}
         {tab === "accounts" && <AccountsList />}
       </div>
+    </div>
+  );
+}
+
+function PeriodRange({ from, to, setFrom, setTo }) {
+  const oneMonth = from === to;
+  return (
+    <div data-testid="treasury-period-range" style={{
+      display: "flex", alignItems: "center", gap: 10, marginBottom: 12,
+      flexWrap: "wrap", background: C.card, border: `1px solid ${C.border}`,
+      borderRadius: 10, padding: "10px 14px",
+    }}>
+      <CalendarRange size={16} color={C.accent}/>
+      <strong style={{ color: C.text, fontSize: 13 }}>Período:</strong>
+
+      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+        <button data-testid="period-from-prev"
+          onClick={() => setFrom(addMonths(from, -1))} style={btnNav}>
+          <ChevronLeft size={14}/></button>
+        <input type="month" data-testid="period-from" value={from}
+          onChange={(e) => setFrom(e.target.value)} style={monthInput}/>
+        <button data-testid="period-from-next"
+          onClick={() => setFrom(addMonths(from, +1))} style={btnNav}>
+          <ChevronRight size={14}/></button>
+      </div>
+
+      <span style={{ color: C.muted, fontSize: 13 }}>até</span>
+
+      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+        <button data-testid="period-to-prev"
+          onClick={() => setTo(addMonths(to, -1))} style={btnNav}>
+          <ChevronLeft size={14}/></button>
+        <input type="month" data-testid="period-to" value={to}
+          onChange={(e) => setTo(e.target.value)} style={monthInput}/>
+        <button data-testid="period-to-next"
+          onClick={() => setTo(addMonths(to, +1))} style={btnNav}>
+          <ChevronRight size={14}/></button>
+      </div>
+
+      <strong style={{ color: C.text, fontSize: 13, marginLeft: 8 }}>
+        {oneMonth ? monthLabel(from) : `${monthLabel(from)} → ${monthLabel(to)}`}
+      </strong>
+
+      <button data-testid="period-now"
+        onClick={() => { const m = currentMonth(); setFrom(m); setTo(m); }}
+        style={{ ...btnNav, marginLeft: "auto", padding: "5px 12px",
+          fontSize: 11, fontWeight: 700 }}>
+        Mês atual
+      </button>
+      <button data-testid="period-last-3m"
+        onClick={() => { const t = currentMonth(); setFrom(addMonths(t, -2)); setTo(t); }}
+        style={btnGhost}>Últimos 3m</button>
+      <button data-testid="period-ytd"
+        onClick={() => { const t = currentMonth();
+          setFrom(`${t.slice(0, 4)}-01`); setTo(t); }}
+        style={btnGhost}>Ano</button>
     </div>
   );
 }
@@ -143,26 +192,26 @@ function SafetyBanner({ safety }) {
   );
 }
 
-function KPIRow({ kpisMonth, safety }) {
-  const t = kpisMonth?.totals || {};
-  const c = kpisMonth?.counts || {};
+function KPIRow({ kpis, safety }) {
+  const t = kpis?.totals || {};
+  const c = kpis?.counts || {};
   return (
     <div data-testid="treasury-kpis" style={{
       display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 12,
     }}>
-      <KPI label="A Pagar (mês)" value={BRL(t.pending || 0)}
+      <KPI label="A Pagar (período)" value={BRL(t.pending || 0)}
         sub={`${c.pending || 0} pendentes`}
         icon={Clock} color={C.blue} testid="kpi-pending"/>
-      <KPI label="Pagos (mês)" value={BRL(t.paid || 0)}
+      <KPI label="Pagos (período)" value={BRL(t.paid || 0)}
         sub={`${c.paid || 0} pagos`}
         icon={CheckCircle2} color={C.green} testid="kpi-paid"/>
-      <KPI label="Vencidos no mês" value={BRL(t.overdue || 0)}
+      <KPI label="Vencidos no período" value={BRL(t.overdue || 0)}
         sub="aguardando ação"
         icon={AlertTriangle} color={C.amber} testid="kpi-overdue"/>
       <KPI label="Bloqueados (risco)" value={BRL(t.blocked || 0)}
         sub="auditoria IA"
         icon={ShieldAlert} color={C.red} testid="kpi-blocked"/>
-      <KPI label="Saldo Asaas" value={BRL(0)}  /* preenchido por endpoint dedicado */
+      <KPI label="Saldo Asaas" value={BRL(0)}
         sub={safety?.environment ? safety.environment.toUpperCase() : "—"}
         icon={Wallet} color={C.green} testid="kpi-saldo"/>
     </div>

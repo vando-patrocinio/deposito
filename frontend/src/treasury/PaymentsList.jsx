@@ -10,7 +10,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import {
   Plus, CheckCircle2, Send, XCircle, MessageSquare, Banknote,
-  ChevronLeft, ChevronRight, BadgeCheck, Calendar,
+  ChevronLeft, ChevronRight, BadgeCheck, Calendar, BarChart3,
 } from "lucide-react";
 import {
   treasuryApi, C, BRL, DateBR, monthLabel, currentMonth, addMonths, monthOf,
@@ -40,11 +40,11 @@ const STATUS_BADGE = {
 
 const AUTO_THRESHOLD = 500;
 
-export default function PaymentsList({ refreshKey }) {
+export default function PaymentsList({ refreshKey, monthFrom, monthTo }) {
   const [payments, setPayments] = useState([]);
   const [payees, setPayees] = useState([]);
+  const [dre, setDre] = useState(null);
   const [tab, setTab] = useState("all");
-  const [month, setMonth] = useState(currentMonth());
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState(null);
   const [showNew, setShowNew] = useState(false);
@@ -54,20 +54,22 @@ export default function PaymentsList({ refreshKey }) {
   const reload = async () => {
     setLoading(true); setErr(null);
     try {
-      const params = { month };
+      const params = { month_from: monthFrom, month_to: monthTo };
       const filter = TABS.find((t) => t.id === tab)?.filter;
       if (filter) params.status_eq = filter;
-      const [pays, pys] = await Promise.all([
+      const [pays, pys, dreR] = await Promise.all([
         treasuryApi.listPayments(params),
         treasuryApi.listPayees(),
+        treasuryApi.dreByPeriod(monthFrom, monthTo).catch(() => null),
       ]);
       setPayments(pays.payments || []);
       setPayees(pys.payees || []);
+      setDre(dreR);
     } catch (e) { setErr(e?.response?.data?.detail || e.message); }
     finally { setLoading(false); }
   };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => { reload(); }, [tab, refreshKey, month]);
+  useEffect(() => { reload(); }, [tab, refreshKey, monthFrom, monthTo]);
 
   const approve = async (id) => {
     setBusyId(id);
@@ -141,8 +143,8 @@ export default function PaymentsList({ refreshKey }) {
           style={btnPrimary}><Plus size={14}/> Novo pagamento</button>
       </div>
 
-      {/* Seletor de período */}
-      <MonthFilter month={month} setMonth={setMonth} />
+      {/* Bloco DRE/Custos do período */}
+      <DREBlock dre={dre} />
 
       {/* Filtros por status */}
       <div style={{ display: "flex", gap: 6, marginBottom: 14, flexWrap: "wrap" }}>
@@ -329,31 +331,99 @@ function PaymentRow({ p, busy, onApprove, onSend, onCancel, onReceipt,
   );
 }
 
-function MonthFilter({ month, setMonth }) {
+function DREBlock({ dre }) {
+  if (!dre) return null;
+  const total = dre.total_paid || 0;
+  const commit = dre.total_committed || 0;
+  const cats = dre.by_category || [];
+  const payees = dre.by_payee || [];
+  const methods = dre.by_method || [];
+
   return (
-    <div data-testid="month-filter" style={{
-      background: C.card, border: `1px solid ${C.border}`, borderRadius: 10,
-      padding: 10, marginBottom: 14, display: "flex", gap: 8,
-      alignItems: "center", flexWrap: "wrap",
+    <div data-testid="dre-block" style={{
+      background: C.card, border: `1px solid ${C.border}`, borderRadius: 12,
+      padding: 16, marginBottom: 14,
     }}>
-      <Calendar size={14} color={C.muted}/>
-      <button data-testid="month-prev"
-        onClick={() => setMonth(addMonths(month, -1))}
-        style={btnNav}><ChevronLeft size={14}/></button>
-      <input type="month" data-testid="month-input" value={month}
-        onChange={(e) => setMonth(e.target.value)} style={input}/>
-      <button data-testid="month-next"
-        onClick={() => setMonth(addMonths(month, +1))}
-        style={btnNav}><ChevronRight size={14}/></button>
-      <strong style={{ color: C.text, marginLeft: 6, fontSize: 13 }}>
-        {monthLabel(month)}
-      </strong>
-      <button data-testid="month-now"
-        onClick={() => setMonth(currentMonth())}
-        style={{ ...btnNav, marginLeft: "auto", padding: "5px 10px",
-          fontSize: 11, fontWeight: 600 }}>
-        Mês atual
-      </button>
+      <div style={{ display: "flex", alignItems: "center", gap: 8,
+        marginBottom: 12 }}>
+        <BarChart3 size={16} color={C.accent}/>
+        <strong style={{ color: C.text, fontSize: 14 }}>
+          Custo / DRE do período
+        </strong>
+        <span style={{ marginLeft: "auto", color: C.muted, fontSize: 11 }}>
+          baseado em pagamentos com status PAGO
+        </span>
+      </div>
+
+      {/* KPIs DRE */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)",
+        gap: 10, marginBottom: 14 }}>
+        <DreKpi label="Custo realizado (pago)" value={BRL(total)}
+          color={C.red} testid="dre-kpi-paid"/>
+        <DreKpi label="Custo comprometido" value={BRL(commit)}
+          color={C.amber} testid="dre-kpi-committed"
+          sub={`${(commit > 0 ? (total / commit * 100) : 0).toFixed(0)}% executado`}/>
+        <DreKpi label="A executar" value={BRL(Math.max(0, commit - total))}
+          color={C.blue} testid="dre-kpi-pending"/>
+      </div>
+
+      {/* Bars por categoria */}
+      <DreBars title="Por categoria (DRE)" rows={cats} testid="dre-by-category"/>
+      <DreBars title="Top fornecedores" rows={payees} testid="dre-by-payee"
+        compact/>
+      <DreBars title="Por método" rows={methods} testid="dre-by-method"
+        compact/>
+    </div>
+  );
+}
+
+function DreKpi({ label, value, color, sub, testid }) {
+  return (
+    <div data-testid={testid} style={{ background: C.cardSoft,
+      borderRadius: 8, padding: 12, borderLeft: `3px solid ${color}` }}>
+      <div style={{ color: C.muted, fontSize: 10, textTransform: "uppercase",
+        letterSpacing: 0.4, fontWeight: 600 }}>{label}</div>
+      <div style={{ color: C.text, fontSize: 18, fontWeight: 800,
+        marginTop: 4 }}>{value}</div>
+      {sub && <div style={{ color: C.muted, fontSize: 11,
+        marginTop: 2 }}>{sub}</div>}
+    </div>
+  );
+}
+
+function DreBars({ title, rows, testid, compact }) {
+  if (!rows || rows.length === 0) return null;
+  const max = Math.max(...rows.map((r) => r.amount || 0), 1);
+  return (
+    <div data-testid={testid} style={{ marginTop: compact ? 12 : 8 }}>
+      <div style={{ color: C.muted, fontSize: 11, fontWeight: 700,
+        textTransform: "uppercase", letterSpacing: 0.4, marginBottom: 6 }}>
+        {title}
+      </div>
+      <div style={{ display: "grid", gap: 5 }}>
+        {rows.slice(0, compact ? 5 : 8).map((r) => (
+          <div key={r.label} style={{ display: "grid",
+            gridTemplateColumns: "160px 1fr 90px 50px", gap: 10,
+            alignItems: "center", fontSize: 12 }}>
+            <div style={{ color: C.text, fontWeight: 600,
+              overflow: "hidden", textOverflow: "ellipsis",
+              whiteSpace: "nowrap" }} title={r.label}>{r.label}</div>
+            <div style={{ background: "#e2e8f0", borderRadius: 999,
+              height: 10, position: "relative", overflow: "hidden" }}>
+              <div style={{ position: "absolute", left: 0, top: 0,
+                bottom: 0, width: `${(r.amount / max * 100).toFixed(1)}%`,
+                background: `linear-gradient(90deg, ${C.accent}, #f97316)`,
+                borderRadius: 999 }}/>
+            </div>
+            <div style={{ color: C.text, textAlign: "right",
+              fontFamily: "Menlo, monospace", fontWeight: 700 }}>
+              {BRL(r.amount)}
+            </div>
+            <div style={{ color: C.muted, textAlign: "right",
+              fontSize: 10 }}>{r.pct.toFixed(0)}%</div>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

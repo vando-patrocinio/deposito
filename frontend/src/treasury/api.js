@@ -79,6 +79,10 @@ export const treasuryApi = {
       `/treasury/payments/${id}/mark-paid-manual`, { note }).then((r) => r.data),
   kpisByMonth: (month) => client.get("/treasury/kpis-by-month",
       { params: month ? { month } : {} }).then((r) => r.data),
+  kpisByRange: (monthFrom, monthTo) => client.get("/treasury/kpis-by-month",
+      { params: { month_from: monthFrom, month_to: monthTo } }).then((r) => r.data),
+  dreByPeriod: (monthFrom, monthTo) => client.get("/treasury/dre-by-period",
+      { params: { month_from: monthFrom, month_to: monthTo } }).then((r) => r.data),
 
   // comprovante WhatsApp
   receiptPreview: (id) => client.get(`/treasury/payments/${id}/receipt-preview`)

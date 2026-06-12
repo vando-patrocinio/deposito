@@ -1145,15 +1145,18 @@ async def mark_paid_manual(payment_id: str, p: MarkPaidManualIn,
 
 @router.get("/kpis-by-month")
 async def kpis_by_month(month: Optional[str] = None,
+                        month_from: Optional[str] = None,
+                        month_to: Optional[str] = None,
                         user: dict = Depends(require_role("gestor"))):
-    """KPIs filtrados por mês de vencimento (scheduled_for). Padrão: mês atual."""
+    """KPIs por período. Aceita month=YYYY-MM (mês único) OU month_from+month_to.
+    Padrão: mês atual."""
     cid = user.get("company_id") or DEMO_COMPANY_ID
-    if not month:
+    if not month and not month_from and not month_to:
         now = datetime.now(timezone.utc)
         month = f"{now.year:04d}-{now.month:02d}"
-    gte, lt = _month_bounds(month, None, None)
+    gte, lt = _month_bounds(month, month_from, month_to)
     if not gte:
-        raise HTTPException(400, "Parâmetro month inválido. Use YYYY-MM.")
+        raise HTTPException(400, "Parâmetro de período inválido. Use month=YYYY-MM ou month_from+month_to.")
 
     base_q: Dict[str, Any] = {"company_id": cid,
                               "scheduled_for": {"$gte": gte, "$lt": lt}}
@@ -1175,6 +1178,8 @@ async def kpis_by_month(month: Optional[str] = None,
     overdue = await _sum({"status": {"$in": ["draft", "pending_human_approval", "approved"]},
                           "scheduled_for": {"$gte": gte, "$lt": min(lt, overdue_today)}})
     return {
+        "period": {"gte": gte, "lt": lt, "month": month,
+                   "month_from": month_from, "month_to": month_to},
         "month": month,
         "totals": {
             "paid": paid, "pending": pending, "overdue": overdue,
@@ -1188,6 +1193,70 @@ async def kpis_by_month(month: Optional[str] = None,
             "sent": await _count({"status": "sent_to_bank"}),
             "total": await _count({}),
         },
+    }
+
+
+@router.get("/dre-by-period")
+async def dre_by_period(month: Optional[str] = None,
+                         month_from: Optional[str] = None,
+                         month_to: Optional[str] = None,
+                         user: dict = Depends(require_role("gestor"))):
+    """DRE/Custos: agrupa pagamentos PAGOS do período por categoria + por
+    fornecedor, retornando estrutura pra gráfico de barras (formato DRE)."""
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+    if not month and not month_from and not month_to:
+        now = datetime.now(timezone.utc)
+        month = f"{now.year:04d}-{now.month:02d}"
+    gte, lt = _month_bounds(month, month_from, month_to)
+    if not gte:
+        raise HTTPException(400, "Período inválido. Use month=YYYY-MM ou month_from+month_to.")
+
+    base_q: Dict[str, Any] = {"company_id": cid,
+                              "scheduled_for": {"$gte": gte, "$lt": lt}}
+
+    # Total pago (custo realizado) e total previsto (compromissado)
+    async def _sum(extra: Dict) -> float:
+        async for r in db.scheduled_payments.aggregate([
+            {"$match": {**base_q, **extra}},
+            {"$group": {"_id": None, "s": {"$sum": "$amount_brl"}}},
+        ]):
+            return float(r.get("s") or 0)
+        return 0.0
+
+    total_paid = await _sum({"status": "paid"})
+    total_committed = await _sum({"status": {"$in": [
+        "approved", "sent_to_bank", "pending_human_approval", "draft", "paid",
+    ]}})
+
+    async def _group_by(field: str, limit: int = 12):
+        rows: List[Dict[str, Any]] = []
+        async for r in db.scheduled_payments.aggregate([
+            {"$match": {**base_q, "status": "paid"}},
+            {"$group": {
+                "_id": {"$ifNull": [f"${field}", "Sem categoria"]},
+                "amount": {"$sum": "$amount_brl"},
+                "count": {"$sum": 1},
+            }},
+            {"$sort": {"amount": -1}},
+            {"$limit": limit},
+        ]):
+            rows.append({
+                "label": r["_id"] or "Sem categoria",
+                "amount": float(r.get("amount") or 0),
+                "count": int(r.get("count") or 0),
+                "pct": (float(r.get("amount") or 0) / total_paid * 100.0)
+                       if total_paid > 0 else 0.0,
+            })
+        return rows
+
+    return {
+        "period": {"gte": gte, "lt": lt, "month": month,
+                   "month_from": month_from, "month_to": month_to},
+        "total_paid": total_paid,
+        "total_committed": total_committed,
+        "by_category": await _group_by("category"),
+        "by_payee": await _group_by("payee_name"),
+        "by_method": await _group_by("method"),
     }
 
 
