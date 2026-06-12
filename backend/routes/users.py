@@ -412,6 +412,17 @@ async def create_user(payload: UserIn, user: dict = Depends(require_role("audito
         profile_doc = await get_profile(payload.profile_id, cid)
         if not profile_doc:
             raise HTTPException(404, "Perfil de acesso não encontrado")
+        # Guard: atribuir perfil Super Admin exige que o solicitante
+        # tenha o próprio perfil Super Admin OU seja super admin legado.
+        if profile_doc.get("is_super_admin_profile"):
+            from services.access_profiles import user_has_super_admin_profile
+            allowed = is_super_admin(user) or await user_has_super_admin_profile(user)
+            if not allowed:
+                raise HTTPException(
+                    403,
+                    "Apenas um Super Admin pode atribuir o perfil Super Admin "
+                    "a outro usuário.",
+                )
     raw_tags = getattr(payload, "access_tags", None)
     if profile_doc:
         tags = list(profile_doc.get("access_tags") or [])
@@ -504,9 +515,34 @@ async def update_user(uid: str, payload: dict, user: dict = Depends(require_role
             p = await get_profile(new_profile_id, cid_target)
             if not p:
                 raise HTTPException(404, "Perfil de acesso não encontrado")
+            # Guard: trocar para o perfil Super Admin exige que o solicitante
+            # tenha Super Admin (perfil ou flag legado).
+            if p.get("is_super_admin_profile"):
+                from services.access_profiles import user_has_super_admin_profile
+                allowed = is_super_admin(user) or await user_has_super_admin_profile(user)
+                if not allowed:
+                    raise HTTPException(
+                        403,
+                        "Apenas um Super Admin pode atribuir o perfil Super "
+                        "Admin a outro usuário.",
+                    )
             update["profile_id"] = new_profile_id
             update["access_tags"] = list(p.get("access_tags") or [])
         else:
+            # Guard simétrico: REMOVER perfil Super Admin de outro usuário
+            # também exige Super Admin.
+            current = await db.users.find_one({"id": uid}, {"_id": 0, "profile_id": 1})
+            current_pid = (current or {}).get("profile_id")
+            if current_pid:
+                from services.access_profiles import is_super_admin_profile_id, user_has_super_admin_profile
+                if await is_super_admin_profile_id(current_pid, cid_target):
+                    allowed = is_super_admin(user) or await user_has_super_admin_profile(user)
+                    if not allowed:
+                        raise HTTPException(
+                            403,
+                            "Apenas um Super Admin pode revogar o perfil "
+                            "Super Admin de outro usuário.",
+                        )
             update["profile_id"] = None
     if "email" in payload and payload["email"]:
         new_email = str(payload["email"]).strip().lower()
@@ -555,6 +591,20 @@ async def delete_user(uid: str, user: dict = Depends(require_role("auditor"))):
         target = await db.users.find_one({"id": uid}, {"company_id": 1})
         if not target or target.get("company_id") != user.get("company_id"):
             raise HTTPException(404, "Usuário não encontrado")
+    # Guard: deletar um usuário com perfil Super Admin exige Super Admin.
+    target_doc = await db.users.find_one({"id": uid}, {"_id": 0, "profile_id": 1, "company_id": 1})
+    target_pid = (target_doc or {}).get("profile_id")
+    target_cid = (target_doc or {}).get("company_id")
+    if target_pid and target_cid:
+        from services.access_profiles import is_super_admin_profile_id, user_has_super_admin_profile
+        if await is_super_admin_profile_id(target_pid, target_cid):
+            allowed = is_super_admin(user) or await user_has_super_admin_profile(user)
+            if not allowed:
+                raise HTTPException(
+                    403,
+                    "Apenas um Super Admin pode excluir um usuário com "
+                    "perfil Super Admin.",
+                )
     res = await db.users.delete_one({"id": uid})
     if res.deleted_count == 0:
         raise HTTPException(404, "Usuário não encontrado")

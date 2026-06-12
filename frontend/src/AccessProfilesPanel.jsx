@@ -29,6 +29,16 @@ const ADMIN_BADGE = {
   textTransform: "uppercase",
 };
 
+const SUPER_ADMIN_BADGE = {
+  display: "inline-block", padding: "2px 8px",
+  borderRadius: 999,
+  background: "linear-gradient(90deg,#facc15 0%,#f59e0b 100%)",
+  color: "#7c2d12",
+  fontSize: 9, fontWeight: 900, letterSpacing: ".08em",
+  textTransform: "uppercase",
+  border: "1px solid #b45309",
+};
+
 export default function AccessProfilesPanel() {
   const [profiles, setProfiles] = useState([]);
   const [allTags, setAllTags] = useState([]);
@@ -175,7 +185,9 @@ function ProfileCard({ profile, allTags, onEdit, onDelete }) {
       <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
         <strong style={{ fontSize: 15 }}>{profile.name}</strong>
         {profile.is_seed && <span style={SEED_BADGE}>padrão</span>}
-        {profile.is_admin_level && <span style={ADMIN_BADGE}>admin</span>}
+        {profile.is_super_admin_profile
+          ? <span style={SUPER_ADMIN_BADGE} data-testid={`profile-super-badge-${profile.id}`}>super admin</span>
+          : (profile.is_admin_level && <span style={ADMIN_BADGE}>admin</span>)}
       </div>
       <div style={{ fontSize: 12, color: "#64748b", margin: "6px 0 10px",
                       minHeight: 24 }}>

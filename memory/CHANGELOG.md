@@ -7770,3 +7770,30 @@ Relatório: `/app/docs/RELATORIO_RELACIONAMENTO_360.md`
 - Testado: roteamento inicial 6/6 (oi→Isabella, plano→Isabella, fatura→Pâmela, sem net→Alvaro, bloqueio pagamento→Pâmela, cobertura→Isabella); handoff meio-de-conversa 6/6 (sem falso-positivo pra 'posso pagar no boleto quando contratar?'); pytest 15/15.
 - ⚠️ CONFLITO ARQUITETURAL DESCOBERTO (pendente de decisão do CTO): edição manual do prompt pela UI é SOBRESCRITA pelo arquivo .md no próximo restart do backend (prompt_loader compara sha). Opções: (a) loader respeita prompt_version 'manual-*' até resync explícito; (b) arquivo sempre vence (atual). Nenhuma alteração feita sem autorização.
 - NÃO feitos (não autorizados): badges no dropdown (B), simulador 'quem responde?' (C), saneamento do company_info contraditório Wi-Fi5/instalação grátis (D).
+
+---
+## 2026-06-12 (parte 4) — 5º Seed Profile: Super Admin (AUTORIZADO)
+- **Autorização CTO**: opção (a) — adicionar 5º perfil seed "Super Admin" com acesso total + privilégio exclusivo de atribuir o próprio perfil a outros usuários.
+- **Backend** (`services/access_profiles.py`):
+  - `SEED_PROFILES` agora tem 5 entradas (Colaborador, Gestão, Administrador, Auditor, **Super Admin**). Todos com flag explícito `is_super_admin_profile` (bool).
+  - `seed_default_profiles()` agora PATCHA seeds existentes para garantir consistência do flag (idempotente). Retorno acrescido de `patched`.
+  - Novos helpers: `user_has_super_admin_profile(user)` e `is_super_admin_profile_id(pid, cid)`.
+- **Backend RBAC** (`routes/users.py`):
+  - `create_user`: bloqueia (403) atribuição do perfil Super Admin a menos que o solicitante seja super_admin legado OU já tenha o perfil Super Admin.
+  - `update_user`: mesmo guard ao TROCAR para o perfil Super Admin; guard simétrico ao REMOVER de um usuário que já tem.
+  - `delete_user`: bloqueia (403) exclusão de usuários com perfil Super Admin a menos que solicitante seja Super Admin.
+- **Frontend** (`AccessProfilesPanel.jsx`):
+  - Novo `SUPER_ADMIN_BADGE` (gradient amarelo/âmbar) substitui o badge `admin` no card quando `is_super_admin_profile=true`.
+  - `data-testid="profile-super-badge-{id}"` para regressão.
+- **Validação**:
+  - `POST /api/access-profiles/seed` em co-demo: `created=1, skipped=4, patched=4` (todos seeds antigos receberam `is_super_admin_profile=false`).
+  - `GET /api/access-profiles` lista os 5 perfis com flags corretos (super_admin: 59 tags, is_super_admin_profile=true).
+  - Admin (is_super_admin=true legado) consegue atribuir e revogar Super Admin (HTTP 200).
+  - Pytest novo: `tests/test_super_admin_profile.py` (3/3 passando) — cobre seed idempotente, atribuição/revogação por admin, e helpers diretos via Mongo.
+- **Compatibilidade**: o flag legado `users.is_super_admin` (controlado pelo grantor hardcoded `vando@ligotelecom.com`) continua sendo respeitado. Nenhum usuário existente foi automaticamente promovido. Vando segue como único capaz de conceder via `PATCH /api/users/{uid}/super-admin`.
+
+### Pendências aguardando autorização do CTO (ordem proposta)
+1. Wizard Mobile Swap (FSM P1) — frontend faltando.
+2. WhatsApp Baileys daily cron (executive_scheduler) — `POST {WA_SIDECAR_URL}/admin/reset-session` 03:00 UTC.
+3. prompt_manual_override no DB para evitar overwrite pelo `.md` no restart.
+4. Lousa Mobile — bug "foto fantasma" (precisa texto exato/OS ID).

@@ -4,11 +4,13 @@ Substitui o modelo `role + access_tags` por `profile` (perfil reutilizável
 com conjunto de tags). Cada user/colaborador escolhe 1 profile, que define
 automaticamente os módulos acessíveis.
 
-4 perfis seed padrão (criados automaticamente no startup):
+5 perfis seed padrão (criados automaticamente no startup):
   • Colaborador     — acesso operacional básico (técnico, atendente)
   • Gestão          — gestor de área (lousa, frota, cadastro, financeiro)
   • Administrador   — acesso TOTAL (todas as tags)
   • Auditor         — acesso TOTAL (somente leitura por convenção)
+  • Super Admin     — acesso TOTAL + único que pode atribuir o próprio
+                      perfil Super Admin a outros usuários
 """
 from __future__ import annotations
 
@@ -22,7 +24,7 @@ from database import db
 
 logger = logging.getLogger("access_profiles")
 
-# Seed dos 4 perfis padrão
+# Seed dos 5 perfis padrão
 SEED_PROFILES = [
     {
         "key": "colaborador",
@@ -30,6 +32,7 @@ SEED_PROFILES = [
         "description": "Acesso operacional básico (técnico, atendente, instalador)",
         "is_seed": True,
         "is_admin_level": False,
+        "is_super_admin_profile": False,
         "access_tags": [
             "lousa", "field-ops", "estoque", "cadastro",
         ],
@@ -40,6 +43,7 @@ SEED_PROFILES = [
         "description": "Gestor de área — lousa, frota, cadastro, financeiro, vendas",
         "is_seed": True,
         "is_admin_level": False,
+        "is_super_admin_profile": False,
         "access_tags": [
             "dashboard", "lousa", "field-ops", "estoque", "projects",
             "central-compras", "contracts", "payments", "site", "balanco",
@@ -55,6 +59,7 @@ SEED_PROFILES = [
         "description": "Acesso TOTAL ao sistema. Pode tudo.",
         "is_seed": True,
         "is_admin_level": True,
+        "is_super_admin_profile": False,
         "access_tags": sorted(list(ALL_TAG_KEYS)),
     },
     {
@@ -63,22 +68,53 @@ SEED_PROFILES = [
         "description": "Acesso total para auditoria (somente leitura por convenção)",
         "is_seed": True,
         "is_admin_level": True,
+        "is_super_admin_profile": False,
+        "access_tags": sorted(list(ALL_TAG_KEYS)),
+    },
+    {
+        "key": "super_admin",
+        "name": "Super Admin",
+        "description": (
+            "Acesso TOTAL + privilégio exclusivo de atribuir/revogar "
+            "o próprio perfil Super Admin para outros usuários. "
+            "Use com extrema cautela."
+        ),
+        "is_seed": True,
+        "is_admin_level": True,
+        "is_super_admin_profile": True,
         "access_tags": sorted(list(ALL_TAG_KEYS)),
     },
 ]
 
 
 async def seed_default_profiles(company_id: str) -> dict:
-    """Cria os 4 perfis padrão no tenant se ainda não existirem (idempotente)."""
+    """Cria os perfis padrão no tenant se ainda não existirem (idempotente).
+
+    Também atualiza o flag `is_super_admin_profile` em seeds já existentes
+    para manter o estado consistente após upgrade da feature.
+    """
     created = 0
     skipped = 0
+    patched = 0
     for p in SEED_PROFILES:
         existing = await db.access_profiles.find_one(
             {"company_id": company_id, "key": p["key"]},
-            {"_id": 0, "id": 1},
+            {"_id": 0, "id": 1, "is_super_admin_profile": 1, "is_admin_level": 1},
         )
         if existing:
             skipped += 1
+            # Garante que o flag is_super_admin_profile esteja correto em seeds antigos.
+            patch: dict = {}
+            if existing.get("is_super_admin_profile") != p["is_super_admin_profile"]:
+                patch["is_super_admin_profile"] = p["is_super_admin_profile"]
+            if existing.get("is_admin_level") != p["is_admin_level"]:
+                patch["is_admin_level"] = p["is_admin_level"]
+            if patch:
+                await db.access_profiles.update_one(
+                    {"company_id": company_id, "key": p["key"]},
+                    {"$set": patch},
+                )
+                patched += 1
             continue
         doc = {
             "id": f"prof-{uuid.uuid4().hex[:10]}",
@@ -88,6 +124,7 @@ async def seed_default_profiles(company_id: str) -> dict:
             "description": p["description"],
             "is_seed": True,
             "is_admin_level": p["is_admin_level"],
+            "is_super_admin_profile": p["is_super_admin_profile"],
             "access_tags": sanitize_tags(p["access_tags"]),
             "created_at": datetime.now(timezone.utc).isoformat(),
             "created_by": "seed",
@@ -95,7 +132,12 @@ async def seed_default_profiles(company_id: str) -> dict:
         }
         await db.access_profiles.insert_one(doc)
         created += 1
-    return {"company_id": company_id, "created": created, "skipped": skipped}
+    return {
+        "company_id": company_id,
+        "created": created,
+        "skipped": skipped,
+        "patched": patched,
+    }
 
 
 async def get_profile(profile_id: str, company_id: str) -> Optional[dict]:
@@ -211,3 +253,40 @@ async def seed_all_tenants() -> dict:
         summary["tenants"] += 1
         summary["created_total"] += r["created"]
     return summary
+
+
+async def user_has_super_admin_profile(user: dict) -> bool:
+    """Verifica se o usuário está vinculado ao perfil seed 'Super Admin'.
+
+    Independente do flag legado `users.is_super_admin` (controlado pelo
+    grantor hardcoded). Esta função é usada para autorizar a ATRIBUIÇÃO
+    do perfil Super Admin a outros usuários.
+    """
+    if not user:
+        return False
+    pid = user.get("profile_id")
+    if not pid:
+        return False
+    cid = user.get("company_id")
+    if not cid:
+        return False
+    p = await db.access_profiles.find_one(
+        {"id": pid, "company_id": cid},
+        {"_id": 0, "is_super_admin_profile": 1, "key": 1},
+    )
+    if not p:
+        return False
+    return bool(p.get("is_super_admin_profile")) or p.get("key") == "super_admin"
+
+
+async def is_super_admin_profile_id(profile_id: str, company_id: str) -> bool:
+    """True se o profile_id referido é o seed Super Admin do tenant."""
+    if not profile_id or not company_id:
+        return False
+    p = await db.access_profiles.find_one(
+        {"id": profile_id, "company_id": company_id},
+        {"_id": 0, "is_super_admin_profile": 1, "key": 1},
+    )
+    if not p:
+        return False
+    return bool(p.get("is_super_admin_profile")) or p.get("key") == "super_admin"
