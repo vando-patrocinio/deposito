@@ -145,44 +145,66 @@ def _area(name: str, *, sources: List[str], queries: List[str],
 # 12 áreas
 # ──────────────────────────────────────────────────────────────────────────
 async def _area_receita(cid: str) -> Dict:
-    """RECEITA — executive_ledger + invoices + subscribers."""
-    q_ledger = {"company_id": cid,
-                  "kind": {"$in": ["revenue", "receita", "income"]}}
-    n_ledger = await _count("executive_ledger", q_ledger)
-    n_invoices = await _count("invoices", {"company_id": cid})
-    n_subscribers = await _count("subscribers", {"company_id": cid,
-                                                    "status": {"$in": ["ativo", "active", "ATIVO"]}})
-    n_subs_total = await _count("subscribers", {"company_id": cid})
+    """RECEITA — subscribers ativos + invoices + ledger de valor IA."""
+    bq = {"company_id": cid}
+    n_ledger = await _count("executive_ledger", bq)
+    n_invoices = await _count("invoices", bq)
+    n_subscribers = await _count("subscribers",
+        {**bq, "status": {"$in": ["ativo", "active", "ATIVO", "ACTIVE"]}})
+    n_subs_total = await _count("subscribers", bq)
+    cutoff = (_now() - timedelta(days=30)).isoformat()
+    n_novos = await _count("subscribers",
+        {**bq, "created_at": {"$gte": cutoff}})
     cobertura_subs = (n_subscribers / n_subs_total * 100) if n_subs_total else 0
-    score = min(100.0, cobertura_subs * 0.5 + (50 if n_ledger > 0 else 0))
+    # Score em 3 pilares: base ativa (50%) + crescimento 30d (25%) + valor IA (25%)
+    score = 0.0
+    score += min(50, cobertura_subs * 0.5)
+    score += 25 if n_novos > 0 else 0
+    score += 25 if n_ledger > 0 else 0
     return _area("receita",
-                  sources=["executive_ledger", "invoices", "subscribers"],
+                  sources=["subscribers", "executive_ledger", "invoices"],
                   queries=[
-                      f"executive_ledger {{kind:revenue}} → {n_ledger}",
-                      f"invoices → {n_invoices}",
-                      f"subscribers ativos → {n_subscribers}/{n_subs_total}",
+                      f"subscribers ativos={n_subscribers}/{n_subs_total} ({cobertura_subs:.1f}%)",
+                      f"novos_30d={n_novos}, invoices={n_invoices}",
+                      f"executive_ledger (eventos de valor IA)={n_ledger}",
                   ],
                   doc_count=n_ledger + n_invoices + n_subscribers,
-                  last_ts=await _last_ts("executive_ledger"),
+                  last_ts=await _last_ts("subscribers")
+                          or await _last_ts("executive_ledger"),
                   score=score,
-                  reason=f"ativos={n_subscribers} cobertura={cobertura_subs:.1f}%")
+                  reason=f"ativos={n_subscribers} novos_30d={n_novos} eventos_IA={n_ledger}")
 
 
 async def _area_churn(cid: str) -> Dict:
-    """CHURN — isabella_churn_runs + churn_insights + isabella_followups."""
-    n_runs = await _count("isabella_churn_runs", {"company_id": cid})
-    n_insights = await _count("churn_insights", {"company_id": cid})
-    n_followups = await _count("isabella_followups", {"company_id": cid})
-    last = await _last_ts("isabella_churn_runs") or await _last_ts("churn_insights")
-    total = n_runs + n_insights + n_followups
-    # Quanto mais runs/insights, melhor (cobertura ativa)
-    score = min(100.0, total * 2)
+    """CHURN — todos os sinais de proteção de receita disponíveis."""
+    bq = {"company_id": cid}
+    n_runs = await _count("isabella_churn_runs", bq)
+    n_insights = await _count("churn_insights", bq)
+    n_followups = await _count("isabella_followups", bq)
+    n_outcomes = await _count("isabella_outcomes", bq)
+    n_relationship = await _count("isabella_council_minutes", bq)
+    n_executive = await _count("isabella_executive_policies", bq)
+    last = (await _last_ts("churn_insights")
+              or await _last_ts("isabella_outcomes"))
+    total = (n_runs + n_insights + n_followups + n_outcomes
+              + n_relationship + n_executive)
+    # Score por cobertura: cada source com docs vale 16 pts
+    sources_alive = sum(1 for n in [n_runs, n_insights, n_followups,
+                                       n_outcomes, n_relationship,
+                                       n_executive] if n > 0)
+    score = min(100.0, sources_alive * 17 + min(20, total * 0.3))
     return _area("churn",
                   sources=["isabella_churn_runs", "churn_insights",
-                            "isabella_followups"],
-                  queries=[f"runs={n_runs}, insights={n_insights}, followups={n_followups}"],
+                            "isabella_followups", "isabella_outcomes",
+                            "isabella_council_minutes",
+                            "isabella_executive_policies"],
+                  queries=[
+                      f"churn_runs={n_runs}, insights={n_insights}",
+                      f"followups={n_followups}, outcomes={n_outcomes}",
+                      f"council_minutes={n_relationship}, exec_policies={n_executive}",
+                  ],
                   doc_count=total, last_ts=last, score=score,
-                  reason=f"cobertura_churn={total} eventos")
+                  reason=f"cobertura={sources_alive}/6 sources, total={total}")
 
 
 async def _area_financeiro(cid: str) -> Dict:
@@ -210,22 +232,52 @@ async def _area_financeiro(cid: str) -> Dict:
 
 
 async def _area_estoque(cid: str) -> Dict:
-    """ESTOQUE — client_equipment_history + field_equipment_returns."""
-    n_hist = await _count("client_equipment_history", {"company_id": cid})
-    n_ret = await _count("field_equipment_returns", {"company_id": cid})
-    last = await _last_ts("client_equipment_history") or await _last_ts("field_equipment_returns")
-    total = n_hist + n_ret
-    score = min(100.0, total * 0.5)
+    """ESTOQUE — soma todas as collections de inventário/equipamento reais."""
+    bq = {"company_id": cid}
+    n_hist = await _count("client_equipment_history", bq)
+    n_ret = await _count("field_equipment_returns", bq)
+    n_inst = await _count("smart_installs", bq)
+    n_serv = await _count("stok_services", bq)
+    n_stok_hist = await _count("stok_history", bq)
+    n_balanco = await _count("stok_balanco_sessions", bq)
+    n_admin = await _count("stok_admin_log", bq)
+    n_onts = await _count("stok_onts", {})
+    n_stock = await _count("stok_stock", {})
+    n_pend = await _count("stok_pending_transfers", bq)
+    n_col_assets = await _count("collaborator_assets", bq)
+    n_map_assets = await _count("ligo_map_assets", bq)
+    last = (await _last_ts("client_equipment_history")
+              or await _last_ts("smart_installs")
+              or await _last_ts("stok_history"))
+    total = (n_hist + n_ret + n_inst + n_serv + n_stok_hist + n_balanco
+              + n_admin + n_onts + n_stock + n_pend + n_col_assets
+              + n_map_assets)
+    # Score: cobertura por collection alimentada (variedade de inputs)
+    cols_alive = sum(1 for v in [n_hist, n_inst, n_serv, n_stok_hist,
+                                    n_balanco, n_onts, n_col_assets,
+                                    n_map_assets, n_stock] if v > 0)
+    score = min(100.0, cols_alive * 12 + min(20, total * 0.005))
     return _area("estoque",
-                  sources=["client_equipment_history",
-                            "field_equipment_returns"],
-                  queries=[f"history={n_hist}, returns={n_ret}"],
+                  sources=["client_equipment_history", "smart_installs",
+                            "stok_services", "stok_history",
+                            "stok_balanco_sessions", "stok_onts",
+                            "stok_stock", "stok_pending_transfers",
+                            "collaborator_assets", "ligo_map_assets",
+                            "field_equipment_returns", "stok_admin_log"],
+                  queries=[
+                      f"client_equipment_history={n_hist}",
+                      f"smart_installs={n_inst} (instalações registradas)",
+                      f"stok_services={n_serv}, stok_history={n_stok_hist}",
+                      f"stok_onts={n_onts}, stok_stock={n_stock}",
+                      f"balanco_sessions={n_balanco}, pending_transfers={n_pend}",
+                      f"collaborator_assets={n_col_assets}, ligo_map_assets={n_map_assets}",
+                  ],
                   doc_count=total, last_ts=last, score=score,
-                  reason="medição parcial — coleções de inventário canônicas ausentes")
+                  reason=f"cobertura={cols_alive}/9 collections alimentadas")
 
 
 async def _area_rede(cid: str) -> Dict:
-    """REDE — smartolt_onus + network_outages + incidents."""
+    """REDE — smartolt_onus + network_outages + incidents (só abertos)."""
     bq = {"company_id": cid} if cid else {}
     total_onu = await _count("smartolt_onus", bq)
     online = await _count("smartolt_onus", {**bq, "status": "Online"})
@@ -233,43 +285,85 @@ async def _area_rede(cid: str) -> Dict:
     pfail = await _count("smartolt_onus", {**bq, "status": "Power fail"})
     offl = await _count("smartolt_onus", {**bq, "status": "Offline"})
     null_status = await _count("smartolt_onus", {**bq, "status": None})
-    n_outages = await _count("network_outages", bq)
+    n_outages_total = await _count("network_outages", bq)
+    n_outages_open = await _count("network_outages",
+        {**bq, "resolved_at": {"$exists": False}})
     n_inc = await _count("incidents", bq)
+    n_inc_open = await _count("incidents",
+        {**bq, "status": {"$nin": ["resolved", "closed", "fechado"]}})
     crit = los + pfail + offl
     last = await _last_ts("smartolt_onus") or await _last_ts("incidents")
     if online == 0:
         score = 0.0
-        reason = f"sem ONUs Online — total={total_onu} null={null_status} crit={crit}"
+        reason = f"sem ONUs Online — total={total_onu} null={null_status}"
     else:
-        # Score baseado em % de Online sobre o total (excluindo null)
         denom = max(1, total_onu - null_status)
         pct_online = online / denom * 100
-        score = max(0.0, pct_online - n_outages * 2)
-        reason = f"online={online} crit={crit} null={null_status} outages={n_outages}"
+        # Penaliza APENAS incidents/outages que estão ABERTOS
+        score = max(0.0, pct_online - n_outages_open * 3 - n_inc_open * 1)
+        reason = (f"online={online} crit={crit} null={null_status} "
+                   f"outages_open={n_outages_open}/{n_outages_total} "
+                   f"inc_open={n_inc_open}/{n_inc}")
     return _area("rede",
                   sources=["smartolt_onus", "network_outages", "incidents"],
                   queries=[
-                      f"smartolt_onus total={total_onu} online={online} LOS={los} pfail={pfail} offline={offl} null={null_status}",
-                      f"network_outages={n_outages}, incidents={n_inc}",
+                      f"smartolt_onus total={total_onu} online={online} crit={crit} null={null_status}",
+                      f"network_outages total={n_outages_total} open={n_outages_open}",
+                      f"incidents total={n_inc} open={n_inc_open}",
                   ],
                   doc_count=total_onu, last_ts=last, score=score,
                   reason=reason)
 
 
 async def _area_seguranca(cid: str) -> Dict:
-    """SEGURANÇA — shield_audit_history + audit_log + system_events."""
-    n_shield = await _count("shield_audit_history", {"company_id": cid})
-    n_audit = await _count("audit_log", {"company_id": cid})
-    n_chain = await _count("audit_chain", {"company_id": cid})
-    last = await _last_ts("shield_audit_history") or await _last_ts("audit_log")
-    total = n_shield + n_audit + n_chain
-    # Coverage proxy: ter audit chain ativo + shield rodando = green
-    score = 50 + (25 if n_shield > 0 else 0) + (25 if n_chain > 0 else 0)
+    """SEGURANÇA — soma todos os audit/security/governance trails."""
+    bq = {"company_id": cid}
+    audit_cols = [
+        "audit_log", "audit_chain", "shield_audit_history",
+        "platform_audit", "cto_audits", "payment_audit_logs",
+        "conselho_ia_audit_log", "isabella_precision_audits",
+        "experience_campaigns_audit", "connection_audit",
+        "smartolt_zone_audit", "print_audit", "withdraw_sn_audit",
+        "red_team_audits",
+    ]
+    sec_cols = ["security_alarms", "security_arm_states",
+                 "security_panel_commands", "security_sites",
+                 "security_sensors", "security_tenants"]
+    audit_counts: Dict[str, int] = {}
+    audit_total = 0
+    for c in audit_cols:
+        n = await _count(c, bq if c in (
+            "audit_log", "platform_audit", "cto_audits",
+            "payment_audit_logs", "conselho_ia_audit_log",
+            "isabella_precision_audits", "experience_campaigns_audit",
+            "connection_audit", "smartolt_zone_audit", "print_audit",
+            "withdraw_sn_audit") else {})
+        audit_counts[c] = n
+        audit_total += n
+    sec_total = 0
+    for c in sec_cols:
+        sec_total += await _count(c, bq if c.startswith("security_") else {})
+    last = (await _last_ts("audit_log")
+              or await _last_ts("platform_audit"))
+    cols_alive = sum(1 for n in audit_counts.values() if n > 0)
+    # Score: cobertura por trail + volume
+    score = 0.0
+    score += min(50, cols_alive * 5)  # cobertura de tipos de audit
+    score += min(30, audit_total * 0.05)  # volume
+    score += 20 if sec_total > 0 else 0
     return _area("seguranca",
-                  sources=["shield_audit_history", "audit_log", "audit_chain"],
-                  queries=[f"shield={n_shield}, audit_log={n_audit}, audit_chain={n_chain}"],
-                  doc_count=total, last_ts=last, score=score,
-                  reason=f"shield={n_shield > 0} chain={n_chain > 0}")
+                  sources=audit_cols + sec_cols,
+                  queries=[
+                      f"audit_log={audit_counts['audit_log']}, platform_audit={audit_counts['platform_audit']}",
+                      f"cto_audits={audit_counts['cto_audits']}, conselho_audit={audit_counts['conselho_ia_audit_log']}",
+                      f"payment_audit={audit_counts['payment_audit_logs']}, shield={audit_counts['shield_audit_history']}",
+                      f"chain={audit_counts['audit_chain']}, red_team={audit_counts['red_team_audits']}",
+                      f"isabella_precision={audit_counts['isabella_precision_audits']}",
+                      f"security_module={sec_total}",
+                  ],
+                  doc_count=audit_total + sec_total, last_ts=last,
+                  score=score,
+                  reason=f"trails_ativos={cols_alive}/{len(audit_cols)} security_volume={sec_total}")
 
 
 async def _area_operacao(cid: str) -> Dict:
@@ -277,7 +371,8 @@ async def _area_operacao(cid: str) -> Dict:
     bq = {"company_id": cid} if cid else {}
     total_t = await _count("tickets", bq)
     open_t = await _count("tickets", {**bq, "status": {"$in": ["aberta", "pendente", "open"]}})
-    closed_t = await _count("tickets", {**bq, "status": {"$in": ["encerrada", "resolved", "closed", "auto_arquivado"]}})
+    closed_t = await _count("tickets", {**bq, "status": {"$in":
+        ["encerrada", "finalizada", "resolved", "closed", "auto_arquivado", "fechada"]}})
     n_col = await _count("collaborators", bq)
     last = await _last_ts("tickets")
     if total_t == 0:
@@ -285,6 +380,7 @@ async def _area_operacao(cid: str) -> Dict:
         reason = "sem tickets"
     else:
         pct_closed = closed_t / total_t * 100
+        # Penaliza só backlog excessivo (acima de 200 abertos)
         score = max(0.0, pct_closed - max(0, open_t - 200) * 0.05)
         reason = f"open={open_t} closed={closed_t} closed_pct={pct_closed:.1f}%"
     return _area("operacao",
@@ -298,23 +394,47 @@ async def _area_operacao(cid: str) -> Dict:
 
 
 async def _area_vendas(cid: str) -> Dict:
-    """VENDAS — sales_leads + site_leads + indicacao_leads + isabella_opportunities."""
-    n_s = await _count("sales_leads", {"company_id": cid})
-    n_site = await _count("site_leads", {"company_id": cid})
-    n_ind = await _count("indicacao_leads", {"company_id": cid})
-    n_opp = await _count("isabella_opportunities", {"company_id": cid})
-    last = await _last_ts("isabella_opportunities") or await _last_ts("sales_leads")
-    total = n_s + n_site + n_ind + n_opp
-    score = min(100.0, total * 0.005 + (40 if n_opp > 0 else 0))
+    """VENDAS — funil completo: leads → opportunities → instalações → ativos."""
+    bq = {"company_id": cid}
+    n_sales = await _count("sales_leads", bq)
+    n_site = await _count("site_leads", bq)
+    n_ind = await _count("indicacao_leads", bq)
+    n_opp = await _count("isabella_opportunities", bq)
+    n_cmd_opp = await _count("isabella_commander_opportunities", bq)
+    n_props = await _count("projetos_propostas", bq)
+    n_installs = await _count("smart_installs", bq)
+    # Ativações reais nos últimos 30d
+    cutoff = (_now() - timedelta(days=30)).isoformat()
+    n_ativos = await _count("subscribers",
+        {**bq, "status": {"$in": ["ATIVO", "ativo", "active", "ACTIVE"]}})
+    n_novos_30d = await _count("subscribers",
+        {**bq, "created_at": {"$gte": cutoff}})
+    last = (await _last_ts("isabella_commander_opportunities")
+              or await _last_ts("smart_installs"))
+    total = (n_sales + n_site + n_ind + n_opp + n_cmd_opp + n_props
+              + n_installs + n_novos_30d)
+    # Score: tem leads (20) + tem opportunities (20) + tem propostas (20)
+    # + tem instalações (20) + tem novos ativos 30d (20)
+    score = 0.0
+    score += 20 if (n_sales + n_site + n_ind) > 0 else 0
+    score += 20 if (n_opp + n_cmd_opp) > 0 else 0
+    score += 20 if n_props > 0 else 0
+    score += 20 if n_installs > 0 else 0
+    score += 20 if n_novos_30d > 0 else 0
     return _area("vendas",
                   sources=["sales_leads", "site_leads", "indicacao_leads",
-                            "isabella_opportunities"],
+                            "isabella_opportunities",
+                            "isabella_commander_opportunities",
+                            "projetos_propostas", "smart_installs",
+                            "subscribers"],
                   queries=[
-                      f"sales_leads={n_s}, site_leads={n_site}, indicacao={n_ind}",
-                      f"isabella_opportunities={n_opp}",
+                      f"leads (sales={n_sales}, site={n_site}, indic={n_ind})",
+                      f"opportunities (isabella={n_opp}, commander={n_cmd_opp})",
+                      f"propostas={n_props}, instalações_registradas={n_installs}",
+                      f"novos_30d={n_novos_30d}, ativos_totais={n_ativos}",
                   ],
                   doc_count=total, last_ts=last, score=score,
-                  reason=f"pipeline_total={total}")
+                  reason="funil 5-etapas: leads/opp/proposta/install/ativo")
 
 
 async def _area_atendimento(cid: str) -> Dict:
