@@ -7734,3 +7734,11 @@ Para destravar: apontar Isabella pra company de PRODUÇÃO real (não preview/pi
 e aguardar 7 dias úteis pra mensurar.
 
 Relatório: `/app/docs/RELATORIO_RELACIONAMENTO_360.md`
+
+---
+## 2026-06 — Isabella V13 criada (PREVIEW, aguardando revisão do CTO)
+- Criado `/app/backend/prompts/isabella_v13.md` (382 linhas) — prompt de ciclo completo: venda → reparo → pós-reparo.
+- Correções vs V12: contrato de saída em bolhas-aspas (compatível com `_split_ai_reply`), documentação dos blocos `===` injetados em runtime, markers reais do sistema ([ROTEAR_SUPORTE], [CHURN_RISK], etc.), trilha REPARO com triagem/reincidência/pós-reparo, 7 few-shots + 1 contra-exemplo, ZERO preços hardcoded.
+- Escopo autorizado pelo CTO: reparo completo (acolher + follow-up + oportunidade discreta), preços só via blocos dinâmicos/fragments, few-shots completos.
+- NÃO aplicado no banco. Aguardando: revisão do CTO → aplicar no co-demo (PREVIEW) → testar via /isabella/test → deploy PROD.
+- PENDENTE relacionado: fragments default em `isabella_prompt.py` ainda têm preços hardcoded (R$109, R$29,90...) — corrigir quando autorizado.
