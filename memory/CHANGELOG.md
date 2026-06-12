@@ -7762,3 +7762,11 @@ Relatório: `/app/docs/RELATORIO_RELACIONAMENTO_360.md`
 - **Sandboxes validados com LLM real**: Isabella citou 600/700 Mega com preços exatos da tabela; Álvaro seguiu protocolos ONLINE (reboot) e LOS (agenda com slots reais da Lousa).
 - **Deploy readiness: PASS** após mover OWNER_PASSWORD hardcoded de auth.py para backend/.env (OWNER_PASSWORD=Vs5879@@@; seed pula owner se env ausente). test_iter206 atualizado.
 - **RCA Baileys PROD (P0)**: sidecar Baileys é um processo Node extra do supervisor (whatsapp-service, porta 3002) + isabella-workers — o deploy gerenciado da Emergent sobe SÓ backend+frontend, logo WA_SIDECAR_URL=http://localhost:3002 é inalcançável em PROD. Não é bug de código: é arquitetura. Solução proposta: hospedar o sidecar em VPS próprio e apontar WA_SIDECAR_URL/WA_SIDECAR_TOKEN do PROD pra ele. AGUARDANDO AUTORIZAÇÃO DO CTO.
+
+---
+## 2026-06-12 (parte 3) — Porta de entrada única (Isabella) + proteção da marca na cobrança
+- AUTORIZADO pelo CTO (opção A + salvaguarda): Isabella é a 1ª linha/default do WhatsApp, mas NUNCA atende cobrança (proteger a marca Isabella do atrito).
+- Mudanças: (1) routing_intent da Isabella reescrito SEM termos financeiros (antes continha 'boleto/desbloqueio/FINANCEIRO' e ela GANHAVA mensagens de cobrança); (2) agente 'Vendas' DESATIVADO (disputava plano/preço com a Isabella e tinha prompt antigo); (3) wa_autoreply_config.agent_name='Isabella' (fallback antes era Jerusa); (4) _COBRANCA_STRONG reforçado (meu/minha boleto|fatura, venceu/vencida, pagar mensalidade) — handoff pré-LLM pra Pâmela mesmo no meio da conversa.
+- Testado: roteamento inicial 6/6 (oi→Isabella, plano→Isabella, fatura→Pâmela, sem net→Alvaro, bloqueio pagamento→Pâmela, cobertura→Isabella); handoff meio-de-conversa 6/6 (sem falso-positivo pra 'posso pagar no boleto quando contratar?'); pytest 15/15.
+- ⚠️ CONFLITO ARQUITETURAL DESCOBERTO (pendente de decisão do CTO): edição manual do prompt pela UI é SOBRESCRITA pelo arquivo .md no próximo restart do backend (prompt_loader compara sha). Opções: (a) loader respeita prompt_version 'manual-*' até resync explícito; (b) arquivo sempre vence (atual). Nenhuma alteração feita sem autorização.
+- NÃO feitos (não autorizados): badges no dropdown (B), simulador 'quem responde?' (C), saneamento do company_info contraditório Wi-Fi5/instalação grátis (D).

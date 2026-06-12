@@ -198,8 +198,12 @@ class TestAgentRenameMongo:
         assert pamela is not None, "Agente 'Pâmela' não criado"
         assert pamela.get("prompt_source_file") == "pamela_v2.md", \
             f"prompt_source_file errado: {pamela.get('prompt_source_file')}"
-        assert isabella is not None and isabella.get("prompt_version") == "V13_CICLO_COMPLETO", \
-            f"Isabella prompt_version errado: {isabella.get('prompt_version') if isabella else None}"
+        # prompt_version pode ser V13 (arquivo) OU manual-* (edição
+        # legítima do gestor pela UI — versionada em isabella_prompt_history)
+        _iv = (isabella or {}).get("prompt_version") or ""
+        assert isabella is not None and (
+            _iv == "V13_CICLO_COMPLETO" or _iv.startswith("manual-")), \
+            f"Isabella prompt_version errado: {_iv}"
         assert alvaro is not None and alvaro.get("prompt_version") == "V2", \
             f"Alvaro prompt_version errado: {alvaro.get('prompt_version') if alvaro else None}"
 
