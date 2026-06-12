@@ -172,7 +172,7 @@ async def lifecycle_health(user: dict = Depends(require_role("gestor"))):
 
     # Pega TODOS os tickets ativos (não terminais) do tenant
     active_states = ["draft", "ready_for_dispatch", "assigned", "accepted",
-                       "en_route", "in_progress", "pending"]
+                       "en_route", "in_progress", "pending", "qa_review"]
     cursor = db.tickets.find(
         {"company_id": cid, "lifecycle_state": {"$in": active_states}},
         {"_id": 0, "id": 1, "lifecycle_state": 1, "work_type": 1,

@@ -2,7 +2,49 @@
 
 > Documento vivo. Atualizado a cada sprint.
 
-## ✨ Feature: FSM Lifecycle P1 — SLA + Health Dashboard (12/06/2026 · CTO)
+## ✨ Feature: FSM Lifecycle P1 Completo — GPS + Timeline + QA + TTL (12/06/2026 · CTO)
+
+**Restante do P1 implementado nesta etapa:**
+
+### 1) Estados `en_route` + `on_site` com GPS auto-detection
+- **`services/os_gps_tracking.py`** (NOVO): `check_collaborator_progress(cid, col_id, lat, lng)` avalia OSs atribuídas/aceitas/en_route do técnico contra distância Haversine.
+- Limites: `ON_SITE_RADIUS_M=80m` (chega → in_progress), `EN_ROUTE_RADIUS_M=5000m` (entra no raio → en_route).
+- Hook em `routes/fleet_tracking.py` (`POST /api/fleet/positions`): cada nova posição GPS do veículo dispara `check_collaborator_progress` automático.
+- Idempotente: não regredi estado, força transição com `force=True` (assigned→in_progress é direto sem precisar passar por accepted+en_route).
+
+### 2) Estado QA Review
+- Novo estado canônico `qa_review` (rosa #ec4899) — supervisor revisa OS antes de fechar.
+- Transição: `in_progress → qa_review → completed/closed_incomplete/in_progress`.
+- SLA padrão: 4-8h por work_type pra supervisor revisar.
+- Sync legacy: `qa_review → status='aberta'`.
+
+### 3) TTL auto-cancel rodando automático
+- Hook em `executive_scheduler._tick_1h`: roda `auto_cancel_stale_preventive(days=7)` em TODOS os tenants a cada hora.
+- Cancela preventivas em `ready_for_dispatch`/`assigned` há mais de 7 dias com `reason_code='sla_expired'`.
+- Resultado é logado: `[scheduler] TTL preventive TOTAL canceled=N`.
+
+### 4) Frontend Timeline component
+- **`lousa/LifecycleTimeline.jsx`** (NOVO): componente reutilizável. Recebe `ticketId` prop e mostra:
+  - Header com estado atual (badge colorido) + reason_code + SLA atual (% usado, breach/warning/ok com cor).
+  - Timeline vertical com bolinhas coloridas por estado.
+  - Cada evento mostra: novo estado → de qual estado, reason, ator, timestamp, notas.
+  - Badge "FORÇADO" em transições com `force=true`.
+  - data-testid: `lifecycle-timeline-{ticketId}`.
+
+### 5) Wizard mobile `swap` (PENDENTE — separado pra próxima sessão)
+Esse precisa UX research no Lousa Mobile (decidir tela única vs 2 abas, validação de SN antigo+novo, fotos before/after). Deixei o estado `swap` pronto no backend pra quando o wizard chegar.
+
+### Validação real
+- Catalog retorna **11 estados** (era 9 com P0).
+- Timeline da nota TESTE Atlaz: sla=69.8% usado (167min/240min, sem breach).
+- Transição `assigned → accepted` testada via curl, history gravado com ator + timestamp + notes.
+- Revertida no DB (transição era teste).
+
+**Files novos:** `services/os_gps_tracking.py`, `lousa/LifecycleTimeline.jsx`.
+**Files editados:** `services/os_lifecycle.py` (+qa_review), `services/os_sla.py` (+qa_review SLAs), `services/executive_scheduler.py` (+TTL hook), `routes/os_lifecycle.py` (+qa_review em active_states), `routes/fleet_tracking.py` (+GPS hook).
+
+---
+
 
 **P1 implementado em cima da fundação P0:**
 

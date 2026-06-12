@@ -40,6 +40,7 @@ LIFECYCLE_STATES: List[Dict[str, Any]] = [
     {"key": "en_route",           "label": "A caminho",          "color": "#a855f7", "is_terminal": False, "is_active": True},
     {"key": "in_progress",        "label": "Em execução",        "color": "#0d9488", "is_terminal": False, "is_active": True},
     {"key": "pending",            "label": "Em espera",          "color": "#f59e0b", "is_terminal": False, "is_active": True},
+    {"key": "qa_review",          "label": "Em revisão (QA)",    "color": "#ec4899", "is_terminal": False, "is_active": True},
     {"key": "completed",          "label": "Concluída",          "color": "#16a34a", "is_terminal": True,  "is_active": False},
     {"key": "closed_incomplete",  "label": "Encerrada s/ êxito", "color": "#dc2626", "is_terminal": True,  "is_active": False},
     {"key": "canceled",           "label": "Cancelada",          "color": "#64748b", "is_terminal": True,  "is_active": False},
@@ -102,8 +103,9 @@ ALLOWED_TRANSITIONS: Dict[str, set] = {
     "assigned":           {"accepted", "ready_for_dispatch", "canceled"},
     "accepted":           {"en_route", "in_progress", "assigned", "canceled"},
     "en_route":           {"in_progress", "pending", "canceled"},
-    "in_progress":        {"pending", "completed", "closed_incomplete", "canceled"},
+    "in_progress":        {"qa_review", "pending", "completed", "closed_incomplete", "canceled"},
     "pending":            {"in_progress", "closed_incomplete", "canceled"},
+    "qa_review":          {"completed", "in_progress", "closed_incomplete"},
     "completed":          {"in_progress"},  # apenas para reabertura (auditoria)
     "closed_incomplete":  {"in_progress"},
     "canceled":           {"ready_for_dispatch"},  # ressuscitar com auditoria
@@ -264,6 +266,8 @@ async def transition(
     elif to_state in ("closed_incomplete", "canceled"):
         update["status"] = "encerrada"
     elif to_state == "in_progress":
+        update["status"] = "aberta"
+    elif to_state == "qa_review":
         update["status"] = "aberta"
     elif to_state in ("draft", "ready_for_dispatch", "assigned",
                        "accepted", "en_route", "pending"):

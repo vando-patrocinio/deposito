@@ -294,6 +294,17 @@ async def ingest_position(
     # Avalia alertas (speed, geofence)
     await _evaluate_alerts(veh, doc)
 
+    # CTO P1 12/06/2026 — GPS auto-detection de en_route/on_site
+    try:
+        col_id = veh.get("collaborator_id") or veh.get("driver_id")
+        if col_id:
+            from services.os_gps_tracking import check_collaborator_progress
+            await check_collaborator_progress(
+                veh["company_id"], col_id, pos.lat, pos.lng,
+            )
+    except Exception as _gps_e:  # noqa: BLE001
+        logger.warning("[fleet] os gps tracking falhou: %s", _gps_e)
+
     return {"ok": True, "vehicle_id": veh["id"]}
 
 

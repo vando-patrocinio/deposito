@@ -150,6 +150,24 @@ async def _tick_1h() -> None:
                        len(stats))
     except Exception as e:
         log.exception("scheduler 1h feedback_loop: %s", e)
+    # CTO P1 12/06/2026 — TTL auto-cancel preventivas paradas há 7+ dias
+    try:
+        from services.os_lifecycle import auto_cancel_stale_preventive
+        from database import db as _db
+        tenants = await _db.tickets.distinct("company_id")
+        ttl_total = 0
+        for cid in tenants:
+            if not cid:
+                continue
+            r = await auto_cancel_stale_preventive(_db, cid, days=7)
+            if r.get("canceled"):
+                ttl_total += r["canceled"]
+                log.info("[scheduler] TTL preventive %s: canceled=%d",
+                          cid, r["canceled"])
+        if ttl_total:
+            log.info("[scheduler] TTL preventive TOTAL canceled=%d", ttl_total)
+    except Exception as e:
+        log.exception("scheduler 1h TTL preventive: %s", e)
 
 
 async def _tick_6h() -> None:

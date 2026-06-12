@@ -18,6 +18,7 @@ SLA_MATRIX_MIN: Dict[str, Dict[str, int]] = {
         "en_route": 90,               # 90min máx no trajeto
         "in_progress": 240,           # 4h de execução
         "pending": 2880,              # 2 dias bloqueado é o limite
+        "qa_review": 480,             # 8h pra supervisor revisar
     },
     "repair": {
         "ready_for_dispatch": 60,     # 1h — reparo é urgente
@@ -26,6 +27,7 @@ SLA_MATRIX_MIN: Dict[str, Dict[str, int]] = {
         "en_route": 60,
         "in_progress": 120,           # 2h
         "pending": 720,               # 12h
+        "qa_review": 240,
     },
     "pickup": {
         "ready_for_dispatch": 240,
@@ -34,6 +36,7 @@ SLA_MATRIX_MIN: Dict[str, Dict[str, int]] = {
         "en_route": 90,
         "in_progress": 60,            # retirada é rápida
         "pending": 2880,
+        "qa_review": 240,
     },
     "swap": {
         "ready_for_dispatch": 120,
@@ -42,6 +45,7 @@ SLA_MATRIX_MIN: Dict[str, Dict[str, int]] = {
         "en_route": 60,
         "in_progress": 180,
         "pending": 1440,
+        "qa_review": 480,
     },
     "preventive": {
         "ready_for_dispatch": 10080,  # 7 dias
@@ -50,6 +54,7 @@ SLA_MATRIX_MIN: Dict[str, Dict[str, int]] = {
         "en_route": 120,
         "in_progress": 120,
         "pending": 4320,              # 3 dias
+        "qa_review": 1440,
     },
     "inspection": {
         "ready_for_dispatch": 4320,
@@ -58,6 +63,7 @@ SLA_MATRIX_MIN: Dict[str, Dict[str, int]] = {
         "en_route": 90,
         "in_progress": 60,
         "pending": 2880,
+        "qa_review": 1440,
     },
     "outage_auto": {
         "ready_for_dispatch": 15,     # crítico
@@ -66,6 +72,7 @@ SLA_MATRIX_MIN: Dict[str, Dict[str, int]] = {
         "en_route": 30,
         "in_progress": 60,
         "pending": 60,
+        "qa_review": 120,
     },
 }
 
