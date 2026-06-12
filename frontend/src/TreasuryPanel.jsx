@@ -1,27 +1,21 @@
 /**
- * TreasuryPanel.jsx — Painel Contas a Pagar (iter236).
- * Reformado com base nas melhores práticas Bill.com / Conta Azul / Tipalti:
- *   - Header com KPIs principais (saldo, vencidos, vencem hoje, pagos)
- *   - Banner de ambiente (sandbox/produção + kill-switch)
- *   - Tabs: Inbox DDA | A Pagar | Recorrências | Contas
- *
- * Ações disponíveis a partir das tabs:
- *   - Aprovar / Rejeitar boleto DDA → vira pagamento agendado
- *   - Criar pagamento manual (Pix por chave/telefone OU boleto)
- *   - Criar recorrência (início/fim/valor total → N parcelas auto)
- *   - Enviar comprovante WhatsApp ("by SmartProv")
- *   - Definir conta padrão
+ * TreasuryPanel.jsx — Painel Contas a Pagar (iter237).
+ * Mudanças vs iter236:
+ *  - KPIs agora respeitam o mês selecionado (seletor no header)
+ *  - Banner com saldo Asaas + ambiente
  */
 import React, { useEffect, useState } from "react";
 import {
   Inbox, Banknote, Repeat, Wallet, ShieldCheck, ShieldAlert,
-  TrendingDown, AlertTriangle, Clock,
+  TrendingDown, AlertTriangle, Clock, CheckCircle2, ChevronLeft, ChevronRight,
 } from "lucide-react";
 import InboxDDA from "./treasury/InboxDDA";
 import PaymentsList from "./treasury/PaymentsList";
 import RecurringList from "./treasury/RecurringList";
 import AccountsList from "./treasury/AccountsList";
-import { treasuryApi, C, BRL } from "./treasury/api";
+import {
+  treasuryApi, C, BRL, monthLabel, currentMonth, addMonths,
+} from "./treasury/api";
 
 const TABS = [
   { id: "dda", label: "Inbox DDA", icon: Inbox },
@@ -33,30 +27,53 @@ const TABS = [
 export default function TreasuryPanel() {
   const [tab, setTab] = useState("dda");
   const [safety, setSafety] = useState(null);
-  const [kpis, setKpis] = useState(null);
+  const [kpisMonth, setKpisMonth] = useState(null);
+  const [month, setMonth] = useState(currentMonth());
   const [refreshKey, setRefreshKey] = useState(0);
 
   const loadHeader = async () => {
     try {
       const [s, k] = await Promise.all([
         treasuryApi.safety(),
-        treasuryApi.kpis(),
+        treasuryApi.kpisByMonth(month),
       ]);
-      setSafety(s); setKpis(k);
+      setSafety(s); setKpisMonth(k);
     } catch (e) { console.warn("treasury header load:", e); }
   };
-  useEffect(() => { loadHeader(); }, [refreshKey]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { loadHeader(); }, [refreshKey, month]);
 
   return (
     <div data-testid="treasury-panel" style={{ background: C.bg,
       minHeight: "100vh", color: C.text, padding: 24 }}>
-      {/* Banner segurança */}
       <SafetyBanner safety={safety} />
 
-      {/* KPIs */}
-      <KPIRow kpis={kpis} safety={safety} />
+      {/* Seletor de mês KPIs */}
+      <div data-testid="kpi-month-selector" style={{
+        display: "flex", justifyContent: "space-between", alignItems: "center",
+        marginBottom: 12, gap: 10,
+      }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <button data-testid="kpi-month-prev"
+            onClick={() => setMonth(addMonths(month, -1))}
+            style={btnNav}><ChevronLeft size={14}/></button>
+          <input type="month" data-testid="kpi-month-input" value={month}
+            onChange={(e) => setMonth(e.target.value)} style={monthInput}/>
+          <button data-testid="kpi-month-next"
+            onClick={() => setMonth(addMonths(month, +1))}
+            style={btnNav}><ChevronRight size={14}/></button>
+          <strong style={{ color: C.text, marginLeft: 6, fontSize: 13 }}>
+            KPIs de {monthLabel(month)}
+          </strong>
+        </div>
+        <button data-testid="kpi-month-now"
+          onClick={() => setMonth(currentMonth())} style={btnGhost}>
+          Mês atual
+        </button>
+      </div>
 
-      {/* Tabs */}
+      <KPIRow kpisMonth={kpisMonth} safety={safety} />
+
       <div data-testid="treasury-tabs"
         style={{ display: "flex", gap: 6, marginTop: 20, marginBottom: 0,
           borderBottom: `1px solid ${C.border}` }}>
@@ -95,9 +112,7 @@ function SafetyBanner({ safety }) {
   if (!safety) return null;
   const isProd = safety.is_production;
   const ready = safety.prod_ready;
-  const bg = isProd
-    ? (ready ? "#064e3b" : "#7c2d12")
-    : "#1e3a8a";
+  const bg = isProd ? (ready ? "#064e3b" : "#7c2d12") : "#1e3a8a";
   const Icon = (isProd && ready) ? ShieldCheck : ShieldAlert;
   const label = isProd
     ? (ready ? "PRODUÇÃO ATIVA" : "PRODUÇÃO — KILL-SWITCH DESLIGADO")
@@ -124,29 +139,33 @@ function SafetyBanner({ safety }) {
   );
 }
 
-function KPIRow({ kpis, safety }) {
-  if (!kpis) return null;
-  const saldo = (kpis.saldo_asaas && typeof kpis.saldo_asaas === "object")
-    ? (kpis.saldo_asaas.balance ?? 0) : (kpis.saldo_asaas ?? 0);
+function KPIRow({ kpisMonth, safety }) {
+  const t = kpisMonth?.totals || {};
+  const c = kpisMonth?.counts || {};
   return (
     <div data-testid="treasury-kpis" style={{
       display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 12,
     }}>
-      <KPI label="Saldo Asaas" value={BRL(safety?.has_asaas_key ? saldo : 0)}
-        icon={Wallet} color={C.green} testid="kpi-saldo"/>
-      <KPI label="Próximos 7 dias" value={BRL(kpis.outflow_forecast?.["7d"] || 0)}
-        icon={Clock} color={C.blue} testid="kpi-7d"/>
-      <KPI label="Aguarda CTO" value={BRL(kpis.pending_approval || 0)}
-        icon={AlertTriangle} color={C.amber} testid="kpi-pending"/>
-      <KPI label="Pagos hoje" value={BRL(kpis.today_paid || 0)}
-        icon={TrendingDown} color={C.green} testid="kpi-paid"/>
-      <KPI label="Bloqueados (risco)" value={BRL(kpis.blocked_risk || 0)}
+      <KPI label="A Pagar (mês)" value={BRL(t.pending || 0)}
+        sub={`${c.pending || 0} pendentes`}
+        icon={Clock} color={C.blue} testid="kpi-pending"/>
+      <KPI label="Pagos (mês)" value={BRL(t.paid || 0)}
+        sub={`${c.paid || 0} pagos`}
+        icon={CheckCircle2} color={C.green} testid="kpi-paid"/>
+      <KPI label="Vencidos no mês" value={BRL(t.overdue || 0)}
+        sub="aguardando ação"
+        icon={AlertTriangle} color={C.amber} testid="kpi-overdue"/>
+      <KPI label="Bloqueados (risco)" value={BRL(t.blocked || 0)}
+        sub="auditoria IA"
         icon={ShieldAlert} color={C.red} testid="kpi-blocked"/>
+      <KPI label="Saldo Asaas" value={BRL(0)}  /* preenchido por endpoint dedicado */
+        sub={safety?.environment ? safety.environment.toUpperCase() : "—"}
+        icon={Wallet} color={C.green} testid="kpi-saldo"/>
     </div>
   );
 }
 
-function KPI({ label, value, icon: Icon, color, testid }) {
+function KPI({ label, value, sub, icon: Icon, color, testid }) {
   return (
     <div data-testid={testid} style={{
       background: C.card, border: `1px solid ${C.border}`,
@@ -159,6 +178,16 @@ function KPI({ label, value, icon: Icon, color, testid }) {
         <Icon size={14} color={color}/>
       </div>
       <div style={{ color: C.text, fontSize: 20, fontWeight: 800 }}>{value}</div>
+      {sub && <div style={{ color: C.muted, fontSize: 11, marginTop: 4 }}>{sub}</div>}
     </div>
   );
 }
+
+const monthInput = { padding: "5px 8px", fontSize: 13, borderRadius: 6,
+  border: `1px solid ${C.border}`, background: C.card, color: C.text };
+const btnNav = { background: C.cardSoft, color: C.text,
+  border: `1px solid ${C.border}`, borderRadius: 6, padding: "5px 8px",
+  cursor: "pointer", display: "inline-flex", alignItems: "center" };
+const btnGhost = { background: "transparent", color: C.text,
+  border: `1px solid ${C.border}`, borderRadius: 8, padding: "6px 12px",
+  fontSize: 12, cursor: "pointer" };

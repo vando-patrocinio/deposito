@@ -206,14 +206,51 @@ async def create_payment(p: PaymentIn, user: dict = Depends(require_role("gestor
 
 
 @router.get("/payments")
-async def list_payments(status_eq: Optional[str] = None, limit: int = 100,
+async def list_payments(status_eq: Optional[str] = None,
+                        month: Optional[str] = None,        # YYYY-MM
+                        month_from: Optional[str] = None,   # YYYY-MM
+                        month_to: Optional[str] = None,     # YYYY-MM
+                        limit: int = 500,
                         user: dict = Depends(require_role("gestor"))):
     cid = user.get("company_id") or DEMO_COMPANY_ID
     q: Dict[str, Any] = {"company_id": cid}
     if status_eq:
         q["status"] = status_eq
-    rows = await db.scheduled_payments.find(q, {"_id": 0}).sort("created_at", -1).to_list(limit)
+    if month or month_from or month_to:
+        gte, lt = _month_bounds(month, month_from, month_to)
+        if gte and lt:
+            q["scheduled_for"] = {"$gte": gte, "$lt": lt}
+    rows = await db.scheduled_payments.find(q, {"_id": 0}).sort("scheduled_for", 1).to_list(limit)
     return {"payments": rows, "count": len(rows)}
+
+
+def _month_bounds(month: Optional[str], mfrom: Optional[str],
+                  mto: Optional[str]) -> tuple:
+    """Aceita month=YYYY-MM OU month_from/to=YYYY-MM. Retorna (>=gte, <lt) ISO."""
+    def parse(s: str) -> Optional[datetime]:
+        try:
+            y, m = s.split("-")
+            return datetime(int(y), int(m), 1)
+        except Exception:
+            return None
+    if month:
+        a = parse(month)
+        if not a:
+            return (None, None)
+        b = a.replace(year=a.year + (1 if a.month == 12 else 0),
+                      month=(a.month % 12) + 1)
+        return (a.date().isoformat(), b.date().isoformat())
+    a = parse(mfrom) if mfrom else None
+    b = parse(mto) if mto else None
+    if a and not b:
+        b = a
+    if b and not a:
+        a = b
+    if not a or not b:
+        return (None, None)
+    end = b.replace(year=b.year + (1 if b.month == 12 else 0),
+                    month=(b.month % 12) + 1)
+    return (a.date().isoformat(), end.date().isoformat())
 
 
 @router.get("/payments/{payment_id}")
@@ -927,3 +964,115 @@ async def receipt_preview(payment_id: str, user: dict = Depends(require_role("ge
     if not pay:
         raise HTTPException(404, "Pagamento não encontrado")
     return {"text": build_receipt_text(pay)}
+
+
+
+# ─────────────────────── ITER237 — Por mês + auto-elegível + pago manual ─────
+
+class AutoEligibleIn(BaseModel):
+    eligible: bool
+
+
+@router.post("/payments/{payment_id}/auto-eligible")
+async def toggle_auto_eligible(payment_id: str, p: AutoEligibleIn,
+                                user: dict = Depends(require_role("gestor"))):
+    """Marca/desmarca o pagamento como elegível para auto-aprovação acima do
+    teto normal (TREASURY_AUTO_APPROVAL_MAX_BRL). Permite ao CTO autorizar
+    valores grandes a serem aprovados/enviados sem revisão humana adicional.
+    """
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+    doc = await db.scheduled_payments.find_one({"payment_id": payment_id, "company_id": cid})
+    if not doc:
+        raise HTTPException(404, "Pagamento não encontrado")
+    await db.scheduled_payments.update_one(
+        {"payment_id": payment_id},
+        {"$set": {"auto_approval_eligible": bool(p.eligible),
+                  "auto_eligible_marked_by": user.get("email") or "?",
+                  "auto_eligible_marked_at": now_iso(),
+                  "updated_at": now_iso()}},
+    )
+    await _audit("auto_eligible_toggled", payment_id,
+                 user.get("email") or "?", cid, {"eligible": p.eligible})
+    return {"ok": True, "auto_approval_eligible": bool(p.eligible)}
+
+
+class MarkPaidManualIn(BaseModel):
+    paid_at: Optional[str] = None
+    note: Optional[str] = None
+
+
+@router.post("/payments/{payment_id}/mark-paid-manual")
+async def mark_paid_manual(payment_id: str, p: MarkPaidManualIn,
+                            user: dict = Depends(require_role("gestor"))):
+    """Marca o pagamento como PAGO manualmente (sem passar pelo Asaas).
+    Útil para casos onde o pagamento foi feito por fora (ex: transferência
+    bancária direta, dinheiro). Não conversa com o banco — apenas atualiza
+    o status e cria registro de auditoria.
+    """
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+    doc = await db.scheduled_payments.find_one({"payment_id": payment_id, "company_id": cid})
+    if not doc:
+        raise HTTPException(404, "Pagamento não encontrado")
+    if doc["status"] in ("paid", "cancelled"):
+        raise HTTPException(409, f"Pagamento já está com status {doc['status']}")
+    paid_at = p.paid_at or now_iso()
+    await db.scheduled_payments.update_one(
+        {"payment_id": payment_id},
+        {"$set": {"status": "paid", "paid_at": paid_at,
+                  "paid_manually": True, "paid_by": user.get("email") or "?",
+                  "manual_note": p.note, "updated_at": now_iso()}},
+    )
+    await _audit("paid_manual", payment_id, user.get("email") or "?", cid,
+                 {"note": p.note, "paid_at": paid_at})
+    await _emit_event("treasury.payment_paid", cid,
+                      {"payment_id": payment_id, "method": doc.get("method", "pix"),
+                       "manual": True})
+    return {"ok": True, "status": "paid", "paid_at": paid_at}
+
+
+@router.get("/kpis-by-month")
+async def kpis_by_month(month: Optional[str] = None,
+                        user: dict = Depends(require_role("gestor"))):
+    """KPIs filtrados por mês de vencimento (scheduled_for). Padrão: mês atual."""
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+    if not month:
+        now = datetime.now(timezone.utc)
+        month = f"{now.year:04d}-{now.month:02d}"
+    gte, lt = _month_bounds(month, None, None)
+    if not gte:
+        raise HTTPException(400, "Parâmetro month inválido. Use YYYY-MM.")
+
+    base_q: Dict[str, Any] = {"company_id": cid,
+                              "scheduled_for": {"$gte": gte, "$lt": lt}}
+
+    async def _sum(extra: Dict) -> float:
+        q = {**base_q, **extra}
+        async for r in db.scheduled_payments.aggregate(
+            [{"$match": q}, {"$group": {"_id": None, "s": {"$sum": "$amount_brl"}}}]
+        ):
+            return float(r.get("s") or 0)
+        return 0.0
+
+    async def _count(extra: Dict) -> int:
+        return await db.scheduled_payments.count_documents({**base_q, **extra})
+
+    paid = await _sum({"status": "paid"})
+    pending = await _sum({"status": {"$in": ["draft", "pending_human_approval", "approved"]}})
+    overdue_today = datetime.now(timezone.utc).date().isoformat()
+    overdue = await _sum({"status": {"$in": ["draft", "pending_human_approval", "approved"]},
+                          "scheduled_for": {"$gte": gte, "$lt": min(lt, overdue_today)}})
+    return {
+        "month": month,
+        "totals": {
+            "paid": paid, "pending": pending, "overdue": overdue,
+            "blocked": await _sum({"status": "blocked_risk"}),
+            "failed": await _sum({"status": "failed"}),
+            "cancelled": await _sum({"status": "cancelled"}),
+        },
+        "counts": {
+            "paid": await _count({"status": "paid"}),
+            "pending": await _count({"status": {"$in": ["draft", "pending_human_approval", "approved"]}}),
+            "sent": await _count({"status": "sent_to_bank"}),
+            "total": await _count({}),
+        },
+    }

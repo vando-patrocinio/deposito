@@ -26,6 +26,29 @@ export const DateTimeBR = (iso) => {
   }
 };
 
+const MONTH_NAMES_PT = [
+  "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
+  "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro",
+];
+export const monthLabel = (ym) => {
+  if (!ym) return "—";
+  const [y, m] = ym.split("-");
+  return `${MONTH_NAMES_PT[parseInt(m, 10) - 1]} ${y}`;
+};
+export const currentMonth = () => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+};
+export const addMonths = (ym, delta) => {
+  const [y, m] = ym.split("-").map(Number);
+  const dt = new Date(y, m - 1 + delta, 1);
+  return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}`;
+};
+export const monthOf = (iso) => {
+  if (!iso) return "—";
+  return iso.slice(0, 7);
+};
+
 export const treasuryApi = {
   // segurança/saldo
   safety: () => client.get("/treasury/safety").then((r) => r.data),
@@ -37,8 +60,8 @@ export const treasuryApi = {
   createPayee: (body) => client.post("/treasury/payees", body).then((r) => r.data),
 
   // payments
-  listPayments: (status) => client.get("/treasury/payments",
-      { params: status ? { status_eq: status } : {} }).then((r) => r.data),
+  listPayments: (params) => client.get("/treasury/payments",
+      { params: params || {} }).then((r) => r.data),
   getPayment: (id) => client.get(`/treasury/payments/${id}`).then((r) => r.data),
   createPayment: (body) => client.post("/treasury/payments", body).then((r) => r.data),
   approve: (id, reason) => client.post(`/treasury/payments/${id}/approve`,
@@ -48,6 +71,12 @@ export const treasuryApi = {
   send: (id) => client.post(`/treasury/payments/${id}/send`).then((r) => r.data),
   aiReview: (id) => client.post(`/treasury/payments/${id}/ai-review`).then((r) => r.data),
   getDecision: (id) => client.get(`/treasury/payments/${id}/decision`).then((r) => r.data),
+  toggleAutoEligible: (id, eligible) => client.post(
+      `/treasury/payments/${id}/auto-eligible`, { eligible }).then((r) => r.data),
+  markPaidManual: (id, note) => client.post(
+      `/treasury/payments/${id}/mark-paid-manual`, { note }).then((r) => r.data),
+  kpisByMonth: (month) => client.get("/treasury/kpis-by-month",
+      { params: month ? { month } : {} }).then((r) => r.data),
 
   // comprovante WhatsApp
   receiptPreview: (id) => client.get(`/treasury/payments/${id}/receipt-preview`)
