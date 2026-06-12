@@ -2,6 +2,25 @@
 
 > Documento vivo. Atualizado a cada sprint.
 
+## 📊 Feature: Filtro de período unificado (2 calendários) + Bloco DRE/Custos no A Pagar (12/06/2026 — iter240 · CTO P0)
+
+**Demanda:** "QUERO QUE FIQUE COM 2 CALENDÁRIOS PARA A ESCOLHA DO PERÍODO. O RESULTADO DE GASTOS TEM QUE ENTRAR NO GRÁFICO DO CONTAS A PAGAR COMO CUSTO, DRE, KPIS."
+
+**Entregue:**
+- **Backend** (`routes/treasury.py`):
+  - `GET /api/treasury/kpis-by-month` agora aceita `month_from` + `month_to` (range). Compat com `month` único preservada.
+  - Novo `GET /api/treasury/dre-by-period?month_from=&month_to=` retorna `{total_paid, total_committed, by_category[], by_payee[], by_method[]}` com `{label, amount, count, pct}` por grupo (top 12, pagamentos com status=paid).
+- **Frontend**:
+  - `TreasuryPanel.jsx`: novo `<PeriodRange>` com **2 calendários** (`period-from`/`period-to`) + clamp from≤to + atalhos `Mês atual / Últimos 3m / Ano`. Estado lifted: KPIs (header) E lista (A Pagar) consomem o mesmo `monthFrom/monthTo`.
+  - `treasury/PaymentsList.jsx`: removeu filtro próprio, agora recebe range via props. Novo `<DREBlock>` no topo da aba A Pagar com 3 KPIs (Custo realizado / Comprometido / A executar) + 3 painéis de barras horizontais (categoria, top fornecedores, método).
+  - `treasury/api.js`: `kpisByRange(from,to)` e `dreByPeriod(from,to)`.
+
+**Validação (testing_agent_v3_fork iter229):** 9/9 backend pytest + 100% frontend Playwright. Test file persistido em `/app/backend/tests/test_iter240_treasury_period_range.py`.
+
+---
+
+
+
 ## 🛠️ Feature: Card de Configuração de Comprovante WhatsApp (12/06/2026 — iter239 · CTO P0)
 
 **Demanda:** "CRIE UM CARD PARA CONFIGURARMOS ESSA MENSAGEM, PODENDO SUBIR ATÉ MESMO UM PDF" — customização do comprovante automático enviado a fornecedores via WhatsApp após pagamento.
