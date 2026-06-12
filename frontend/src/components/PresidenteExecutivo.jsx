@@ -11,7 +11,6 @@ import {
   Target, Eye, RefreshCw, ShieldAlert, Wallet,
   Sparkles, Activity, ChevronRight,
 } from "lucide-react";
-import ScoreRecoveryBlock from "./ScoreRecoveryBlock";
 
 const COLORS = {
   purple: "#4b1d7a", purpleLight: "#6d28d9",
@@ -72,14 +71,6 @@ export default function PresidenteExecutivo() {
     return () => { cancelled = true; };
   }, []);
 
-  // iter241 — recarrega quando o ScoreRecoveryBlock executa/reverte
-  useEffect(() => {
-    const handler = () => { load(); };
-    window.addEventListener("president-score-updated", handler);
-    return () => window.removeEventListener("president-score-updated", handler);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
   if (loading && !data) return <ExecSkeleton />;
   if (err && !data) {
     return (
@@ -97,9 +88,6 @@ export default function PresidenteExecutivo() {
     }}>
       {/* Header executivo */}
       <ExecHeader data={data} loading={loading} onReload={load} />
-
-      {/* iter241 — Card de Score Recovery (limpa lixo histórico) */}
-      <ScoreRecoveryBlock />
 
       {/* Bloco 1: PRESIDENT SCORE */}
       <PresidentScoreBlock score={data.president_score}
