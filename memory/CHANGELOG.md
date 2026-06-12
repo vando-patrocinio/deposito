@@ -7742,3 +7742,16 @@ Relatório: `/app/docs/RELATORIO_RELACIONAMENTO_360.md`
 - Escopo autorizado pelo CTO: reparo completo (acolher + follow-up + oportunidade discreta), preços só via blocos dinâmicos/fragments, few-shots completos.
 - NÃO aplicado no banco. Aguardando: revisão do CTO → aplicar no co-demo (PREVIEW) → testar via /isabella/test → deploy PROD.
 - PENDENTE relacionado: fragments default em `isabella_prompt.py` ainda têm preços hardcoded (R$109, R$29,90...) — corrigir quando autorizado.
+
+---
+## 2026-06-12 — Reforma global dos agentes IA (CONCLUÍDA, testada 15/15)
+- **Isabella V13 APLICADA** (prompt_loader → isabella_v13.md, version V13_CICLO_COMPLETO): venda+reparo+pós-reparo, few-shots, zero preço hardcoded, contrato bolhas-aspas. Reparo: cliente IDENTIFICADO → rota imediata pro Álvaro (sem triagem LED duplicada).
+- **Álvaro V2 APLICADO** (alvaro_v2.md): mesma técnica V13, protocolos SmartOLT preservados, few-shots, camada de encantamento, continuidade pós-handoff da Isabella.
+- **Camila → Pâmela** (pamela_v2.md V2): rename em aihub_agents (id preservado), HANDOFF_MAP, handoff_detection, agent_registry/bus/revenue, neo_chat/reports, migrations, frontend (8 arquivos). Slugs históricos (camila_billing, motor sources 'camila') mantidos válidos + 'pamela' p/ novos. Prompt novo cobre 13 situações de cobrança c/ LGPD e dignidade.
+- **Tabela de Preços oficial**: routes/pricing_catalog.py (CRUD /api/pricing-catalog/items, gestor) + compose_pricing_block injetado como '=== PREÇOS E VALORES (TABELA OFICIAL) ===' em whatsapp_baileys + aihub (prioridade sobre pricing_info legado). UI: aba 'Tabela de Preços' na Gestão da Isabella (PricingCatalogPanel.js). Catálogo inicia VAZIO — gestor lança valores.
+- **PUT /isabella/prompt versionado**: histórico em isabella_prompt_history + sha + guarda anti-no-op (conteúdo igual não corrompe metadados V13).
+- **POST /alvaro/test**: simulador de resposta do Álvaro c/ cenário SmartOLT (online/los/power_off/none), slots reais da Lousa.
+- **Fragments default sem preços** (R$109/29,90/19,90/9,90 removidos; migration atualizou os seedados no banco).
+- refine_agents_v680 agora sobrescreve prompts embarcados com os .md (anti-drift PREVIEW vs PROD).
+- Testes: iteration_231.json — backend 15/15, frontend 100%. Pytest novo: tests/test_iter_pricing_catalog_v13.py. PENDENTE menor: warning de hidratação button-in-button pré-existente no AIHubPanel (cosmético).
+- DEPLOY PROD pendente de autorização do CTO (mudanças só no PREVIEW).

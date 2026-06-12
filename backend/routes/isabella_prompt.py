@@ -98,6 +98,11 @@ async def update_isabella_prompt(payload: PromptIn,
         {"_id": 0, "system_prompt": 1, "prompt_version": 1,
          "prompt_source_sha": 1},
     )
+    # Guarda anti-no-op: conteúdo idêntico → preserva metadados de origem
+    # (prompt_version/prompt_source_file) e não polui o histórico.
+    if prev and (prev.get("system_prompt") or "").strip() == new_prompt:
+        return {"ok": True, "size": len(new_prompt), "sha": sha,
+                "unchanged": True}
     if prev and (prev.get("system_prompt") or "").strip():
         await db.isabella_prompt_history.insert_one({
             "company_id": cid,

@@ -3093,7 +3093,7 @@ passa a ter UMA organização digital sob o Presidente IA.
   ORG_CHART e emite `AGENT_NEW_DISCOVERED`; emite `AGENT_COMPLIANCE_FIXED`
   / `AGENT_COMPLIANCE_BREACH` / `AGENT_REGISTRY_SCAN_DONE`.
 - `services/agent_bus.py` — barramento interno: 5 rotas canônicas
-  (Isabella→Camila churn, Camila→Isabella campanha, Rede→Isabella
+  (Isabella→Pâmela churn, Pâmela→Isabella campanha, Rede→Isabella
   incidente, Álvaro→Presidente padrão, Avaliador→Presidente falha).
   Recusa company_id vazio (anti-orphan).
 - `routes/presidente_agentes.py` — `GET /api/presidente/agentes`,
@@ -3106,7 +3106,7 @@ passa a ter UMA organização digital sob o Presidente IA.
 
 ### Bootstrap executado
 `scripts/apply_humanization_to_agents.py` injetou os 6 blocos em
-Isabella, Alvaro, Camila, Vendas, Jerusa no tenant `co-demo`.
+Isabella, Alvaro, Pâmela, Vendas, Jerusa no tenant `co-demo`.
 Resultado: TEAM_SIZE=12, AVG_HUM=100/100, OFFLINE=[], FORA_CONFORMIDADE=[].
 Re-execução: 5 noop (idempotência confirmada).
 Agentes não mapeados detectados: Orquestrador, Motor IA, Coach IA,
@@ -3114,8 +3114,8 @@ Lousa Triagem, Holerite IA, Teste (compliance scheduler emite alerta).
 
 ### Auditoria zero-mocks
 `scripts/red_team_team_ia.py` — 7 blocos, 11 asserts, todos PASSED:
-1) ORG_CHART íntegro (Presidente raiz; Isabella/Camila reportam ao
-Presidente; Vendas reporta a Camila). 2) Bundles no DB únicos.
+1) ORG_CHART íntegro (Presidente raiz; Isabella/Pâmela reportam ao
+Presidente; Vendas reporta a Pâmela). 2) Bundles no DB únicos.
 3) `hb.apply()` idempotente em 3 execuções. 4) snapshot_all team_size=12,
 avg_hum=100. 5) Endpoints REST autenticados respondem 200 com payload
 correto. 6) Agent Bus rejeita company_id vazio + cria registros reais
@@ -3154,7 +3154,7 @@ Snapshot persistido em `agent_discovery_reports` (id `disc-1781147894`,
 Presidente IA
 ├─ Isabella IA → Jerusa · Sentinela Lousa
 ├─ Álvaro IA → Rede IA → SmartOLT IA · Co-Pilot IA · Lousa Triagem (NEW)
-├─ Camila IA → Vendas IA · Holerite IA (NEW)
+├─ Pâmela IA → Vendas IA · Holerite IA (NEW)
 ├─ Avaliador IA
 ├─ Aprendizado IA → Coach IA (NEW)
 └─ Motor IA (NEW)
@@ -3206,7 +3206,7 @@ Briefing matinal `Café com a IA do CEO` agora emite:
 - `services/isabella_incident.py` (linha 478) → ao detectar incidente
   coletivo, dispara automaticamente `REDE_INCIDENTE_DETECTADO` no bus.
 - `services/isabella_churn.py` (linha 267) → ao identificar churn
-  score ≥ 50, dispara `ISABELLA_CHURN_DETECTED` para Camila receber
+  score ≥ 50, dispara `ISABELLA_CHURN_DETECTED` para Pâmela receber
   oportunidade em `motor_ia_insights`.
 
 ### Estado em produção (co-demo)
@@ -3336,3 +3336,10 @@ Resultado: 228 fantasmas acumulados na SALA, rotulados erroneamente como "futura
 ANTES purga:  244 aguardando triagem (239 fantasmas)
 DEPOIS purga:  16 aguardando triagem (todos válidos ou recuperáveis)
 ```
+
+---
+## [2026-06-12] Reforma global agentes IA
+- Agente de cobrança renomeado: Camila → **Pâmela** (DB+código+frontend; slugs históricos 'camila*' continuam válidos em dados antigos).
+- Prompts canônicos vigentes: `isabella_v13.md` (V13_CICLO_COMPLETO), `alvaro_v2.md` (V2), `pamela_v2.md` (V2) — todos via prompt_loader, zero preços hardcoded.
+- Nova fonte única de preços: coleção `pricing_catalog` + UI "Tabela de Preços" (Gestão da Isabella). Bloco `=== PREÇOS E VALORES (TABELA OFICIAL) ===` injetado em runtime.
+- Detalhes completos: CHANGELOG.md (entrada 2026-06-12).
