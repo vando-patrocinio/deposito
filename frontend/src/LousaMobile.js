@@ -26,6 +26,7 @@ import { fmtAddress, fmtPhone, fmtName, fmtRelato, safeText } from "@/utils/form
 import ErrorBoundary from "@/ErrorBoundary";
 import RompimentoCloseForm from "./lousa/RompimentoCloseForm";
 import SmartoltLiveCard from "./lousa/SmartoltLiveCard";
+import LousaFieldHeader from "./lousa/LousaFieldHeader";
 
 /**
  * LousaMobile — vista da Lousa (bolhas) no app do colaborador.
@@ -866,6 +867,18 @@ export default function LousaMobile({ collaboratorId, onBack, isAdminTest = fals
 
       {/* iter211af — Cards wrappados em ErrorBoundary individuais pra que
           falhas isoladas (perf, conquistas, rota IA) não derrubem a Lousa. */}
+      {/* iter234 — Smart Field Ops absorvido pela Lousa: métricas do dia,
+          status GPS e atalhos Isabella/Estoque/Frota. Field Ops não existe
+          mais como tela separada no app do colaborador. */}
+      <ErrorBoundary name="lousa-field-header" variant="card"
+        fallbackText="Não foi possível carregar o painel de campo.">
+        <LousaFieldHeader tickets={data?.tickets || []}
+          collaboratorId={collaboratorId}
+          onOpenOs={(id) => {
+            const t = (data?.tickets || []).find((x) => x.id === id);
+            if (t) handleOpen(t);
+          }} />
+      </ErrorBoundary>
       {dashCfg.show_performance && (
         <ErrorBoundary name="lousa-perf-card" variant="card"
           fallbackText="Não foi possível carregar seu painel de desempenho.">

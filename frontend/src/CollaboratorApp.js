@@ -6,7 +6,8 @@ import CadastroCTOWizard from "@/CadastroCTOWizard";
 import ErrorBoundary from "@/ErrorBoundary";
 import QrScanner from "@/QrScanner";
 import RedeIaMapMobile from "@/RedeIaMapMobile";
-import FieldOps from "@/FieldOps";
+// import FieldOps removido (iter234): Smart Field Ops foi absorvido pela
+// Lousa Mobile. O app do colaborador agora tem fonte única — a Lousa.
 import MyAssetsModal from "@/MyAssetsModal";
 import MyHoleritesModal from "@/MyHoleritesModal";
 import PWAInstallPrompt from "@/PWAInstallPrompt";
@@ -160,16 +161,9 @@ function CollaboratorAppInner({ mobile = false, forcedCollabId = null, onLogout 
   const [receipt, setReceipt] = useState(null);
   const [position, setPosition] = useState(null);
   const [geoError, setGeoError] = useState("");
-  // Toggle controlado pelo gestor (settings.collab_smart_field_enabled).
-  // Default DESLIGADO: botão Smart Field Ops fica escondido.
-  const [smartFieldEnabled, setSmartFieldEnabled] = useState(false);
-  useEffect(() => {
-    let cancel = false;
-    api.salaConfigForCollabApp()
-      .then((d) => { if (!cancel) setSmartFieldEnabled(!!d?.smart_field_enabled); })
-      .catch(() => {});
-    return () => { cancel = true; };
-  }, []);
+  // iter234 — Smart Field Ops absorvido pela Lousa Mobile. O state
+  // smartFieldEnabled foi removido junto com os botões e a tela "field-ops".
+  // Métricas/Isabella/Estoque/Frota são acessadas DENTRO da Lousa.
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [avatarZoom, setAvatarZoom] = useState(false);
@@ -796,23 +790,7 @@ function CollaboratorAppInner({ mobile = false, forcedCollabId = null, onLogout 
                     <Icon name="clipboard" /> Abrir Lousa de Serviços
                   </button>
 
-                  {smartFieldEnabled && (
-                  <button
-                    data-testid="open-field-ops-btn-primary"
-                    onClick={() => setScreen("field-ops")}
-                    style={{
-                      width: "100%", height: 52, borderRadius: 12,
-                      border: "1px solid #e2e8f0",
-                      background: "white",
-                      color: "#0f172a", fontWeight: 700, fontSize: 14,
-                      marginBottom: 10,
-                      cursor: "pointer", letterSpacing: 0.2,
-                      display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 8,
-                    }}
-                  >
-                    <Icon name="shield" /> Smart Field Ops
-                  </button>
-                  )}
+                  {/* Smart Field Ops absorvido pela Lousa (iter234) — botão removido */}
 
                   <button
                     data-testid="open-cadastro-rede-btn"
@@ -958,24 +936,7 @@ function CollaboratorAppInner({ mobile = false, forcedCollabId = null, onLogout 
                 <Icon name="clipboard" /> Lousa de Serviços
               </button>
 
-              {smartFieldEnabled && (
-              <button
-                data-testid="open-field-ops-btn"
-                onClick={() => setScreen("field-ops")}
-                style={{
-                  width: "100%", height: 48, marginTop: 6, marginBottom: 4,
-                  background: "white",
-                  border: "1px solid #e2e8f0",
-                  borderRadius: 12,
-                  color: "#0f172a",
-                  fontWeight: 600, fontSize: 14,
-                  cursor: "pointer",
-                  display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 8,
-                }}
-              >
-                <Icon name="shield" /> Smart Field Ops
-              </button>
-              )}
+              {/* Smart Field Ops absorvido pela Lousa (iter234) — botão removido */}
 
               <button
                 data-testid="open-cadastro-rede-btn-clt"
@@ -1165,13 +1126,7 @@ function CollaboratorAppInner({ mobile = false, forcedCollabId = null, onLogout 
             </div>
           )}
 
-          {screen === "field-ops" && (
-            <ErrorBoundary name="field-ops" variant="fullscreen">
-              <FieldOps collabId={collabId}
-                        onBack={() => setScreen("home")}
-                        onOpenLousa={() => setScreen("lousa")} />
-            </ErrorBoundary>
-          )}
+          {/* screen field-ops removido (iter234) — Lousa absorve tudo */}
 
           {screen === "lousa" && (
             <ErrorBoundary name="lousa-mobile" variant="fullscreen">

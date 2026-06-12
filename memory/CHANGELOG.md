@@ -1,6 +1,34 @@
 # PontoIA — Changelog
 
 
+## 2026-02-12 — iter234 — SMART FIELD OPS ABSORVIDO PELA LOUSA MOBILE
+
+### Ordem CTO
+"Trocar Field Ops pela Lousa de Serviços no app do colaborador. Todas as informações coletadas do Field Ops têm que vir da Lousa Mobile." → opção (a) escolhida: absorver TUDO.
+
+### Entregue
+- **NOVO** `/app/frontend/src/lousa/LousaFieldHeader.jsx` — componente que injeta dentro da Lousa Mobile:
+  - Painel de métricas do dia (Hoje / Pendentes / Atrasadas / Feitas) calculado LOCALMENTE a partir de `data.tickets` (zero dependência de JWT)
+  - Status GPS local via `navigator.geolocation`
+  - 3 atalhos como overlays modais: **Isabella IA** (`data-testid="lousa-open-isabella"`), **Estoque** (`lousa-open-estoque`), **Frota** (`lousa-open-frota`)
+- **LousaMobile.js** — importa e renderiza `<LousaFieldHeader>` no topo, antes dos cards de performance.
+- **CollaboratorApp.js** — REMOVIDO:
+  - `import FieldOps`
+  - State `smartFieldEnabled` + chamada `api.salaConfigForCollabApp()`
+  - Botão "Smart Field Ops" (variantes CLT e externo)
+  - Screen route `field-ops` e o componente `<FieldOps>`
+
+### Verificado
+- Build webpack OK (23 warnings de source-map de libs, nada novo)
+- Lint LousaFieldHeader.jsx limpo
+- Smoke test: `FIELD_OPS_BTN_PRESENT=False` na home do colaborador
+- Arquivos `FieldOps.js`, `FieldOpsEstoque.js`, `FieldOpsFrota.js`, `FieldOpsIsabella.js` mantidos como componentes auxiliares (importados pelo header). Painel admin "Field Ops (Campo)" do gestor preservado.
+
+### Impacto
+Fonte única no app do técnico: a Lousa de Serviços. Nenhum botão Smart Field Ops aparece mais — métricas, IA Isabella, estoque e frota agora moram dentro da Lousa.
+
+
+
 ## 2026-06-08 — OPERAÇÃO TESE VALIDADA (orquestrador + 10 fases)
 
 ### Entregue
