@@ -7853,3 +7853,24 @@ Relatório: `/app/docs/RELATORIO_RELACIONAMENTO_360.md`
   - Curl: GET unlinked retorna 116 órfãos | POST link cria vínculo + propaga profile_id+tags | GET unlinked depois mostra 115 (user saiu) | DELETE unlink restaura.
   - Pytest novo `tests/test_user_collaborator_link.py` (4 testes) + combinados: **14/14 passing**.
 - **Reversibilidade**: descomentar linha 365 do App.js restaura aba. Nenhuma collection foi deletada. Vínculos podem ser desfeitos via DELETE endpoint.
+
+---
+## 2026-06-12 (parte 8) — Cleanup de usuários demo/test (AUTORIZADO A — 12 deleções)
+- **Autorização CTO**: opção (a) cleanup seguro.
+- **Removidos** (12 users, todos confirmados como lixo demo/test, antes do delete):
+  - 6 demo legacy co-demo: `admin@example.com`, `auditor@example.com`, `vando@example.com`, `gestor@empresa.com`, `test_gestor_iter72@empresa.com`, `gestorrede@empresa.com`
+  - 6 contas de teste tst-audit-co: `tst-adm-d8294e`, `tst-aud-d8294e`, `tst-col-d8294e`, `tst-adm-4b9931`, `tst-aud-4b9931`, `tst-col-4b9931`
+- **Backup** persistido em `db.users_deleted_backup_2026_06_12` (12 docs com metadata `_deleted_at`, `_deleted_by`, `_deleted_reason`). Restauração via `db.users.insert_many(db.users_deleted_backup_2026_06_12.find({}))`.
+- **Preservados** (críticos):
+  - `admin@empresa.com` (CTO) — ★ Super Admin
+  - `vando@ligotelecom.com` — ★ Super Admin grantor
+  - `isabella@ia.local` — conta funcional da IA
+  - 100 técnicos `tech-cls-*@colosso.local` (logam no app móvel)
+  - 6 users já vinculados a colaborador
+  - 2 órfãos co-tesoureira-test
+- **Validação pós-delete**:
+  - Login admin@empresa.com: ✅
+  - Login vando@ligotelecom.com: ✅
+  - Total users: 122 → 110 (-12)
+  - Pytest combinado: 14/14 passing (zero regressão)
+- **Pendente** (autorização futura): decidir sobre os 100 techs co-colosso, isabella IA e 2 do co-tesoureira-test.
