@@ -45,9 +45,6 @@ export default function PaymentsList({ refreshKey }) {
   const [payees, setPayees] = useState([]);
   const [tab, setTab] = useState("all");
   const [month, setMonth] = useState(currentMonth());
-  const [filterMode, setFilterMode] = useState("month"); // "month" | "range" | "all"
-  const [rangeFrom, setRangeFrom] = useState(currentMonth());
-  const [rangeTo, setRangeTo] = useState(currentMonth());
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState(null);
   const [showNew, setShowNew] = useState(false);
@@ -57,13 +54,9 @@ export default function PaymentsList({ refreshKey }) {
   const reload = async () => {
     setLoading(true); setErr(null);
     try {
-      const params = {};
+      const params = { month };
       const filter = TABS.find((t) => t.id === tab)?.filter;
       if (filter) params.status_eq = filter;
-      if (filterMode === "month") params.month = month;
-      else if (filterMode === "range") {
-        params.month_from = rangeFrom; params.month_to = rangeTo;
-      }
       const [pays, pys] = await Promise.all([
         treasuryApi.listPayments(params),
         treasuryApi.listPayees(),
@@ -74,7 +67,7 @@ export default function PaymentsList({ refreshKey }) {
     finally { setLoading(false); }
   };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => { reload(); }, [tab, refreshKey, month, filterMode, rangeFrom, rangeTo]);
+  useEffect(() => { reload(); }, [tab, refreshKey, month]);
 
   const approve = async (id) => {
     setBusyId(id);
@@ -149,12 +142,7 @@ export default function PaymentsList({ refreshKey }) {
       </div>
 
       {/* Seletor de período */}
-      <MonthFilter
-        month={month} setMonth={setMonth}
-        mode={filterMode} setMode={setFilterMode}
-        rangeFrom={rangeFrom} setRangeFrom={setRangeFrom}
-        rangeTo={rangeTo} setRangeTo={setRangeTo}
-      />
+      <MonthFilter month={month} setMonth={setMonth} />
 
       {/* Filtros por status */}
       <div style={{ display: "flex", gap: 6, marginBottom: 14, flexWrap: "wrap" }}>
@@ -341,63 +329,31 @@ function PaymentRow({ p, busy, onApprove, onSend, onCancel, onReceipt,
   );
 }
 
-function MonthFilter({ month, setMonth, mode, setMode,
-                       rangeFrom, setRangeFrom, rangeTo, setRangeTo }) {
+function MonthFilter({ month, setMonth }) {
   return (
     <div data-testid="month-filter" style={{
       background: C.card, border: `1px solid ${C.border}`, borderRadius: 10,
-      padding: 12, marginBottom: 14, display: "flex", gap: 10,
+      padding: 10, marginBottom: 14, display: "flex", gap: 8,
       alignItems: "center", flexWrap: "wrap",
     }}>
-      <div style={{ display: "flex", gap: 6 }}>
-        {[
-          { id: "month", label: "Por mês" },
-          { id: "range", label: "Intervalo" },
-          { id: "all", label: "Todos" },
-        ].map((m) => (
-          <button key={m.id} data-testid={`mode-${m.id}`}
-            onClick={() => setMode(m.id)}
-            style={{
-              padding: "5px 10px", fontSize: 11, borderRadius: 6,
-              fontWeight: 600, cursor: "pointer",
-              background: mode === m.id ? C.accent : C.cardSoft,
-              color: mode === m.id ? "white" : C.text,
-              border: `1px solid ${mode === m.id ? C.accent : C.border}`,
-            }}>{m.label}</button>
-        ))}
-      </div>
-
-      {mode === "month" && (
-        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-          <button data-testid="month-prev"
-            onClick={() => setMonth(addMonths(month, -1))}
-            style={btnNav}><ChevronLeft size={14}/></button>
-          <input type="month" data-testid="month-input" value={month}
-            onChange={(e) => setMonth(e.target.value)} style={input}/>
-          <button data-testid="month-next"
-            onClick={() => setMonth(addMonths(month, +1))}
-            style={btnNav}><ChevronRight size={14}/></button>
-          <strong style={{ color: C.text, marginLeft: 6, fontSize: 13 }}>
-            {monthLabel(month)}
-          </strong>
-        </div>
-      )}
-
-      {mode === "range" && (
-        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-          <input type="month" data-testid="range-from" value={rangeFrom}
-            onChange={(e) => setRangeFrom(e.target.value)} style={input}/>
-          <span style={{ color: C.muted, fontSize: 12 }}>até</span>
-          <input type="month" data-testid="range-to" value={rangeTo}
-            onChange={(e) => setRangeTo(e.target.value)} style={input}/>
-        </div>
-      )}
-
-      {mode === "all" && (
-        <span style={{ color: C.muted, fontSize: 12 }}>
-          Exibindo todos os pagamentos (todos os meses)
-        </span>
-      )}
+      <Calendar size={14} color={C.muted}/>
+      <button data-testid="month-prev"
+        onClick={() => setMonth(addMonths(month, -1))}
+        style={btnNav}><ChevronLeft size={14}/></button>
+      <input type="month" data-testid="month-input" value={month}
+        onChange={(e) => setMonth(e.target.value)} style={input}/>
+      <button data-testid="month-next"
+        onClick={() => setMonth(addMonths(month, +1))}
+        style={btnNav}><ChevronRight size={14}/></button>
+      <strong style={{ color: C.text, marginLeft: 6, fontSize: 13 }}>
+        {monthLabel(month)}
+      </strong>
+      <button data-testid="month-now"
+        onClick={() => setMonth(currentMonth())}
+        style={{ ...btnNav, marginLeft: "auto", padding: "5px 10px",
+          fontSize: 11, fontWeight: 600 }}>
+        Mês atual
+      </button>
     </div>
   );
 }
