@@ -7874,3 +7874,24 @@ Relatório: `/app/docs/RELATORIO_RELACIONAMENTO_360.md`
   - Total users: 122 → 110 (-12)
   - Pytest combinado: 14/14 passing (zero regressão)
 - **Pendente** (autorização futura): decidir sobre os 100 techs co-colosso, isabella IA e 2 do co-tesoureira-test.
+
+---
+## 2026-06-12 (parte 9) — Cleanup 100 techs co-colosso (AUTORIZADO A — phantom tenant)
+- **Diagnóstico co-colosso**: company doc inexistente, 0/100 techs ativos, 0 logins de toda a história, 0 clock_events, 0 collaborator_assets, docs incompletos (created_at=None, access_tags=None). Tickets co-colosso (1232) usam `collaborator_id` — não referenciam esses 100 users.
+- **Deletados**: 100 users `tech-cls-0000@colosso.local` ... `tech-cls-0099@colosso.local`.
+- **Backup acumulado**: `users_deleted_backup_2026_06_12` agora tem **112 docs** (12 da parte 8 + 100 desta). Restauração via `db.users.insert_many(db.users_deleted_backup_2026_06_12.find({}))`.
+- **Estado final**:
+  - Total users: 122 → **10** (-112 = -91.8%)
+  - admin@empresa.com: ✅ vivo
+  - vando@ligotelecom.com: ✅ vivo
+  - Pytest combinado: 14/14 passing (zero regressão)
+
+### Distribuição residual dos 10 users
+- 6 com collaborator_id já vinculado (visíveis no LinkedUserSection do Cadastro)
+- 4 órfãos restantes:
+  - `admin@empresa.com` (★ Super Admin — você)
+  - `vando@ligotelecom.com` (★ Super Admin grantor)
+  - `isabella@ia.local` (IA funcional)
+  - + 1 outro órfão (provavelmente co-tesoureira-test)
+
+**Próxima decisão pendente**: vincular esses 4 a um colaborador (você → "Vando" colab via Cadastro?) ou deixar como contas de sistema.
