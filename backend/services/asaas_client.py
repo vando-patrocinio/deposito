@@ -1,10 +1,12 @@
 """
-asaas_client.py — Cliente Asaas Sandbox (CTO P0 11/06/2026)
+asaas_client.py — Cliente Asaas (CTO P0 11/06/2026 + iter235 produção)
 
 CONSTRAINTS:
-- ASAAS_ENV deve ser 'sandbox'. Não opera em produção.
+- ASAAS_ENV decide o ambiente: 'sandbox' (default) | 'producao'/'production'.
 - ASAAS_API_KEY lido de env. Nunca logado.
 - Headers compatíveis com docs Asaas v3 (access_token).
+- Produção exige ASAAS_ENV=producao + ASAAS_API_KEY válida + ASAAS_PROD_ENABLED=true
+  (kill-switch extra pra evitar acionamento acidental).
 """
 from __future__ import annotations
 
@@ -19,13 +21,25 @@ log = logging.getLogger("asaas_client")
 SANDBOX_BASE = "https://api-sandbox.asaas.com/v3"
 PROD_BASE = "https://api.asaas.com/v3"
 
+_PROD_ALIASES = {"producao", "produção", "production", "prod", "live"}
+
 
 def _env() -> str:
-    return (os.environ.get("ASAAS_ENV") or "sandbox").lower()
+    raw = (os.environ.get("ASAAS_ENV") or "sandbox").strip().lower()
+    return "producao" if raw in _PROD_ALIASES else "sandbox"
+
+
+def is_production() -> bool:
+    return _env() == "producao"
+
+
+def _prod_enabled() -> bool:
+    v = (os.environ.get("ASAAS_PROD_ENABLED") or "false").strip().lower()
+    return v in ("1", "true", "yes", "on")
 
 
 def _base_url() -> str:
-    return SANDBOX_BASE if _env() == "sandbox" else PROD_BASE
+    return PROD_BASE if is_production() else SANDBOX_BASE
 
 
 def _headers() -> Dict[str, str]:
@@ -47,13 +61,16 @@ def _redact(s: str) -> str:
 
 
 async def _request(method: str, path: str, **kwargs) -> httpx.Response:
-    if _env() != "sandbox":
-        raise RuntimeError("ASAAS_ENV != sandbox — operação bloqueada")
+    # Kill-switch de produção: exige toggle explícito mesmo com ASAAS_ENV=producao
+    if is_production() and not _prod_enabled():
+        raise RuntimeError(
+            "ASAAS produção bloqueada — defina ASAAS_PROD_ENABLED=true em backend/.env "
+            "depois de confirmar chave/webhook reais.")
     if not os.environ.get("ASAAS_API_KEY"):
         # Sinaliza ausência de chave de forma estruturada
         raise _AsaasNoKey()
     url = f"{_base_url()}{path}"
-    log.info("asaas %s %s", method, path)  # NÃO loga payload nem key
+    log.info("asaas[%s] %s %s", _env(), method, path)  # NÃO loga payload nem key
     async with httpx.AsyncClient(timeout=15.0) as client:
         resp = await client.request(method, url, headers=_headers(), **kwargs)
     return resp

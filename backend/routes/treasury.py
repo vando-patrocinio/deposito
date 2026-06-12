@@ -43,10 +43,25 @@ def _enabled() -> bool:
 
 
 def _check_sandbox_guard():
+    """Iter235: renomeado conceitualmente para _check_treasury_guard.
+    A política agora é:
+    - TREASURY_SANDBOX_ENABLED=true → tesouraria ativa (em qualquer ambiente)
+    - Produção real exige ASAAS_ENV=producao + ASAAS_PROD_ENABLED=true
+      (verificado dentro do asaas_client._request — falha rápido lá).
+    """
     if not _enabled():
         raise HTTPException(503, "Treasury bloqueada (TREASURY_SANDBOX_ENABLED!=true)")
-    if (os.environ.get("ASAAS_ENV") or "sandbox").lower() != "sandbox":
-        raise HTTPException(503, "ASAAS_ENV != sandbox — produção desligada por política")
+    # Produção: apenas exige kill-switch quando ASAAS_ENV=producao
+    if asaas_client.is_production() and not _prod_kill_switch():
+        raise HTTPException(
+            503,
+            "ASAAS_ENV=producao detectado, mas ASAAS_PROD_ENABLED!=true. "
+            "Defina ASAAS_PROD_ENABLED=true em backend/.env após validar a chave de produção.")
+
+
+def _prod_kill_switch() -> bool:
+    v = (os.environ.get("ASAAS_PROD_ENABLED") or "false").strip().lower()
+    return v in ("1", "true", "yes", "on")
 
 
 async def _audit(action: str, payment_id: str, actor: str, cid: str, extra: Optional[Dict] = None):
@@ -210,9 +225,13 @@ async def get_payment_audit(payment_id: str, user: dict = Depends(require_role("
 
 @router.get("/safety")
 async def safety_status(user: dict = Depends(require_role("gestor"))):
-    """Banner config exibido na UI — confirma sandbox/auto-aprovação OFF."""
+    """Banner config exibido na UI — confirma ambiente, kill-switch e auto-aprovação."""
+    env = "producao" if asaas_client.is_production() else "sandbox"
     return {
-        "environment": os.environ.get("ASAAS_ENV") or "sandbox",
+        "environment": env,
+        "is_production": asaas_client.is_production(),
+        "prod_kill_switch_enabled": _prod_kill_switch(),
+        "prod_ready": asaas_client.is_production() and _prod_kill_switch() and bool(os.environ.get("ASAAS_API_KEY")) and bool(os.environ.get("ASAAS_WEBHOOK_TOKEN")),
         "treasury_enabled": _enabled(),
         "auto_approval_enabled": (os.environ.get("TREASURY_AUTO_APPROVAL_ENABLED") or "false").lower() in ("1", "true", "yes", "on"),
         "auto_approval_max_brl": float(os.environ.get("TREASURY_AUTO_APPROVAL_MAX_BRL", "500")),
@@ -220,6 +239,7 @@ async def safety_status(user: dict = Depends(require_role("gestor"))):
         "human_required_above_brl": float(os.environ.get("TREASURY_HUMAN_REQUIRED_ABOVE_BRL", "3000")),
         "anomaly_threshold_pct": float(os.environ.get("TREASURY_ANOMALY_THRESHOLD_PCT", "30")),
         "has_asaas_key": bool(os.environ.get("ASAAS_API_KEY")),
+        "has_webhook_token": bool(os.environ.get("ASAAS_WEBHOOK_TOKEN")),
     }
 
 
