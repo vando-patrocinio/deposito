@@ -946,8 +946,11 @@ function OntsSection({ onts, technicians, reload }) {
     const q = filter.toLowerCase();
     return onts.filter((o) => {
       // iter197 — busca por SN primeiro (campo prevalente), depois MAC/modelo/cliente
+      // iter247 fix: ONT zumbi vinda de `lousa_retirada_troca_photo` pode
+      // ter mac=null (stub aguardando revisão humana). Sem o `|| ""` o
+      // useMemo quebra e derruba toda a tela do Estoque.
       const sn = (o.scan_sn || o.sn || "").toLowerCase();
-      const txt = !q || sn.includes(q) || o.mac.toLowerCase().includes(q)
+      const txt = !q || sn.includes(q) || (o.mac || "").toLowerCase().includes(q)
         || (o.model || "").toLowerCase().includes(q)
         || (o.client_name || "").toLowerCase().includes(q);
       const loc = locFilter === "all" || o.location_type === locFilter;
