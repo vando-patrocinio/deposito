@@ -3,6 +3,7 @@ import { Card } from "@/ui";
 import { api } from "@/api";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Switch } from "@/components/ui/switch";
+import { PricingCatalogPanel } from "./PricingCatalogPanel";
 import {
   Save, Plus, Trash2, ChevronDown, ChevronRight,
   ShoppingCart, Tag, TrendingUp, Sparkles, Wrench,
@@ -42,8 +43,8 @@ export default function IsabellaGestaoTab() {
             Gestão da Isabella IA
           </div>
           <div style={{ fontSize: 11, color: "var(--text-muted)" }}>
-            Edite o prompt principal e ative módulos de intenção
-            (vendas, promoção, upgrade, novidades)
+            Edite o prompt principal, ative módulos de intenção e lance
+            os valores oficiais na Tabela de Preços
           </div>
         </div>
       </div>
@@ -65,6 +66,9 @@ export default function IsabellaGestaoTab() {
           <TabsTrigger value="test" data-testid="isabella-tab-test">
             Testar Resposta
           </TabsTrigger>
+          <TabsTrigger value="pricing" data-testid="isabella-tab-pricing">
+            Tabela de Preços
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="modules">
@@ -77,6 +81,10 @@ export default function IsabellaGestaoTab() {
 
         <TabsContent value="test">
           <TestSandbox />
+        </TabsContent>
+
+        <TabsContent value="pricing">
+          <PricingCatalogPanel />
         </TabsContent>
       </Tabs>
     </Card>
@@ -975,7 +983,7 @@ const kpiSubStyle = {
 
 // ============================================================================
 // SyncAgentsCard — botão admin para aplicar a migration v6.80 dos 4 agentes
-// (Isabella/Álvaro/Camila/Teste) na company logada. Útil em produção.
+// (Isabella/Álvaro/Pâmela/Teste) na company logada. Útil em produção.
 // ============================================================================
 function SyncAgentsCard() {
   const [busy, setBusy] = useState(false);

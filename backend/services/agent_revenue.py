@@ -20,7 +20,7 @@ Regras de atribuição (auditáveis, sem fallback inferido):
 
   Isabella   ← modulo ∈ {Cobrança, Retenção} via channel whatsapp + Lousa
                 + motor_ia_actions(source~isabella)
-  Camila     ← modulo='Receita' (vendas/upsell/expansão)
+  Pâmela     ← modulo='Receita' (vendas/upsell/expansão)
   Vendas     ← modulo='Receita', categoria~vendas/lead
   Álvaro     ← modulo='Smart Field' (operacional, twin)
   Avaliador  ← modulo='Qualidade' (correções aplicadas)
@@ -78,10 +78,10 @@ ATTRIBUTION_RULES: Dict[str, Dict[str, Any]] = {
         },
     },
     "camila": {
-        "label": "Camila IA",
+        "label": "Pâmela IA",
         "ledger_modulos": ["Receita"],
         "revenue_attribution_kinds": ["generated", "upsell", "expansion"],
-        "motor_action_sources": ["camila"],
+        "motor_action_sources": ["camila", "pamela"],
         "buckets": {
             "ledger:Receita": "generated",
             "rev:generated": "generated",

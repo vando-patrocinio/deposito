@@ -2026,7 +2026,18 @@ async def _maybe_auto_reply(cid: str, phone: str, user_text: str,
 
     if agent.get("company_info"):
         extra.append(f"=== INFORMAÇÕES DA EMPRESA ===\n{agent['company_info']}")
-    if agent.get("pricing_info"):
+    # PREÇOS — Tabela oficial (pricing_catalog) é a fonte primária;
+    # fallback pro campo livre pricing_info legado se o catálogo
+    # estiver vazio.
+    _pricing_block = ""
+    try:
+        from routes.pricing_catalog import compose_pricing_block
+        _pricing_block = await compose_pricing_block(cid)
+    except Exception as _e:
+        logger.debug("[wa-baileys] pricing catalog skip: %s", _e)
+    if _pricing_block:
+        extra.append(_pricing_block)
+    elif agent.get("pricing_info"):
         extra.append(f"=== PREÇOS E VALORES ===\n{agent['pricing_info']}")
     if agent.get("priority_situations"):
         extra.append(f"=== SITUAÇÕES PRIORITÁRIAS ===\n{agent['priority_situations']}")
@@ -2574,8 +2585,8 @@ async def _maybe_auto_reply(cid: str, phone: str, user_text: str,
         HANDOFF_MAP = {
             "[ROTEAR_VENDAS]":    "Isabella",
             "[ROTEAR_SUPORTE]":   "Alvaro",
-            "[ROTEAR_COBRANCA]":  "Camila",
-            "[ROTEAR_COBRANÇA]":  "Camila",  # acentuado, IA pode gerar assim
+            "[ROTEAR_COBRANCA]":  "Pâmela",
+            "[ROTEAR_COBRANÇA]":  "Pâmela",  # acentuado, IA pode gerar assim
             "[ROTEAR_TESTE]":     "Teste",
         }
         handoff_target_name: Optional[str] = None

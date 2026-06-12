@@ -261,7 +261,7 @@ async def list_report_types(user: dict = Depends(require_role("gestor"))):
              "description": "Conversão/vendas via WhatsApp IA"},
             {"key": "alvaro_tickets", "label": "Suporte Álvaro",
              "description": "Tickets criados/fechados, taxa de resolução"},
-            {"key": "camila_billing", "label": "Cobranças Camila",
+            {"key": "camila_billing", "label": "Cobranças Pâmela",
              "description": "Recebimentos e mensagens de cobrança"},
             {"key": "secretaria_intents", "label": "Secretaria — Intents",
              "description": "Interações da Secretaria + top intents"},
@@ -381,7 +381,7 @@ async def _build_pdf_bytes(report_type: str, cid: str,
         tool_map = {
             "isabella_kpis": (_tool_isabella_kpis, "KPIs Isabella · Vendas WhatsApp IA"),
             "alvaro_tickets": (_tool_alvaro_tickets, "Suporte Álvaro · Tickets"),
-            "camila_billing": (_tool_camila_billing, "Cobranças Camila · Recebimentos"),
+            "camila_billing": (_tool_camila_billing, "Cobranças Pâmela · Recebimentos"),
             "secretaria_intents": (_tool_secretaria_intents, "Secretaria · Interações"),
         }
         fn, title = tool_map[report_type]
@@ -481,7 +481,7 @@ async def _build_pdf_bytes(report_type: str, cid: str,
             ctx = (
                 f"Período: últimos {days} dia(s)\n"
                 f"Isabella: {isb}\nÁlvaro: {alv}\n"
-                f"Camila: {cam}\nSecretaria: {sec}\n"
+                f"Pâmela: {cam}\nSecretaria: {sec}\n"
                 f"Alertas abertos: {alerts_open} · Agendamentos hoje: {appt_today}"
             )
             ai_summary = await chat.send_message(UserMessage(text=ctx))
@@ -516,8 +516,8 @@ async def _build_pdf_bytes(report_type: str, cid: str,
         _row("Álvaro · Tickets totais", alv.get("tickets_total", "—"))
         _row("Álvaro · Resolvidos", alv.get("tickets_closed", "—"))
         _row("Álvaro · Taxa resolução", f"{alv.get('resolution_rate_pct', 0)}%")
-        _row("Camila · Mensagens cobrança", cam.get("billing_messages", "—"))
-        _row("Camila · Recebido (R$)",
+        _row("Pâmela · Mensagens cobrança", cam.get("billing_messages", "—"))
+        _row("Pâmela · Recebido (R$)",
              f"R$ {cam.get('received_amount_brl', 0):,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
         _row("Secretaria · Interações", sec.get("total_interactions", "—"))
         top_intents = sec.get("top_intents") or []

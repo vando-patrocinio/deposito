@@ -3,8 +3,8 @@
 Conecta as IAs como uma organização: o que um detecta o outro recebe.
 
 Fluxos canônicos (handlers registrados):
-  Isabella detecta churn          → Camila recebe oportunidade.
-  Camila detecta campanha         → Isabella executa relacionamento.
+  Isabella detecta churn          → Pâmela recebe oportunidade.
+  Pâmela detecta campanha         → Isabella executa relacionamento.
   Rede IA detecta incidente       → Isabella abre comunicação.
   Álvaro detecta padrão           → Presidente recebe insight.
   Avaliador detecta falha         → Presidente cria ação corretiva.
@@ -49,16 +49,16 @@ def _now_iso() -> str:
 Handler = Callable[[str, Dict[str, Any]], Awaitable[Dict[str, Any]]]
 
 
-async def _isabella_churn_to_camila(company_id: str,
+async def _isabella_churn_to_pamela(company_id: str,
                                          data: Dict[str, Any]
                                          ) -> Dict[str, Any]:
     """Cria oportunidade comercial em motor_ia_insights atribuída
-    a Camila quando Isabella detecta risco de churn."""
+    a Pâmela quando Isabella detecta risco de churn."""
     insight = {
         "id": f"insight-bus-{int(datetime.now().timestamp()*1000)}",
         "company_id": company_id,
-        "kind": "OPORTUNIDADE_RETENCAO_CAMILA",
-        "owner_agent": "camila",
+        "kind": "OPORTUNIDADE_RETENCAO_PAMELA",
+        "owner_agent": "pamela",
         "originator_agent": "isabella",
         "status": "open",
         "severity": "warn",
@@ -67,14 +67,14 @@ async def _isabella_churn_to_camila(company_id: str,
         "created_at": _now_iso(),
     }
     await db.motor_ia_insights.insert_one(insight)
-    return {"to": "camila", "via": "motor_ia_insights",
+    return {"to": "pamela", "via": "motor_ia_insights",
               "insight_id": insight["id"]}
 
 
-async def _camila_campanha_to_isabella(company_id: str,
+async def _pamela_campanha_to_isabella(company_id: str,
                                             data: Dict[str, Any]
                                             ) -> Dict[str, Any]:
-    """Quando Camila dispara campanha, Isabella recebe instrução
+    """Quando Pâmela dispara campanha, Isabella recebe instrução
     para executar relacionamento — registra no event store."""
     await svc.record_event(
         company_id, "ISABELLA_CAMPANHA_DELEGADA",
@@ -145,8 +145,8 @@ async def _avaliador_falha_to_presidente(company_id: str,
 
 
 ROUTING_TABLE: Dict[str, List[Handler]] = {
-    "ISABELLA_CHURN_DETECTED": [_isabella_churn_to_camila],
-    "CAMILA_CAMPANHA_DISPARADA": [_camila_campanha_to_isabella],
+    "ISABELLA_CHURN_DETECTED": [_isabella_churn_to_pamela],
+    "PAMELA_CAMPANHA_DISPARADA": [_pamela_campanha_to_isabella],
     "REDE_INCIDENTE_DETECTADO": [_rede_incidente_to_isabella],
     "ALVARO_PADRAO_DETECTADO": [_alvaro_pattern_to_presidente],
     "AVALIADOR_FALHA_DETECTADA": [_avaliador_falha_to_presidente],

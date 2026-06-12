@@ -2,7 +2,7 @@
 
 Injeta os blocos canônicos de humanização (Anti-Slop, Escuta, Conversa
 Contínua, Já Identificado, Marcadores Executáveis, Direct-First) em
-TODOS os agentes conversacionais (Alvaro, Camila, Vendas, Jerusa) de
+TODOS os agentes conversacionais (Alvaro, Pâmela, Vendas, Jerusa) de
 TODOS os tenants no aihub_agents.
 
 Zero mocks. Lê e escreve direto no MongoDB real. Idempotente.

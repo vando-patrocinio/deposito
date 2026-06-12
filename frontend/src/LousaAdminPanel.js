@@ -222,7 +222,7 @@ export default function LousaAdminPanel({ systemStatus = { offline: false, drift
   const [draggingId, setDraggingId] = useState(null);
   const [dragOverCol, setDragOverCol] = useState(null);
   const [logs, setLogs] = useState([]);
-  // iter237 — Filtro por agente IA (Isabella/Álvaro/Camila/Gestor/Sistema)
+  // iter237 — Filtro por agente IA (Isabella/Álvaro/Pâmela/Gestor/Sistema)
   const [agentFilter, setAgentFilter] = useState("all");
   // iter237 — Áudio de alerta na TV (modo SmarTV).
   // Toca 5s quando uma bolha começa a pulsar:
@@ -1024,7 +1024,7 @@ export default function LousaAdminPanel({ systemStatus = { offline: false, drift
                 { id: "all",      lbl: "Todos",    color: "#64748b" },
                 { id: "isabella", lbl: "Isabella", color: "#a855f7" },
                 { id: "alvaro",   lbl: "Álvaro",   color: "#0ea5e9" },
-                { id: "camila",   lbl: "Camila",   color: "#10b981" },
+                { id: "camila",   lbl: "Pâmela",   color: "#10b981" },
                 { id: "sistema",  lbl: "Sistema",  color: "#3b82f6" },
                 { id: "gestor",   lbl: "Gestor",   color: "#475569" },
               ].map((f) => (
@@ -1891,9 +1891,9 @@ function AgentBadge({ ticket }) {
     isabella_vision:        { letter: "I", color: "#a855f7", title: "Isabella · análise de imagem" },
     alvaro_diagnose:        { letter: "A", color: "#0ea5e9", title: "Álvaro · diagnóstico técnico" },
     alvaro_ai:              { letter: "A", color: "#0ea5e9", title: "Álvaro · diagnóstico IA" },
-    camila_billing:         { letter: "C", color: "#10b981", title: "Camila · cobrança IA" },
-    camila_ai:              { letter: "C", color: "#10b981", title: "Camila · cobrança IA" },
-    camila_cobranca:        { letter: "C", color: "#10b981", title: "Camila · cobrança IA" },
+    camila_billing:         { letter: "C", color: "#10b981", title: "Pâmela · cobrança IA" },
+    camila_ai:              { letter: "C", color: "#10b981", title: "Pâmela · cobrança IA" },
+    camila_cobranca:        { letter: "C", color: "#10b981", title: "Pâmela · cobrança IA" },
   };
   const cfg = map[src];
   if (!cfg) return null;
@@ -1998,7 +1998,7 @@ function BubbleCard({ ticket, slotHour, blinkOverdue, isDragging, onDragStart, o
   // Origem da bolha (define cor da borda quando NÃO atrasada):
   //  • CLIENTE (verde): bolha foi gerada por um AGENTE DE IA que atende o
   //    cliente final — Isabella (WhatsApp), Álvaro (diagnóstico técnico),
-  //    Camila (cobrança). Esses agentes representam a vontade do cliente
+  //    Pâmela (cobrança). Esses agentes representam a vontade do cliente
   //    pedindo abertura de chamado.
   //  • SISTEMA (azul): bolha foi gerada por um worker automático SEM
   //    interação direta com o cliente — alerta de cerca, frota_alerta,

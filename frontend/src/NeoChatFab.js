@@ -23,7 +23,7 @@ const SESSION_KEY = "neo_chat_session_id";
 const SUGGESTIONS = [
   "KPIs da Isabella últimos 7 dias",
   "Quantos tickets o Álvaro resolveu hoje?",
-  "Quanto a Camila cobrou este mês?",
+  "Quanto a Pâmela cobrou este mês?",
   "Top intents da Secretaria semana",
   "Últimos relatórios gerados",
   "Agendamentos ativos",
@@ -225,7 +225,7 @@ export default function NeoChatFab({ initiallyOpen = false }) {
                   Oi! Sou o NEO.
                 </div>
                 <div style={{ marginBottom: 12 }}>
-                  Pergunte sobre Isabella, Álvaro, Camila ou Secretaria.
+                  Pergunte sobre Isabella, Álvaro, Pâmela ou Secretaria.
                 </div>
                 <div style={{ display: "grid", gap: 6 }}>
                   {SUGGESTIONS.slice(0, 4).map((s, i) => (

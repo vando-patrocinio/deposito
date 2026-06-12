@@ -72,7 +72,7 @@ _VENDAS_STRONG = re.compile(
 # Mapeamento agente alvo
 _TARGET_PATTERNS = [
     ("Alvaro",   _SUPORTE_STRONG),
-    ("Camila",   _COBRANCA_STRONG),
+    ("Pâmela",   _COBRANCA_STRONG),
     ("Isabella", _VENDAS_STRONG),
 ]
 

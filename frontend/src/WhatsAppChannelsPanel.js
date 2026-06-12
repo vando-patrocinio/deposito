@@ -13,7 +13,7 @@ import { api } from "@/api";
    - Botão "Desconectar"
    - Radio "Padrão para envios" (default outbound)
 
-   Todos os agentes IA (Isabella/Alvaro/Camila) respondem em qualquer canal —
+   Todos os agentes IA (Isabella/Alvaro/Pâmela) respondem em qualquer canal —
    o channel_name aparece como badge nas conversas pra identificar de qual
    número veio a mensagem.
 ============================================================= */
@@ -333,7 +333,7 @@ export default function WhatsAppChannelsPanel() {
             Canais WhatsApp
           </h2>
           <p style={{ margin: "6px 0 0", color: "#64748b", fontSize: 14 }}>
-            Conecte até <b>4 números</b>. Todos os agentes IA (Isabella, Alvaro, Camila)
+            Conecte até <b>4 números</b>. Todos os agentes IA (Isabella, Alvaro, Pâmela)
             atendem em <b>qualquer canal</b>. O nome do canal aparece nas conversas.
           </p>
         </div>

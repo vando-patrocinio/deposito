@@ -48,9 +48,9 @@ PROMPTS_DIR = os.path.join(os.path.dirname(os.path.dirname(
 # Mapeamento agente → arquivo de prompt + versão
 # Toda a frota IA versionada em Git (P0 11/06/2026).
 AGENT_PROMPTS: List[Dict[str, str]] = [
-    {"agent_name": "Isabella",        "file": "isabella_v12.md",     "version": "V12_EXPERIENCE_SELLER"},
-    {"agent_name": "Alvaro",          "file": "alvaro_v1.md",        "version": "V1"},
-    {"agent_name": "Camila",          "file": "camila_v1.md",        "version": "V1"},
+    {"agent_name": "Isabella",        "file": "isabella_v13.md",     "version": "V13_CICLO_COMPLETO"},
+    {"agent_name": "Alvaro",          "file": "alvaro_v2.md",        "version": "V2"},
+    {"agent_name": "Pâmela",          "file": "pamela_v2.md",        "version": "V2"},
     {"agent_name": "Jerusa",          "file": "jerusa_v1.md",        "version": "V1"},
     {"agent_name": "Vendas",          "file": "vendas_v1.md",        "version": "V1"},
     {"agent_name": "Orquestrador",    "file": "orquestrador_v1.md",  "version": "V1"},

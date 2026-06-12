@@ -1,7 +1,7 @@
 """NEO • Orquestrador IA — chat unificado conectado a todos os agentes.
 
 NEO age como um maestro: o usuário (gestor) pergunta em linguagem natural e o
-NEO decide qual ferramenta usar (Isabella, Álvaro, Camila, Secretaria,
+NEO decide qual ferramenta usar (Isabella, Álvaro, Pâmela, Secretaria,
 relatórios agendados ou timeline cross-agent) e devolve a resposta resumida.
 
 Arquitetura:
@@ -15,7 +15,7 @@ Arquitetura:
 Tools disponíveis:
 - isabella_kpis(days)        — vendas/conversão da Isabella
 - alvaro_tickets(days)       — tickets de suporte (Álvaro)
-- camila_billing(days)       — cobranças/recebimentos (Camila)
+- camila_billing(days)       — cobranças/recebimentos (Pâmela)
 - secretaria_intents(days)   — interações da Secretaria
 - customer_timeline(phone)   — histórico unificado cross-agent de 1 contato
 - neo_reports_recent()       — últimos relatórios gerados
@@ -117,10 +117,10 @@ async def _tool_alvaro_tickets(cid: str, days: int = 7) -> Dict[str, Any]:
 async def _tool_camila_billing(cid: str, days: int = 7) -> Dict[str, Any]:
     since = datetime.now(timezone.utc) - timedelta(days=days)
     since_iso = since.isoformat()
-    # Mensagens da Camila / fluxo boleto
+    # Mensagens da Pâmela / fluxo boleto
     base = {"company_id": cid, "created_at": {"$gte": since_iso}}
     msgs = await db.aihub_wa_messages.count_documents({
-        **base, "agent": {"$in": ["boleto_flow", "camila"]},
+        **base, "agent": {"$in": ["boleto_flow", "camila", "pamela"]},
     })
     # Recebimentos no período (best-effort)
     paid_amount = 0.0
@@ -136,7 +136,7 @@ async def _tool_camila_billing(cid: str, days: int = 7) -> Dict[str, Any]:
     except Exception:
         pass
     return {
-        "agent": "Camila",
+        "agent": "Pâmela",
         "period_days": days,
         "billing_messages": msgs,
         "received_amount_brl": round(paid_amount, 2),
@@ -263,7 +263,7 @@ TOOLS: Dict[str, Any] = {
 TOOL_CATALOG_PROMPT = """
 Você é o NEO — assistente executivo da operação SmartProv (ISP). Sua função é
 responder perguntas do gestor consultando dados consolidados dos agentes IA da
-empresa (Isabella, Álvaro, Camila e Secretaria) e dos relatórios agendados.
+empresa (Isabella, Álvaro, Pâmela e Secretaria) e dos relatórios agendados.
 
 Ao receber uma pergunta, decida qual UMA ferramenta usar e quais parâmetros
 passar. Sua saída DEVE ser um JSON válido:
@@ -273,7 +273,7 @@ passar. Sua saída DEVE ser um JSON válido:
 Ferramentas disponíveis:
 - isabella_kpis(days:int=7)      — KPIs da Isabella (vendas/conversão WhatsApp)
 - alvaro_tickets(days:int=7)     — Tickets do Álvaro (suporte técnico)
-- camila_billing(days:int=7)     — Cobranças e recebimentos da Camila
+- camila_billing(days:int=7)     — Cobranças e recebimentos da Pâmela
 - secretaria_intents(days:int=7) — Interações da Secretaria + top intents
 - customer_timeline(phone:str)   — Histórico unificado de UM contato pelo telefone
 - neo_reports_recent()           — Últimos relatórios agendados executados
@@ -481,7 +481,7 @@ async def list_tools(user: dict = Depends(require_role("gestor"))):
             {"name": "alvaro_tickets", "params": {"days": "int 1-90"},
              "description": "Tickets do Álvaro (suporte técnico)"},
             {"name": "camila_billing", "params": {"days": "int 1-90"},
-             "description": "Cobranças e recebimentos da Camila"},
+             "description": "Cobranças e recebimentos da Pâmela"},
             {"name": "secretaria_intents", "params": {"days": "int 1-90"},
              "description": "Interações da Secretaria + top intents"},
             {"name": "customer_timeline", "params": {"phone": "str"},

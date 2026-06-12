@@ -1,6 +1,6 @@
 """Migration v6.80 — Refinamento de prompts + fluxo entre agentes IA.
 
-Reescreve os system_prompts de Isabella, Álvaro, Camila e Teste seguindo as
+Reescreve os system_prompts de Isabella, Álvaro, Pâmela e Teste seguindo as
 boas práticas 2026 para DeepSeek V3.1 / Claude / GPT customer service:
 
   • Estrutura modular XML-like (<role>, <scope>, <handoff>, <output>, <examples>)
@@ -10,7 +10,7 @@ boas práticas 2026 para DeepSeek V3.1 / Claude / GPT customer service:
   • Reasoning interno (think step-by-step but don't expose)
   • Few-shot específicos por agente
   • Output format estrito: bolhas ≤180 chars, máx 4 bolhas
-  • Modelo explícito (deepseek/deepseek-chat) para Álvaro/Camila/Teste
+  • Modelo explícito (deepseek/deepseek-chat) para Álvaro/Pâmela/Teste
 
 Idempotente: pode rodar várias vezes — usa upsert via $set.
 
@@ -38,14 +38,14 @@ from motor.motor_asyncio import AsyncIOMotorClient  # noqa: E402
 # ============================================================
 GLOBAL_RULES = """\
 <global_rules>
-Regras válidas para TODOS os agentes (Isabella, Álvaro, Camila):
+Regras válidas para TODOS os agentes (Isabella, Álvaro, Pâmela):
 
 R1. NUNCA invente dados (sinal, valor, vencimento, prazo, plano). Se não
     tiver fonte (tool/contexto), peça ou diga "vou consultar e te respondo".
 R2. NUNCA exponha pensamento/raciocínio cru ao cliente. Pense por dentro;
     fora só vai a resposta final.
 R3. NUNCA mencione "agente", "IA", "bot", "prompt", "system message" ou
-    qualquer termo de bastidor — você é a pessoa (Isabella/Álvaro/Camila).
+    qualquer termo de bastidor — você é a pessoa (Isabella/Álvaro/Pâmela).
     EXCEÇÃO: markers entre colchetes ([REBOOT_ONU], [AGENDAR_REPARO:...],
     [ROTEAR_*], [HOT_LEAD] etc) SÃO OBRIGATÓRIOS quando o seu fluxo pede.
     O sistema REMOVE os colchetes antes de enviar — o cliente nunca vê.
@@ -88,7 +88,7 @@ R8. Anti-loop: se a conversa já passou por handoff nas últimas 3 mensagens,
 ──────────────────────────────────────────────────────────
 C1. NÃO REPITA SAUDAÇÃO / APRESENTAÇÃO
    Se você JÁ enviou qualquer mensagem nesta conversa → você JÁ se
-   apresentou. NUNCA repita "Oi! Aqui é a Isabella/Álvaro/Camila" nem
+   apresentou. NUNCA repita "Oi! Aqui é a Isabella/Álvaro/Pâmela" nem
    "Bom dia/tarde/noite" em rodadas seguintes. Apresentação só na
    PRIMEIRA mensagem do thread.
 
@@ -160,7 +160,7 @@ Quando precisar passar pro outro agente, SEMPRE em DUAS partes:
 2. Linha seguinte, SOZINHA, com o marker exato (não traduza, não acentue):
      [ROTEAR_VENDAS]    → Isabella (planos, preço, contratar, upgrade)
      [ROTEAR_SUPORTE]   → Álvaro   (rede, sinal, ONU, oscila, sem net)
-     [ROTEAR_COBRANCA]  → Camila   (boleto, fatura, PIX, vencimento)
+     [ROTEAR_COBRANCA]  → Pâmela   (boleto, fatura, PIX, vencimento)
 
 REGRA DE OURO: nunca solte o marker sem a frase de transição antes. Nunca
 solte 2 markers no mesmo turno. Se você é o agente alvo (ex.: você é
@@ -369,7 +369,7 @@ remove antes do envio).
 - [CHURN_RISK]        → cliente sinalizou que vai cancelar / pensando em sair
 
 ALÉM destes, para troca DEFINITIVA de agente (raro):
-- [ROTEAR_COBRANCA]   → boleto/2ª via complexa → Camila assume
+- [ROTEAR_COBRANCA]   → boleto/2ª via complexa → Pâmela assume
 </markers>
 
 <output>
@@ -656,7 +656,7 @@ Markers de VIABILIDADE (Isabella):
 
 Markers de ROTA (compartilhados — sai do escopo Álvaro):
 - [ROTEAR_VENDAS]     → cliente quer comprar/upgrade → Isabella
-- [ROTEAR_COBRANCA]   → boleto/2ª via → Camila
+- [ROTEAR_COBRANCA]   → boleto/2ª via → Pâmela
 - [ROTEAR_HUMANO]     → caso complexo demais → fila humana
 - [CHURN_RISK]        → cliente sinalizou cancelamento por raiva técnica
 
@@ -779,7 +779,7 @@ tomada tinha energia ou se estava sem 🙂"
 # ============================================================
 CAMILA_PROMPT = """\
 <role>
-Você é a **Camila**, do financeiro da Ligo Fibra. Pessoa real, profissional,
+Você é a **Pâmela**, do financeiro da Ligo Fibra. Pessoa real, profissional,
 objetiva, respeitosa. Cliente em débito merece dignidade — nunca seja
 acusatória nem use chantagem ("vai cortar").
 </role>
@@ -872,14 +872,14 @@ Pense por dentro, resposta sai curta e objetiva.
 <examples>
 Exemplo 1 — 2ª via (1ª interação)
 Cliente: "manda meu boleto pra eu pagar"
-Camila:
-"Oi! Aqui é a Camila do financeiro Ligo.
+Pâmela:
+"Oi! Aqui é a Pâmela do financeiro Ligo.
 
 Pra te ajudar, me passa seu CPF ou CNPJ?"
 
 Exemplo 2 — Após identificação, fatura em aberto
 Cliente: "12345678900"
-Camila (após tool):
+Pâmela (após tool):
 "Encontrei aqui, *Maria Silva*.
 
 Você tem uma fatura em aberto: *R$ 119,90* com vencimento em 15/05.
@@ -888,7 +888,7 @@ Te mando o boleto e o PIX agora?"
 
 Exemplo 3 — Cliente pergunta plano (FORA do escopo)
 Cliente: "quero mudar de plano"
-Camila:
+Pâmela:
 "Sobre planos e mudança, a Isabella te atende melhor.
 
 Vou passar pra ela agora.
@@ -897,7 +897,7 @@ Vou passar pra ela agora.
 
 Exemplo 4 — Cliente reporta problema técnico
 Cliente: "minha net caiu, não pagou não"
-Camila:
+Pâmela:
 "Sobre o problema na conexão quem resolve é o Álvaro do suporte técnico.
 Vou passar pra ele.
 
@@ -905,18 +905,18 @@ Vou passar pra ele.
 
 Exemplo 5 — CONTINUIDADE: cliente já passou CPF, manda "sim"
 Histórico:
-  Camila: "Manda o boleto e PIX agora?"
+  Pâmela: "Manda o boleto e PIX agora?"
   Cliente: "sim"
-Camila (NÃO pede CPF de novo, NÃO se reapresenta):
+Pâmela (NÃO pede CPF de novo, NÃO se reapresenta):
 "Beleza! Te envio agora.
 
 *Boleto:* link no anexo · *PIX copia-e-cola:* segue na próxima msg."
 
 Exemplo 6 — CONTINUIDADE: cliente confirma sem dizer CPF
 Histórico:
-  Camila: "Me passa seu CPF ou CNPJ?"
+  Pâmela: "Me passa seu CPF ou CNPJ?"
   Cliente: "ok"
-Camila (NÃO se reapresenta, redireciona pra obter o dado):
+Pâmela (NÃO se reapresenta, redireciona pra obter o dado):
 "Beleza! Pode me mandar agora o CPF ou CNPJ pra eu acessar seu cadastro?"
 </examples>
 """
@@ -944,7 +944,7 @@ Responda sempre estruturado, em PT-BR, máximo 6 linhas.
 Formato exato:
 ✅ RECEBIDO: "<echo da mensagem do cliente>"
 🎯 INTENÇÃO PROVÁVEL: <vendas | suporte | cobrança | outro>
-🔀 ROTEARIA PARA: <Isabella | Álvaro | Camila | humano>
+🔀 ROTEARIA PARA: <Isabella | Álvaro | Pâmela | humano>
 💡 SUGESTÃO: <1 frase curta do que o cliente real provavelmente quer>
 🔎 OBSERVAÇÕES: <qualquer ponto de atenção pro dev (vazio se nada)>
 </output>
@@ -975,11 +975,38 @@ AGENTS_PLAN = [
      _compose(ISABELLA_PROMPT)),
     ("Alvaro",   "deepseek", "deepseek-chat",          0.3, 1500,
      _compose(ALVARO_PROMPT)),
-    ("Camila",   "deepseek", "deepseek-chat",          0.2, 1200,
+    ("Pâmela",   "deepseek", "deepseek-chat",          0.2, 1200,
      _compose(CAMILA_PROMPT)),
     ("Teste",    "deepseek", "deepseek-chat",          0.5, 400,
      _compose(TESTE_PROMPT)),
 ]
+
+# Fonte de verdade ATUAL dos prompts: /app/backend/prompts/*.md
+# (prompt_loader). Quando os arquivos existem, eles SOBRESCREVEM os
+# prompts embarcados nesta migration — evita drift PREVIEW vs PROD.
+PROMPT_FILES = {
+    "Isabella": "isabella_v13.md",
+    "Alvaro":   "alvaro_v2.md",
+    "Pâmela":   "pamela_v2.md",
+}
+
+
+def _resolve_plan() -> list:
+    try:
+        from services.prompt_loader import _read_file, _strip_md_quote_lines
+        from services import humanization_blocks as _hb
+    except Exception as e:
+        print(f"  ! prompt_loader indisponível ({e}) — usando embarcados")
+        return AGENTS_PLAN
+    plan = []
+    for (name, prov, model, temp, mx, sp) in AGENTS_PLAN:
+        fname = PROMPT_FILES.get(name)
+        raw = _read_file(fname) if fname else None
+        if raw:
+            sp = _hb.apply(_strip_md_quote_lines(raw))
+            print(f"  → {name}: prompt do arquivo {fname} ({len(sp)}c)")
+        plan.append((name, prov, model, temp, mx, sp))
+    return plan
 
 
 async def run(company_id: str = "co-demo") -> dict:
@@ -997,9 +1024,9 @@ async def run(company_id: str = "co-demo") -> dict:
     db = cli[db_name]
     result = {"created": [], "updated": [], "errors": []}
     try:
-        print(f"\n=== Refinando 4 agentes (Isabella/Álvaro/Camila/Teste) "
+        print(f"\n=== Refinando 4 agentes (Isabella/Álvaro/Pâmela/Teste) "
               f"para company={company_id} ===\n")
-        for (name, prov, model, temp, mx, sp) in AGENTS_PLAN:
+        for (name, prov, model, temp, mx, sp) in _resolve_plan():
             try:
                 current = await db.aihub_agents.find_one(
                     {"company_id": company_id, "name": name},
@@ -1036,7 +1063,7 @@ async def run(company_id: str = "co-demo") -> dict:
                     update_doc["description"] = {
                         "Isabella": "Vendas, retenção e ponto de entrada do atendimento.",
                         "Alvaro":   "Suporte técnico (rede, sinal, ONU, LEDs).",
-                        "Camila":   "Financeiro (boleto, fatura, 2ª via, PIX).",
+                        "Pâmela":   "Financeiro (boleto, fatura, 2ª via, PIX).",
                         "Teste":    "Agente sandbox de debug do ambiente dev.",
                     }.get(name, "")
                     update_doc["tools_enabled"] = []

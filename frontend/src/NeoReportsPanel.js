@@ -350,7 +350,7 @@ export default function NeoReportsPanel() {
             </div>
             <div style={{ fontSize: 12, color: "#334155", marginTop: 4 }}>
               {briefing.active
-                ? `Enviando para ${briefing.count} destinatário(s) todo dia. PDF com KPIs de Isabella, Álvaro, Camila, Secretaria + resumo IA executivo.`
+                ? `Enviando para ${briefing.count} destinatário(s) todo dia. PDF com KPIs de Isabella, Álvaro, Pâmela, Secretaria + resumo IA executivo.`
                 : "Ative com 1 clique: todo dia às 7h, o NEO gera 1 PDF executivo (KPIs dos 4 agentes + alertas + resumo IA) e envia no WhatsApp pra você."}
             </div>
             {briefing.active && briefing.schedules?.[0] && (

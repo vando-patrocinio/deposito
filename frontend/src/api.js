@@ -1968,7 +1968,18 @@ export const api = {
     client.delete(`/whatsapp-baileys/isabella/fragments/${id}`).then((r) => r.data),
   isabellaTest: (text) =>
     client.post("/whatsapp-baileys/isabella/test", { text }).then((r) => r.data),
-  // Migration v6.80: refina prompts dos 4 agentes (Isabella/Álvaro/Camila/Teste)
+  alvaroTest: (text, scenario = "none") =>
+    client.post("/whatsapp-baileys/alvaro/test", { text, scenario }).then((r) => r.data),
+  // --- Tabela de Preços oficial (pricing catalog) ---
+  pricingItemsList: () =>
+    client.get("/pricing-catalog/items").then((r) => r.data),
+  pricingItemCreate: (data) =>
+    client.post("/pricing-catalog/items", data).then((r) => r.data),
+  pricingItemPatch: (id, data) =>
+    client.patch(`/pricing-catalog/items/${id}`, data).then((r) => r.data),
+  pricingItemDelete: (id) =>
+    client.delete(`/pricing-catalog/items/${id}`).then((r) => r.data),
+  // Migration v6.80: refina prompts dos 4 agentes (Isabella/Álvaro/Pâmela/Teste)
   isabellaRefineAgentsV680: () =>
     client.post("/whatsapp-baileys/agents/refine-v680").then((r) => r.data),
   waHealthSummary: () =>

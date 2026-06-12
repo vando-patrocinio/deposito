@@ -1,7 +1,7 @@
 """WhatsApp Multi-Channel manager.
 
 Cada empresa pode conectar até 4 números WhatsApp ("canais") ao mesmo sistema
-de agentes IA (Isabella, Alvaro, Camila). Os agentes funcionam em qualquer
+de agentes IA (Isabella, Alvaro, Pâmela). Os agentes funcionam em qualquer
 canal — o canal é só uma identificação visual ("vendas", "suporte", etc.)
 mostrada nas conversas.
 

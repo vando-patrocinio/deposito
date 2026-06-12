@@ -1,10 +1,10 @@
-"""E2E para validar que os agentes (Isabella, Álvaro, Camila) sabem a
+"""E2E para validar que os agentes (Isabella, Álvaro, Pâmela) sabem a
 data e a hora atuais do Brasil (BRT) injetadas via `=== AGORA ===`.
 
 Cenários:
   1. Isabella · cliente pergunta "que dia é hoje?" → resposta menciona
      a data correta (dd/mm ou dia da semana).
-  2. Camila · cliente pergunta "que horas são?" → resposta menciona o
+  2. Pâmela · cliente pergunta "que horas são?" → resposta menciona o
      horário correto (HH:MM) ou faixa (manhã/tarde/noite).
   3. Isabella · "tem horário pra instalação amanhã?" → menciona uma data
      futura (não do passado) e/ou usa "amanhã" relativo a hoje.
@@ -90,7 +90,7 @@ async def test_agentes_conhecem_data_hora():
         )
         print(f"✓ Isabella mencionou a data atual ({today_dd_mm}/{weekday})")
 
-        # 2. Camila · "que horas são?"
+        # 2. Pâmela · "que horas são?"
         await _maybe_auto_reply(
             cid=cid, phone=phone_cam,
             user_text="oi, que horas são aí?",
@@ -101,7 +101,7 @@ async def test_agentes_conhecem_data_hora():
             {"_id": 0, "text": 1},
         ).sort("created_at", 1).to_list(20)
         text2 = " ".join((o.get("text") or "") for o in outs2).lower()
-        print(f"\n=== Camila · 'que horas são?' ===")
+        print(f"\n=== Pâmela · 'que horas são?' ===")
         print(f"Resposta: {text2}")
         # Aceita: "HH:MM", "HHh", "HH horas", ou período (manhã/tarde/noite)
         hour = now_brt.hour
@@ -111,10 +111,10 @@ async def test_agentes_conhecem_data_hora():
         ok_hora = (hour_pattern.search(text2) is not None
                       or periodo in text2)
         assert ok_hora, (
-            f"Camila NÃO mencionou hora atual. Esperava padrão de hora ou "
+            f"Pâmela NÃO mencionou hora atual. Esperava padrão de hora ou "
             f"'{periodo}' no texto. Resposta: {text2}"
         )
-        print(f"✓ Camila mencionou hora/período ({periodo})")
+        print(f"✓ Pâmela mencionou hora/período ({periodo})")
 
         # 3. Isabella · "tem horário pra instalação amanhã?"
         await _maybe_auto_reply(

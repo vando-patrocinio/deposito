@@ -14,7 +14,7 @@ Hierarquia (definida pela diretoria executiva, NÃO inferida):
     │   ├── Rede IA                     (Diretor Técnico de Rede)
     │   │   └── SmartOLT IA             (Especialista OLT)
     │   └── Co-Pilot IA                 (Analista Operacional)
-    ├── Camila IA                       (Diretora Comercial)
+    ├── Camila IA → Pâmela IA            (Diretora Comercial)
     │   └── Vendas IA                   (Executiva Comercial)
     ├── Avaliador IA                    (Auditor de Qualidade)
     └── Aprendizado IA                  (Diretor de Aprendizado)
@@ -172,7 +172,7 @@ ORG_CHART: List[Dict[str, Any]] = [
     },
     {
         "id": "camila",
-        "label": "Camila IA",
+        "label": "Pâmela IA",
         "cargo": "Diretora Comercial",
         "reports_to": "presidente",
         "category": "commercial",
@@ -180,7 +180,7 @@ ORG_CHART: List[Dict[str, Any]] = [
             "oportunidades", "campanhas", "vendas", "expansão",
             "cross sell", "upsell", "indicações",
         ],
-        "aihub_name": "Camila",
+        "aihub_name": "Pâmela",
         "humanization_required": True,
     },
     {
@@ -322,7 +322,7 @@ async def _conversational_productivity(company_id: str,
                                             phone_owner: Optional[str],
                                             hours: int = 24
                                             ) -> Dict[str, Any]:
-    """Para agentes conversacionais (Isabella/Alvaro/Camila/Vendas/Jerusa),
+    """Para agentes conversacionais (Isabella/Alvaro/Pâmela/Vendas/Jerusa),
     medimos mensagens outbound nas últimas N horas.
     Como os agentes compartilham aihub_wa_messages sem 'agent' tag,
     usamos heurística: contagem total de outbound do tenant é creditada

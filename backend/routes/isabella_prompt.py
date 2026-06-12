@@ -89,17 +89,39 @@ async def update_isabella_prompt(payload: PromptIn,
                                     user: dict = Depends(require_role("gestor"))):
     cid = _cid(user)
     new_prompt = payload.system_prompt.strip()
+    # Versionamento anti-drift: guarda o prompt anterior em
+    # isabella_prompt_history + registra sha/versão manual no agente.
+    import hashlib
+    sha = hashlib.sha1(new_prompt.encode("utf-8")).hexdigest()
+    prev = await db.aihub_agents.find_one(
+        {"company_id": cid, "name": "Isabella"},
+        {"_id": 0, "system_prompt": 1, "prompt_version": 1,
+         "prompt_source_sha": 1},
+    )
+    if prev and (prev.get("system_prompt") or "").strip():
+        await db.isabella_prompt_history.insert_one({
+            "company_id": cid,
+            "agent": "Isabella",
+            "system_prompt": prev["system_prompt"],
+            "prompt_version": prev.get("prompt_version"),
+            "prompt_source_sha": prev.get("prompt_source_sha"),
+            "replaced_at": _now(),
+            "replaced_by": user.get("email") or "gestor",
+        })
     r = await db.aihub_agents.update_one(
         {"company_id": cid, "name": "Isabella"},
         {"$set": {
             "system_prompt": new_prompt,
+            "prompt_version": f"manual-{_now()[:19]}",
+            "prompt_source_sha": sha,
+            "prompt_source_file": None,
             "updated_at": _now(),
             "updated_by": user.get("email") or user.get("id") or "gestor",
         }},
     )
     if r.matched_count == 0:
         raise HTTPException(404, "Agente Isabella não cadastrado nesta empresa.")
-    return {"ok": True, "size": len(new_prompt)}
+    return {"ok": True, "size": len(new_prompt), "sha": sha}
 
 
 # ---------------------------------------------------------------------------
@@ -217,7 +239,7 @@ async def delete_fragment(fragment_id: str,
 # ---------------------------------------------------------------------------
 @router.post("/agents/refine-v680")
 async def refine_agents_v680(user: dict = Depends(require_role("administrador"))):
-    """Aplica a migration v6.80 (Isabella/Álvaro/Camila/Teste) na company
+    """Aplica a migration v6.80 (Isabella/Álvaro/Pâmela/Teste) na company
     do administrador logado.
 
     - Cria agentes que não existem (defaults sensatos)
@@ -358,6 +380,137 @@ async def isabella_test(payload: IsabellaTestIn,
 
 
 # ---------------------------------------------------------------------------
+# TESTE DE RESPOSTA DO ÁLVARO — simula diagnóstico SmartOLT (online/los/
+# power_off/none) pra validar o comportamento sem cliente real.
+# ---------------------------------------------------------------------------
+ALVARO_TEST_SCENARIOS = {
+    "online": (
+        "Status: ONLINE\n"
+        "Equipamento ligado há: 2h 15min\n"
+        "Sinal: -22.40 dBm (NORMAL)\n"
+        "EXPLICAÇÃO TÉCNICA PRA USAR COM O CLIENTE: equipamento online e "
+        "com sinal normal — provável instabilidade momentânea ou Wi-Fi.\n"
+        "FLUXO RECOMENDADO: reiniciar a ONU remotamente ([REBOOT_ONU]) e "
+        "pedir pro cliente testar; se não resolver, agendar reparo."
+    ),
+    "los": (
+        "Status: LOS (perda de sinal da fibra)\n"
+        "Sinal: sem leitura\n"
+        "EXPLICAÇÃO TÉCNICA PRA USAR COM O CLIENTE: perda de sinal óptico "
+        "— cabo rompido, conector solto ou problema na CTO. Não se resolve "
+        "na casa do cliente.\n"
+        "FLUXO RECOMENDADO: NÃO pedir reboot. Oferecer horários e agendar "
+        "reparo com [AGENDAR_REPARO:date=...,time=...]."
+    ),
+    "power_off": (
+        "Status: POWER_OFF\n"
+        "EXPLICAÇÃO TÉCNICA PRA USAR COM O CLIENTE: equipamento sem "
+        "energia — tomada, cabo de força ou fonte.\n"
+        "FLUXO RECOMENDADO: pedir pro cliente testar a tomada; se tiver "
+        "energia e o aparelho não ligar, agendar reparo."
+    ),
+}
+
+
+class AlvaroTestIn(BaseModel):
+    text: str = Field(..., min_length=1, max_length=2000)
+    scenario: str = Field(default="none")  # online | los | power_off | none
+
+
+@router.post("/alvaro/test")
+async def alvaro_test(payload: AlvaroTestIn,
+                        user: dict = Depends(require_role("gestor"))):
+    """Simula a resposta do Álvaro SEM persistir nem enviar.
+
+    `scenario` injeta um bloco === DIAGNÓSTICO TÉCNICO === SIMULADO
+    (online/los/power_off). `none` = sem diagnóstico (fluxo de LEDs).
+    Horários de agendamento vêm da Lousa REAL (zero-mock).
+    """
+    import time
+    cid = _cid(user)
+    user_text = payload.text.strip()
+    scenario = payload.scenario.strip().lower()
+    if scenario not in ("none", *ALVARO_TEST_SCENARIOS):
+        raise HTTPException(400,
+            "scenario inválido. Use: online | los | power_off | none")
+
+    agent = await db.aihub_agents.find_one(
+        {"company_id": cid, "name": "Alvaro"}, {"_id": 0}
+    )
+    if not agent:
+        raise HTTPException(404, "Agente Alvaro não cadastrado.")
+    sys_prompt = agent.get("system_prompt") or ""
+    model_name = agent.get("model_name") or "deepseek-chat"
+
+    extras: list = []
+    if scenario != "none":
+        diag = ALVARO_TEST_SCENARIOS[scenario]
+        # Slots reais da Lousa pra dar fidelidade ao agendamento
+        slots_block = ""
+        try:
+            from services.lousa_availability import get_availability_for_prompt
+            slots_block = await get_availability_for_prompt(cid, days=7) or ""
+        except Exception as e:
+            logger.info("[alvaro-test] lousa skip: %s", e)
+        extras.append(
+            "=== DIAGNÓSTICO TÉCNICO ATUAL DO CLIENTE (SmartOLT) ===\n"
+            f"{diag}"
+            + (f"\n\n{slots_block}" if slots_block else "")
+        )
+        extras.append(
+            "=== CLIENTE IDENTIFICADO ===\n"
+            "Cliente de teste do gestor (simulação). Trate como cliente "
+            "autenticado — não peça CPF nem nome."
+        )
+
+    full_prompt = sys_prompt + ("\n\n" + "\n\n".join(extras) if extras else "")
+    full_prompt += (
+        "\n\n# ⚙️ MODO TESTE\n"
+        "Esta é uma simulação solicitada pelo gestor. Não há histórico de "
+        "conversa anterior. Responda como se fosse a primeira mensagem do "
+        "cliente, seguindo todas as regras do prompt."
+    )
+
+    started = time.monotonic()
+    try:
+        from services.motor_ia import chat_completion
+        result = await chat_completion(
+            company_id=cid,
+            messages=[
+                {"role": "system", "content": full_prompt},
+                {"role": "user", "content": user_text},
+            ],
+            temperature=agent.get("temperature") or 0.3,
+            max_tokens=min(agent.get("max_tokens") or 1500, 1500),
+            purpose="atendimento",
+            agent="alvaro_whatsapp_test",
+        )
+        raw = (result.get("content") or "").strip()
+        used_model = result.get("model") or model_name
+    except Exception as e:
+        logger.warning("[alvaro-test] LLM falhou: %s", e)
+        raise HTTPException(502, f"Falha ao chamar IA: {e}")
+    elapsed_ms = int((time.monotonic() - started) * 1000)
+
+    try:
+        from routes.whatsapp_baileys import _split_ai_reply
+        bubbles = _split_ai_reply(raw, max_chunks=10)
+    except Exception:
+        bubbles = [raw]
+
+    return {
+        "ok": True,
+        "user_text": user_text,
+        "scenario": scenario,
+        "bubbles": bubbles,
+        "raw": raw,
+        "elapsed_ms": elapsed_ms,
+        "prompt_size": len(full_prompt),
+        "model": used_model,
+    }
+
+
+# ---------------------------------------------------------------------------
 # Helper usado pelo _maybe_auto_reply
 # ---------------------------------------------------------------------------
 CATEGORY_HEADERS = {
@@ -447,12 +600,14 @@ DEFAULT_FRAGMENTS = [
             "- Cliente reclama 'internet lenta' MAS o sinal está OK no SmartOLT\n"
             "  → provavelmente plano insuficiente pra qtd de pessoas/dispositivos\n"
             "- Cliente menciona ter MAIS de 5 dispositivos / Smart TVs / jogos\n"
-            "- Cliente está no plano de 200 ou 300 Mega há > 12 meses\n"
+            "- Cliente está em plano de entrada há > 12 meses\n"
             "- Cliente reclama de 4K travando\n\n"
-            "Frases-modelo (≤180c, separar em bolha própria com \"\"):\n"
+            "REGRA DE PREÇO: o valor do upgrade vem SEMPRE da tabela\n"
+            "=== PREÇOS E VALORES ===. NUNCA invente valor.\n\n"
+            "Frases-modelo (cada uma em bolha própria entre aspas):\n"
             "\"Pelo seu uso, parece que o plano atual está apertado.\"\n"
-            "\"Posso te liberar um upgrade pro 500 Mega por R\\$ 109? 🚀\"\n"
-            "\"Posso ativar agora ou prefere conhecer outros planos?\""
+            "\"Posso te mostrar o upgrade que resolve isso, com o valor certinho?\"\n"
+            "\"Posso ativar agora ou prefere conhecer outras opções?\""
         ),
         "enabled": True,
     },
@@ -465,10 +620,11 @@ DEFAULT_FRAGMENTS = [
             "- Cliente comprou Smart TV / câmera / NAS\n"
             "- Cliente trabalha em home-office, VPN, jogos online\n"
             "- Cliente reclama de Wi-Fi fraco em vários cômodos\n\n"
-            "Catálogo de novidades pra ofertar:\n"
-            "- Wi-Fi 6 (1 ponto adicional R\\$ 29,90/mês)\n"
-            "- IP Público Fixo (R\\$ 9,90/mês) — para câmeras, VPN, jogos\n"
-            "- Ponto Wi-Fi Plus (R\\$ 19,90/mês) — mais alcance\n\n"
+            "Catálogo de novidades pra ofertar (valores SEMPRE da tabela\n"
+            "=== PREÇOS E VALORES ===, NUNCA de cabeça):\n"
+            "- Wi-Fi 6 (ponto adicional)\n"
+            "- IP Público Fixo — para câmeras, VPN, jogos\n"
+            "- Ponto Wi-Fi Plus — mais alcance\n\n"
             "Regra: apresente 1 novidade por conversa, na bolha mais natural."
         ),
         "enabled": True,

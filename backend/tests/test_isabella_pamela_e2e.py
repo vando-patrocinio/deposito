@@ -1,11 +1,11 @@
-"""Smoke E2E para Isabella (vendas) e Camila (financeiro) — verificar se
+"""Smoke E2E para Isabella (vendas) e Pâmela (financeiro) — verificar se
 prompts atualizados ESTÃO USANDO `=== CLIENTE IDENTIFICADO ===` e não
 estão pedindo CPF redundante quando o cliente já está autenticado.
 
 Roda 2 cenários:
   1. Isabella · cliente identificado pergunta "tenho disney+ no meu plano?"
      → não deve pedir CPF, deve usar o nome
-  2. Camila · cliente identificado pede boleto
+  2. Pâmela · cliente identificado pede boleto
      → não deve pedir CPF, deve responder de volta ao nome
 """
 from __future__ import annotations
@@ -30,7 +30,7 @@ async def test_isabella_camila_use_subscriber_ctx():
     nickname = "Maria"
     cid = "co-demo"
 
-    # Setup: 2 phones (um para Isabella, outro para Camila — pra evitar
+    # Setup: 2 phones (um para Isabella, outro para Pâmela — pra evitar
     # coincidir com routing já persistido)
     sub_id = f"sub-isacam-{suffix}"
     phone_isa = f"5521977{digits[:6]}"
@@ -103,13 +103,13 @@ async def test_isabella_camila_use_subscriber_ctx():
         # Tolerante: pelo menos referenciar o cliente com algum dado
         print(f"✓ Isabella não pediu CPF redundante")
 
-        # Camila não deve pedir CPF (cliente já identificado)
+        # Pâmela não deve pedir CPF (cliente já identificado)
         cpf_phrases_cam = ["preciso do cpf", "me passa o cpf", "qual seu cpf",
                               "informar seu cpf", "passar seu cpf"]
         for phrase in cpf_phrases_cam:
             assert phrase not in text_cam.lower(), \
-                f"Camila pediu CPF inadequado: {phrase!r} | resposta: {text_cam}"
-        print(f"✓ Camila não pediu CPF redundante")
+                f"Pâmela pediu CPF inadequado: {phrase!r} | resposta: {text_cam}"
+        print(f"✓ Pâmela não pediu CPF redundante")
 
         # Markers limpos (não vazam pro cliente)
         for txt in (text_isa, text_cam):

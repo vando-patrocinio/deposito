@@ -1,10 +1,10 @@
 /**
  * HandoffDashboardCard.js — Métricas de handoff entre agentes IA
- * (Isabella ⇄ Alvaro ⇄ Camila)
+ * (Isabella ⇄ Alvaro ⇄ Pâmela)
  *
  * Mostra:
  *  - Total de handoffs e taxa (% das respostas IA)
- *  - Rotas mais comuns (ex.: "Isabella → Camila: 12")
+ *  - Rotas mais comuns (ex.: "Isabella → Pâmela: 12")
  *  - Agente que mais RECEBE vs mais ENVIA handoffs
  *  - Conversas "hot" (≥3 handoffs — sinal de prompt fraco)
  */
@@ -22,7 +22,8 @@ const PERIODS = [
 const AGENT_COLOR = {
   Isabella: "#a855f7",  // roxo
   Alvaro:   "#3b82f6",  // azul
-  Camila:   "#10b981",  // verde
+  Pâmela:   "#10b981",  // verde
+  Camila:   "#10b981",  // verde (nome antigo — conversas históricas)
   Teste:    "#64748b",  // cinza
 };
 
@@ -135,7 +136,7 @@ export default function HandoffDashboardCard() {
               }} data-testid="handoff-empty">
                 Nenhum handoff registrado ainda neste período.<br/>
                 <span style={{ fontSize: 11, color: "#94a3b8" }}>
-                  Quando a Isabella passar uma conversa pra Alvaro ou Camila (ou vice-versa), aparece aqui.
+                  Quando a Isabella passar uma conversa pra Alvaro ou Pâmela (ou vice-versa), aparece aqui.
                 </span>
               </div>
             )}

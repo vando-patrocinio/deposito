@@ -264,7 +264,7 @@ async def scan_company(company_id: str, *, limit: int = 500) -> Dict[str, Any]:
             severity="critica" if score >= 75 else ("alta" if score >= 50 else "media"),
             payload={"subscriber_id": s["id"], "score": score,
                       "reasons": reasons[:5]})
-        # AGENT BUS — Isabella detectou churn → Camila recebe oportunidade.
+        # AGENT BUS — Isabella detectou churn → Pâmela recebe oportunidade.
         if score >= 50:
             try:
                 from services.agent_bus import route as _bus_route

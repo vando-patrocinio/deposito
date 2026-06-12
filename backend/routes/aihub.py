@@ -303,7 +303,17 @@ async def playground(aid: str, payload: PlaygroundIn,
     extra_blocks = []
     if agent.get("company_info"):
         extra_blocks.append(f"=== INFORMAÇÕES DA EMPRESA ===\n{agent['company_info']}")
-    if agent.get("pricing_info"):
+    # PREÇOS — Tabela oficial (pricing_catalog) tem prioridade sobre o
+    # campo livre pricing_info legado.
+    _pricing_block = ""
+    try:
+        from routes.pricing_catalog import compose_pricing_block
+        _pricing_block = await compose_pricing_block(cid)
+    except Exception:
+        _pricing_block = ""
+    if _pricing_block:
+        extra_blocks.append(_pricing_block)
+    elif agent.get("pricing_info"):
         extra_blocks.append(f"=== PREÇOS E VALORES ===\n{agent['pricing_info']}")
     if agent.get("priority_situations"):
         extra_blocks.append(f"=== SITUAÇÕES PRIORITÁRIAS ===\n{agent['priority_situations']}")

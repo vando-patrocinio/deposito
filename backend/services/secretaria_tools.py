@@ -244,10 +244,10 @@ TOOLS_SPEC_EXTRA: List[Dict[str, Any]] = [
             "name": "ask_neo",
             "description": (
                 "Encaminha uma pergunta executiva para o NEO — orquestrador IA "
-                "que consolida dados de TODOS os agentes (Isabella, Álvaro, Camila, "
+                "que consolida dados de TODOS os agentes (Isabella, Álvaro, Pâmela, "
                 "Secretaria) e gera respostas resumidas. Use para perguntas como: "
                 "'me dê um resumo de vendas da Isabella esta semana', 'quantos "
-                "tickets o Álvaro resolveu hoje?', 'quanto a Camila cobrou este mês?', "
+                "tickets o Álvaro resolveu hoje?', 'quanto a Pâmela cobrou este mês?', "
                 "'me dê a timeline do cliente 5582999...', 'me dê KPIs dos agentes "
                 "no último mês'. Retorna texto pronto para exibir."
             ),

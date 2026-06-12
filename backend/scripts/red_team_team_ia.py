@@ -4,7 +4,7 @@ Roda asserts contra MongoDB REAL + endpoints REAIS do Presidente IA.
 
 Validates:
   1. ORG_CHART completo (14 nós? não — 12 conforme decisão executiva).
-  2. Bundle de humanização presente em Isabella/Alvaro/Camila/Vendas/Jerusa.
+  2. Bundle de humanização presente em Isabella/Alvaro/Pâmela/Vendas/Jerusa.
   3. Bundle idempotente (aplicar 2x não duplica).
   4. snapshot_all retorna avg_humanization_score=100 após injeção.
   5. /api/presidente/organizacao retorna árvore com Presidente na raiz.
@@ -79,7 +79,7 @@ async def test_org_chart_integrity():
 
 async def test_humanization_blocks_in_db():
     print("\n[2] Blocos canônicos no aihub_agents")
-    targets = ["Isabella", "Alvaro", "Camila", "Vendas", "Jerusa"]
+    targets = ["Isabella", "Alvaro", "Pâmela", "Vendas", "Jerusa"]
     for name in targets:
         doc = await db.aihub_agents.find_one(
             {"company_id": CID, "name": name},
@@ -212,13 +212,13 @@ async def test_agent_bus():
          "owner_agent": "camila"})
     if after <= before:
         _fail("ISABELLA_CHURN não criou insight")
-    _ok(f"ISABELLA_CHURN → insight Camila +{after - before}")
+    _ok(f"ISABELLA_CHURN → insight Pâmela +{after - before}")
 
 
 async def test_routing_listing():
     print("\n[7] agent_bus.list_routes()")
     routes = agent_bus.list_routes()
-    expected = {"ISABELLA_CHURN_DETECTED", "CAMILA_CAMPANHA_DISPARADA",
+    expected = {"ISABELLA_CHURN_DETECTED", "PAMELA_CAMPANHA_DISPARADA",
                 "REDE_INCIDENTE_DETECTADO", "ALVARO_PADRAO_DETECTADO",
                 "AVALIADOR_FALHA_DETECTADA"}
     if not expected.issubset(set(routes.keys())):

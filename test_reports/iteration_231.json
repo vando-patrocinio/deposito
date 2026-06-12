@@ -1,0 +1,41 @@
+{
+  "summary": "Testes completos da reforma de agentes IA (V13 Isabella + V2 Álvaro + rename Camila→Pâmela + Pricing Catalog). 15/15 testes backend pytest PASS após cleanup; UI fluxo completo do Tabela de Preços OK (criar/toggle/deletar). LLM via OpenRouter respondeu nos endpoints de teste (Isabella e Álvaro).",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "PUT /api/whatsapp-baileys/isabella/prompt", "issue": "Sempre sobrescreve prompt_version para 'manual-<timestamp>' e zera prompt_source_file mesmo quando o gestor restaura o mesmo conteúdo do arquivo fonte (V13). Resultado: depois de um GET→PUT idempotente, perde-se o marker 'V13_CICLO_COMPLETO'. Sugestão: se sha do novo prompt == sha do prompt atual, preservar prompt_version/prompt_source_file."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "AIHubPanel", "issues": ["Console warn (hydration): <button> aninhado dentro de <button>. Não bloqueia, mas vale revisar para evitar erros futuros de hidratação."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter_pricing_catalog_v13.py",
+    "/app/test_reports/pytest/iter_pricing_v13.xml"
+  ],
+  "action_items": [
+    "(MINOR) Em isabella_prompt.PUT, se sha do novo == sha atual, NÃO mexer em prompt_version/prompt_source_file (preservar marker V13). Isso evita corromper metadados em GET→PUT idempotente.",
+    "(LIMPEZA) Corrigir warning de hidratação 'button cannot contain a nested button' em AIHubPanel."
+  ],
+  "critical_code_review_comments": [
+    "pricing_catalog.py: bom — validações HTTP 400 vs 422 (negativos ficam no Pydantic 422, category/cycle/fidelity inválidos HTTP 400), serialização exclui _id corretamente, idempotência do DELETE retorna 404.",
+    "isabella_prompt.py PUT versionamento: history collection é populada antes do update (correto), mas o reset de prompt_version/prompt_source_file não tem guarda anti-no-op (ver minor acima).",
+    "alvaro/test: validação de scenario in {none, online, los, power_off} retorna 400, model 502 trata erro LLM como falha de ambiente (correto).",
+    "Fragments DEFAULT (upgrade/novidade): preços hardcoded 'R$ 109'/'R$ 29,90' removidos — fragments instruem IA a buscar valores do bloco === PREÇOS E VALORES === (correto)."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter_pricing_catalog_v13.py (novo)",
+    "Mongo aihub_agents.Isabella co-demo (restaurado prompt_version=V13_CICLO_COMPLETO + prompt_source_file=isabella_v13.md depois do PUT de teste corromper)"
+  ],
+  "success_rate": {"backend": "100% (15/15)", "frontend": "100% (criar/toggle/deletar item de preço OK; Pâmela visível; Camila ausente)"},
+  "test_credentials": "admin@empresa.com / 123456 (super admin/gestor — co-demo)",
+  "seed_data_creation": "Itens TEST_* criados e deletados nos testes (cleanup OK). isabella_prompt_history teve 2 docs após o PUT versionado.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Endpoints /api/pricing-catalog/* (gestor) com CRUD + validações funcionando. compose_pricing_block injeta '=== PREÇOS E VALORES (TABELA OFICIAL) ===' quando há ao menos 1 item enabled (verificado via prompt_size do /isabella/test). PUT do prompt versiona (history collection populada) mas DEVERIA preservar prompt_version quando o conteúdo não muda (sugestão para próximo ciclo). UI: navegação Inteligência → Atendimento IA → Configuração → Gestão da Isabella → card 'Tabela de Preços' (isabella-tab-pricing) → CRUD via testids pricing-add-item-btn / pricing-form-* / pricing-item-toggle-* / pricing-item-delete-*. AIHubPanel tem warn de hidratação button-in-button (não bloqueante).",
+  "rca of the issue": "Apenas 1 minor: o PUT do prompt da Isabella sempre marca prompt_version='manual-<ts>' e prompt_source_file=None. Quando o teste fez GET→PUT idempotente para restaurar, o marker V13_CICLO_COMPLETO foi perdido. Reproduzir: GET /isabella/prompt → PUT com o mesmo conteúdo → GET aihub_agents mostra prompt_version manual e source_file=None. Mitigação: comparar sha antes do update e, se igual, preservar metadados de origem. Foi feito patch manual no mongo para restaurar V13_CICLO_COMPLETO + isabella_v13.md no co-demo."
+}

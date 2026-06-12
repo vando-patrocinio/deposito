@@ -112,7 +112,7 @@ class TestNeoAsk:
         assert "session_id" in data
 
     def test_ask_camila_billing_month(self, auth):
-        r = self._ask(auth, "quanto a Camila cobrou este mês?")
+        r = self._ask(auth, "quanto a Pâmela cobrou este mês?")
         assert r.status_code == 200, r.text
         data = r.json()
         assert data.get("answer")
