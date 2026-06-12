@@ -2,7 +2,43 @@
 
 > Documento vivo. Atualizado a cada sprint.
 
-## 🐞 Bug Fix: OS do Atlaz "sumindo" da Lousa do dia (12/06/2026 · CTO P0 audit · regra do gestor)
+## ✨ Feature: Botão "Validar ONTs" na Lousa Admin (12/06/2026 · pedido CTO)
+
+**Pedido:** "Cria um botão na Lousa pra validar ONTs do estoque (empresa/técnico) contra a OLT. Se a ONT estiver instalada em cliente, faz a saída do colaborador e transfere pro cliente."
+
+**Implementado:**
+
+### Backend — `POST /api/stok/onts/reconcile-with-olt` (gestor)
+- Força sync LIVE da SmartOLT API (`/onu/get_all_onus_details`) → atualiza cache `smartolt_onus`.
+- Cruza cada ONT em estoque (`location_type ∈ ['empresa','tecnico']`) com a OLT por **SN** (primário) e **MAC** (fallback).
+- Se match e existe `pppoe_user` correspondente em `subscribers` (fallback: regex no `name`):
+  - `client_equipment_history.log_event(action='withdraw')` se estava com técnico.
+  - `client_equipment_history.log_event(action='install')` no cliente real.
+  - Update `stok_onts`: `location_type='cliente'`, `location_id=<sub.id>`, `status='instalada'`, mais campos de auditoria `reconciled_at`, `reconciled_from_location_type`, `reconciled_source='smartolt_live'`.
+- Retorna `{checked, reconciled_count, no_change_count, errors_count, reconciled[], no_change[], smartolt_sync}`.
+- Idempotente: ONTs já em `cliente` não são re-processadas.
+
+### Frontend
+- Novo botão `data-testid="lousa-reconcile-onts-btn"` na toolbar do `LousaAdminPanel.js` (grupo Sentinela).
+- Modal `lousa/ReconcileOntsModal.jsx`: intro (3 passos) → spinner → resumo (Stats: Verificadas/Reconciliadas/Sem alteração/Erros) + lista detalhada das ONTs movidas.
+- `api.stokOntsReconcileWithOlt()` adicionada em `/app/frontend/src/api.js`.
+
+### Validação real (PROD DB)
+Endpoint testado via curl com admin token:
+- `checked=27, reconciled_count=0, no_change_count=27`
+- 4 ONTs identificadas na OLT mas sem `pppoe_user` mapeado → status correto "ONU achada mas sem assinante" (não força vínculo cego).
+- SmartOLT sync OK: 1819 ONUs atualizadas em ~3s.
+
+**Files:**
+- `/app/backend/routes/stok.py` (+ endpoint `reconcile_onts_with_olt`)
+- `/app/frontend/src/api.js` (+ método)
+- `/app/frontend/src/LousaAdminPanel.js` (toolbar + state + modal trigger)
+- `/app/frontend/src/lousa/ReconcileOntsModal.jsx` (NOVO)
+
+**Pendente:** redeploy PROD pra habilitar o botão na Lousa de https://ligo.system.
+
+---
+
 
 **Reportado:** Gestor criou nota "TESTE" no Atlaz (12/06 sex 18:58) e a Lousa pulou pra 15/06 seg 18:00 sem critério ("não caiu em lugar nenhum").
 

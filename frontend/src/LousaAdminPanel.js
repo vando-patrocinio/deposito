@@ -13,6 +13,7 @@ import useEventStream from "@/useEventStream";
 import { isAlertsEnabled, setAlertsEnabled, maybeFireOverdueAlerts } from "./slaAlerts";
 import SentinelaLousaCard from "./SentinelaLousaCard";
 import ReleaseStuckBubbleModal from "./lousa/ReleaseStuckBubbleModal";
+import ReconcileOntsModal from "./lousa/ReconcileOntsModal";
 import CentralOntPanel from "./lousa/CentralOntPanel";
 import GestaoMetasPanel from "./lousa/GestaoMetasPanel";
 import LousaQualityNotesPanel from "./LousaQualityNotesPanel";
@@ -213,6 +214,10 @@ export default function LousaAdminPanel({ systemStatus = { offline: false, drift
   const [showHistory, setShowHistory] = useState(false);
   const [showSentinela, setShowSentinela] = useState(false);
   const [showReleaseStuck, setShowReleaseStuck] = useState(false);
+  const [showReconcileModal, setShowReconcileModal] = useState(false);
+  const [reconcileBusy, setReconcileBusy] = useState(false);
+  const [reconcileResult, setReconcileResult] = useState(null);
+  const [reconcileError, setReconcileError] = useState(null);
   const [activeSubTab, setActiveSubTab] = useState("board"); // board | central_ont
   const [sentinelaCount, setSentinelaCount] = useState(0);
   const [pendingCallbacksCount, setPendingCallbacksCount] = useState(0);
@@ -778,6 +783,16 @@ export default function LousaAdminPanel({ systemStatus = { offline: false, drift
                 }}>{pendingTransfersCount}</span>
               </ToolbarBtn>
             )}
+            {/* CTO 12/06/2026 — Validar ONTs (reconcilia estoque vs OLT live) */}
+            <ToolbarBtn
+              onClick={() => setShowReconcileModal(true)}
+              data-testid="lousa-reconcile-onts-btn"
+              title="Validar ONTs: cruza estoque (empresa/técnico) com a OLT em tempo real. Se uma ONT estiver de fato instalada em cliente, faz a baixa e transfere automaticamente."
+              accent="neutral"
+            >
+              <span style={{ fontSize: 13 }}></span>
+              <span>Validar ONTs</span>
+            </ToolbarBtn>
             <div style={{ display: "flex", alignItems: "center" }}>
               <DateNavigator
                 selectedDate={selectedDate}
@@ -1513,6 +1528,31 @@ export default function LousaAdminPanel({ systemStatus = { offline: false, drift
           onSubmit={async (cd, notes) => {
             await handleAdminClose(adminFinalizeTicket.id, "encerrar", notes, cd);
             setAdminFinalizeTicket(null);
+          }}
+        />
+      )}
+      {showReconcileModal && (
+        <ReconcileOntsModal
+          busy={reconcileBusy}
+          result={reconcileResult}
+          error={reconcileError}
+          onClose={() => {
+            setShowReconcileModal(false);
+            setReconcileResult(null);
+            setReconcileError(null);
+          }}
+          onRun={async () => {
+            setReconcileBusy(true);
+            setReconcileError(null);
+            try {
+              const r = await api.stokOntsReconcileWithOlt();
+              setReconcileResult(r);
+            } catch (e) {
+              setReconcileError(e?.response?.data?.detail || e?.message
+                || "Falha na reconciliação");
+            } finally {
+              setReconcileBusy(false);
+            }
           }}
         />
       )}

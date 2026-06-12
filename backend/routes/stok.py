@@ -965,6 +965,213 @@ async def return_ont_to_company(mac: str, user: dict = Depends(require_role("ges
 
 
 # ---------------------------------------------------------------------------
+# Reconciliação ONT × SmartOLT live (12/06/2026 — pedido do gestor)
+# Botão "Validar ONTs" na Lousa: cruza todas as ONTs em estoque
+# (empresa/técnico) contra a OLT em tempo real. Se uma ONT estiver de fato
+# instalada em cliente, faz a baixa do técnico/empresa e transfere pro cliente.
+# ---------------------------------------------------------------------------
+@router.post("/onts/reconcile-with-olt")
+async def reconcile_onts_with_olt(user: dict = Depends(require_role("gestor"))):
+    """Varre todas as ONTs do estoque (location_type=empresa|tecnico) e cruza
+    com SmartOLT live. Para cada ONT cujo SN/MAC aparecer ativa em algum
+    assinante na OLT, faz o fluxo de saída do colaborador/empresa e marca
+    como instalada no cliente real. Idempotente por SN.
+    """
+    from routes.smartolt import _do_sync, _get_config  # imports tardios pra evitar cycle
+
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+    actor_email = user.get("email") or user.get("name") or "gestor"
+    actor_name = user.get("name") or actor_email
+
+    # Passo 1: força sync LIVE da SmartOLT (atualiza smartolt_onus)
+    sync_summary: Dict[str, Any] = {"skipped": True}
+    try:
+        cfg = await _get_config(cid)
+        if cfg.enabled and cfg.subdomain and cfg.api_key:
+            sync_summary = await _do_sync(cid, cfg)
+            sync_summary["skipped"] = False
+    except HTTPException as e:
+        # SmartOLT desconfigurada/rate-limit: segue com cache atual
+        sync_summary = {"skipped": True, "reason": str(e.detail)}
+    except Exception as e:  # noqa: BLE001
+        logger.warning("[reconcile] sync live falhou: %s — usando cache", e)
+        sync_summary = {"skipped": True, "reason": f"sync_error: {e}"}
+
+    # Passo 2: lê estoque atual (empresa + técnico)
+    stock_onts = await db.stok_onts.find(
+        {"company_id": cid,
+         "location_type": {"$in": ["empresa", "tecnico"]}},
+        {"_id": 0},
+    ).to_list(5000)
+
+    # Passo 3: monta índices da SmartOLT (sn → onu, mac → onu)
+    olt_cursor = db.smartolt_onus.find(
+        {"company_id": cid},
+        {"_id": 0, "sn": 1, "mac": 1, "name": 1, "pppoe_user": 1,
+         "status": 1, "olt_name": 1, "unique_external_id": 1},
+    )
+    olt_docs = await olt_cursor.to_list(50000)
+    by_sn: Dict[str, Dict[str, Any]] = {}
+    by_mac: Dict[str, Dict[str, Any]] = {}
+    for o in olt_docs:
+        sn = (o.get("sn") or "").strip().upper()
+        mac = normalize_mac(o.get("mac") or "") if o.get("mac") else ""
+        if sn:
+            by_sn.setdefault(sn, o)
+        if mac:
+            by_mac.setdefault(mac, o)
+
+    # Passo 4: pra cada ONT em estoque, procura match na OLT
+    reconciled: List[Dict[str, Any]] = []
+    no_change: List[Dict[str, Any]] = []
+    errors: List[Dict[str, Any]] = []
+
+    for ont in stock_onts:
+        ont_sn = (ont.get("scan_sn") or "").strip().upper()
+        ont_mac = (ont.get("mac") or "").strip().upper()
+        olt_hit = (by_sn.get(ont_sn) if ont_sn else None) \
+                  or (by_mac.get(ont_mac) if ont_mac else None)
+        if not olt_hit:
+            no_change.append({"mac": ont_mac, "sn": ont_sn,
+                              "reason": "não encontrada na OLT"})
+            continue
+
+        # Acha o assinante via pppoe_user da ONU
+        pppoe = (olt_hit.get("pppoe_user") or "").strip()
+        sub = None
+        if pppoe:
+            sub = await db.subscribers.find_one(
+                {"company_id": cid, "pppoe_user": pppoe},
+                {"_id": 0, "id": 1, "name": 1},
+            )
+        if not sub and olt_hit.get("name"):
+            # Fallback: nome da ONU vs nome do assinante
+            olt_name = (olt_hit.get("name") or "").strip()
+            if len(olt_name) >= 5:
+                sub = await db.subscribers.find_one(
+                    {"company_id": cid,
+                     "name": {"$regex": __import__("re").escape(olt_name[:25]),
+                              "$options": "i"}},
+                    {"_id": 0, "id": 1, "name": 1},
+                )
+
+        if not sub:
+            no_change.append({"mac": ont_mac, "sn": ont_sn,
+                              "olt_name": olt_hit.get("name"),
+                              "reason": "ONU achada na OLT mas sem assinante vinculado"})
+            continue
+
+        client_id = sub["id"]
+        client_name = sub["name"]
+
+        # Captura origem pro audit
+        prev_loc_type = ont.get("location_type")
+        prev_loc_id = ont.get("location_id")
+        prev_tech_name = None
+        if prev_loc_type == "tecnico" and prev_loc_id:
+            tech = await db.collaborators.find_one(
+                {"id": prev_loc_id}, {"_id": 0, "name": 1})
+            prev_tech_name = (tech or {}).get("name")
+
+        # Passo 4a: se estava com técnico → registra evento de saída (withdraw)
+        try:
+            if prev_loc_type == "tecnico":
+                await ceh.log_event(
+                    company_id=cid,
+                    client_id=client_id,
+                    client_name=client_name,
+                    action="withdraw",
+                    ont_mac=ont_mac,
+                    ont_sn=ont_sn or None,
+                    actor_id=user.get("id"),
+                    actor_name=actor_name,
+                    actor_email=actor_email,
+                    notes=(f"reconcile-with-olt: saída automática do técnico "
+                           f"{prev_tech_name or prev_loc_id} (ONT estava "
+                           f"instalada no cliente conforme OLT)"),
+                )
+        except Exception as e:  # noqa: BLE001
+            logger.warning("[reconcile] withdraw ceh falhou %s: %s", ont_mac, e)
+
+        # Passo 4b: registra install no cliente real
+        try:
+            await ceh.log_event(
+                company_id=cid,
+                client_id=client_id,
+                client_name=client_name,
+                action="install",
+                ont_mac=ont_mac,
+                ont_sn=ont_sn or None,
+                actor_id=user.get("id"),
+                actor_name=actor_name,
+                actor_email=actor_email,
+                notes=(f"reconcile-with-olt: ONT estava em estoque "
+                       f"({prev_loc_type}/{prev_tech_name or prev_loc_id}) "
+                       f"mas a OLT mostra instalada — vínculo corrigido"),
+            )
+        except Exception as e:  # noqa: BLE001
+            logger.warning("[reconcile] install ceh falhou %s: %s", ont_mac, e)
+
+        # Passo 4c: atualiza stok_onts para cliente
+        try:
+            await db.stok_onts.update_one(
+                {"company_id": cid, "mac": ont["mac"]},
+                {"$set": {
+                    "location_type": "cliente",
+                    "location_id": client_id,
+                    "client_name": client_name,
+                    "status": "instalada",
+                    "installed_at": now_iso(),
+                    "installed_by_id": user.get("id"),
+                    "installed_by_name": actor_name,
+                    "installed_by_email": actor_email,
+                    "installed_via_ticket": None,
+                    "installed_via_service": None,
+                    "reconciled_at": now_iso(),
+                    "reconciled_from_location_type": prev_loc_type,
+                    "reconciled_from_location_id": prev_loc_id,
+                    "reconciled_from_tech_name": prev_tech_name,
+                    "reconciled_source": "smartolt_live",
+                    "reconciled_by_email": actor_email,
+                }},
+            )
+            await _add_history(
+                "reconcile",
+                (f"ONT {ont_mac or ont_sn} reconciliada: estava em "
+                 f"{prev_loc_type}/{prev_tech_name or prev_loc_id}, "
+                 f"mas a OLT mostrou instalada no cliente "
+                 f"'{client_name}'. Vínculo corrigido automaticamente."),
+                actor_name, "reconcile_with_olt", cid,
+            )
+            reconciled.append({
+                "mac": ont_mac, "sn": ont_sn,
+                "from": {"type": prev_loc_type,
+                          "id": prev_loc_id,
+                          "tech_name": prev_tech_name},
+                "to": {"client_id": client_id,
+                        "client_name": client_name},
+                "olt_status": olt_hit.get("status"),
+                "olt_name": olt_hit.get("olt_name"),
+            })
+        except Exception as e:  # noqa: BLE001
+            errors.append({"mac": ont_mac, "sn": ont_sn, "error": str(e)})
+            logger.exception("[reconcile] update stok_onts falhou %s", ont_mac)
+
+    return {
+        "checked": len(stock_onts),
+        "reconciled_count": len(reconciled),
+        "no_change_count": len(no_change),
+        "errors_count": len(errors),
+        "smartolt_sync": sync_summary,
+        "reconciled": reconciled,
+        "no_change": no_change[:50],   # limita payload
+        "errors": errors,
+        "ran_at": now_iso(),
+        "ran_by": actor_email,
+    }
+
+
+# ---------------------------------------------------------------------------
 # Stock (insumos)
 # ---------------------------------------------------------------------------
 @router.get("/stock")

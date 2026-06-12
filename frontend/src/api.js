@@ -789,6 +789,8 @@ export const api = {
   stokOntsBulkTransfer: (macs, technicianId) =>
     client.post(`/stok/onts/transfer-to-tech/bulk`,
       { macs, technician_id: technicianId }).then((r) => r.data),
+  stokOntsReconcileWithOlt: () =>
+    client.post(`/stok/onts/reconcile-with-olt`).then((r) => r.data),
 
   // ========= Estoque por Praça =========
   stokPracaSummary: () =>
