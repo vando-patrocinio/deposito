@@ -222,7 +222,7 @@ export default function LousaAdminPanel({ systemStatus = { offline: false, drift
   const [sentinelaCount, setSentinelaCount] = useState(0);
   const [pendingCallbacksCount, setPendingCallbacksCount] = useState(0);
   const [pendingTransfersCount, setPendingTransfersCount] = useState(0);
-  const [salaTriage, setSalaTriage] = useState({ total: 0, today: 0, overdue: 0, future: 0, level: "calm" });
+  const [salaTriage, setSalaTriage] = useState({ total: 0, today: 0, overdue: 0, future: 0, visible_now: 0, level: "calm" });
   const [busy, setBusy] = useState(false);
   const [draggingId, setDraggingId] = useState(null);
   const [dragOverCol, setDragOverCol] = useState(null);
@@ -547,6 +547,7 @@ export default function LousaAdminPanel({ systemStatus = { offline: false, drift
               today: r.today || 0,
               overdue: r.overdue || 0,
               future: r.future || 0,
+              visible_now: r.visible_now ?? ((r.today || 0) + (r.overdue || 0)),
               level: r.level || "calm",
             });
           }
@@ -1391,7 +1392,7 @@ export default function LousaAdminPanel({ systemStatus = { offline: false, drift
                   } : { display: "contents" }}>
               {isVirtualSala && (() => {
                 const lvl = salaTriage.level || "calm";
-                const hasTriage = salaTriage.total > 0;
+                const hasTriage = (salaTriage.visible_now || salaTriage.total) > 0;
                 const bg = lvl === "hot" ? "#dc2626"
                          : lvl === "warn" ? "#f59e0b" : "#10b981";
                 const pulse = lvl === "hot";
@@ -1409,9 +1410,10 @@ export default function LousaAdminPanel({ systemStatus = { offline: false, drift
                     {hasTriage && (
                       <div
                         data-testid="lousa-sala-triage-badge"
-                        title={`Triagem · ${salaTriage.total} total ` +
-                               `(hoje: ${salaTriage.today}, atrasadas: ${salaTriage.overdue}, ` +
-                               `futuras: ${salaTriage.future})`}
+                        title={`Visível agora: ${salaTriage.visible_now} ` +
+                               `(hoje: ${salaTriage.today}, atrasadas: ${salaTriage.overdue}` +
+                               (salaTriage.future > 0 ? `, futuras NÃO listadas: ${salaTriage.future}` : "") +
+                               `) — total ativo: ${salaTriage.total}`}
                         style={{
                           background: bg, color: "white",
                           padding: "3px 10px", borderRadius: 999,
@@ -1425,12 +1427,18 @@ export default function LousaAdminPanel({ systemStatus = { offline: false, drift
                           width: 6, height: 6, borderRadius: 999,
                           background: "white", opacity: 0.9,
                         }} />
-                        {salaTriage.total} aguardando triagem
+                        {salaTriage.visible_now} aguardando triagem
                         {salaTriage.overdue > 0 && (
                           <span style={{
                             background: "rgba(0,0,0,0.25)", padding: "1px 6px",
                             borderRadius: 999, fontSize: 10, fontWeight: 700,
                           }}>{salaTriage.overdue} atrasada{salaTriage.overdue > 1 ? "s" : ""}</span>
+                        )}
+                        {salaTriage.future > 0 && (
+                          <span title={`${salaTriage.future} futura(s) — abra em outra data para ver`} style={{
+                            background: "rgba(255,255,255,0.25)", padding: "1px 6px",
+                            borderRadius: 999, fontSize: 10, fontWeight: 700,
+                          }}>+{salaTriage.future} futura{salaTriage.future > 1 ? "s" : ""}</span>
                         )}
                       </div>
                     )}

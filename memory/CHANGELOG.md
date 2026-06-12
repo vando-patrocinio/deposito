@@ -7920,3 +7920,23 @@ Relatório: `/app/docs/RELATORIO_RELACIONAMENTO_360.md`
   1. Gestor abre Painel da Lousa → Gestão de Metas → seção "Cards visíveis no app do técnico" → liga toggle "Meu dia em campo".
   2. App do técnico (Lousa Mobile) faz fetch do `/lousa/public/dashboard-config/{cid}` e passa a montar o card.
   3. Sem mais controle por técnico via localStorage — agora é decisão do gestor (consistente com os outros toggles).
+
+---
+## 2026-06-12 (parte 11) — FIX bug "contagem fantasma" SALA · FIXA (AUTORIZADO)
+- **Bug reportado**: badge externo mostrava "82 aguardando triagem" mas ao procurar as bolhas, usuário não achava em lugar nenhum. As 3 atrasadas (data passada) eram contadas mas escondidas da lista.
+- **Causa raiz**: dois endpoints com critérios desalinhados:
+  - `GET /api/lousa/sala/count`: contava TODAS as ativas (qualquer data) → retornava 82.
+  - `GET /api/lousa/sala/`: listava só com `scheduled_time ~ "^hoje"` → retornava 79.
+  - Diferença = 3 bolhas com data passada (atrasadas reais) ou data nula → invisíveis.
+- **Fix Backend** (`routes/lousa_sala.py`):
+  - `GET /` quando `date == hoje` (default): inclui atrasadas (`<= hoje`) E bolhas sem data via `$or`. Quando data específica é passada (ex.: ?date=2026-06-15): mantém filtro exato regex.
+  - `GET /count`: adicionado campo `visible_now = today + overdue + sem_data` para o badge usar.
+- **Fix Frontend** (`LousaAdminPanel.js`):
+  - State `salaTriage` ganhou `visible_now`.
+  - Badge mostra `salaTriage.visible_now` (= o que aparece na lista) ao invés de `total`.
+  - Tooltip discrimina hoje/atrasadas/futuras + total ativo.
+  - Se houver `future > 0`, badge mostra "+N futuras" (pílula clara, abrir outra data pra ver).
+- **Validação**:
+  - count agora retorna `{total:82, today:79, overdue:3, future:0, visible_now:82, level:"hot"}`.
+  - lista agora retorna 82 tickets distribuídos: 2 de 15-mai + 1 de 11-jun + 79 de hoje.
+  - Match perfeito badge ↔ lista. Pytest combinado: 14/14 passing.

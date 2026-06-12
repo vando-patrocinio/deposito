@@ -71,13 +71,25 @@ async def listar_sala(
     cid = _cid(user)
     sala_id = await _sala_collaborator_id(cid)
     date_iso = (date or _today_br_iso()).strip()
+    today_iso = _today_br_iso()
 
     query: Dict[str, Any] = {
         "company_id": cid,
         "assigned_collaborator_id": sala_id,
         "status": {"$in": ["pendente", "aberta", "aguardando_atendimento"]},
-        "scheduled_time": {"$regex": f"^{date_iso}"},
     }
+    # CTO 12/06/2026 — Fix contagem fantasma: quando date == hoje (default),
+    # inclui ATRASADAS (scheduled_time <= hoje OR sem data). Para outras
+    # datas (ex.: amanhã), filtra exato. Assim a coluna SALA não esconde
+    # bolhas atrasadas que o badge externo conta.
+    if date_iso == today_iso:
+        query["$or"] = [
+            {"scheduled_time": {"$regex": f"^{today_iso}"}},
+            {"scheduled_time": {"$lt": today_iso, "$ne": ""}},
+            {"scheduled_time": {"$in": [None, ""]}},
+        ]
+    else:
+        query["scheduled_time"] = {"$regex": f"^{date_iso}"}
     if window in ("manha", "tarde"):
         query["scheduled_window"] = window
 
@@ -169,6 +181,13 @@ async def contagem_sala(
     future = total - today - overdue
     if future < 0:
         future = 0
+    # CTO 12/06/2026 — visible_now = quantidade que aparece DE FATO na lista
+    # da coluna SALA quando date==hoje (inclui atrasadas + sem data).
+    sem_data = await db.tickets.count_documents({
+        **base, "scheduled_time": {"$in": [None, ""]}})
+    visible_now = today + overdue + sem_data
+    if visible_now > total:
+        visible_now = total
 
     if total < 5:
         level = "calm"
@@ -183,6 +202,7 @@ async def contagem_sala(
         "today": today,
         "overdue": overdue,
         "future": future,
+        "visible_now": visible_now,
         "level": level,
     }
 
