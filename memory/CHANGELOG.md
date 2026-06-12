@@ -7895,3 +7895,28 @@ Relatório: `/app/docs/RELATORIO_RELACIONAMENTO_360.md`
   - + 1 outro órfão (provavelmente co-tesoureira-test)
 
 **Próxima decisão pendente**: vincular esses 4 a um colaborador (você → "Vando" colab via Cadastro?) ou deixar como contas de sistema.
+
+---
+## 2026-06-12 (parte 10) — "Meu dia em campo" migrado para Configurações (AUTORIZADO)
+- **Contexto**: usuário pediu para mover o toggle inline do card "MEU DIA EM CAMPO" (que ficava no header da Lousa Mobile com localStorage) para a tela de Configurações do gestor, junto com outras opções da Lousa, com **default DESLIGADO**.
+- **Backend** (`routes/lousa.py`):
+  - `DASHBOARD_CONFIG_DEFAULTS` ganhou `show_meu_dia_em_campo: False`.
+  - Endpoints `/lousa/admin/dashboard-config` (GET/POST) e `/lousa/public/dashboard-config/{cid}` já refletem o novo flag automaticamente (via spread `{**DEFAULTS, **doc}`).
+- **Frontend** (`LousaMobile.js`):
+  - `dashCfg` state default ganhou `show_meu_dia_em_campo: false`.
+  - Render condicional: `<LousaFieldHeader>` só monta se `dashCfg.show_meu_dia_em_campo === true`.
+- **Frontend** (`lousa/LousaFieldHeader.jsx`):
+  - Removido toggle inline + localStorage (`LS_KEY`, `enabled`, `toggleEnabled`).
+  - Card agora renderiza SEMPRE quando montado (parent controla exibição).
+- **Frontend** (`lousa/GestaoMetasPanel.js`):
+  - Nova entry no array de toggles "Cards visíveis no app do técnico":
+    `["show_meu_dia_em_campo", "Meu dia em campo", "Card com métricas do dia + GPS + atalhos Isabella/Estoque/Frota (default desligado)"]`.
+- **Validação**:
+  - Curl admin GET retorna `show_meu_dia_em_campo: false` (default).
+  - POST `{show_meu_dia_em_campo: true}` → persiste e GET reflete.
+  - POST `{show_meu_dia_em_campo: false}` → desliga.
+  - Pytest combinado: 14/14 passing (zero regressão).
+- **Fluxo de UX agora**:
+  1. Gestor abre Painel da Lousa → Gestão de Metas → seção "Cards visíveis no app do técnico" → liga toggle "Meu dia em campo".
+  2. App do técnico (Lousa Mobile) faz fetch do `/lousa/public/dashboard-config/{cid}` e passa a montar o card.
+  3. Sem mais controle por técnico via localStorage — agora é decisão do gestor (consistente com os outros toggles).

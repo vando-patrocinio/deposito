@@ -60,6 +60,7 @@ export default function LousaMobile({ collaboratorId, onBack, isAdminTest = fals
     show_performance: true, show_achievements: true,
     show_smart_route: true, show_points: true,
     enable_geofence_alerts: true,
+    show_meu_dia_em_campo: false,  // CTO 12/06/2026 — default OFF
   });
   // iter211ae — Refs pra capturar completion_data e lat no escopo do catch
   // (necessário pra enfileirar finalize na outbox quando der erro de rede).
@@ -870,15 +871,20 @@ export default function LousaMobile({ collaboratorId, onBack, isAdminTest = fals
       {/* iter234 — Smart Field Ops absorvido pela Lousa: métricas do dia,
           status GPS e atalhos Isabella/Estoque/Frota. Field Ops não existe
           mais como tela separada no app do colaborador. */}
-      <ErrorBoundary name="lousa-field-header" variant="card"
-        fallbackText="Não foi possível carregar o painel de campo.">
-        <LousaFieldHeader tickets={data?.tickets || []}
-          collaboratorId={collaboratorId}
-          onOpenOs={(id) => {
-            const t = (data?.tickets || []).find((x) => x.id === id);
-            if (t) handleOpen(t);
-          }} />
-      </ErrorBoundary>
+      {/* CTO 12/06/2026 — card "Meu dia em campo" só aparece se gestor ligou
+          em Configurações (Gestão de Metas → Cards visíveis no app do técnico).
+          Default = OFF. */}
+      {dashCfg.show_meu_dia_em_campo && (
+        <ErrorBoundary name="lousa-field-header" variant="card"
+          fallbackText="Não foi possível carregar o painel de campo.">
+          <LousaFieldHeader tickets={data?.tickets || []}
+            collaboratorId={collaboratorId}
+            onOpenOs={(id) => {
+              const t = (data?.tickets || []).find((x) => x.id === id);
+              if (t) handleOpen(t);
+            }} />
+        </ErrorBoundary>
+      )}
       {dashCfg.show_performance && (
         <ErrorBoundary name="lousa-perf-card" variant="card"
           fallbackText="Não foi possível carregar seu painel de desempenho.">

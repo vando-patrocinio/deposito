@@ -6847,6 +6847,10 @@ DASHBOARD_CONFIG_DEFAULTS = {
     "show_smart_route": True,
     "show_points": True,
     "enable_geofence_alerts": True,
+    # CTO 12/06/2026 — card "Meu dia em campo" (métricas+GPS+atalhos
+    # Isabella/Estoque/Frota) controlado globalmente. Default DESLIGADO
+    # por decisão de produto.
+    "show_meu_dia_em_campo": False,
 }
 
 

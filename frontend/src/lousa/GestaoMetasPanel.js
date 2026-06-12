@@ -171,6 +171,8 @@ export default function GestaoMetasPanel() {
                 "Mostrar pontos da gamificação"],
               ["enable_geofence_alerts", "Alerta de geofence",
                 "Cria bolha vermelha se técnico sair da área"],
+              ["show_meu_dia_em_campo", "Meu dia em campo",
+                "Card com métricas do dia + GPS + atalhos Isabella/Estoque/Frota (default desligado)"],
             ].map(([key, label, hint]) => (
               <ToggleCard key={key} testid={`toggle-${key}`}
                             label={label} hint={hint}

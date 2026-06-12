@@ -155,22 +155,11 @@ export default function LousaFieldHeader({ tickets, collaboratorId, onOpenOs }) 
 
   const [overlay, setOverlay] = useState(null); // "isabella" | "estoque" | "frota"
 
-  // Toggle do card "Meu dia em campo" — desligado por padrão (persistido)
-  const LS_KEY = "lousa.meu_dia_em_campo.enabled";
-  const [enabled, setEnabled] = useState(() => {
-    try {
-      const v = localStorage.getItem(LS_KEY);
-      return v === "1"; // default false
-    } catch (e) { return false; }
-  });
-  const toggleEnabled = () => {
-    setEnabled((prev) => {
-      const next = !prev;
-      try { localStorage.setItem(LS_KEY, next ? "1" : "0"); }
-      catch (e) { /* noop */ }
-      return next;
-    });
-  };
+  // CTO 12/06/2026 — controle de exibição migrado para
+  // `lousa_dashboard_config.show_meu_dia_em_campo` (gestor configura em
+  // "Gestão de Metas → Cards visíveis no app do técnico"). O parent
+  // (LousaMobile) decide se monta este componente. Quando montado,
+  // renderiza sempre.
 
   return (
     <div data-testid="lousa-field-header" style={{ marginTop: 12, marginBottom: 6 }}>
@@ -180,67 +169,35 @@ export default function LousaFieldHeader({ tickets, collaboratorId, onOpenOs }) 
         borderRadius: 14, padding: 12, marginBottom: 10,
         boxShadow: "0 1px 2px rgba(15,23,42,.04)",
       }}>
-        <div style={{ display: "flex", justifyContent: "space-between",
-          alignItems: "center", marginBottom: 8 }}>
-          <div style={{
-            fontSize: 10, fontWeight: 700, color: "#64748b",
-            letterSpacing: 1, textTransform: "uppercase",
-          }}>Meu dia em campo</div>
-          <button
-            data-testid="toggle-meu-dia-em-campo"
-            onClick={toggleEnabled}
-            aria-pressed={enabled}
-            title={enabled ? "Desligar card" : "Ligar card"}
-            style={{
-              border: 0, padding: 0, cursor: "pointer",
-              background: "transparent", display: "inline-flex",
-              alignItems: "center", gap: 6, fontSize: 11,
-              fontWeight: 700, color: enabled ? "#065f46" : "#64748b",
-            }}>
-            <span style={{
-              width: 30, height: 16, borderRadius: 999,
-              background: enabled ? "#10b981" : "#cbd5e1",
-              position: "relative", transition: "background .15s",
-            }}>
-              <span style={{
-                position: "absolute", top: 2,
-                left: enabled ? 16 : 2, width: 12, height: 12,
-                borderRadius: "50%", background: "white",
-                boxShadow: "0 1px 2px rgba(0,0,0,.15)",
-                transition: "left .15s",
-              }}/>
-            </span>
-            {enabled ? "Ligado" : "Desligado"}
-          </button>
+        <div style={{
+          fontSize: 10, fontWeight: 700, color: "#64748b",
+          letterSpacing: 1, textTransform: "uppercase",
+          marginBottom: 8,
+        }}>Meu dia em campo</div>
+        <div style={{ display: "flex", gap: 6 }}>
+          <MetricBox label="Hoje" value={counts.today} />
+          <MetricBox label="Pendentes" value={counts.pendentes} />
+          <MetricBox label="Atrasadas" value={counts.atrasadas} warn />
+          <MetricBox label="Feitas" value={counts.finalizadas} />
         </div>
-        {enabled && (
-          <>
-            <div style={{ display: "flex", gap: 6 }}>
-              <MetricBox label="Hoje" value={counts.today} />
-              <MetricBox label="Pendentes" value={counts.pendentes} />
-              <MetricBox label="Atrasadas" value={counts.atrasadas} warn />
-              <MetricBox label="Feitas" value={counts.finalizadas} />
-            </div>
-            <div style={{
-              display: "flex", gap: 8, marginTop: 10, flexWrap: "wrap",
-              fontSize: 11, fontWeight: 600,
-            }}>
-              <span style={{ color: gpsOk === false ? "#b45309"
-                : gpsOk ? "#065f46" : "#64748b" }}>
-                GPS {gpsOk === false ? "sem sinal" : gpsOk ? "ativo" : "verificando..."}
-              </span>
-            </div>
-            {/* Atalhos Field Ops absorvidos */}
-            <div style={{ display: "flex", gap: 6, marginTop: 10, flexWrap: "wrap" }}>
-              <MiniBtn icon="🧠" label="Isabella IA" testid="lousa-open-isabella"
-                onClick={() => setOverlay("isabella")} />
-              <MiniBtn icon="📦" label="Estoque" testid="lousa-open-estoque"
-                onClick={() => setOverlay("estoque")} />
-              <MiniBtn icon="🚐" label="Frota" testid="lousa-open-frota"
-                onClick={() => setOverlay("frota")} />
-            </div>
-          </>
-        )}
+        <div style={{
+          display: "flex", gap: 8, marginTop: 10, flexWrap: "wrap",
+          fontSize: 11, fontWeight: 600,
+        }}>
+          <span style={{ color: gpsOk === false ? "#b45309"
+            : gpsOk ? "#065f46" : "#64748b" }}>
+            GPS {gpsOk === false ? "sem sinal" : gpsOk ? "ativo" : "verificando..."}
+          </span>
+        </div>
+        {/* Atalhos Field Ops absorvidos */}
+        <div style={{ display: "flex", gap: 6, marginTop: 10, flexWrap: "wrap" }}>
+          <MiniBtn icon="🧠" label="Isabella IA" testid="lousa-open-isabella"
+            onClick={() => setOverlay("isabella")} />
+          <MiniBtn icon="📦" label="Estoque" testid="lousa-open-estoque"
+            onClick={() => setOverlay("estoque")} />
+          <MiniBtn icon="🚐" label="Frota" testid="lousa-open-frota"
+            onClick={() => setOverlay("frota")} />
+        </div>
       </div>
 
       {overlay === "isabella" && (
