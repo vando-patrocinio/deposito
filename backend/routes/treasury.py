@@ -565,3 +565,365 @@ async def kpis(user: dict = Depends(require_role("gestor"))):
 @router.get("/outflow-forecast")
 async def outflow_forecast(user: dict = Depends(require_role("gestor"))):
     return (await kpis(user))["outflow_forecast"]
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# ITER236 — Reforma Contas a Pagar (CTO 12/06/2026)
+# - Multi-conta com 1 conta padrão de pagamento
+# - DDA Inbox (boletos recebidos aguardando aprovação)
+# - Recorrência com início/fim/valor total
+# - Envio de comprovante via WhatsApp (assinatura by SmartProv)
+# - Pagamento manual Pix por telefone (chave PHONE)
+# ════════════════════════════════════════════════════════════════════════════
+
+from services.treasury_receipts import send_receipt_whatsapp, build_receipt_text  # noqa: E402
+
+
+# ─────────────────────── 1. MULTI-CONTAS ───────────────────────────────────
+
+class PaymentAccountIn(BaseModel):
+    name: str = Field(..., min_length=2, max_length=80)
+    bank: Optional[str] = "Asaas"
+    cnpj: Optional[str] = None
+    pix_keys: List[str] = Field(default_factory=list)  # chaves Pix da própria conta
+    description: Optional[str] = None
+    is_default: bool = False
+
+
+@router.get("/accounts")
+async def list_accounts(user: dict = Depends(require_role("gestor"))):
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+    docs = await db.treasury_accounts.find({"company_id": cid}, {"_id": 0}).to_list(500)
+    if not docs:
+        # auto-cria conta default Asaas
+        d = {
+            "account_id": f"acc-{uuid.uuid4().hex[:12]}", "company_id": cid,
+            "name": "Conta Asaas principal", "bank": "Asaas",
+            "is_default": True, "active": True,
+            "created_at": now_iso(), "created_by": user.get("email") or "system",
+        }
+        await db.treasury_accounts.insert_one(d)
+        d.pop("_id", None)
+        docs = [d]
+    return {"accounts": docs}
+
+
+@router.post("/accounts")
+async def create_account(p: PaymentAccountIn, user: dict = Depends(require_role("gestor"))):
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+    if p.is_default:
+        await db.treasury_accounts.update_many(
+            {"company_id": cid}, {"$set": {"is_default": False}})
+    doc = {
+        "account_id": f"acc-{uuid.uuid4().hex[:12]}", "company_id": cid,
+        "name": p.name, "bank": p.bank, "cnpj": p.cnpj,
+        "pix_keys": p.pix_keys, "description": p.description,
+        "is_default": bool(p.is_default), "active": True,
+        "created_at": now_iso(), "created_by": user.get("email") or "system",
+    }
+    await db.treasury_accounts.insert_one(doc)
+    doc.pop("_id", None)
+    return doc
+
+
+@router.post("/accounts/{account_id}/set-default")
+async def set_default_account(account_id: str, user: dict = Depends(require_role("gestor"))):
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+    doc = await db.treasury_accounts.find_one({"account_id": account_id, "company_id": cid})
+    if not doc:
+        raise HTTPException(404, "Conta não encontrada")
+    await db.treasury_accounts.update_many(
+        {"company_id": cid}, {"$set": {"is_default": False}})
+    await db.treasury_accounts.update_one(
+        {"account_id": account_id}, {"$set": {"is_default": True}})
+    return {"ok": True, "default_account_id": account_id}
+
+
+@router.delete("/accounts/{account_id}")
+async def delete_account(account_id: str, user: dict = Depends(require_role("gestor"))):
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+    doc = await db.treasury_accounts.find_one({"account_id": account_id, "company_id": cid})
+    if not doc:
+        raise HTTPException(404, "Conta não encontrada")
+    if doc.get("is_default"):
+        raise HTTPException(400, "Não é possível excluir a conta padrão. Defina outra como padrão antes.")
+    await db.treasury_accounts.update_one(
+        {"account_id": account_id}, {"$set": {"active": False, "deleted_at": now_iso()}})
+    return {"ok": True}
+
+
+# ─────────────────────── 2. DDA INBOX ─────────────────────────────────────
+# DDA: boletos que chegam à empresa via banco/registro. O Asaas em si não
+# tem endpoint de "boletos a pagar do cliente"; quem alimenta este inbox é
+# o gestor (manual via UI) ou um futuro conector bancário. O fluxo é:
+#   recebido (DDA) → aprovado → vira scheduled_payment (boleto)
+# Status: pending | approved | rejected | scheduled
+
+class DDAInvoiceIn(BaseModel):
+    payee_name: str
+    payee_document: Optional[str] = None
+    amount_brl: float
+    due_date: str  # YYYY-MM-DD
+    identification_field: Optional[str] = None
+    bar_code: Optional[str] = None
+    description: Optional[str] = None
+    category: Optional[str] = None
+    source: str = "manual"  # manual | bank_dda | upload | email
+    raw_payload: Optional[Dict[str, Any]] = None
+
+
+@router.get("/dda/inbox")
+async def list_dda_inbox(status: Optional[str] = None,
+                          user: dict = Depends(require_role("gestor"))):
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+    q: Dict[str, Any] = {"company_id": cid}
+    if status:
+        q["status"] = status
+    docs = await db.dda_inbox.find(q, {"_id": 0}).sort("due_date", 1).to_list(500)
+    counts = {
+        "pending": await db.dda_inbox.count_documents({"company_id": cid, "status": "pending"}),
+        "approved": await db.dda_inbox.count_documents({"company_id": cid, "status": "approved"}),
+        "rejected": await db.dda_inbox.count_documents({"company_id": cid, "status": "rejected"}),
+        "scheduled": await db.dda_inbox.count_documents({"company_id": cid, "status": "scheduled"}),
+    }
+    return {"inbox": docs, "counts": counts}
+
+
+@router.post("/dda/inbox")
+async def create_dda_invoice(p: DDAInvoiceIn, user: dict = Depends(require_role("gestor"))):
+    if not p.identification_field and not p.bar_code:
+        raise HTTPException(400,
+            "É necessário identification_field (linha digitável) OU bar_code")
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+    doc = {
+        "dda_id": f"dda-{uuid.uuid4().hex[:14]}", "company_id": cid,
+        "payee_name": p.payee_name, "payee_document": p.payee_document,
+        "amount_brl": float(p.amount_brl), "due_date": p.due_date,
+        "identification_field": p.identification_field, "bar_code": p.bar_code,
+        "description": p.description, "category": p.category,
+        "source": p.source, "raw_payload": p.raw_payload,
+        "status": "pending", "received_at": now_iso(),
+        "received_by": user.get("email") or "system",
+    }
+    await db.dda_inbox.insert_one(doc)
+    doc.pop("_id", None)
+    return doc
+
+
+@router.post("/dda/{dda_id}/approve")
+async def approve_dda(dda_id: str, user: dict = Depends(require_role("gestor"))):
+    """Aprova boleto DDA → cria scheduled_payment (boleto) automaticamente."""
+    _check_sandbox_guard()
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+    dda = await db.dda_inbox.find_one({"dda_id": dda_id, "company_id": cid})
+    if not dda:
+        raise HTTPException(404, "Boleto DDA não encontrado")
+    if dda["status"] != "pending":
+        raise HTTPException(409, f"Status já é {dda['status']}")
+
+    # cria/usa payee virtual
+    payee_id = f"payee-dda-{uuid.uuid4().hex[:10]}"
+    payee_doc = {
+        "company_id": cid, "payee_id": payee_id,
+        "name": dda.get("payee_name") or "Beneficiário DDA",
+        "document": dda.get("payee_document"),
+        "allowed_methods": ["BILL"], "active": True,
+        "created_at": now_iso(), "created_by": user.get("email") or "system",
+        "from_dda": dda_id,
+    }
+    await db.whitelisted_payees.insert_one(payee_doc)
+
+    payment_id = f"pay-{uuid.uuid4().hex[:14]}"
+    payment_doc = {
+        "company_id": cid, "payment_id": payment_id,
+        "payee_id": payee_id, "payee_name": dda.get("payee_name"),
+        "payee_document": dda.get("payee_document"),
+        "method": "bill",
+        "identification_field": dda.get("identification_field"),
+        "bar_code": dda.get("bar_code"),
+        "amount_brl": float(dda["amount_brl"]),
+        "scheduled_for": dda["due_date"], "due_date": dda["due_date"],
+        "category": dda.get("category") or "DDA",
+        "description": dda.get("description") or f"Boleto DDA — {dda.get('payee_name')}",
+        "provider": "asaas", "provider_transfer_id": None, "provider_bill_id": None,
+        "status": "draft", "dda_id": dda_id,
+        "created_by": user.get("email") or "system",
+        "created_at": now_iso(), "updated_at": now_iso(),
+    }
+    await db.scheduled_payments.insert_one(payment_doc)
+    await db.dda_inbox.update_one(
+        {"dda_id": dda_id},
+        {"$set": {"status": "scheduled", "approved_at": now_iso(),
+                  "approved_by": user.get("email") or "?",
+                  "linked_payment_id": payment_id}},
+    )
+    payment_doc.pop("_id", None)
+    await _audit("dda_approved", payment_id, user.get("email") or "?", cid,
+                 {"dda_id": dda_id})
+    return {"ok": True, "dda_id": dda_id, "payment_id": payment_id, "payment": payment_doc}
+
+
+@router.post("/dda/{dda_id}/reject")
+async def reject_dda(dda_id: str, reason: Optional[str] = None,
+                      user: dict = Depends(require_role("gestor"))):
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+    dda = await db.dda_inbox.find_one({"dda_id": dda_id, "company_id": cid})
+    if not dda:
+        raise HTTPException(404, "Boleto DDA não encontrado")
+    await db.dda_inbox.update_one(
+        {"dda_id": dda_id},
+        {"$set": {"status": "rejected", "rejected_at": now_iso(),
+                  "rejected_by": user.get("email") or "?", "rejection_reason": reason}},
+    )
+    return {"ok": True}
+
+
+# ─────────────────────── 3. RECORRÊNCIAS ───────────────────────────────────
+# Recorrência com período (início, fim) e valor TOTAL. O total é dividido
+# em N parcelas mensais (frequency=monthly por padrão).
+
+class RecurringIn(BaseModel):
+    payee_id: str
+    amount_total_brl: float  # valor total da recorrência (será dividido por N parcelas)
+    start_date: str          # YYYY-MM-DD
+    end_date: str            # YYYY-MM-DD
+    frequency: str = "monthly"  # monthly | weekly | biweekly
+    method: str = "pix"      # pix | bill
+    description: Optional[str] = None
+    category: Optional[str] = None
+    pix_key: Optional[str] = None
+    pay_day: int = 5         # dia do mês pra cobrar (1-28)
+    auto_create_drafts: bool = True  # já gera todos os drafts na criação?
+
+
+def _months_between(start: str, end: str) -> int:
+    a = datetime.fromisoformat(start)
+    b = datetime.fromisoformat(end)
+    return max(1, (b.year - a.year) * 12 + (b.month - a.month) + 1)
+
+
+@router.get("/recurring")
+async def list_recurring(user: dict = Depends(require_role("gestor"))):
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+    docs = await db.recurring_payments.find({"company_id": cid}, {"_id": 0}).sort("created_at", -1).to_list(200)
+    return {"recurring": docs}
+
+
+@router.post("/recurring")
+async def create_recurring(p: RecurringIn, user: dict = Depends(require_role("gestor"))):
+    _check_sandbox_guard()
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+    payee = await db.whitelisted_payees.find_one({"payee_id": p.payee_id, "company_id": cid})
+    if not payee:
+        raise HTTPException(404, "Beneficiário não encontrado")
+    n = _months_between(p.start_date, p.end_date)
+    parcel = round(float(p.amount_total_brl) / n, 2)
+    rec_id = f"rec-{uuid.uuid4().hex[:12]}"
+    rec = {
+        "recurring_id": rec_id, "company_id": cid,
+        "payee_id": p.payee_id, "payee_name": payee.get("name"),
+        "amount_total_brl": float(p.amount_total_brl),
+        "parcel_amount_brl": parcel, "installments": n,
+        "start_date": p.start_date, "end_date": p.end_date,
+        "frequency": p.frequency, "pay_day": p.pay_day,
+        "method": p.method, "description": p.description, "category": p.category,
+        "pix_key": p.pix_key or payee.get("pix_key"),
+        "active": True, "status": "active",
+        "generated_payment_ids": [],
+        "created_at": now_iso(), "created_by": user.get("email") or "system",
+    }
+    await db.recurring_payments.insert_one(rec)
+
+    payment_ids: List[str] = []
+    if p.auto_create_drafts:
+        start = datetime.fromisoformat(p.start_date)
+        for i in range(n):
+            month = start.month + i
+            year = start.year + (month - 1) // 12
+            month = ((month - 1) % 12) + 1
+            day = min(p.pay_day, 28)
+            sched = f"{year:04d}-{month:02d}-{day:02d}"
+            pid = f"pay-{uuid.uuid4().hex[:14]}"
+            payment_doc = {
+                "company_id": cid, "payment_id": pid,
+                "payee_id": p.payee_id, "payee_name": payee.get("name"),
+                "payee_document": payee.get("document"),
+                "method": p.method,
+                "pix_key": p.pix_key or payee.get("pix_key"),
+                "pix_key_type": payee.get("pix_key_type", "CPF"),
+                "amount_brl": parcel,
+                "scheduled_for": sched, "due_date": sched,
+                "category": p.category or "Recorrente",
+                "description": f"{(p.description or 'Recorrência')} ({i+1}/{n})",
+                "provider": "asaas", "provider_transfer_id": None, "provider_bill_id": None,
+                "status": "draft", "recurring_id": rec_id, "installment_no": i + 1,
+                "created_by": user.get("email") or "system",
+                "created_at": now_iso(), "updated_at": now_iso(),
+            }
+            await db.scheduled_payments.insert_one(payment_doc)
+            payment_ids.append(pid)
+        await db.recurring_payments.update_one(
+            {"recurring_id": rec_id},
+            {"$set": {"generated_payment_ids": payment_ids}})
+    rec.pop("_id", None)
+    rec["generated_payment_ids"] = payment_ids
+    return rec
+
+
+@router.post("/recurring/{recurring_id}/cancel")
+async def cancel_recurring(recurring_id: str,
+                            user: dict = Depends(require_role("gestor"))):
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+    rec = await db.recurring_payments.find_one({"recurring_id": recurring_id, "company_id": cid})
+    if not rec:
+        raise HTTPException(404, "Recorrência não encontrada")
+    # cancela drafts futuros vinculados
+    today = datetime.now(timezone.utc).date().isoformat()
+    await db.scheduled_payments.update_many(
+        {"recurring_id": recurring_id, "status": "draft",
+         "scheduled_for": {"$gte": today}},
+        {"$set": {"status": "cancelled", "cancelled_at": now_iso(),
+                  "cancel_reason": "Recorrência cancelada"}},
+    )
+    await db.recurring_payments.update_one(
+        {"recurring_id": recurring_id},
+        {"$set": {"active": False, "status": "cancelled",
+                  "cancelled_at": now_iso()}},
+    )
+    return {"ok": True}
+
+
+# ─────────────────────── 4. COMPROVANTE WHATSAPP ───────────────────────────
+
+class SendReceiptIn(BaseModel):
+    phone: str  # E.164 ou nacional BR
+
+
+@router.post("/payments/{payment_id}/send-receipt")
+async def send_payment_receipt(payment_id: str, p: SendReceiptIn,
+                                user: dict = Depends(require_role("gestor"))):
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+    pay = await db.scheduled_payments.find_one({"payment_id": payment_id, "company_id": cid})
+    if not pay:
+        raise HTTPException(404, "Pagamento não encontrado")
+    if pay.get("status") not in ("sent_to_bank", "paid"):
+        raise HTTPException(409,
+            f"Comprovante só pode ser enviado quando status=sent_to_bank ou paid. Atual: {pay.get('status')}")
+    result = await send_receipt_whatsapp(pay, p.phone)
+    await db.payment_audit_logs.insert_one({
+        "id": f"aud-{uuid.uuid4().hex[:14]}", "company_id": cid,
+        "payment_id": payment_id, "action": "receipt_whatsapp",
+        "actor": user.get("email") or "?", "created_at": now_iso(),
+        "phone": p.phone, "result": result,
+    })
+    return result
+
+
+@router.get("/payments/{payment_id}/receipt-preview")
+async def receipt_preview(payment_id: str, user: dict = Depends(require_role("gestor"))):
+    """Retorna o TEXTO do comprovante que seria enviado (preview UI)."""
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+    pay = await db.scheduled_payments.find_one({"payment_id": payment_id, "company_id": cid})
+    if not pay:
+        raise HTTPException(404, "Pagamento não encontrado")
+    return {"text": build_receipt_text(pay)}

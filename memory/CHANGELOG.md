@@ -1,6 +1,51 @@
 # PontoIA — Changelog
 
 
+## 2026-02-12 — iter235/236 — CONTAS A PAGAR ENTERPRISE (DDA + Recorrência + Boleto + Comprovante WA)
+
+### Ordem CTO
+"Atualize a página de contas a pagar. DDA Inbox para aprovar boletos. Pagamentos manuais Pix/telefone/boleto. WhatsApp automático do comprovante 'by SmartProv'. Recorrência com início/fim/valor total. Múltiplas contas com 1 padrão. Use melhores práticas (Bill.com, Conta Azul, Tipalti, Pague Veloz)."
+
+### Backend (iter235 + iter236)
+- **Asaas produção pronto pra virar**: `ASAAS_ENV=producao` + `ASAAS_PROD_ENABLED=true` kill-switch duplo, `BASE_URL` dinâmico, `/api/treasury/safety` retorna `is_production`/`prod_ready`. Sandbox/homologação preservado (`$aact_hmlg_...` configurado).
+- **Boleto saída (Bill Payment)**: `services/asaas_client.py` ganha `create_bill_payment`, `simulate_bill_payment`, `get_bill_payment_status`, `cancel_bill_payment`. Webhook trata `PAYMENT_BILL_*`.
+- **PaymentIn estendido** com `method: "pix"|"bill"` + `identification_field`/`bar_code`. `/send` ramifica corretamente.
+- **Multi-contas** (`treasury_accounts`): `GET/POST /accounts`, `POST /accounts/{id}/set-default`, `DELETE /accounts/{id}`. Conta padrão única.
+- **DDA Inbox** (`dda_inbox`): `GET/POST /dda/inbox`, `POST /dda/{id}/approve` (vira scheduled_payment automaticamente), `POST /dda/{id}/reject`.
+- **Recorrências** (`recurring_payments`): `GET/POST /recurring`, gera N parcelas drafts auto a partir de início/fim/valor total. `POST /recurring/{id}/cancel` cancela drafts futuros.
+- **Comprovante WhatsApp** (`services/treasury_receipts.py`): `POST /payments/{id}/send-receipt` (texto formal assinado "by SmartProv" via sidecar Baileys). `GET /payments/{id}/receipt-preview` retorna texto para UI.
+- **GET /balance** público no painel (saldo Asaas).
+
+### Frontend (`/treasury` reformado modularmente)
+- `TreasuryPanel.jsx` (orquestrador) + 5 módulos em `src/treasury/`:
+  - `api.js` (helpers + tema)
+  - `InboxDDA.jsx` (lista + filtros Aguardando/Aprovados/Rejeitados, modal "Adicionar boleto" com validação Asaas via `simulate`)
+  - `PaymentsList.jsx` (lista por status, modal "Novo pagamento" com tabs Pix/Boleto, ações Aprovar/Enviar/Cancelar + envio de comprovante)
+  - `RecurringList.jsx` (lista + modal nova recorrência início/fim/valor total/N parcelas/dia do pagamento)
+  - `AccountsList.jsx` (multi-conta + "Tornar padrão")
+- Banner ambiente (sandbox/produção/kill-switch)
+- 5 KPIs no topo: Saldo Asaas / Próximos 7 dias / Aguarda CTO / Pagos hoje / Bloqueados (risco)
+- Modal "Enviar comprovante" com preview do texto + telefone destinatário
+- Sidebar ganhou entrada **"Contas a Pagar"** (Banknote icon, super_admin)
+
+### Smoke tests reais contra Asaas Homologação
+- ✅ `GET /finance/balance` → R$ 0,00 (conta nova, esperado)
+- ✅ Cadastro payee → criação payment Pix R$ 0,50 → aprovar → enviar
+  → **Asaas aceitou: `provider_id=b2949ac6-...` status PENDING**
+- ✅ Boleto: simulate retorna erro real "linha digitável inválida" (validação Asaas ativa)
+- ✅ DDA Inbox: criar boleto CEMIG R$234,55 → approve → vira payment boleto draft
+- ✅ Recorrência aluguel R$12.000 / 12 meses → gerou 12 drafts mensais R$1.000
+- ✅ Preview comprovante: texto formal com assinatura "by SmartProv"
+- ✅ UI navegação 4 tabs, 24 payments listados, KPIs corretos (saldo R$0 sem NaN)
+
+### Pendente do CTO (pra virar Asaas produção)
+1. Gerar chave `$aact_prod_...` no painel Asaas (KYC aprovado)
+2. Criar webhook em `https://ligo.system/api/treasury/webhook/asaas` com eventos `TRANSFER_*` e `PAYMENT_BILL_*`
+3. Trocar 4 linhas no `.env`: `ASAAS_API_KEY`, `ASAAS_ENV=producao`, `ASAAS_WEBHOOK_TOKEN`, `ASAAS_PROD_ENABLED=true`
+4. (Opcional) Habilitar "Validação de saque via Webhook" no painel Asaas (camada extra de segurança)
+
+
+
 ## 2026-02-12 — iter234 — SMART FIELD OPS ABSORVIDO PELA LOUSA MOBILE
 
 ### Ordem CTO

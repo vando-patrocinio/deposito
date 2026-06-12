@@ -16,7 +16,7 @@ import {
   FileSpreadsheet, History as HistoryIcon, Settings as SettingsIcon,
   Building2, Eye, EyeOff, Bot, UserCircle, MessageCircle, Cpu,
   Receipt, CalendarDays, Wand2, DollarSign, Megaphone, Calculator,
-  ShoppingCart, Trello, FileText, CreditCard, Globe, Car, Database,
+  ShoppingCart, Trello, FileText, CreditCard, Banknote, Globe, Car, Database,
   Wifi, BrainCircuit,
 } from "lucide-react";
 import CollaboratorApp from "@/CollaboratorApp";
@@ -222,6 +222,9 @@ const NAV_GROUPS = [
         roles: ["gestor", "administrador", "auditor"] },
       { id: "payments", icon: CreditCard, label: "Pagamentos",
         roles: ["gestor", "administrador", "auditor"],
+        superAdminOnly: true },
+      { id: "treasury", icon: Banknote, label: "Contas a Pagar",
+        roles: ["gestor", "administrador"],
         superAdminOnly: true },
       { id: "site", icon: Globe, label: "Site do Provedor",
         roles: ["gestor", "administrador"] },
