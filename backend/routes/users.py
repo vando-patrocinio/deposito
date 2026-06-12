@@ -405,9 +405,20 @@ async def create_user(payload: UserIn, user: dict = Depends(require_role("audito
             await get_or_assign_code(payload.collaborator_id, cid)
         except Exception as e:  # noqa: BLE001
             logger.warning("[create_user] falha ao garantir code: %s", e)
-    # Tags: se vieram no payload, valida; senão usa default do papel
+    # Tags: prioridade = perfil > payload explícito > default do papel
+    profile_doc = None
+    if payload.profile_id:
+        from services.access_profiles import get_profile
+        profile_doc = await get_profile(payload.profile_id, cid)
+        if not profile_doc:
+            raise HTTPException(404, "Perfil de acesso não encontrado")
     raw_tags = getattr(payload, "access_tags", None)
-    tags = sanitize_tags(raw_tags) if raw_tags is not None else list(DEFAULT_TAGS_BY_ROLE.get(payload.role, []))
+    if profile_doc:
+        tags = list(profile_doc.get("access_tags") or [])
+    elif raw_tags is not None:
+        tags = sanitize_tags(raw_tags)
+    else:
+        tags = list(DEFAULT_TAGS_BY_ROLE.get(payload.role, []))
     doc = {
         "id": f"usr-{uuid.uuid4().hex[:10]}",
         "email": email, "name": payload.name, "role": payload.role,
@@ -415,6 +426,7 @@ async def create_user(payload: UserIn, user: dict = Depends(require_role("audito
         "collaborator_id": payload.collaborator_id, "active": True,
         "can_attend_whatsapp": bool(payload.can_attend_whatsapp),
         "access_tags": tags,
+        "profile_id": payload.profile_id,
         "company_id": cid,
         "created_at": now_iso(), "updated_at": now_iso(),
     }
@@ -483,6 +495,19 @@ async def update_user(uid: str, payload: dict, user: dict = Depends(require_role
         update["can_attend_whatsapp"] = bool(payload["can_attend_whatsapp"])
     if "access_tags" in payload:
         update["access_tags"] = sanitize_tags(payload.get("access_tags"))
+    if "profile_id" in payload:
+        # Mudou perfil → recarrega tags do perfil (sobrescreve access_tags acima)
+        new_profile_id = payload.get("profile_id") or None
+        cid_target = (await db.users.find_one({"id": uid}, {"company_id": 1}) or {}).get("company_id") or user.get("company_id") or DEMO_COMPANY_ID
+        if new_profile_id:
+            from services.access_profiles import get_profile
+            p = await get_profile(new_profile_id, cid_target)
+            if not p:
+                raise HTTPException(404, "Perfil de acesso não encontrado")
+            update["profile_id"] = new_profile_id
+            update["access_tags"] = list(p.get("access_tags") or [])
+        else:
+            update["profile_id"] = None
     if "email" in payload and payload["email"]:
         new_email = str(payload["email"]).strip().lower()
         if "@" not in new_email or "." not in new_email:

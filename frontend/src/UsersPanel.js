@@ -23,12 +23,13 @@ function initials(name) {
   return (p[0][0] + p[p.length - 1][0]).toUpperCase();
 }
 
-const EMPTY = { email: "", password: "", name: "", role: "gestor", can_attend_whatsapp: false, access_tags: null, collaborator_id: "" };
+const EMPTY = { email: "", password: "", name: "", role: "gestor", can_attend_whatsapp: false, access_tags: null, collaborator_id: "", profile_id: "" };
 
 export default function UsersPanel() {
   const { user: currentUser, impersonate } = useAuth();
   const [users, setUsers] = useState([]);
   const [collabs, setCollabs] = useState([]);
+  const [profiles, setProfiles] = useState([]);
   const [editing, setEditing] = useState(null);
   const [form, setForm] = useState(EMPTY);
   const [error, setError] = useState("");
@@ -115,9 +116,14 @@ export default function UsersPanel() {
 
   async function reload() {
     try {
-      const [u, c] = await Promise.all([api.listUsers(), api.listCollaborators()]);
+      const [u, c, pr] = await Promise.all([
+        api.listUsers(),
+        api.listCollaborators(),
+        api.accessProfilesList().catch(() => []),
+      ]);
       setUsers(u);
       setCollabs(c);
+      setProfiles(pr || []);
     } catch (e) {
       setError(e?.response?.data?.detail || e.message);
     }
@@ -173,6 +179,7 @@ export default function UsersPanel() {
       can_attend_whatsapp: u.can_attend_whatsapp ?? false,
       access_tags: Array.isArray(u.access_tags) ? u.access_tags : null,
       collaborator_id: u.collaborator_id || "",
+      profile_id: u.profile_id || "",
     });
     setEditing(u.id); setError("");
   }
@@ -188,6 +195,7 @@ export default function UsersPanel() {
           role: form.role,
           can_attend_whatsapp: !!form.can_attend_whatsapp,
           collaborator_id: form.collaborator_id || null,
+          profile_id: form.profile_id || null,
           ...(Array.isArray(form.access_tags) ? { access_tags: form.access_tags } : {}),
         });
       } else {
@@ -197,6 +205,7 @@ export default function UsersPanel() {
           email: form.email.trim().toLowerCase(),
           can_attend_whatsapp: !!form.can_attend_whatsapp,
           collaborator_id: form.collaborator_id || null,
+          profile_id: form.profile_id || null,
         };
         if (Array.isArray(form.access_tags)) {
           payload.access_tags = form.access_tags;
@@ -532,7 +541,33 @@ export default function UsersPanel() {
             </p>
           </Field>
 
-          <Field label="Tags de acesso (módulos liberados)">
+          <Field label="Perfil de Acesso (define os módulos liberados)">
+            <select
+              data-testid="u-profile-id"
+              style={inputStyle}
+              value={form.profile_id || ""}
+              onChange={(e) => setForm({ ...form, profile_id: e.target.value })}
+            >
+              <option value="">— Sem perfil (usar tags manuais abaixo) —</option>
+              {profiles.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.is_seed ? "★ " : ""}{p.name} ({(p.access_tags || []).length} tags)
+                </option>
+              ))}
+            </select>
+            <p style={{ fontSize: 11, color: "#64748b", margin: "4px 0 0" }}>
+              Selecione um perfil pra herdar automaticamente as tags. Os perfis
+              são gerenciados na aba <strong>Perfil Usuário</strong>.
+              {form.profile_id && (
+                <span style={{ display: "block", marginTop: 4,
+                                  color: "#0d9488", fontWeight: 700 }}>
+                  ✓ As tags abaixo serão sobrescritas pelo perfil ao salvar.
+                </span>
+              )}
+            </p>
+          </Field>
+
+          <Field label="Tags de acesso (módulos liberados) — manual">
             <AccessTagsPicker
               role={form.role}
               selected={form.access_tags}

@@ -79,6 +79,7 @@ class UserIn(BaseModel):
     collaborator_id: Optional[str] = None
     can_attend_whatsapp: bool = False
     access_tags: Optional[list] = None
+    profile_id: Optional[str] = None   # CTO 12/06/2026 — perfil de acesso reutilizável
 
 
 class LoginIn(BaseModel):

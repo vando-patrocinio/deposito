@@ -806,6 +806,19 @@ export const api = {
     client.post(`/os-lifecycle/backfill`).then((r) => r.data),
   osLifecycleAutoCancelPreventive: (days = 7) =>
     client.post(`/os-lifecycle/auto-cancel-preventive`, { days }).then((r) => r.data),
+  // ========= Access Profiles (Perfil Usuário) =========
+  accessProfilesList: () =>
+    client.get(`/access-profiles`).then((r) => r.data),
+  accessProfileCreate: (payload) =>
+    client.post(`/access-profiles`, payload).then((r) => r.data),
+  accessProfileUpdate: (id, payload) =>
+    client.put(`/access-profiles/${id}`, payload).then((r) => r.data),
+  accessProfileDelete: (id) =>
+    client.delete(`/access-profiles/${id}`).then((r) => r.data),
+  accessProfileSeed: () =>
+    client.post(`/access-profiles/seed`).then((r) => r.data),
+  accessTagsCatalog: () =>
+    client.get(`/users/access-tags/catalog`).then((r) => r.data?.tags || r.data || []),
 
   // ========= Estoque por Praça =========
   stokPracaSummary: () =>

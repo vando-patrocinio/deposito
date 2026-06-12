@@ -2,7 +2,44 @@
 
 > Documento vivo. Atualizado a cada sprint.
 
-## ✨ Feature: FSM Lifecycle P1 Completo — GPS + Timeline + QA + TTL (12/06/2026 · CTO)
+## ✨ Feature: Sistema de Perfis de Acesso "Perfil Usuário" (12/06/2026 · CTO)
+
+**Pedido:** "Aba Usuário vira 'Perfil Usuário' com opção de criar perfis. 4 seed: Colaborador, Gestão, Administrador, Auditor. Cada perfil define tags de acesso. Colaborador escolhe o perfil para herdar acessos."
+
+**Implementado:**
+
+### Backend
+- **`services/access_profiles.py`** (NOVO): CRUD completo + seed dos 4 padrão (`Colaborador:4 tags`, `Gestão:27 tags`, `Administrador:59 tags`, `Auditor:59 tags`). Perfil seed marcado `is_seed=True` (não pode deletar) e `is_admin_level=True` para admin/auditor (acesso total).
+- **`routes/access_profiles.py`** (NOVO): 6 endpoints (`GET / POST / GET/{id} / PUT/{id} / DELETE/{id} / POST /seed`).
+- **`auth.py::UserIn`**: novo campo `profile_id: Optional[str]`.
+- **`routes/users.py::create_user`** + **`update_user`**: ao receber `profile_id`, carrega tags do perfil e sobrescreve `access_tags` (perfil tem precedência sobre tags manuais).
+- Seed executado: **4 perfis criados em co-demo**. Idempotente (rodar 2x não duplica).
+
+### Frontend
+- **`AccessProfilesPanel.jsx`** (NOVO): cards de perfis com badge `padrão`/`admin`, contagem de tags/usuários, botões Editar/Excluir, modal de edição com **AccessTagsPicker por categoria** (Operação, Frota, Projetos, Inteligência, Cadastro, RH).
+- **Item de menu "Perfil Usuário"** adicionado (papéis auditor/administrador).
+- **`UsersPanel.js`**: novo seletor "Perfil de Acesso" no form de edição/criação de usuário com hint "★ perfil padrão" e aviso quando perfil sobrescreve tags manuais.
+- **6 métodos novos** em `api.js` (`accessProfilesList`, `accessProfileCreate/Update/Delete/Seed`, `accessTagsCatalog`).
+
+### Fluxo final
+1. Admin abre "Perfil Usuário" → vê 4 perfis seed + customizados.
+2. Admin clica "Editar" em "Colaborador" → modal abre, marca/desmarca tags por categoria, salva.
+3. Em "Usuários" (ou Cadastro), ao criar/editar user, escolhe um perfil no dropdown → tags são herdadas automaticamente.
+4. Perfis seed nunca podem ser excluídos (preserva integridade).
+5. Perfis customizados são excluíveis se não houver users vinculados.
+
+### Validação real
+- 4 seed criados via `POST /api/access-profiles/seed`.
+- Custom profile "Supervisor de Campo" criado/listado/deletado com sucesso.
+- Listagem retorna `user_count` calculado em tempo real.
+
+**Files novos:** `services/access_profiles.py`, `routes/access_profiles.py`, `frontend/src/AccessProfilesPanel.jsx`.
+**Files editados:** `auth.py` (+profile_id no UserIn), `routes/users.py` (hook profile→tags), `server.py` (router), `frontend/src/api.js` (6 métodos), `frontend/src/App.js` (menu+route), `frontend/src/UsersPanel.js` (dropdown perfil).
+
+⚠️ Redeploy PROD pra ativar em https://ligo.system.
+
+---
+
 
 **Restante do P1 implementado nesta etapa:**
 

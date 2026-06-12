@@ -79,6 +79,7 @@ import MotorIaBudgetCard from "@/MotorIaBudgetCard";
 import BudgetAlertBadge from "@/BudgetAlertBadge";
 import AiTopologyCard from "@/AiTopologyCard";
 import UsersPanel from "@/UsersPanel";
+import AccessProfilesPanel from "@/AccessProfilesPanel";
 import OSHealthDashboard from "@/OSHealthDashboard";
 import DashboardPanel from "@/DashboardPanel";
 import PracasPanel from "@/PracasPanel";
@@ -362,6 +363,7 @@ const NAV_GROUPS = [
     label: "Sistema",
     items: [
       { id: "users", icon: ShieldCheck, label: "Usuários", roles: ["auditor", "administrador"] },
+      { id: "access-profiles", icon: ShieldCheck, label: "Perfil Usuário", roles: ["auditor", "administrador"] },
       { id: "motor-ia", icon: Cpu, label: "Motor IA", roles: ["administrador"] },
       { id: "conselho-ia", icon: BrainCircuit, label: "Presidente IA", roles: ["administrador"] },
       { id: "warroom", icon: BrainCircuit, label: "Sala de Guerra", roles: ["administrador", "auditor"] },
@@ -1258,6 +1260,7 @@ function AppContent() {
           {view === "plans" && <PlansPanel />}
           {view === "pracas" && <PracasPanel />}
           {view === "users" && <UsersPanel />}
+          {view === "access-profiles" && <AccessProfilesPanel />}
           {view === "os-health" && <OSHealthDashboard />}
           {view === "manager" && <ManagerPanel />}
           {view === "sheet" && <TimesheetView />}
