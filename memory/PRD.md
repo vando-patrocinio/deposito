@@ -2,8 +2,48 @@
 
 > Documento vivo. Atualizado a cada sprint.
 
+## ✨ Feature: FSM Lifecycle P0 — Modelo canônico de Service Order (12/06/2026 · CTO)
+
+**Pedido:** Auditoria comparou SmartProv vs ServiceNow/Salesforce/Microsoft/SAP — gap brutal: SmartProv tinha apenas 4 status (vs 9-11 padrão), tipo e status misturados, sem reason codes, sem substatus, sem TTL. Causa raiz documentada das 34 retiradas e 62 preventivas travadas.
+
+**Implementado (P0 — fundação aditiva, sem quebrar legacy):**
+
+### Backend `services/os_lifecycle.py`
+- **9 lifecycle states canônicos:** `draft → ready_for_dispatch → assigned → accepted → en_route → in_progress → pending → completed → closed_incomplete → canceled`
+- **7 work types separados do status:** `install`, `repair`, `pickup`, `swap`, `preventive`, `inspection`, `outage_auto`
+- **15 reason codes** distribuídos por estado terminal/em-espera
+- **State machine** com `ALLOWED_TRANSITIONS` validadas (force=true só super admin)
+- **Backfill idempotente** `derive_lifecycle_state` + `derive_work_type` (legacy → canônico)
+- **TTL auto-cancel** `auto_cancel_stale_preventive(days=N)` cancela preventivas paradas
+
+### Mapping aplicado (legacy → canônico)
+- `pendente` + tem técnico → `assigned` · sem técnico → `ready_for_dispatch`
+- `aberta` → `in_progress` · `finalizada`/`encerrada` → `completed`
+- `instalacao`→install · `reparo`/`lentidão`/`rompimento`→repair · `retirada`→pickup · `troca`/`troca_endereco`→swap · `preventiva`→preventive · `OUTAGE_AUTO`→outage_auto
+
+### Endpoints REST (`routes/os_lifecycle.py`)
+- `GET  /api/os-lifecycle/catalog` — estados, work types, reasons, transitions
+- `GET  /api/os-lifecycle/audit` — distribuição (lifecycle × work_type × legacy)
+- `POST /api/os-lifecycle/backfill` — migration idempotente (super admin: todos tenants)
+- `POST /api/os-lifecycle/auto-cancel-preventive` — executa TTL job
+- `POST /api/tickets/{ticket_id}/transition` — transição com histórico auditado
+
+### Migração executada
+- **3961 tickets** migrados em **8 tenants** (co-demo, co-colosso, co-fantasma-v4 etc.)
+- 100% dos tickets agora têm `lifecycle_state` + `work_type` (campos ADITIVOS, não quebra `status` legacy).
+- Histórico de transições gravado em `lifecycle_history[]` (array audit-friendly).
+- Sync bidirecional: chamar `transition()` ATUALIZA o `status` legacy também → telas antigas continuam funcionando.
+
+### Pendente P1 (próxima onda, ~2-3 semanas)
+- Estados `en_route` + `on_site` com auto-detection GPS (Fleet já existe)
+- Frontend: timeline visual do `lifecycle_history` no card da OS
+- Wizard mobile pro work_type `swap` (técnico faz retirada+instalação em UMA OS)
+- SLA dinâmico por (work_type, reason_code) em vez de só por type
+- QA Review state opcional antes de fechar
+- Dashboard "OSs travadas por estado" com idade média
+
 ---
-## 🎨 Redesign: Card de Colaborador (12/06/2026 · pedido CTO "está uma bagunça")
+
 
 **Pedido:** Layout do card de colaborador na aba Cadastro estava poluído (8 botões em fila quebrada, 5 chips espremidos com o nome, dados de contato corridos, avatar mínimo).
 
