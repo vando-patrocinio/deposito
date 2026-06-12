@@ -2,6 +2,30 @@
 
 > Documento vivo. Atualizado a cada sprint.
 
+## 🛠️ Feature: Card de Configuração de Comprovante WhatsApp (12/06/2026 — iter239 · CTO P0)
+
+**Demanda:** "CRIE UM CARD PARA CONFIGURARMOS ESSA MENSAGEM, PODENDO SUBIR ATÉ MESMO UM PDF" — customização do comprovante automático enviado a fornecedores via WhatsApp após pagamento.
+
+**Entregue:**
+- **Backend** (`routes/treasury.py` linhas 1192-1335):
+  - `GET /api/treasury/config/receipt` — retorna template atual (sem o binário PDF) ou defaults.
+  - `PUT /api/treasury/config/receipt` — salva `template_text`, `signature`, `attach_pdf` (preserva PDF via `$set`).
+  - `POST /api/treasury/config/receipt/upload` — multipart `UploadFile`. Aceita PDF/PNG/JPG até 5MB, armazena base64 em `treasury_receipt_templates`.
+  - `DELETE /api/treasury/config/receipt/pdf` — remove anexo via `$unset`, desliga `attach_pdf`.
+  - `GET /api/treasury/config/receipt/preview` — renderiza com payload sample (ACME, R$ 1.850).
+- **Frontend** (`treasury/ReceiptConfigCard.jsx` novo · integrado em `FornecedoresIA.jsx`):
+  - Textarea com placeholders clicáveis (`{payee_name}`, `{amount}`, etc).
+  - Upload zone com troca/remoção do PDF.
+  - Toggle attach_pdf condicionado a ter PDF salvo.
+  - Overlay de preview WhatsApp-style.
+- **Wiring**: `services/treasury_receipts.send_receipt_whatsapp` já consumia o template do DB — só envolveu expor a interface.
+
+**Validação (testing_agent_v3_fork iter228):** 7/7 backend pytest + 7/7 frontend Playwright = 100%. Test file persistido em `/app/backend/tests/test_treasury_receipt_config.py`.
+
+---
+
+
+
 ## 🛠️ Bug: Toggle "Bate ponto" apagava o cargo do colaborador ✅ (11/06/2026 P0 CTO)
 
 **Sintoma:** ao desligar a obrigação de ponto, colaborador "Técnico" virava "COLABORADOR EXTERNO · Operação SP" no painel.

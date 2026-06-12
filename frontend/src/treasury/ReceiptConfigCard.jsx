@@ -173,7 +173,9 @@ export default function ReceiptConfigCard() {
                 marginRight: 4, color: C.accent }}/>
               <strong>{cfg.pdf_filename}</strong>
               <span style={{ color: C.muted, marginLeft: 8 }}>
-                {Math.round((cfg.pdf_size_bytes || 0) / 1024)} KB ·{" "}
+                {(cfg.pdf_size_bytes || 0) < 1024
+                  ? `${cfg.pdf_size_bytes || 0} B`
+                  : `${Math.round((cfg.pdf_size_bytes || 0) / 1024)} KB`}{" "}·{" "}
                 {cfg.pdf_mimetype}
               </span>
             </div>
