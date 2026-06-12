@@ -2,6 +2,33 @@
 
 > Documento vivo. Atualizado a cada sprint.
 
+---
+## 🎨 Redesign: Card de Colaborador (12/06/2026 · pedido CTO "está uma bagunça")
+
+**Pedido:** Layout do card de colaborador na aba Cadastro estava poluído (8 botões em fila quebrada, 5 chips espremidos com o nome, dados de contato corridos, avatar mínimo).
+
+**Aplicado em `CadastroPanel.js` (linhas 305-545):**
+
+### Estrutura nova (Grid 3 colunas):
+1. **Avatar 64×64** (era 44) com borda 2px, hover zoom-in.
+2. **Identidade:** Nome 16px + badge verde `[LIGO-NNNN]` colado, chip cargo + role/cidade abaixo, chips de status (max 3 visíveis + "+N" com tooltip).
+3. **Contato** (coluna direita): CPF/E-MAIL/TEL em coluna empilhada com labels uppercase 10px e divisor lateral.
+
+### Rodapé com 2 grupos de ações
+- **OPERAÇÃO** (label uppercase 9px): Cercas · Pontos · Checklist · Veicular
+- **GESTÃO**: Bate ponto (verde/laranja conforme estado, com bolinha ● ou ○) · Resetar · [margin auto] · Editar · 🗑
+
+### Detalhes UX
+- Card com `borderRadius: 14`, sombra `1px 3px` neutra → `4px 14px` no hover.
+- Estados de confirmação (excluir/resetar) saem do rodapé para um "drawer" colorido (vermelho claro/âmbar) que cobre o card inteiro do meio pra baixo — mais legível.
+- Badge `INATIVO` âmbar quando `c.active=false`.
+- `data-testid` preservados (`collab-card-${id}`, `collab-code-${id}` novo, `collab-name-${id}` novo, `avatar-${id}`, `fences-${id}`, `edit-${id}`, `del-${id}`, etc.).
+
+**Validação:** Lint sem novos erros (4 advisories são pré-existentes em outras linhas). Sem alteração de lógica/funções — apenas CSS/estrutura visual.
+
+**Pendente:** Redeploy PROD pra refletir em https://ligo.system.
+
+---
 ## ✨ Feature: Código único de colaborador + Auditoria de usuários (12/06/2026 · CTO)
 
 **Pedido:** "Criar código único pra cada colaborador (identificação SmartProv). Auditar cadastros: só colaboradores podem ser usuários. Há muitos zumbis e ponta solta. Tags de acesso: auditar todos os usuários."

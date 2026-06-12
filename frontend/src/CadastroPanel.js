@@ -302,6 +302,15 @@ export default function CadastroPanel() {
                 ? `${indiv} cerca(s) individual(is) + 1 praça vinculada`
                 : `${indiv} cerca(s) individual(is)`;
             const praca = pracas.find((x) => x.id === c.praca_id);
+            // CTO 12/06/2026 — chips ordenados; só os 3 mais relevantes visíveis, resto em tooltip "+N"
+            const allChips = [];
+            if (!clockOn) allChips.push({ tone: "slate", label: "não bate ponto", title: "Externo — app abre direto na Lousa" });
+            if (c.is_test_mode) allChips.push({ tone: "teal", label: "modo teste", title: "Bate ponto em qualquer local com qualquer selfie" });
+            if (!c.avatar_data_url) allChips.push({ tone: "amber", label: "sem avatar", title: "Colaborador não enviou foto" });
+            if (!c.device_id && c.email) allChips.push({ tone: "sky", label: "aguardando Google", title: "Ainda não fez login com Google" });
+            if (c.device_id) allChips.push({ tone: "emerald", label: "✓ dispositivo OK", title: `Vinculado a: ${c.google_email || "(Google)"}` });
+            const visibleChips = allChips.slice(0, 3);
+            const hiddenChips = allChips.slice(3);
             return (
             <div
               key={c.id}
@@ -309,12 +318,17 @@ export default function CadastroPanel() {
               style={{
                 background: "white",
                 border: "1px solid #e2e8f0",
-                borderRadius: 12,
-                padding: 12,
-                marginBottom: 8,
+                borderRadius: 14,
+                padding: 16,
+                marginBottom: 12,
+                boxShadow: "0 1px 3px rgba(15,23,42,.04)",
+                transition: "box-shadow .15s ease, transform .15s ease",
               }}
+              onMouseEnter={(e) => { e.currentTarget.style.boxShadow = "0 4px 14px rgba(15,23,42,.08)"; }}
+              onMouseLeave={(e) => { e.currentTarget.style.boxShadow = "0 1px 3px rgba(15,23,42,.04)"; }}
             >
-              <div style={{ display: "flex", gap: 12, alignItems: "flex-start" }}>
+              {/* Cabeçalho: Avatar + Identidade + Dados de contato */}
+              <div style={{ display: "grid", gridTemplateColumns: "72px minmax(0, 1fr) minmax(0, 260px)", gap: 14, alignItems: "start" }}>
                 <button
                   type="button"
                   onClick={() => { if (c.avatar_data_url) { setZoomSrc(c.avatar_data_url); setZoomCaption(c.name); } }}
@@ -322,47 +336,41 @@ export default function CadastroPanel() {
                   title={c.avatar_data_url ? "Clique para ampliar" : "Sem foto cadastrada"}
                   data-testid={`avatar-${c.id}`}
                   style={{
-                    width: 44, height: 44, borderRadius: "50%", overflow: "hidden",
+                    width: 64, height: 64, borderRadius: "50%", overflow: "hidden",
                     background: "#f1f5f9",
-                    display: "grid", placeItems: "center", fontSize: 16,
-                    border: "1px solid #e2e8f0",
-                    padding: 0, flexShrink: 0,
+                    display: "grid", placeItems: "center", fontSize: 22,
+                    border: "2px solid #e2e8f0",
+                    padding: 0,
                     cursor: c.avatar_data_url ? "zoom-in" : "default",
                   }}
                 >
                   {c.avatar_data_url ? <img src={c.avatar_data_url} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <Icon name="user" />}
                 </button>
 
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
-                    <strong style={{ fontSize: 14, letterSpacing: ".01em" }}>{c.name}</strong>
-                    {!clockOn && (
-                      <span title="Colaborador externo — app abre direto na Lousa, sem registro de ponto" style={chipStyle("slate")}>
-                        não bate ponto
-                      </span>
+                {/* Coluna 2: identidade */}
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                    <strong data-testid={`collab-name-${c.id}`} style={{ fontSize: 16, letterSpacing: ".01em" }}>{c.name}</strong>
+                    {c.code && (
+                      <code
+                        data-testid={`collab-code-${c.id}`}
+                        style={{
+                          background: "#0d9488", color: "#fff",
+                          padding: "2px 8px", borderRadius: 6,
+                          fontFamily: "ui-monospace, SFMono-Regular, monospace",
+                          fontWeight: 700, fontSize: 11, letterSpacing: ".03em",
+                        }}
+                      >{c.code}</code>
                     )}
-                    {c.is_test_mode && (
-                      <span title="Modo teste — bate ponto em qualquer local com qualquer selfie" style={chipStyle("teal")}>
-                        modo teste
-                      </span>
-                    )}
-                    {!c.avatar_data_url && (
-                      <span style={chipStyle("amber")}>sem avatar</span>
-                    )}
-                    {!c.device_id && c.email && (
-                      <span style={chipStyle("sky")}>aguardando Google</span>
-                    )}
-                    {c.device_id && (
-                      <span title={`Vinculado a: ${c.google_email || "(Google)"}`} style={chipStyle("emerald")}>
-                        dispositivo OK
-                      </span>
+                    {!c.active && (
+                      <span style={{ ...chipStyle("amber"), fontWeight: 800 }}>INATIVO</span>
                     )}
                   </div>
-                  <div style={{ color: "#64748b", fontSize: 12, marginTop: 3,
-                                  display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                  <div style={{ color: "#64748b", fontSize: 12.5, marginTop: 6,
+                                  display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                     {c.cargo && (
                       <span data-testid={`collab-cargo-${c.id}`} style={{
-                        padding: "1px 7px", borderRadius: 999,
+                        padding: "2px 9px", borderRadius: 999,
                         background: isLousaCargo(c.cargo) ? "#dbeafe" : "#ecfdf5",
                         color: isLousaCargo(c.cargo) ? "#1e40af" : "#047857",
                         fontSize: 11, fontWeight: 700,
@@ -370,41 +378,99 @@ export default function CadastroPanel() {
                         {cargoEmoji(c.cargo)} {cargoLabel(c.cargo)}
                       </span>
                     )}
-                    <span>{c.role}{praca ? ` · ${praca.city}/${praca.state}` : c.company ? ` · ${c.company}` : ""}</span>
+                    <span style={{ color: "#475569" }}>{c.role}</span>
+                    {(praca || c.company) && (
+                      <span style={{ color: "#94a3b8" }}>·</span>
+                    )}
+                    {praca
+                      ? <span>{praca.city}/{praca.state}</span>
+                      : c.company && <span>{c.company}</span>}
                   </div>
-                  <div style={{ display: "flex", flexWrap: "wrap", gap: "2px 14px", marginTop: 4, fontSize: 12, color: "#475569" }}>
-                    <span><span style={{ color: "#94a3b8" }}>CPF</span>&nbsp;{c.cpf}</span>
-                    {c.email && <span><span style={{ color: "#94a3b8" }}>E-mail</span>&nbsp;{c.email}</span>}
-                    {c.phone && <span><span style={{ color: "#94a3b8" }}>Tel</span>&nbsp;{c.phone}</span>}
-                  </div>
-
+                  {/* Chips de status (max 3 + "+N") */}
+                  {allChips.length > 0 && (
+                    <div style={{ marginTop: 8, display: "flex", gap: 5, flexWrap: "wrap" }}>
+                      {visibleChips.map((chip, i) => (
+                        <span key={i} title={chip.title} style={chipStyle(chip.tone)}>
+                          {chip.label}
+                        </span>
+                      ))}
+                      {hiddenChips.length > 0 && (
+                        <span
+                          title={hiddenChips.map(x => x.label).join(" · ")}
+                          style={{ ...chipStyle("slate"), cursor: "help" }}
+                        >
+                          +{hiddenChips.length}
+                        </span>
+                      )}
+                    </div>
+                  )}
                   <CollabShareLink collaborator={c} />
+                </div>
+
+                {/* Coluna 3: contato — empilhado e legível */}
+                <div style={{
+                  fontSize: 12, color: "#475569",
+                  display: "flex", flexDirection: "column", gap: 4,
+                  borderLeft: "1px solid #f1f5f9", paddingLeft: 12,
+                }}>
+                  {c.cpf && (
+                    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                      <span style={{ color: "#94a3b8", fontSize: 10, fontWeight: 700,
+                                       letterSpacing: ".06em", minWidth: 30 }}>CPF</span>
+                      <span style={{ fontFamily: "ui-monospace, monospace" }}>{c.cpf}</span>
+                    </div>
+                  )}
+                  {c.email && (
+                    <div style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
+                      <span style={{ color: "#94a3b8", fontSize: 10, fontWeight: 700,
+                                       letterSpacing: ".06em", minWidth: 30 }}>E-MAIL</span>
+                      <span style={{ overflow: "hidden", textOverflow: "ellipsis",
+                                       whiteSpace: "nowrap" }} title={c.email}>{c.email}</span>
+                    </div>
+                  )}
+                  {c.phone && (
+                    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                      <span style={{ color: "#94a3b8", fontSize: 10, fontWeight: 700,
+                                       letterSpacing: ".06em", minWidth: 30 }}>TEL</span>
+                      <span>{c.phone}</span>
+                    </div>
+                  )}
                 </div>
               </div>
 
-              <div style={{ marginTop: 10, paddingTop: 8, borderTop: "1px solid #f1f5f9", display: "flex", gap: 6, flexWrap: "wrap", justifyContent: "flex-end" }}>
-                {confirmDelete === c.id ? (
-                  <>
-                    <span style={{ alignSelf: "center", marginRight: "auto", fontSize: 12, color: "#be123c", fontWeight: 700 }}>Apagar tudo? Não dá pra desfazer.</span>
-                    <Button variant="secondary" onClick={() => setConfirmDelete(null)}>Cancelar</Button>
-                    <Button variant="danger" onClick={() => remove(c.id)} disabled={deletingId === c.id} data-testid={`confirm-del-${c.id}`}>
-                      {deletingId === c.id ? "..." : "Sim, excluir"}
-                    </Button>
-                  </>
-                ) : confirmReset === c.id ? (
-                  <>
-                    <span style={{ alignSelf: "center", marginRight: "auto", fontSize: 12, color: "#92400e", fontWeight: 700 }}>
-                      Resetar avatar e dispositivo? O colaborador precisará entrar com Google novamente.
-                    </span>
-                    <Button variant="secondary" onClick={() => setConfirmReset(null)}>Cancelar</Button>
-                    <Button variant="danger" onClick={() => resetFace(c)} disabled={resettingId === c.id} data-testid={`confirm-reset-${c.id}`}>
-                      {resettingId === c.id ? "..." : "Sim, resetar"}
-                    </Button>
-                  </>
-                ) : (
-                  <>
-                    {/* Cercas — SEMPRE visível quando há cercas em DB (mesmo p/ não-CLT), p/ usuário ver
-                        que a cerca foi salva. Apenas o estilo muda quando inativo. */}
+              {/* Ações agrupadas em 2 fileiras */}
+              {confirmDelete === c.id ? (
+                <div style={{ marginTop: 14, paddingTop: 12, borderTop: "1px solid #fecaca",
+                                background: "#fef2f2", margin: "14px -16px -16px", padding: "12px 16px",
+                                borderRadius: "0 0 14px 14px",
+                                display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                  <span style={{ marginRight: "auto", fontSize: 12.5, color: "#991b1b", fontWeight: 700 }}>
+                    ⚠ Apagar tudo? Não dá pra desfazer.
+                  </span>
+                  <Button variant="secondary" onClick={() => setConfirmDelete(null)}>Cancelar</Button>
+                  <Button variant="danger" onClick={() => remove(c.id)} disabled={deletingId === c.id} data-testid={`confirm-del-${c.id}`}>
+                    {deletingId === c.id ? "..." : "Sim, excluir"}
+                  </Button>
+                </div>
+              ) : confirmReset === c.id ? (
+                <div style={{ marginTop: 14, paddingTop: 12, borderTop: "1px solid #fde68a",
+                                background: "#fffbeb", margin: "14px -16px -16px", padding: "12px 16px",
+                                borderRadius: "0 0 14px 14px",
+                                display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                  <span style={{ marginRight: "auto", fontSize: 12.5, color: "#92400e", fontWeight: 700 }}>
+                    Resetar avatar e dispositivo? O colaborador precisará entrar com Google novamente.
+                  </span>
+                  <Button variant="secondary" onClick={() => setConfirmReset(null)}>Cancelar</Button>
+                  <Button variant="danger" onClick={() => resetFace(c)} disabled={resettingId === c.id} data-testid={`confirm-reset-${c.id}`}>
+                    {resettingId === c.id ? "..." : "Sim, resetar"}
+                  </Button>
+                </div>
+              ) : (
+                <div style={{ marginTop: 14, paddingTop: 12, borderTop: "1px solid #f1f5f9" }}>
+                  {/* OPERAÇÃO */}
+                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", marginBottom: 8 }}>
+                    <span style={{ fontSize: 9, fontWeight: 800, color: "#94a3b8",
+                                     letterSpacing: ".1em", marginRight: 6 }}>OPERAÇÃO</span>
                     <Button
                       variant="soft"
                       onClick={() => setSelectedId(c.id)}
@@ -429,32 +495,6 @@ export default function CadastroPanel() {
                           (inativas)
                         </span>
                       )}
-                    </Button>
-                    <Button
-                      variant="soft"
-                      onClick={() => setConfirmReset(c.id)}
-                      disabled={!c.avatar_data_url}
-                      title={c.avatar_data_url ? "Remove a foto de referência — próxima selfie válida vira o novo avatar" : "Colaborador ainda não tem avatar"}
-                      data-testid={`reset-face-${c.id}`}
-                    >
-                      <Icon name="camera" /> Resetar
-                    </Button>
-                    <Button
-                      variant="soft"
-                      onClick={() => toggleClockInEnabled(c)}
-                      disabled={togglingId === c.id}
-                      data-testid={`toggle-clock-${c.id}`}
-                      title={clockOn
-                        ? "Clique para desativar — colaborador não vai mais bater ponto, app abre direto na Lousa"
-                        : "Clique para ativar — colaborador volta a bater ponto e a tela home padrão"}
-                      style={{
-                        background: clockOn ? "#f0fdf4" : "#fff7ed",
-                        color: clockOn ? "#166534" : "#9a3412",
-                        border: `1px solid ${clockOn ? "#bbf7d0" : "#fdba74"}`,
-                        fontWeight: 600,
-                      }}
-                    >
-                      {togglingId === c.id ? "..." : clockOn ? "Bate ponto: ON" : "Bate ponto: OFF"}
                     </Button>
                     {clockOn && (
                       <Button
@@ -482,15 +522,48 @@ export default function CadastroPanel() {
                     >
                       <Car size={14} strokeWidth={1.75} /> Veicular
                     </Button>
-                    <Button variant="secondary" onClick={() => startEdit(c)} data-testid={`edit-${c.id}`}>
-                      <Icon name="gear" /> Editar
+                  </div>
+                  {/* GESTÃO */}
+                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+                    <span style={{ fontSize: 9, fontWeight: 800, color: "#94a3b8",
+                                     letterSpacing: ".1em", marginRight: 6 }}>GESTÃO</span>
+                    <Button
+                      variant="soft"
+                      onClick={() => toggleClockInEnabled(c)}
+                      disabled={togglingId === c.id}
+                      data-testid={`toggle-clock-${c.id}`}
+                      title={clockOn
+                        ? "Clique para desativar — colaborador não vai mais bater ponto"
+                        : "Clique para ativar — colaborador volta a bater ponto"}
+                      style={{
+                        background: clockOn ? "#f0fdf4" : "#fff7ed",
+                        color: clockOn ? "#166534" : "#9a3412",
+                        border: `1px solid ${clockOn ? "#86efac" : "#fdba74"}`,
+                        fontWeight: 700,
+                      }}
+                    >
+                      {togglingId === c.id ? "..." : clockOn ? "● Bate ponto ON" : "○ Bate ponto OFF"}
                     </Button>
-                    <Button variant="danger" onClick={() => setConfirmDelete(c.id)} data-testid={`del-${c.id}`} title="Excluir colaborador">
-                      <Icon name="trash" />
+                    <Button
+                      variant="soft"
+                      onClick={() => setConfirmReset(c.id)}
+                      disabled={!c.avatar_data_url}
+                      title={c.avatar_data_url ? "Remove a foto de referência — próxima selfie vira o novo avatar" : "Colaborador ainda não tem avatar"}
+                      data-testid={`reset-face-${c.id}`}
+                    >
+                      <Icon name="camera" /> Resetar
                     </Button>
-                  </>
-                )}
-              </div>
+                    <div style={{ marginLeft: "auto", display: "flex", gap: 6 }}>
+                      <Button variant="secondary" onClick={() => startEdit(c)} data-testid={`edit-${c.id}`}>
+                        <Icon name="gear" /> Editar
+                      </Button>
+                      <Button variant="danger" onClick={() => setConfirmDelete(c.id)} data-testid={`del-${c.id}`} title="Excluir colaborador">
+                        <Icon name="trash" />
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
             );
           })}
