@@ -93,6 +93,16 @@ async def _emit_event(event_type: str, cid: str, payload: Dict):
 
 
 # ─────────── Models ───────────
+class PayeeAddress(BaseModel):
+    cep: Optional[str] = None
+    street: Optional[str] = None
+    number: Optional[str] = None
+    complement: Optional[str] = None
+    neighborhood: Optional[str] = None
+    city: Optional[str] = None
+    state: Optional[str] = None
+
+
 class PayeeIn(BaseModel):
     name: str
     document: str
@@ -104,6 +114,31 @@ class PayeeIn(BaseModel):
     max_amount_auto: float = 500
     category: Optional[str] = None
     risk_level: str = "low"
+    # iter238 — Fornecedores IA
+    address: Optional[PayeeAddress] = None
+    whatsapp: Optional[str] = None  # E.164 ou BR pra envio de comprovante
+    default_account_id: Optional[str] = None  # conta padrão pra pagar
+    email: Optional[str] = None
+    notes: Optional[str] = None
+    auto_send_receipt: bool = True  # após pagar, dispara comprovante WA automaticamente
+
+
+class PayeeUpdate(BaseModel):
+    name: Optional[str] = None
+    document: Optional[str] = None
+    pix_key: Optional[str] = None
+    pix_key_type: Optional[str] = None
+    address: Optional[PayeeAddress] = None
+    whatsapp: Optional[str] = None
+    default_account_id: Optional[str] = None
+    email: Optional[str] = None
+    notes: Optional[str] = None
+    auto_send_receipt: Optional[bool] = None
+    active: Optional[bool] = None
+    category: Optional[str] = None
+    allowed_methods: Optional[List[str]] = None
+    risk_level: Optional[str] = None
+    max_amount_auto: Optional[float] = None
 
 
 class PaymentIn(BaseModel):
@@ -148,6 +183,50 @@ async def list_payees(user: dict = Depends(require_role("gestor"))):
         {"company_id": cid}, {"_id": 0}
     ).sort("created_at", -1).to_list(500)
     return {"payees": rows, "count": len(rows)}
+
+
+@router.patch("/payees/{payee_id}")
+async def update_payee(payee_id: str, p: PayeeUpdate,
+                        user: dict = Depends(require_role("gestor"))):
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+    existing = await db.whitelisted_payees.find_one({"payee_id": payee_id, "company_id": cid})
+    if not existing:
+        raise HTTPException(404, "Fornecedor não encontrado")
+    update = {k: v for k, v in p.model_dump(exclude_none=True).items()}
+    if "address" in update and update["address"] is not None:
+        # mantém dict puro
+        if hasattr(update["address"], "model_dump"):
+            update["address"] = update["address"].model_dump()
+    update["updated_at"] = now_iso()
+    update["updated_by"] = user.get("email") or "?"
+    await db.whitelisted_payees.update_one(
+        {"payee_id": payee_id, "company_id": cid}, {"$set": update})
+    doc = await db.whitelisted_payees.find_one(
+        {"payee_id": payee_id, "company_id": cid}, {"_id": 0})
+    await _audit("payee_updated", payee_id, user.get("email") or "?", cid,
+                 {"fields": list(update.keys())})
+    return doc
+
+
+@router.delete("/payees/{payee_id}")
+async def delete_payee(payee_id: str, user: dict = Depends(require_role("gestor"))):
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+    existing = await db.whitelisted_payees.find_one({"payee_id": payee_id, "company_id": cid})
+    if not existing:
+        raise HTTPException(404, "Fornecedor não encontrado")
+    # Verifica se tem pagamentos pendentes
+    pending = await db.scheduled_payments.count_documents({
+        "payee_id": payee_id, "company_id": cid,
+        "status": {"$in": ["draft", "pending_human_approval", "approved", "sent_to_bank"]},
+    })
+    if pending > 0:
+        raise HTTPException(409,
+            f"Fornecedor tem {pending} pagamento(s) pendente(s). Inative em vez de deletar.")
+    await db.whitelisted_payees.update_one(
+        {"payee_id": payee_id, "company_id": cid},
+        {"$set": {"active": False, "deleted_at": now_iso(),
+                  "deleted_by": user.get("email") or "?"}})
+    return {"ok": True}
 
 
 # ─────────── Payments ───────────
@@ -541,7 +620,36 @@ async def asaas_webhook(request: Request):
                     await _emit_event("treasury.payment_paid", doc["company_id"],
                                       {"payment_id": doc["payment_id"],
                                        "method": doc.get("method", "pix")})
+                    await _auto_send_receipt_if_enabled(doc)
     return {"ok": True}
+
+
+async def _auto_send_receipt_if_enabled(payment: Dict[str, Any]) -> None:
+    """Se o fornecedor tem WhatsApp + auto_send_receipt=True, dispara comprovante."""
+    try:
+        payee = await db.whitelisted_payees.find_one({
+            "payee_id": payment.get("payee_id"),
+            "company_id": payment.get("company_id"),
+        })
+        if not payee:
+            return
+        if not payee.get("auto_send_receipt", True):
+            return
+        phone = payee.get("whatsapp")
+        if not phone:
+            return
+        result = await send_receipt_whatsapp(payment, phone)
+        await db.payment_audit_logs.insert_one({
+            "id": f"aud-{uuid.uuid4().hex[:14]}",
+            "company_id": payment.get("company_id"),
+            "payment_id": payment.get("payment_id"),
+            "action": "receipt_auto_sent",
+            "actor": "system",
+            "created_at": now_iso(),
+            "phone": phone, "result": result,
+        })
+    except Exception as e:
+        log.warning("auto_send_receipt falhou: %s", e)
 
 
 # ─────────── KPIs ───────────
@@ -1027,6 +1135,10 @@ async def mark_paid_manual(payment_id: str, p: MarkPaidManualIn,
     await _emit_event("treasury.payment_paid", cid,
                       {"payment_id": payment_id, "method": doc.get("method", "pix"),
                        "manual": True})
+    # Auto-envio de comprovante WA se o fornecedor tem flag ativada
+    doc_updated = await db.scheduled_payments.find_one({"payment_id": payment_id})
+    if doc_updated:
+        await _auto_send_receipt_if_enabled(doc_updated)
     return {"ok": True, "status": "paid", "paid_at": paid_at}
 
 

@@ -8,11 +8,13 @@ import React, { useEffect, useState } from "react";
 import {
   Inbox, Banknote, Repeat, Wallet, ShieldCheck, ShieldAlert,
   TrendingDown, AlertTriangle, Clock, CheckCircle2, ChevronLeft, ChevronRight,
+  Users,
 } from "lucide-react";
 import InboxDDA from "./treasury/InboxDDA";
 import PaymentsList from "./treasury/PaymentsList";
 import RecurringList from "./treasury/RecurringList";
 import AccountsList from "./treasury/AccountsList";
+import FornecedoresIA from "./treasury/FornecedoresIA";
 import {
   treasuryApi, C, BRL, monthLabel, currentMonth, addMonths,
 } from "./treasury/api";
@@ -21,6 +23,7 @@ const TABS = [
   { id: "dda", label: "Inbox DDA", icon: Inbox },
   { id: "payments", label: "A Pagar", icon: Banknote },
   { id: "recurring", label: "Recorrências", icon: Repeat },
+  { id: "fornecedores", label: "Fornecedores IA", icon: Users },
   { id: "accounts", label: "Contas", icon: Wallet },
 ];
 
@@ -102,6 +105,7 @@ export default function TreasuryPanel() {
         {tab === "dda" && <InboxDDA onPaymentCreated={() => setRefreshKey((k) => k + 1)} />}
         {tab === "payments" && <PaymentsList refreshKey={refreshKey} />}
         {tab === "recurring" && <RecurringList />}
+        {tab === "fornecedores" && <FornecedoresIA />}
         {tab === "accounts" && <AccountsList />}
       </div>
     </div>

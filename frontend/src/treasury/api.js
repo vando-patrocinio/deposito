@@ -58,6 +58,8 @@ export const treasuryApi = {
   // payees
   listPayees: () => client.get("/treasury/payees").then((r) => r.data),
   createPayee: (body) => client.post("/treasury/payees", body).then((r) => r.data),
+  updatePayee: (id, body) => client.patch(`/treasury/payees/${id}`, body).then((r) => r.data),
+  deletePayee: (id) => client.delete(`/treasury/payees/${id}`).then((r) => r.data),
 
   // payments
   listPayments: (params) => client.get("/treasury/payments",
