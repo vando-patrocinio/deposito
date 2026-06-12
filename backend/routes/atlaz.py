@@ -416,6 +416,21 @@ async def _next_available_slot(
     local_target = local_target.replace(hour=minutes // 60, minute=minutes % 60,
                                           second=0, microsecond=0)
     target_hour = local_target.hour
+    grid_start = int(settings.get("lousa_grid_start_hour", 9))
+
+    # FIX CTO 12/06/2026: Atlaz é fonte de verdade do horário da visita.
+    # Se o horário pedido cai FORA da grid (antes de grid_start ou >= grid_end),
+    # respeita o slot original em vez de empurrar pra próximo dia útil
+    # — desde que o slot original não esteja realmente lotado.
+    if target_hour >= grid_end or target_hour < grid_start:
+        cnt_orig = await _count_at(local_target)
+        if cnt_orig < max_per_slot:
+            logger.info(
+                "[atlaz] _next_available_slot: target %s está fora da grid "
+                "(%02d:00 vs grid %02d-%02d), mas slot livre — respeitando Atlaz.",
+                target_iso, target_hour, grid_start, grid_end,
+            )
+            return local_target.astimezone(timezone.utc).isoformat()
 
     # Tenta MESMO dia primeiro: do horário pedido até grid_end
     cur = local_target

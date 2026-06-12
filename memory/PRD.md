@@ -2,6 +2,33 @@
 
 > Documento vivo. Atualizado a cada sprint.
 
+## 🐞 Bug Fix: OS do Atlaz "sumindo" da Lousa do dia (12/06/2026 · CTO P0 audit)
+
+**Reportado:** Gestor criou nota "TESTE" no Atlaz e não viu cair na Lousa de hoje ("não caiu em lugar nenhum"). PROD env (https://ligo.system).
+
+**Investigação CTO:**
+- `db.tickets` continha `tkt-640d8e0d19` com `atlaz_external_id=6542237, atlaz_assunto=TESTE`. Bolha importada ✅.
+- Atlaz `visit_date=2026-06-12 18:58:00` (HOJE 18:58 BRT).
+- `scheduled_time` final no DB: `2026-06-15T21:00:00+00:00` (= **DOMINGO 15/06 18:00 BRT**, 3 dias depois).
+- `atlaz_slot_original=2026-06-12T21:58:00+00:00` confirmou o deslocamento.
+
+**Root cause:** Função `_next_available_slot()` em `routes/atlaz.py` linha 339-441. Quando Atlaz manda OS com horário `>= lousa_grid_end_hour` (ex.: 18:58 com grid_end=18), a condição `while cur.hour < grid_end` NUNCA executa (18 < 18 = False) e o algoritmo cai em "próximo dia útil" — empurrando silenciosamente a OS 3 dias pra frente (sex→sáb skip→dom skip→seg). Mesma falha simétrica em horários antes de `grid_start`.
+
+**Correção:**
+- `routes/atlaz.py`: novo guard no início do algoritmo — se `target_hour >= grid_end` ou `target_hour < grid_start`, respeita o slot original do Atlaz desde que não esteja realmente lotado (`cnt < max_per_slot`). Log INFO de auditoria emitido.
+- Correção imediata no DB: `tkt-640d8e0d19` movida de `2026-06-15T21:00:00` → `2026-06-12T21:58:00`. Campos novos: `atlaz_slot_restored_at`, `atlaz_slot_restored_by=cto_audit_fix`.
+
+**Validação:**
+- `tests/test_atlaz_slot_outside_grid.py` (2/2 PASS isolados):
+  1. `test_slot_outside_grid_respects_atlaz`: Atlaz 18:58 com grid_end=18 → respeita 18:00 BRT do MESMO dia (não pula).
+  2. `test_slot_before_grid_start_respects_atlaz`: Atlaz 07:30 com grid_start=9 → respeita 07:00 BRT do MESMO dia.
+- Backend restartado, sem erros.
+
+**Pendente:** Gestor precisa redeployar PROD pra pegar o fix de código (correção de DB já está aplicada).
+
+---
+
+
 ## 🛡️ Feature: Modo Teste WhatsApp via UI (12/06/2026 · iter246 · P0 safety)
 
 **Demanda:** Card em Configurações que coloca o WhatsApp em modo de teste, redirecionando TODOS os outbounds APENAS para o número do gestor (`21998176526`), prevenindo envios indevidos a clientes cadastrados durante testes.
