@@ -16,6 +16,7 @@ export const CARGO = {
   TECNICO: "tecnico",
   REPARADOR: "reparador",
   INSTALADOR: "instalador",
+  INSTALADOR_REPARADOR: "instalador_reparador",
   ASSOCIADO: "associado",
   AUX_ADMIN: "auxiliar_administrativo",
   ATENDENTE: "atendente",
@@ -23,18 +24,20 @@ export const CARGO = {
 };
 
 export const CARGO_META = {
-  [CARGO.TECNICO]:     { label: "Técnico",                  emoji: "", grupo: "campo" },
-  [CARGO.REPARADOR]:   { label: "Reparador",                emoji: "", grupo: "campo" },
-  [CARGO.INSTALADOR]:  { label: "Instalador",               emoji: "", grupo: "campo" },
-  [CARGO.ASSOCIADO]:   { label: "Associado",                emoji: "", grupo: "campo" },
-  [CARGO.AUX_ADMIN]:   { label: "Auxiliar Administrativo",  emoji: "", grupo: "admin" },
-  [CARGO.ATENDENTE]:   { label: "Atendente",                emoji: "", grupo: "admin" },
-  [CARGO.ALMOXARIFE]:  { label: "Almoxarife (Estoque Praça)", emoji: "", grupo: "admin" },
+  [CARGO.TECNICO]:              { label: "Técnico",                   emoji: "", grupo: "campo" },
+  [CARGO.REPARADOR]:            { label: "Reparador",                 emoji: "", grupo: "campo" },
+  [CARGO.INSTALADOR]:           { label: "Instalador",                emoji: "", grupo: "campo" },
+  [CARGO.INSTALADOR_REPARADOR]: { label: "Instalador / Reparador",    emoji: "", grupo: "campo" },
+  [CARGO.ASSOCIADO]:            { label: "Associado",                 emoji: "", grupo: "campo" },
+  [CARGO.AUX_ADMIN]:            { label: "Auxiliar Administrativo",   emoji: "", grupo: "admin" },
+  [CARGO.ATENDENTE]:            { label: "Atendente",                 emoji: "", grupo: "admin" },
+  [CARGO.ALMOXARIFE]:           { label: "Almoxarife (Estoque Praça)", emoji: "", grupo: "admin" },
 };
 
 // Cargos que aparecem na Lousa de Serviços
 export const LOUSA_CARGOS = new Set([
-  CARGO.TECNICO, CARGO.REPARADOR, CARGO.INSTALADOR, CARGO.ASSOCIADO,
+  CARGO.TECNICO, CARGO.REPARADOR, CARGO.INSTALADOR,
+  CARGO.INSTALADOR_REPARADOR, CARGO.ASSOCIADO,
 ]);
 
 // Cargos que NÃO batem ponto (todos os outros batem)
@@ -61,6 +64,12 @@ export function inferCargoFromLegacy(role) {
   const r = (role || "").toLowerCase();
   if (r.includes("atendente")) return CARGO.ATENDENTE;
   if (r.includes("admin") && !r.includes("administra")) return CARGO.AUX_ADMIN;
+  // Checa o cargo combinado ANTES dos isolados (senão "reparador" matcheia
+  // primeiro a substring e retorna REPARADOR para "instalador_reparador").
+  if ((r.includes("instalador") && r.includes("reparador"))
+      || r.includes("instalador_reparador")) {
+    return CARGO.INSTALADOR_REPARADOR;
+  }
   if (r.includes("reparador")) return CARGO.REPARADOR;
   if (r.includes("instalador")) return CARGO.INSTALADOR;
   if (r.includes("associado")) return CARGO.ASSOCIADO;
@@ -71,7 +80,13 @@ export function inferCargoFromLegacy(role) {
 export const CARGO_OPTIONS_GROUPED = [
   {
     label: "Campo (Lousa de Agendamento)",
-    options: [CARGO.TECNICO, CARGO.REPARADOR, CARGO.INSTALADOR, CARGO.ASSOCIADO],
+    options: [
+      CARGO.TECNICO,
+      CARGO.REPARADOR,
+      CARGO.INSTALADOR,
+      CARGO.INSTALADOR_REPARADOR,
+      CARGO.ASSOCIADO,
+    ],
   },
   {
     label: "Administrativo (Atendimento)",

@@ -2,6 +2,21 @@
 
 > Documento vivo. Atualizado a cada sprint.
 
+## ➕ Feature: Cargo "Instalador / Reparador" (12/06/2026 · iter245 · CTO P2)
+
+**Demanda:** Criar opção combinada no dropdown de cargo do cadastro de colaborador.
+
+**Entregue:**
+- `backend/cargo.py`: novo constante `INSTALADOR_REPARADOR = "instalador_reparador"`, incluído em `ALL_CARGOS` e `LOUSA_CARGOS`. `infer_cargo_from_legacy` reordenado para detectar o cargo combinado ANTES dos isolados (senão `"reparador" in r` matcheava primeiro).
+- `frontend/src/cargo.js`: espelho — `CARGO.INSTALADOR_REPARADOR`, `CARGO_META` com label `"Instalador / Reparador"` (grupo "campo"), incluído em `LOUSA_CARGOS` e em `CARGO_OPTIONS_GROUPED` (posicionado entre `INSTALADOR` e `ASSOCIADO`).
+- Comportamento: aparece na Lousa de Agendamento, bate ponto, e passa nos filtros substring `("tecnic","reparador","instalador")` em `routes/preventive_os.py` sem mudanças adicionais.
+- Sem migração de dados (cadastros existentes não são afetados).
+
+**Validação:** Verificação programática backend+frontend confirmou: cargo id `instalador_reparador`, label `"Instalador / Reparador"`, grupo Campo, `isLousaCargo=true`, `clockIn=true`, `inferCargoFromLegacy("Instalador / Reparador")` → `instalador_reparador`. Backend Python OK, frontend JS OK via Node sandbox.
+
+---
+
+
 ## 🔥 BugFix CTO P0: Atlaz sync órfão — Election Loop contínuo (12/06/2026 · iter244)
 
 **Demanda (em CTO Mode):** "as notas criadas no atlaz não estão replicando para a lousa"

@@ -13,18 +13,21 @@ from __future__ import annotations
 TECNICO = "tecnico"
 REPARADOR = "reparador"
 INSTALADOR = "instalador"
+INSTALADOR_REPARADOR = "instalador_reparador"
 ASSOCIADO = "associado"
 AUX_ADMIN = "auxiliar_administrativo"
 ATENDENTE = "atendente"
 ALMOXARIFE = "almoxarife"
 
 ALL_CARGOS: set[str] = {
-    TECNICO, REPARADOR, INSTALADOR, ASSOCIADO, AUX_ADMIN, ATENDENTE,
-    ALMOXARIFE,
+    TECNICO, REPARADOR, INSTALADOR, INSTALADOR_REPARADOR, ASSOCIADO,
+    AUX_ADMIN, ATENDENTE, ALMOXARIFE,
 }
 
 # Cargos que aparecem na Lousa de Serviços
-LOUSA_CARGOS: set[str] = {TECNICO, REPARADOR, INSTALADOR, ASSOCIADO}
+LOUSA_CARGOS: set[str] = {
+    TECNICO, REPARADOR, INSTALADOR, INSTALADOR_REPARADOR, ASSOCIADO,
+}
 
 # Cargos que NÃO batem ponto (todos os outros batem)
 NO_CLOCK_CARGOS: set[str] = {ASSOCIADO}
@@ -56,6 +59,10 @@ def infer_cargo_from_legacy(role: str | None) -> str:
         return ATENDENTE
     if "admin" in r and "administra" not in r:
         return AUX_ADMIN
+    # Checa o cargo combinado ANTES dos isolados (senão "reparador" matcheia
+    # primeiro a substring e retorna REPARADOR para "instalador_reparador").
+    if ("instalador" in r and "reparador" in r) or "instalador_reparador" in r:
+        return INSTALADOR_REPARADOR
     if "reparador" in r:
         return REPARADOR
     if "instalador" in r:
