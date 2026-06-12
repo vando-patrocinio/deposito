@@ -7755,3 +7755,10 @@ Relatório: `/app/docs/RELATORIO_RELACIONAMENTO_360.md`
 - refine_agents_v680 agora sobrescreve prompts embarcados com os .md (anti-drift PREVIEW vs PROD).
 - Testes: iteration_231.json — backend 15/15, frontend 100%. Pytest novo: tests/test_iter_pricing_catalog_v13.py. PENDENTE menor: warning de hidratação button-in-button pré-existente no AIHubPanel (cosmético).
 - DEPLOY PROD pendente de autorização do CTO (mudanças só no PREVIEW).
+
+---
+## 2026-06-12 (parte 2) — Preços reais + sandboxes + deploy readiness + RCA Baileys PROD
+- **Tabela de Preços corrigida com valores REAIS** (fonte: fragments V7.1 ativos, NÃO o pricing_info legado que era tabela antiga de combos): 13 planos (residencial sem/com fidelidade, Profissional, Shopping), 3 adicionais, taxa instalação R$250 c/ regra de isenção. 17 itens, updated_by=migration:seed_from_fragments_v71. pricing_info legado da Isabella/Vendas ESVAZIADO (conflitava).
+- **Sandboxes validados com LLM real**: Isabella citou 600/700 Mega com preços exatos da tabela; Álvaro seguiu protocolos ONLINE (reboot) e LOS (agenda com slots reais da Lousa).
+- **Deploy readiness: PASS** após mover OWNER_PASSWORD hardcoded de auth.py para backend/.env (OWNER_PASSWORD=Vs5879@@@; seed pula owner se env ausente). test_iter206 atualizado.
+- **RCA Baileys PROD (P0)**: sidecar Baileys é um processo Node extra do supervisor (whatsapp-service, porta 3002) + isabella-workers — o deploy gerenciado da Emergent sobe SÓ backend+frontend, logo WA_SIDECAR_URL=http://localhost:3002 é inalcançável em PROD. Não é bug de código: é arquitetura. Solução proposta: hospedar o sidecar em VPS próprio e apontar WA_SIDECAR_URL/WA_SIDECAR_TOKEN do PROD pra ele. AGUARDANDO AUTORIZAÇÃO DO CTO.
