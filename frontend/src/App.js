@@ -79,6 +79,7 @@ import MotorIaBudgetCard from "@/MotorIaBudgetCard";
 import BudgetAlertBadge from "@/BudgetAlertBadge";
 import AiTopologyCard from "@/AiTopologyCard";
 import UsersPanel from "@/UsersPanel";
+import OSHealthDashboard from "@/OSHealthDashboard";
 import DashboardPanel from "@/DashboardPanel";
 import PracasPanel from "@/PracasPanel";
 import LogsPanel from "@/LogsPanel";
@@ -207,6 +208,7 @@ const NAV_GROUPS = [
     items: [
       { id: "dashboard", icon: BarChart3, label: "Painel", roles: ["gestor", "auditor", "administrador"] },
       { id: "lousa", icon: Layout, label: "Chamados", roles: ["gestor", "administrador"] },
+      { id: "os-health", icon: BarChart3, label: "Saúde das OS", roles: ["gestor", "administrador", "auditor"] },
       { id: "field-ops", icon: Layout, label: "Field Ops (Campo)",
         roles: ["gestor", "administrador", "auditor"] },
       { id: "isabella-console", icon: Layout, label: "Isabella Console",
@@ -1256,6 +1258,7 @@ function AppContent() {
           {view === "plans" && <PlansPanel />}
           {view === "pracas" && <PracasPanel />}
           {view === "users" && <UsersPanel />}
+          {view === "os-health" && <OSHealthDashboard />}
           {view === "manager" && <ManagerPanel />}
           {view === "sheet" && <TimesheetView />}
           {view === "holerite" && <HoleritePanel />}

@@ -791,6 +791,21 @@ export const api = {
       { macs, technician_id: technicianId }).then((r) => r.data),
   stokOntsReconcileWithOlt: () =>
     client.post(`/stok/onts/reconcile-with-olt`).then((r) => r.data),
+  // ========= OS Lifecycle (FSM P0/P1) =========
+  osLifecycleHealth: () =>
+    client.get(`/os-lifecycle/health`).then((r) => r.data),
+  osLifecycleAudit: () =>
+    client.get(`/os-lifecycle/audit`).then((r) => r.data),
+  osLifecycleCatalog: () =>
+    client.get(`/os-lifecycle/catalog`).then((r) => r.data),
+  osLifecycleTimeline: (ticketId) =>
+    client.get(`/tickets/${ticketId}/lifecycle-timeline`).then((r) => r.data),
+  osLifecycleTransition: (ticketId, payload) =>
+    client.post(`/tickets/${ticketId}/transition`, payload).then((r) => r.data),
+  osLifecycleBackfill: () =>
+    client.post(`/os-lifecycle/backfill`).then((r) => r.data),
+  osLifecycleAutoCancelPreventive: (days = 7) =>
+    client.post(`/os-lifecycle/auto-cancel-preventive`, { days }).then((r) => r.data),
 
   // ========= Estoque por Praça =========
   stokPracaSummary: () =>

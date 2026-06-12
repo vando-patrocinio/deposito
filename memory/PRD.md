@@ -2,7 +2,57 @@
 
 > Documento vivo. Atualizado a cada sprint.
 
-## ✨ Feature: FSM Lifecycle P0 — Modelo canônico de Service Order (12/06/2026 · CTO)
+## ✨ Feature: FSM Lifecycle P1 — SLA + Health Dashboard (12/06/2026 · CTO)
+
+**P1 implementado em cima da fundação P0:**
+
+### Backend
+- **`services/os_sla.py`**: matriz SLA por `(work_type, lifecycle_state)` com 7 work types × 6 estados = 42 SLAs definidos.
+  - install: 240/1440/60/90/240/2880 min (pelo estado)
+  - repair: 60/240/30/60/120/720 (mais urgente)
+  - outage_auto: 15/30/10/30/60/60 (crítico)
+  - preventive: 10080/10080/240/120/120/4320 (folgado, 7d até despachar)
+  - swap/pickup/inspection definidos.
+- **Pending reason multipliers**: `pending_parts ×3`, `pending_customer ×5`, `pending_access ×2`, `pending_approval ×2`, `pending_network ×1.5` — SLA estica baseado em motivo da espera.
+- **`compute_sla_breach()`**: calcula percent_used, breach (>100%) e warning (>=80%).
+
+### Endpoints novos
+- `GET /api/os-lifecycle/health` — Dashboard de saúde do fluxo (total ativos, total em breach, gargalo identificado, stats por estado com idade média/máx, lista de breach tickets).
+- `GET /api/tickets/{id}/lifecycle-timeline` — Timeline do histórico de transições do ticket + SLA atual.
+
+### Frontend
+- **`OSHealthDashboard.jsx`** (novo): tela completa com KPIs (ativos/breach/%/gargalo), cards por estado (count + breach + warning + idade média), chips por work_type, tabela de breach detalhado com protocolo/idade/SLA/%.
+- Item no menu lateral: **"Saúde das OS"** (data-testid: `os-health-dashboard`).
+- 7 métodos novos em `api.js` (`osLifecycleHealth`, `osLifecycleAudit`, `osLifecycleCatalog`, `osLifecycleTimeline`, `osLifecycleTransition`, `osLifecycleBackfill`, `osLifecycleAutoCancelPreventive`).
+
+### Validação real (co-demo)
+```
+total_active: 145
+breach: 29 (20.0%)
+gargalo: assigned (144 OSs, idade média 357min / máx 841min)
+by_work_type: {preventive:67, pickup:34, repair:29, install:11, outage_auto:4}
+
+Breach detectado:
+  outage-d8cb5682636a (outage_auto)  → 221% do SLA (66min vs 30min) 🔴
+  tkt-41d7d6dbd7 (repair)             → 104.7% (251min vs 240min)
+  tkt-1a3f0f4e9b (repair)             → 128.4% (308min vs 240min)
+  ... +27 outros
+```
+
+**Lições do dashboard:**
+- O sistema agora detecta automaticamente que existe 1 outage_auto crítico em breach grave (221%).
+- 28 reparos atribuídos há mais de 4h sem ação — gargalo claro.
+- 1 OS in_progress há 2371min (~40h) — provavelmente esquecida.
+
+### Pendente do P1 original (próxima onda)
+- Estados `en_route` + `on_site` com GPS auto-detection (Fleet integrado)
+- Frontend timeline visual no card da OS (componente reutilizável `LifecycleTimeline`)
+- Wizard mobile pro work_type `swap` (1 OS faz retirada+instalação)
+- QA Review state antes de fechar
+- TTL job rodando automaticamente (hoje é manual)
+
+---
+
 
 **Pedido:** Auditoria comparou SmartProv vs ServiceNow/Salesforce/Microsoft/SAP — gap brutal: SmartProv tinha apenas 4 status (vs 9-11 padrão), tipo e status misturados, sem reason codes, sem substatus, sem TTL. Causa raiz documentada das 34 retiradas e 62 preventivas travadas.
 
