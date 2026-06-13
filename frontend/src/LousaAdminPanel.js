@@ -1315,14 +1315,44 @@ export default function LousaAdminPanel({ systemStatus = { offline: false, drift
             </button>
           </div>
         )}
-        {(focusTechId
-          ? grid.columns.filter((c) => c.collaborator.id === focusTechId
-                                          || c.collaborator.is_virtual)
-          : (visibleTechIds.length > 0
-              ? grid.columns.filter((c) => visibleTechIds.includes(c.collaborator.id)
-                                              || c.collaborator.is_virtual)
-              : grid.columns)
-        ).map((origCol) => {
+        {(() => {
+          // CTO 13/06/2026 — Regra de visibilidade de colaborador na Lousa:
+          //   - "Todos" (agentFilter === "all"): MOSTRA todos, mesmo sem bolha.
+          //   - Filtro por agente IA (isabella/alvaro/camila/sistema/gestor):
+          //     só aparecem colaboradores que possuem AO MENOS UMA bolha
+          //     atribuída pelo agente filtrado. Coluna SALA (virtual) é fixa.
+          const baseCols = (focusTechId
+            ? grid.columns.filter((c) => c.collaborator.id === focusTechId
+                                            || c.collaborator.is_virtual)
+            : (visibleTechIds.length > 0
+                ? grid.columns.filter((c) => visibleTechIds.includes(c.collaborator.id)
+                                                || c.collaborator.is_virtual)
+                : grid.columns));
+
+          if (agentFilter === "all") return baseCols;
+
+          const ISABELLA_AG = new Set(["isabella_ai", "isabella_route_support",
+            "isabella_viability", "isabella_vision"]);
+          const ALVARO_AG = new Set(["alvaro_diagnose", "alvaro_ai"]);
+          const CAMILA_AG = new Set(["camila_billing", "camila_ai", "camila_cobranca"]);
+          const SISTEMA_TYPES = new Set(["alerta_geofence", "frota_alerta",
+            "alerta_ia", "signal_callback", "auto_retargeting"]);
+          const matchAg = (t) => {
+            const src = t.origin_source || t.created_by || "";
+            if (agentFilter === "isabella") return ISABELLA_AG.has(src);
+            if (agentFilter === "alvaro") return ALVARO_AG.has(src);
+            if (agentFilter === "camila") return CAMILA_AG.has(src);
+            if (agentFilter === "gestor") {
+              const ai = new Set([...ISABELLA_AG, ...ALVARO_AG, ...CAMILA_AG]);
+              return !ai.has(src) && !SISTEMA_TYPES.has(t.type);
+            }
+            if (agentFilter === "sistema") return SISTEMA_TYPES.has(t.type);
+            return true;
+          };
+          // Mantém SALA fixa + colunas com ao menos 1 bolha do agente
+          return baseCols.filter((c) => c.collaborator.is_virtual
+            || (c.tickets || []).some(matchAg));
+        })().map((origCol) => {
           // SALA = coluna virtual fixa. NÃO aplica filtro de "Só Frota" nem agente.
           const isVirtualSala = !!origCol.collaborator.is_virtual;
           // Filtro "Só Frota": esconde bolhas que não são frota_alerta
