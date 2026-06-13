@@ -124,6 +124,14 @@ export const api = {
     client.get(`/r/${code}/info`).then((r) => r.data),
   publicReferralSubmit: (code, form) =>
     client.post(`/r/${code}/submit`, form).then((r) => r.data),
+  // CTO 13/06/2026 — Campanha de indicação (Admin > CampaignConfigCard)
+  // Endpoints: GET/PUT/DELETE /api/referral-campaign/config
+  referralCampaignGet: () =>
+    client.get(`/referral-campaign/config`).then((r) => r.data),
+  referralCampaignPut: (payload) =>
+    client.put(`/referral-campaign/config`, payload).then((r) => r.data),
+  referralCampaignReset: () =>
+    client.delete(`/referral-campaign/config`).then((r) => r.data),
   // AI Center — RevenueOps IA (Fase 1 da Constituição V3.0)
   revenueSummary: (period = "MTD") =>
     client.get(`/ai-center/revenue/summary`, { params: { period } }).then((r) => r.data),
