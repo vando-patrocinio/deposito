@@ -1,6 +1,34 @@
 # SmartProv — PRD (Product Requirements Document)
 
 > Documento vivo. Atualizado a cada sprint.
+## 🏗 RECONSTRUÇÃO IAM v2 (13/06/2026 · CTO ETAPA 1+2 ENTREGUES)
+
+**Ordem executiva:** "PARE de fazer patches. Refaça do zero." Aprovado.
+
+**ETAPA 1 (Auditoria) — DONE:**
+- 4 sistemas de autorização coexistindo (role legado, access_tags, profile_id, is_super_admin)
+- 7 coleções diferentes pra "usuário" (identidade fragmentada)
+- 6 colaboradores órfãos (32%) sem User vinculado
+- 0 callers de `require_tag()` — sistema novo nunca foi adotado
+- 112 users deletados ontem sem audit trail
+- 1.885 endpoints, 937 `require_role()`, 82 `user.role==` hardcoded
+
+**ETAPA 2 (Modelagem) — DONE:**
+- 5 decisões executivas aprovadas: shim 30d, hierarquia `module.action`, Identity unificada, magic-link com device fingerprint, audit S3
+- 4 ADRs escritos em `/app/memory/adr/`
+- Módulo `iam_v2/` criado (flag `USE_NEW_IAM=0` default, inerte)
+- Catálogo com ~80 permission keys formal
+- Migration script CLI com Phase 0 (validate) funcional
+- Phase 0 em co-demo: 12 users + 13 colabs → 18 Identities, `ready_to_migrate: false` (6 órfãos detectados)
+
+**FREEZE ATIVO 13/06 → 13/07/2026:**
+Não aplicar patches em `auth.py`, `rbac_policy.py`, `clock.py` sync, `access_profiles.py`, nem novos `require_role/require_roles/user.role==`. Exceção: outage total em PROD.
+
+**ETAPAS 2.5 – 9 pending:** ver `/app/memory/IAM_V2_ROADMAP.md`.
+
+---
+
+
 ## 🐛 BUG FIX (13/06/2026 · CTO) — Mudar perfil do colab não propagava pro User vinculado por email
 
 **Reclamação:** "da onde vem esse colaborador do cadastro do colaborador, coloquei para administrador e não foi" — Jefferson (cabelinhopolo@gmail.com) virou perfil "Administrador" no cadastro mas continuava 403 em /api/propostas, exibindo "COLABORADOR" no badge.
