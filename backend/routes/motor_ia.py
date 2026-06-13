@@ -88,8 +88,12 @@ async def test_motor_endpoint(user: dict = Depends(require_role("administrador")
 
 # Budget mensal — GET/PUT (iter232) ---------------------------------------
 @router.get("/budget")
-async def read_budget(user: dict = Depends(require_role("administrador"))):
-    """Retorna limite mensal e gasto atual do mês."""
+async def read_budget(user: dict = Depends(require_role("gestor"))):
+    """Retorna limite mensal e gasto atual do mês.
+
+    Leitura liberada para gestor (necessário para BudgetAlertBadge no TopBar e
+    cards de uso). Escrita (PUT) continua restrita a administrador.
+    """
     from datetime import datetime, timezone
     cid = user.get("company_id") or DEMO_COMPANY_ID
     b = await db.motor_ia_budget.find_one({"company_id": cid}, {"_id": 0}) or {}

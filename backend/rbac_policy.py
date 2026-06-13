@@ -278,7 +278,7 @@ ROLE_RULES: List[Tuple[str, Set[str]]] = [
     ("/api/onboarding",          {"administrador"}),
     ("/api/users",               {"administrador"}),
     ("/api/companies",           {"administrador"}),
-    ("/api/branding",            {"administrador"}),
+    ("/api/branding",            {"administrador", "gestor"}),
     ("/api/settings",            {"administrador"}),
     ("/api/motor-ia/config",     {"administrador"}),
     ("/api/security-home",       {"administrador", "gestor"}),
