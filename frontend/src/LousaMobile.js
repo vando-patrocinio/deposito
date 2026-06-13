@@ -399,12 +399,9 @@ export default function LousaMobile({ collaboratorId, onBack, isAdminTest = fals
           setOpenTicket(null);
           setBadSignalAuth(null);
           setErr("");
-          setTimeout(() => alert(
-            "📡 OS gravada SEM SINAL GPS!\n\n"
-            + "Sem GPS no momento. A finalização foi gravada no aparelho "
-            + "e será enviada automaticamente quando o GPS voltar.\n\n"
-            + "Você pode pegar a próxima OS."
-          ), 80);
+          // CTO 13/06/2026 — Sem aviso de "SEM GPS" no fechamento.
+          // A OS é enfileirada no outbox e enviada quando GPS voltar.
+          // Técnico segue direto pro fluxo de fechamento da próxima OS.
           await refresh();
           setBusy(false);
           return;
