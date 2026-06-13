@@ -1,6 +1,24 @@
 # SmartProv — PRD (Product Requirements Document)
 
 > Documento vivo. Atualizado a cada sprint.
+## 🔒 ETAPA 2.1 — Pre-Migration Clean Room ENTREGUE (13/06/2026)
+
+**Comando executivo:** Preparar terreno sem tocar em auth ativo.
+
+**Entregas (5/5):**
+- ✅ **P0** `IAM_ORPHANS_DECISION_TABLE.md` — 6 órfãos detalhados + 7 users sem profile + 2 portal dupes, com recomendação CTO por linha
+- ✅ **P1** `IAM_BACKUP_ROLLBACK_PLAN.md` — procedimento enterprise (S3 Object Lock) + fallback + comando exato de rollback (5min SLA) + critério de parada
+- ✅ **P2** Phases 1-7 implementadas em dry-run, plano salvo em `IAM_V2_DRY_RUN_PLAN.json`
+- ✅ **P3** `IAM_PERMISSION_MATRIX.md` — 11 perfis canônicos com risco bidirecional + mapping de rotas críticas + lista 2-eyes
+- ✅ **P4** `scripts/test_iam_v2_dry_run.py` — 9 checagens red-team, **9/9 verde**
+
+**Auth ativo intocado** — hashes baseline em `.iam_v2_baseline_hashes.json` validados.
+
+**Veredito:** ❌ **NÃO autoriza ETAPA 2.5 ainda.** 8 critérios pendentes em `IAM_V2_ETAPA_2.1_REPORT.md` §5.
+
+---
+
+
 ## 🏗 RECONSTRUÇÃO IAM v2 (13/06/2026 · CTO ETAPA 1+2 ENTREGUES)
 
 **Ordem executiva:** "PARE de fazer patches. Refaça do zero." Aprovado.

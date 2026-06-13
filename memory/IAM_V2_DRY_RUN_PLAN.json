@@ -1,0 +1,108 @@
+{
+  "company_id": "co-demo",
+  "phase_1": {
+    "created": 12,
+    "skipped": 0,
+    "errors": []
+  },
+  "phase_2": {
+    "merged_into_existing": 0,
+    "new_identities_from_collab": 12,
+    "not_matched": 1
+  },
+  "phase_3": {
+    "phase": 3,
+    "dry_run": true,
+    "credentials_to_create": {
+      "password": 12,
+      "magic_link": 14,
+      "google_oauth": 0
+    },
+    "total": 26,
+    "errors": [],
+    "note": "Nada escrito. Use --no-dry-run ap\u00f3s aprova\u00e7\u00e3o CTO."
+  },
+  "phase_4": {
+    "phase": 4,
+    "dry_run": true,
+    "memberships_to_create": 12,
+    "users_without_profile_id": 7,
+    "profile_distribution": {
+      "<map de role=auditor>": 2,
+      "<map de role=colaborador>": 1,
+      "prof-0859304d99": 2,
+      "prof-f9ac5a96a9": 2,
+      "prof-8f2cdb9a75": 1,
+      "<map de role=gestor>": 3,
+      "<map de role=gestor_rede>": 1
+    },
+    "note": "Mapping role->profile aplicado nos sem-profile via LEGACY_ROLE_PERMISSIONS."
+  },
+  "phase_5": {
+    "phase": 5,
+    "dry_run": true,
+    "summary": {
+      "client_portal_users": {
+        "total": 1,
+        "will_merge_existing_identity": 0,
+        "will_create_new_identity": 1,
+        "credential_type": "portal_client"
+      },
+      "fleet_portal_users": {
+        "total": 3,
+        "will_merge_existing_identity": 2,
+        "will_create_new_identity": 1,
+        "credential_type": "portal_fleet"
+      },
+      "parcerias_partner_users": {
+        "total": 3,
+        "will_merge_existing_identity": 0,
+        "will_create_new_identity": 3,
+        "credential_type": "portal_partner"
+      },
+      "security_portal_users": {
+        "total": 1,
+        "will_merge_existing_identity": 0,
+        "will_create_new_identity": 1,
+        "credential_type": "portal_security"
+      },
+      "public_access_tokens_active": {
+        "total": 3,
+        "credential_type": "api_key",
+        "note": "Cada token vira credential(type=api_key, scope=[...])."
+      }
+    },
+    "note": "Decis\u00e3o pendente: dedup por primary_email entre portais."
+  },
+  "phase_6": {
+    "phase": 6,
+    "dry_run": true,
+    "collection_to_create": "sessions",
+    "indexes_planned": [
+      {
+        "key": "jwt_jti",
+        "unique": true
+      },
+      {
+        "key": "identity_id"
+      },
+      {
+        "key": "expires_at",
+        "expireAfterSeconds": 0
+      },
+      {
+        "keys": [
+          [
+            "revoked_at",
+            1
+          ],
+          [
+            "expires_at",
+            1
+          ]
+        ]
+      }
+    ],
+    "legacy_jwt_strategy": "Aceitar JWT legado durante TTL natural (30d). Ap\u00f3s cutover, novas autentica\u00e7\u00f5es geram Session + JWT com jti."
+  }
+}

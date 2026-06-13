@@ -241,28 +241,187 @@ async def phase_2_merge_collaborators(db, company_id: str, dry_run: bool = False
 # ──────────────────────────────────────────────────────────────────────────
 
 async def phase_3_create_credentials(db, company_id: str, dry_run: bool = False) -> dict:
-    """TODO ETAPA 2.5: migrar passwords + magic_links + google_oauth."""
-    return {"todo": True, "phase": 3}
+    """Cria 1 Credential(type=password) por user.password_hash + N por magic-links.
+
+    DRY-RUN: simula contagens, **não escreve**.
+    """
+    pwd_planned = 0
+    mlink_planned = 0
+    google_planned = 0
+    errors: list[dict] = []
+
+    async for u in db.users.find({"company_id": company_id}):
+        if u.get("password_hash"):
+            pwd_planned += 1
+        if u.get("google_id") or u.get("google_email"):
+            google_planned += 1
+
+    # Magic links ativos (não usados)
+    mlink_planned = await db.user_magic_links.count_documents({
+        "company_id": company_id, "used_at": None,
+    })
+
+    if dry_run:
+        return {
+            "phase": 3, "dry_run": True,
+            "credentials_to_create": {
+                "password": pwd_planned,
+                "magic_link": mlink_planned,
+                "google_oauth": google_planned,
+            },
+            "total": pwd_planned + mlink_planned + google_planned,
+            "errors": errors,
+            "note": "Nada escrito. Use --no-dry-run após aprovação CTO.",
+        }
+    return {"phase": 3, "todo": "Implementar escrita em ETAPA 2.5"}
 
 
 async def phase_4_create_memberships(db, company_id: str, dry_run: bool = False) -> dict:
-    """TODO ETAPA 2.5: criar 1 Membership por (Identity, company_id)."""
-    return {"todo": True, "phase": 4}
+    """Cria 1 Membership por (Identity, company_id).
+
+    DRY-RUN: simula mapping role legado → profile.
+    """
+    planned = 0
+    profile_distribution: dict[str, int] = {}
+    no_profile = 0
+
+    async for u in db.users.find({"company_id": company_id}):
+        role = u.get("role") or "colaborador"
+        pid = u.get("profile_id")
+        if not pid:
+            # mapping role → profile (Phase 4 vai resolver)
+            no_profile += 1
+            target = f"<map de role={role}>"
+        else:
+            target = pid
+        profile_distribution[target] = profile_distribution.get(target, 0) + 1
+        planned += 1
+
+    if dry_run:
+        return {
+            "phase": 4, "dry_run": True,
+            "memberships_to_create": planned,
+            "users_without_profile_id": no_profile,
+            "profile_distribution": profile_distribution,
+            "note": "Mapping role->profile aplicado nos sem-profile via LEGACY_ROLE_PERMISSIONS.",
+        }
+    return {"phase": 4, "todo": "Implementar escrita em ETAPA 2.5"}
 
 
 async def phase_5_migrate_portals(db, company_id: str, dry_run: bool = False) -> dict:
-    """TODO ETAPA 2.5: portal users → Identity isolada."""
-    return {"todo": True, "phase": 5}
+    """Cada portal user vira Credential(type=portal_X) numa Identity (nova ou existente)."""
+    summary: dict[str, dict[str, int]] = {}
+    portals = [
+        ("client_portal_users", "portal_client"),
+        ("fleet_portal_users", "portal_fleet"),
+        ("parcerias_partner_users", "portal_partner"),
+        ("security_portal_users", "portal_security"),
+    ]
+    collections = await db.list_collection_names()
+    for coll, cred_type in portals:
+        if coll not in collections:
+            continue
+        total = 0
+        will_merge = 0
+        will_create = 0
+        async for d in db[coll].find({}, {"_id": 0, "email": 1}):
+            total += 1
+            e = (d.get("email") or "").lower()
+            if not e:
+                continue
+            staff = await db.users.find_one({"email": e})
+            if staff:
+                will_merge += 1
+            else:
+                will_create += 1
+        summary[coll] = {
+            "total": total,
+            "will_merge_existing_identity": will_merge,
+            "will_create_new_identity": will_create,
+            "credential_type": cred_type,
+        }
+    # public_access_tokens → api_key credential
+    pat = await db.public_access_tokens.count_documents({"revoked_at": None})
+    summary["public_access_tokens_active"] = {
+        "total": pat, "credential_type": "api_key",
+        "note": "Cada token vira credential(type=api_key, scope=[...]).",
+    }
+
+    if dry_run:
+        return {
+            "phase": 5, "dry_run": True,
+            "summary": summary,
+            "note": "Decisão pendente: dedup por primary_email entre portais.",
+        }
+    return {"phase": 5, "todo": "Implementar em ETAPA 2.5"}
 
 
 async def phase_6_init_sessions(db, company_id: str, dry_run: bool = False) -> dict:
-    """TODO ETAPA 2.5: opcional — pode deixar JWTs legados expirarem."""
-    return {"todo": True, "phase": 6}
+    """Cria coleção `sessions` vazia + índices. JWTs legados expirarão em 30d."""
+    indexes_planned = [
+        {"key": "jwt_jti", "unique": True},
+        {"key": "identity_id"},
+        {"key": "expires_at", "expireAfterSeconds": 0},
+        {"keys": [("revoked_at", 1), ("expires_at", 1)]},
+    ]
+    if dry_run:
+        return {
+            "phase": 6, "dry_run": True,
+            "collection_to_create": "sessions",
+            "indexes_planned": indexes_planned,
+            "legacy_jwt_strategy": (
+                "Aceitar JWT legado durante TTL natural (30d). "
+                "Após cutover, novas autenticações geram Session + JWT com jti."
+            ),
+        }
+    return {"phase": 6, "todo": "Implementar em ETAPA 2.5"}
 
 
 async def phase_7_verify(db, company_id: str) -> dict:
-    """TODO ETAPA 2.5: paridade users↔identities + órfãos + unicidade."""
-    return {"todo": True, "phase": 7}
+    """Verifica paridade/unicidade pós-migração. Read-only."""
+    users = await db.users.count_documents({"company_id": company_id})
+    collabs = await db.collaborators.count_documents({"company_id": company_id})
+    identities = await db.identities.count_documents({"_legacy_user_id": {"$exists": True}})
+    creds = await db.credentials.count_documents({}) \
+        if "credentials" in await db.list_collection_names() else 0
+    memberships = await db.memberships.count_documents({"company_id": company_id}) \
+        if "memberships" in await db.list_collection_names() else 0
+
+    # Dupes/órfãos pós
+    dup_emails = []
+    if "identities" in await db.list_collection_names():
+        pipeline = [
+            {"$group": {"_id": "$primary_email", "n": {"$sum": 1}}},
+            {"$match": {"n": {"$gt": 1}}},
+        ]
+        async for d in db.identities.aggregate(pipeline):
+            dup_emails.append(d["_id"])
+
+    orphan_identities = 0
+    if "identities" in await db.list_collection_names():
+        async for i in db.identities.find({}, {"id": 1}):
+            if "memberships" in await db.list_collection_names():
+                m = await db.memberships.find_one(
+                    {"identity_id": i["id"], "status": "active"},
+                )
+                if not m:
+                    orphan_identities += 1
+
+    return {
+        "phase": 7, "company_id": company_id,
+        "counts": {
+            "legacy_users": users,
+            "legacy_collaborators": collabs,
+            "new_identities_from_users": identities,
+            "new_credentials": creds,
+            "new_memberships": memberships,
+        },
+        "anomalies": {
+            "duplicated_primary_emails": dup_emails,
+            "identities_without_active_membership": orphan_identities,
+        },
+        "parity_ok": users == identities and orphan_identities == 0 and len(dup_emails) == 0,
+    }
 
 
 # ──────────────────────────────────────────────────────────────────────────
