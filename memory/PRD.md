@@ -1,6 +1,44 @@
 # SmartProv — PRD (Product Requirements Document)
 
 > Documento vivo. Atualizado a cada sprint.
+## 🐛 BUG FIX (13/06/2026 · CTO) — PWA Colaborador mostrava "Olá —" + schedule "undefined / undefined"
+
+**Reclamação:** "SOBRE O LOGIN QUE NÃO APARECE O NOME, VC RESOLVEU DESSA VEZ?" (screenshot mostrava Olá em branco, avatar "?", Horário "undefined / undefined").
+
+**Evidence (CTO Mode):**
+- `users.colaborador@empresa.com.collaborator_id` = `"col-demo-001"`
+- `db.collaborators.find_one({"id":"col-demo-001"})` → **None** (doc apagado)
+- `GET /api/collaborators/me` → 404 "Nenhum colaborador vinculado"
+- `GET /api/field/me` → 403 mesmo motivo
+- 12 colaboradores em `co-demo`, nenhum com email `colaborador@empresa.com`
+- Seed legado em `server.py::_seed_demo_if_empty` só rodava se collection vazia → nunca reinseria
+
+**Root Cause:** vínculo órfão `User → Collaborator` + seed não-idempotente. Quando o doc foi deletado em algum momento, o user ficou apontando pra nada e o PWA quebrava em "Olá —" + `collab.schedule` undefined.
+
+**Impact:** todo técnico cujo `col-XXX` referenciado foi apagado fica preso na tela de Lousa sem nome, sem horário, sem CTAs. Recorrente — o seed nunca conseguia "se curar".
+
+**Correção aplicada:**
+1. **Dado restaurado em DB:** `col-demo-001` reinserido com `email=colaborador@empresa.com`, `cargo=tecnico`, `cpf=00000000001`, `schedule={08:00, 12:00, 13:00, 17:00}`, `clock_in_enabled=false`, `company_id=co-demo`.
+2. **Seed idempotente** em `server.py::_seed_demo_if_empty`: checa `find_one({"id":"col-demo-001"})` em vez de `count > 0`. Se foi apagado, reinsere com email correto. Sobrevive a qualquer wipe parcial.
+3. **Script manual `restore_col_demo_001.py`** criado em `/app/backend/scripts/` pra restaurar fora do boot.
+
+**Verification (zero mock, curl real):**
+```
+GET /api/collaborators/me → 200
+  name: Carlos Almeida
+  cargo: tecnico
+  clock_in_enabled: False
+  schedule.entrada: 08:00
+GET /api/field/me → 200, collaborator.name: Carlos Almeida
+```
+
+**Files touched:** `/app/backend/server.py` (seed), `/app/backend/scripts/restore_col_demo_001.py` (novo), `/app/memory/test_credentials.md`.
+
+**Status PROD:** ⚠️ Em **produção**, `col-demo-001` provavelmente também está órfão. Quando reimplantar, o novo seed vai se auto-recuperar. **Clica em "Reimplantar" no painel Emergent pra propagar.**
+
+---
+
+
 ## 🐛 BUG FIX (13/06/2026 · CTO) — `clock_in_enabled` sobrescrito em PUT parcial
 
 **Reclamação do usuário:** "O CADASTRO DO COLABORADOR NÃO ESTA SENDO LEVADO A SERIO, O PONTO ESTA DESLIGADO E VOLTA SOZINHO."

@@ -343,19 +343,24 @@ async def dwell_push_job() -> None:
 # Seed demo (somente se collection vazia)
 # -------------------------------------------------------------------------
 async def _seed_demo_if_empty() -> None:
-    count = await db.collaborators.count_documents({})
-    if count > 0:
+    # CTO 13/06/2026 — antes só rodava se collection vazia. Agora também
+    # restaura `col-demo-001` se foi deletado mas user vinculado ainda
+    # existe (vínculo órfão = "Olá —" + schedule undefined no PWA).
+    exists = await db.collaborators.find_one({"id": "col-demo-001"}, {"_id": 1})
+    if exists:
         return
     now = now_iso()
     demo = routes_clock.Collaborator(
         id="col-demo-001",
         name="Carlos Almeida",
-        cpf="123.456.789-00",
-        email="carlos@example.com",
+        cpf="00000000001",
+        email="colaborador@empresa.com",
         phone="+55 11 99999-0001",
         role="Colaborador de Campo",
+        cargo="tecnico",
         company="Operação SP",
         schedule=routes_clock.WorkSchedule(),
+        clock_in_enabled=False,
         avatar_data_url=None,
         reference_face=None,
         created_at=now,
@@ -363,8 +368,11 @@ async def _seed_demo_if_empty() -> None:
     )
     doc = demo.model_dump()
     doc["company_id"] = "co-demo"
-    await db.collaborators.insert_one(doc)
-    logger.info("Seed demo collaborator inserido (col-demo-001)")
+    try:
+        await db.collaborators.insert_one(doc)
+        logger.info("Seed demo collaborator inserido (col-demo-001)")
+    except Exception as e:  # noqa: BLE001
+        logger.warning("Seed col-demo-001 falhou (provavel duplicate): %s", e)
 
 
 async def _seed_demo_tickets() -> None:
