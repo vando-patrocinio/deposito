@@ -47,33 +47,36 @@ async def admin_restart_all_sidecars(
 async def admin_sidecar_status(
     user: dict = Depends(require_role("administrador")),
 ):
-    """Diagnóstico rápido: status atual dos 4 sidecars via /health."""
+    """Diagnóstico rápido: status atual dos 4 sidecars via /health.
+
+    Usa `base_url_for(channel_id)` — resolve URL via env (prod) ou
+    localhost (preview).
+    """
     import httpx
-    ports = {
-        "whatsapp-service":    3002,
-        "whatsapp-service-2":  3003,
-        "whatsapp-service-3":  3004,
-        "whatsapp-service-4":  3005,
-    }
+    from services.whatsapp_channels import CHANNEL_IDS, base_url_for, CHANNEL_PORTS
     status = []
-    async with httpx.AsyncClient(timeout=3.0) as cx:
-        for name, p in ports.items():
+    async with httpx.AsyncClient(timeout=5.0) as cx:
+        for cid in CHANNEL_IDS:
+            base = base_url_for(cid)
             try:
-                r = await cx.get(f"http://localhost:{p}/health")
+                r = await cx.get(f"{base}/health")
                 body = r.json() if r.status_code == 200 else None
                 status.append({
-                    "name": name,
-                    "port": p,
+                    "channel_id": cid,
+                    "port": CHANNEL_PORTS.get(cid),
+                    "base_url": base,
                     "alive": r.status_code == 200,
+                    "http_status": r.status_code,
                     "state": (body or {}).get("state"),
                     "uptime_s": (body or {}).get("uptime_s"),
                     "retry_count": (body or {}).get("retry_count"),
                 })
             except Exception as e:  # noqa: BLE001
                 status.append({
-                    "name": name,
-                    "port": p,
+                    "channel_id": cid,
+                    "port": CHANNEL_PORTS.get(cid),
+                    "base_url": base,
                     "alive": False,
-                    "error": str(e)[:100],
+                    "error": str(e)[:200],
                 })
     return {"sidecars": status}

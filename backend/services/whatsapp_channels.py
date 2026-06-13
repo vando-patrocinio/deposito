@@ -60,10 +60,30 @@ def now_iso() -> str:
 def base_url_for(channel_id: str) -> str:
     """URL HTTP do sidecar correspondente ao channel_id.
 
-    Fallback ao canal-1 (port 3002) se channel_id desconhecido — garante
-    compatibilidade com código legado que não passa channel_id.
+    Prioridade de resolução:
+      1) env `WA_SIDECAR_URL_CH1` / `..._CH2` / `..._CH3` / `..._CH4`
+         (PRODUÇÃO: cada sidecar rodando em Railway/Render/Fly.io com URL
+         distinta — CTO 13/06/2026)
+      2) env `WA_SIDECAR_URL` (legado: só channel-1)
+      3) fallback `http://127.0.0.1:<port>` (PREVIEW/local — supervisor)
+
+    Fallback ao canal-1 se channel_id desconhecido.
     """
-    port = CHANNEL_PORTS.get(channel_id) or CHANNEL_PORTS["channel-1"]
+    cid = channel_id if channel_id in CHANNEL_PORTS else "channel-1"
+    env_key = {
+        "channel-1": "WA_SIDECAR_URL_CH1",
+        "channel-2": "WA_SIDECAR_URL_CH2",
+        "channel-3": "WA_SIDECAR_URL_CH3",
+        "channel-4": "WA_SIDECAR_URL_CH4",
+    }[cid]
+    url = (os.environ.get(env_key) or "").strip()
+    if url:
+        return url.rstrip("/")
+    if cid == "channel-1":
+        legacy = (os.environ.get("WA_SIDECAR_URL") or "").strip()
+        if legacy:
+            return legacy.rstrip("/")
+    port = CHANNEL_PORTS[cid]
     return f"http://127.0.0.1:{port}"
 
 

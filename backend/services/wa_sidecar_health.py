@@ -1,91 +1,94 @@
-"""wa_sidecar_health.py — CTO 13/06/2026.
+"""wa_sidecar_health.py — CTO 13/06/2026 (v2).
 
-Gestão proativa dos sidecars Baileys (whatsapp-service / -2 / -3 / -4).
+Gestão proativa dos sidecars Baileys.
 
-Motivo: o WhatsApp Baileys frequentemente acumula memory leak / sessão
-corrompida após 24h+ rodando, levando a um loop "connecting" sem
-estabilizar. O supervisor tenta autorestart mas, depois de N falhas,
-desiste e os 4 sidecars ficam down até intervenção manual.
+v2 (13/06/2026) — Atualizado para ARQUITETURA DUAL:
+  - PREVIEW: sidecars rodam no MESMO container (supervisor, localhost:3002-3005)
+  - PRODUÇÃO: sidecars rodam em containers SEPARADOS (Railway/Render/Fly.io),
+    URLs resolvidas via env vars WA_SIDECAR_URL_CH1..CH4.
 
-Este módulo:
-  1) Restart proativo diário às 03:00 UTC (fora do horário comercial BR)
-  2) Endpoint admin manual: POST /api/admin/wa-sidecar/restart-all
+Estratégias:
+  - PREVIEW: chama `POST /reload` no sidecar (mantém sessão, reconecta socket)
+  - PRODUÇÃO: chama `POST /reload` no sidecar via URL externa (idem)
+
+Vantagem: o endpoint `/reload` do sidecar funciona em AMBOS os ambientes,
+sem precisar SSH ou Railway API.
+
+Fallback: se `/reload` falhar (sidecar totalmente down), o supervisor (preview)
+ou a plataforma (prod, via HEALTHCHECK do Dockerfile) auto-restarta.
 """
 from __future__ import annotations
 
 import asyncio
 import logging
-import subprocess
 from datetime import datetime, timezone
 from typing import Dict, List
 
+import httpx
+
+from services.whatsapp_channels import CHANNEL_IDS, base_url_for
+
 log = logging.getLogger("wa_sidecar_health")
 
-SIDECAR_SUPERVISOR_PROGRAMS: List[str] = [
-    "whatsapp-service",
-    "whatsapp-service-2",
-    "whatsapp-service-3",
-    "whatsapp-service-4",
-]
 
-
-async def _run_supervisorctl(action: str, program: str) -> Dict[str, str]:
-    """Executa `supervisorctl <action> <program>` async."""
-    cmd = ["sudo", "-n", "supervisorctl", action, program]
+async def _reload_one(channel_id: str) -> Dict:
+    """Chama `POST /reload` no sidecar de um canal."""
+    base = base_url_for(channel_id)
+    started = datetime.now(timezone.utc).isoformat()
     try:
-        proc = await asyncio.create_subprocess_exec(
-            *cmd,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-        )
-        stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=30)
-        ok = proc.returncode == 0
+        async with httpx.AsyncClient(timeout=15.0) as cx:
+            r = await cx.post(f"{base}/reload")
+            body = r.json() if r.headers.get("content-type", "").startswith(
+                "application/json"
+            ) else {"raw": r.text[:200]}
+            return {
+                "channel_id": channel_id,
+                "base_url": base,
+                "http_status": r.status_code,
+                "ok": r.status_code == 200 and (body.get("ok") is True),
+                "response": body,
+                "started_at": started,
+            }
+    except httpx.RequestError as e:
         return {
-            "program": program,
-            "action": action,
-            "ok": ok,
-            "exit_code": proc.returncode,
-            "stdout": stdout.decode(errors="ignore")[:500],
-            "stderr": stderr.decode(errors="ignore")[:500],
-        }
-    except asyncio.TimeoutError:
-        return {
-            "program": program,
-            "action": action,
+            "channel_id": channel_id,
+            "base_url": base,
+            "http_status": None,
             "ok": False,
-            "exit_code": -1,
-            "stderr": "timeout after 30s",
+            "error": f"network: {str(e)[:200]}",
+            "started_at": started,
         }
     except Exception as e:  # noqa: BLE001
         return {
-            "program": program,
-            "action": action,
+            "channel_id": channel_id,
+            "base_url": base,
+            "http_status": None,
             "ok": False,
-            "exit_code": -1,
-            "stderr": str(e)[:500],
+            "error": str(e)[:200],
+            "started_at": started,
         }
 
 
 async def restart_all_sidecars() -> Dict:
-    """Reinicia os 4 sidecars Baileys via supervisorctl. Retorna o resumo.
+    """Reinicia os 4 sidecars Baileys via /reload (in-process reconnect).
 
     Usado pelo cron diário (03:00 UTC) e pelo endpoint admin manual.
+    Funciona tanto no preview (localhost) quanto em produção (Railway/Render).
     """
     started = datetime.now(timezone.utc).isoformat()
-    log.info("[wa-sidecar-health] restart_all_sidecars iniciando")
-    results: List[Dict] = []
-    for prog in SIDECAR_SUPERVISOR_PROGRAMS:
-        r = await _run_supervisorctl("restart", prog)
-        results.append(r)
-        log.info(
-            "[wa-sidecar-health] restart %s ok=%s exit=%s",
-            prog, r.get("ok"), r.get("exit_code"),
-        )
+    log.info("[wa-sidecar-health] restart_all_sidecars iniciando (%d canais)",
+              len(CHANNEL_IDS))
+
+    # paraleliza pra não bloquear (4 sidecars, cada um 1-3s)
+    tasks = [_reload_one(cid) for cid in CHANNEL_IDS]
+    results: List[Dict] = await asyncio.gather(*tasks)
 
     success_count = sum(1 for r in results if r.get("ok"))
     finished = datetime.now(timezone.utc).isoformat()
+    log.info("[wa-sidecar-health] restart_all_sidecars done: %d/%d OK",
+              success_count, len(results))
 
-    # Audit log Mongo (best-effort)
+    # Audit log
     try:
         from database import db
         await db.wa_sidecar_restart_log.insert_one({
@@ -114,12 +117,10 @@ async def scheduled_daily_restart() -> None:
     Faz restart preventivo dos sidecars Baileys. Roda em UM worker (leader).
     """
     try:
-        # Só o leader executa
         from services.scheduler_lock import is_leader
         if not await is_leader():
             return
     except Exception:
-        # Se módulo de leader não estiver disponível, executa mesmo assim
         pass
 
     log.info("[wa-sidecar-health] cron diário 03:00 UTC — executando")
