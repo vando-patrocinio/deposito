@@ -1,6 +1,36 @@
 # SmartProv — PRD (Product Requirements Document)
 
 > Documento vivo. Atualizado a cada sprint.
+## 🔗 ETAPA Conexão Operacional — FASE 1+9+10 entregues (13/06/2026)
+
+**Comando executivo:** conectar Cliente → Isabella → Lousa → Mobile → Colab → KPI → Presidente IA.
+
+**Score E2E medido (sem mock):** **72.7% (8/11 steps)**
+
+**Funciona ✅:** Criar ticket (557ms), Lousa lê (10ms), admin-open, finalize, KPIs, Presidente IA briefing menciona tickets.
+
+**Quebra ❌:**
+- `appointments` collection com **2 docs** — Isabella não cria appointments (handler existe mas não é chamado)
+- `/api/lousa/public/tickets/{tid}/signal` retorna **422** (Pydantic Optional faltando)
+- `db.nervous_events` **vazia (0 docs)** — Event Bus emite mas não persiste; 4 coleções paralelas de eventos (`motor_ia_events`, `system_events`, `whatsapp_system_events`)
+- Eventos `ISABELLA_OS_CREATED`, `FIELD_OS_*` (8 tipos) **não emitidos** por nenhum handler operacional
+- Alertas `LOUSA_SYNC_FAILURE` / `MOBILE_SYNC_FAILURE` / `KPI_SYNC_FAILURE` **não existem**
+
+**Entregas:**
+- `/app/docs/RELATORIO_FLUXO_ISABELLA_LOUSA_COLABORADOR.md` (relatório formal F10)
+- `/app/docs/RELATORIO_FLUXO_ISABELLA_LOUSA_COLABORADOR.json` (resultado E2E)
+- `/app/backend/scripts/test_isabella_lousa_e2e.py` (teste reprodutível F9)
+
+**F4 (3 quick wins, 50min total) aguardando autorização CTO:**
+- (a) Persistir `nervous_events` no `event_bus.emit_event` (5 linhas)
+- (b) Fix 422 do `/signal` (Optional fields)
+- (c) Wire `emit_event("ISABELLA_OS_CREATED")` no `POST /api/lousa/tickets`
+
+**F2/F3/F5/F6/F7/F8 em backlog priorizado** — ver §5 do relatório.
+
+---
+
+
 ## 🔒 ETAPA 2.1 — Pre-Migration Clean Room ENTREGUE (13/06/2026)
 
 **Comando executivo:** Preparar terreno sem tocar em auth ativo.
