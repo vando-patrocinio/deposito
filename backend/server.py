@@ -1178,6 +1178,9 @@ app.include_router(routes_homo.router)
 # ─── Safety Admin (Kill Switch + Backup + Vault) ─────────────
 from routes import admin_safety as routes_admin_safety  # noqa: E402
 app.include_router(routes_admin_safety.router)
+
+from routes import admin_password_reset as routes_admin_pwd_reset  # noqa: E402
+app.include_router(routes_admin_pwd_reset.router)
 # ─── Integration Credentials (Grafana/Zabbix via Vault) ──────
 from routes import admin_integrations as routes_admin_int  # noqa: E402
 app.include_router(routes_admin_int.router)
