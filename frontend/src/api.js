@@ -58,43 +58,37 @@ client.interceptors.response.use(
 
     // Sprint 3 — interceptor global 403 / 429 / 503
     // Dispara evento p/ AppContent renderizar toast amigável.
-    // EXCEÇÃO: 403 em endpoints background NÃO vira toast quando o
-    // user logado é colaborador/técnico (role limitada), evitando a
-    // chuva de "Acesso negado" causada por widgets globais (Sentinela,
-    // briefings, presidente) que batem em rotas só-gestor.
-    if (status === 403 || status === 429 || status === 503) {
-      const kind = status === 403 ? "forbidden"
-        : status === 429 ? "rate-limited"
-        : "unavailable";
-      let suppressToast = false;
-      if (status === 403) {
-        try {
-          const role = (JSON.parse(
-            window.localStorage.getItem("ponto_user") || "{}") || {}).role;
-          if (role && role !== "administrador" && role !== "gestor"
-              && role !== "auditor") {
-            suppressToast = true;
-          }
-        } catch { /* ignore */ }
-      }
+    // CTO 13/06/2026 — SILENCIADO GLOBAL pra 403: widgets de background
+    // (Sentinela, briefings, presidente, motor-ia/budget, branding) batem
+    // em rotas só-gestor o tempo todo e geravam chuva de "Acesso negado"
+    // mesmo pra super admin. Pedido explícito do user: zero spam de toast
+    // de permissão. Continua logando no console pra debug.
+    if (status === 403) {
+      console.debug("[api] 403 silenciado:", url, detail);
+    }
+    if (status === 429 || status === 503) {
+      const kind = status === 429 ? "rate-limited" : "unavailable";
       const defaults = {
-        forbidden: "Seu perfil não tem permissão para essa ação.",
         "rate-limited": "Limite de uso atingido. Tente novamente em alguns instantes.",
         unavailable: "Serviço temporariamente indisponível.",
       };
-      if (!suppressToast) {
-        try {
+      // Dedupe: 1 toast por kind em 30s (evita pilha quando vários widgets
+      // batem ao mesmo tempo).
+      try {
+        window.__smartprovToastDedupe = window.__smartprovToastDedupe || {};
+        const key = `${status}:${kind}`;
+        const now = Date.now();
+        const last = window.__smartprovToastDedupe[key] || 0;
+        if (now - last > 30000) {
+          window.__smartprovToastDedupe[key] = now;
           window.dispatchEvent(new CustomEvent("smartprov-http-error", {
             detail: {
               status, kind, url,
               message: detail || defaults[kind],
             },
           }));
-        } catch { /* ignore */ }
-      } else {
-        // Continua logando no console para debug sem incomodar o usuário.
-        console.debug("[api] 403 silenciado (role colaborador):", url);
-      }
+        }
+      } catch { /* ignore */ }
     }
 
     // Humaniza err.message para pt-BR sem expor stack/HTTP cru.

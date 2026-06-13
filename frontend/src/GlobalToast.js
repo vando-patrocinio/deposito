@@ -16,7 +16,16 @@ export default function GlobalToast() {
 
   const push = useCallback((d) => {
     const id = Math.random().toString(36).slice(2, 10);
-    setItems((arr) => [...arr, { id, ...d }]);
+    // CTO 13/06/2026 — dedupe por título: se o último toast tiver mesmo
+    // título e não tiver fechado ainda, não empilha. Resolve o spam de
+    // "Acesso negado" em widgets de background.
+    setItems((arr) => {
+      const last = arr[arr.length - 1];
+      if (last && last.title === d.title && last.message === d.message) {
+        return arr; // já existe um igual, ignora
+      }
+      return [...arr, { id, ...d }];
+    });
     const dur = Math.max(2000, Math.min(d?.durationMs || 5000, 20000));
     setTimeout(() => {
       setItems((arr) => arr.filter((x) => x.id !== id));
