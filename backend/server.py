@@ -490,6 +490,14 @@ async def _rbac_middleware(request: Request, call_next):
     if not path.startswith("/api/"):
         return await call_next(request)
 
+    # CTO 13/06/2026 — Endpoints com fluxo de auth PRÓPRIO (cliente CPF,
+    # parceiro magic-link, fleet/security portal, colaborador PWA, etc.)
+    # devem passar sem JWT corporativo. O handler valida o token alternativo
+    # via Depends. Sem este bypass, /api/customer/login retornava 401
+    # "Não autenticado" porque o middleware exigia JWT antes do handler.
+    if is_non_staff_auth(path):
+        return await call_next(request)
+
     if not user:
         # Sem token válido — bloqueia tudo do /api/ (exceto publics)
         return JSONResponse(
