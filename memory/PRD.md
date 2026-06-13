@@ -1,6 +1,50 @@
 # SmartProv — PRD (Product Requirements Document)
 
 > Documento vivo. Atualizado a cada sprint.
+## 🐛 BUG FIX (13/06/2026 · CTO) — Lousa Mobile: estoque negativo bloqueava, toggles globais ignorados
+
+**Reclamação:**
+- Img1 (Insumos): "ACEITAR VALORES NEGATIVOS NO ESTOQUE"
+- Img2 (Foto): "RESPEITAR A OPÇÃO DE FOTO DESLIGADA EM CONFIGURAÇÃO, SE ESTÁ DESLIGADO NÃO PEÇA FOTO"
+- Img3 (Validações): "RESPEITAR O MODO RELAXADO, NÃO COBRA NADA, SEM ATRITO"
+
+**Evidence (CTO Mode):**
+- `LousaMobile.js::ConsumableField` marcava `insufficient=true` mesmo quando técnico mandou `0` mas estoque já estava negativo (`used > cur.qty` virava `0 > -1 = true`) → input rosa permanente.
+- `LousaMobile.js` linha 2459-2466: `window.confirm("Saldo insuficiente... Continuar?")` bloqueava a finalização da OS quando consumo excedia saldo.
+- `LousaMobile.js` linha 2414-2424: cardápio dinâmico `photoReqs` exigia fotos `cto`, `equipamento`, `sn` **ignorando completamente** os toggles globais `cto_photo_required`, `mac_validation_required`. Mesmo com Modo Relaxado aplicado em Configurações, o front cobrava foto.
+- `routes/lousa.py` linha 3739: `if t["type"] == "instalacao" and len(cd.fotos) < 1: 400` era hardcoded — backend também ignorava toggles.
+
+**Root Cause:** 3 camadas de cobrança paralelas — confirm() no front pra estoque, photoReqs dinâmico no front, e hardcoded photo check no backend. Nenhuma respeitava o painel `Validações da OS · Lousa`.
+
+**Correção aplicada:**
+
+1. **Front `LousaMobile.js::ConsumableField`** — `insufficient = cur && used > 0 && used > cur.qty`. Estoque negativo só pinta vermelho quando o técnico está gastando, não em estado de prateleira.
+
+2. **Front `LousaMobile.js` finalize handler:**
+   - Adicionado early-bypass `allTogglesOff = !cto_photo_required && !mac_validation_required && !ipv6_test_required` → pula bloco inteiro de foto.
+   - `photoReqs.forEach` agora respeita os toggles: `if (req.id === "cto" && !ctoPhotoRequired) return; if ((req.id === "equipamento" || req.id === "sn") && !macValidationRequired) return;`.
+   - Removido `window.confirm("Saldo insuficiente... Continuar?")`. Apenas marca `stockOverdraw=true` e segue (backend já flagga `erro_estoque`).
+
+3. **Backend `routes/lousa.py::public_finalize_ticket`** — o hardcoded `if t["type"] == "instalacao" and len(cd.fotos) < 1` agora só dispara quando `cto_photo_required=true OR mac_validation_required=true`. Em Modo Relaxado, OS de instalação fecha sem fotos.
+
+**Verification (zero mock, curl real):**
+3/3 pytest passam em `tests/test_modo_relaxado_lousa.py`:
+- `test_settings_endpoint_accepts_all_off` ✅
+- `test_installation_close_without_photos_passes_in_relaxed` ✅ — OS de instalação **sem foto, sem CTO, com estoque negativo (999999 un)** fecha **200**.
+- `test_rigorous_mode_still_blocks_without_photo` ✅ — Modo Rigoroso ainda bloqueia OS sem foto (não quebramos a trava quando LIGADA).
+
+Regressão: 5/5 testes de `clock_in_enabled` continuam passando. **8/8 total.**
+
+**Files touched:**
+- `/app/frontend/src/LousaMobile.js` (ConsumableField + finalize handler)
+- `/app/backend/routes/lousa.py` (hardcoded photo check passa a respeitar toggles)
+- `/app/backend/tests/test_modo_relaxado_lousa.py` (regression novo)
+
+**Status PROD:** ⚠️ Mudanças no preview. **Reimplantar** pra propagar em produção.
+
+---
+
+
 ## 🐛 BUG FIX (13/06/2026 · CTO) — PWA Colaborador mostrava "Olá —" + schedule "undefined / undefined"
 
 **Reclamação:** "SOBRE O LOGIN QUE NÃO APARECE O NOME, VC RESOLVEU DESSA VEZ?" (screenshot mostrava Olá em branco, avatar "?", Horário "undefined / undefined").

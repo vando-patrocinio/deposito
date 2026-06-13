@@ -3736,15 +3736,9 @@ async def public_finalize_ticket(ticket_id: str, payload: PublicFinalizeIn,
     # Wizard 2-passos (iter89+) coleta foto do equipamento (obrigatória) + opcional foto
     # da etiqueta (OCR SN/MAC). Mínimo passa a ser 1 foto — front já bloqueia avanço sem
     # ela via photo-required-modal.
-    if t["type"] == "instalacao" and len(cd.fotos) < 1:
-        raise HTTPException(400, "Instalação exige pelo menos 1 foto do equipamento")
-    if t["type"] == "instalacao" and not cd.ont:
-        raise HTTPException(400, "ONT é obrigatório para instalação")
-
-    # iter215z — Porta da CTO OBRIGATÓRIA em instalação e reparo (regra
-    # global pedida pelo user 2026-06). Bloqueia o fechamento se cto_id
-    # ou cto_port_number ausentes. Admin/auditor (is_admin_test) e
-    # super-unlock (full unlock) podem driblar — mas a OS recebe flag.
+    # CTO 13/06/2026 — RESPEITA toggles globais. Em Modo Relaxado
+    # (cto_photo_required=False E mac_validation_required=False), pula
+    # essa trava de foto/ONT. Decisão do admin em Configurações vale aqui.
     company_id_for_toggles = t.get("company_id") or DEMO_COMPANY_ID
     try:
         _toggles_doc = await db.aihub_settings.find_one(
@@ -3753,9 +3747,23 @@ async def public_finalize_ticket(ticket_id: str, payload: PublicFinalizeIn,
             {"_id": 0, "value": 1},
         ) or {}
         _toggles = (_toggles_doc.get("value") or {})
-        cto_port_required = bool(_toggles.get("cto_port_required", True))
     except Exception:
-        cto_port_required = True
+        _toggles = {}
+    _cto_photo_required_toggle = bool(_toggles.get("cto_photo_required", False))
+    _mac_validation_required_toggle = bool(_toggles.get("mac_validation_required", False))
+    _photo_enforcement_on = (_cto_photo_required_toggle
+                             or _mac_validation_required_toggle)
+    if (t["type"] == "instalacao" and len(cd.fotos) < 1
+            and _photo_enforcement_on and not is_admin_test):
+        raise HTTPException(400, "Instalação exige pelo menos 1 foto do equipamento")
+    if t["type"] == "instalacao" and not cd.ont:
+        raise HTTPException(400, "ONT é obrigatório para instalação")
+
+    # iter215z — Porta da CTO OBRIGATÓRIA em instalação e reparo (regra
+    # global pedida pelo user 2026-06). Bloqueia o fechamento se cto_id
+    # ou cto_port_number ausentes. Admin/auditor (is_admin_test) e
+    # super-unlock (full unlock) podem driblar — mas a OS recebe flag.
+    cto_port_required = bool(_toggles.get("cto_port_required", True))
     if (cto_port_required
             and t["type"] in ("instalacao", "reparo", "troca_endereco")
             and not is_admin_test):

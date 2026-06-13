@@ -1730,7 +1730,11 @@ function ConsumableField({ label, fieldKey, consumableId, step, consMap, form, s
   const cur = consMap[consumableId];
   const used = Number(form[fieldKey]) || 0;
   const after = cur ? cur.qty - used : null;
-  const insufficient = cur && used > cur.qty;
+  // CTO 13/06/2026 — só marca "insuficiente" quando o TÉCNICO está
+  // gastando mais do que tem. Se cur.qty já está negativo mas used=0, o
+  // input fica normal (não pinta de vermelho à toa). Estoque negativo é
+  // OK por decisão do CTO (sem atrito em campo).
+  const insufficient = cur && used > 0 && used > cur.qty;
   const emptyStock = cur && cur.qty === 0;
   return (
     <div style={{ marginBottom: 12 }}>
@@ -2403,13 +2407,21 @@ function TicketDetail({ ticket, onClose, onFinalize, busy, err, onRefresh,
     const usedNetworkConnector = Number(form.conectores_rede) > 0;
     const photoRequired = isInstall || isRepair || usedNetworkConnector;
     const skipCtoPhoto = !!ctoRecentInfo?.is_recent;
-    if (!isFullUnlock && photoRequired) {
+    // CTO 13/06/2026 — "Modo Relaxado": se TODOS os toggles globais
+    // estiverem OFF, bypassa qualquer trava de foto. Respeita decisão do
+    // admin em Configurações > Validações da OS. Zero atrito.
+    const allTogglesOff = !ctoPhotoRequired && !macValidationRequired
+                          && !ipv6TestRequired;
+    if (!isFullUnlock && photoRequired && !allTogglesOff) {
       const fotos = form.fotos || [];
       const missing = [];
       // iter211x — Consulta cardápio dinâmico (Configurações > Fotos da OS).
       // Se config disponível: valida cada item com required=true e ticket_types
       // contendo o tipo desta OS. Senão: cai no comportamento hardcoded legado
       // (agora também respeitando os toggles globais).
+      // CTO 13/06/2026 — cardápio dinâmico AGORA RESPEITA os toggles globais.
+      // Antes, mesmo com cto_photo_required=OFF, o photoReqs cobrava a foto
+      // (gestor liberava em Configurações mas continuava bloqueando o técnico).
       const ttype = ticket?.type;
       if (Array.isArray(photoReqs) && photoReqs.length > 0) {
         photoReqs.forEach((req) => {
@@ -2418,6 +2430,10 @@ function TicketDetail({ ticket, onClose, onFinalize, busy, err, onRefresh,
           if (types.length > 0 && !types.includes(ttype)) return;
           // CTO recém-cadastrada dispensa só a foto "cto"
           if (req.id === "cto" && skipCtoPhoto) return;
+          // Toggles globais têm precedência sobre cardápio dinâmico:
+          if (req.id === "cto" && !ctoPhotoRequired) return;
+          if ((req.id === "equipamento" || req.id === "sn")
+              && !macValidationRequired) return;
           if (!fotos.some((p) => p.kind === req.id)) {
             missing.push(`${req.icon || "📷"} ${req.label}`);
           }
@@ -2447,8 +2463,12 @@ function TicketDetail({ ticket, onClose, onFinalize, busy, err, onRefresh,
       }
     }
     // Saldo
+    // CTO 13/06/2026 — aceita estoque indo pra negativo sem bloquear.
+    // Backend marca `erro_estoque=true` no servidor pra revisão posterior
+    // do gestor. Tira atrito do técnico em campo.
     const consMap = Object.fromEntries(
       (stock?.consumables || []).map((c) => [c.id, c.qty]));
+    let stockOverdraw = false;
     const checks = [
       ["drop", form.qtd_drop], ["esticador", form.esticadores],
       ["conector_fast", form.conectores_fast], ["cabo_rede", form.cabo_rede],
@@ -2459,8 +2479,7 @@ function TicketDetail({ ticket, onClose, onFinalize, busy, err, onRefresh,
     for (const [k, v] of checks) {
       const used = Number(v) || 0;
       if (used > (consMap[k] ?? Infinity)) {
-        if (!await window.confirm(`Saldo insuficiente de ${k} (disp ${consMap[k]}, `
-                              + `gasto ${used}). Continuar? Vai ficar erro_estoque.`)) return;
+        stockOverdraw = true;
         break;
       }
     }
