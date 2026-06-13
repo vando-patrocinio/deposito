@@ -1,6 +1,35 @@
 # SmartProv — PRD (Product Requirements Document)
 
 > Documento vivo. Atualizado a cada sprint.
+## 🐛 BUG FIX (13/06/2026 · CTO) — `clock_in_enabled` sobrescrito em PUT parcial
+
+**Reclamação do usuário:** "O CADASTRO DO COLABORADOR NÃO ESTA SENDO LEVADO A SERIO, O PONTO ESTA DESLIGADO E VOLTA SOZINHO."
+
+**Evidence:** Pydantic `CollaboratorIn.clock_in_enabled = True` (default). PUT /api/collaborators/{id} com payload que omite o campo → Pydantic preenche `True` por default → `update_one({"$set": data})` sobrescreve `False` → `True` silenciosamente.
+
+**Root Cause:** model usado para PATCH/PUT com defaults `bool` (não Optional). Qualquer edit parcial do Gestor (nome, cargo, schedule, etc.) zerava o toggle "Bate ponto: OFF".
+
+**Impact:** colaborador desligado do ponto voltava a ver Lousa Mobile bloqueada com "bata o ponto primeiro". Recorrente, atinge todo cliente Aux. Administrativo/PJ/estagiário.
+
+**Correção aplicada:**
+1. `routes/clock.py::CollaboratorIn.clock_in_enabled` → `Optional[bool] = None` (None = "não tocou").
+2. PUT handler: se `data["clock_in_enabled"] is None`, lê valor prévio do Mongo e preserva (lines 629-634).
+3. POST handler: se `payload.clock_in_enabled is None`, aplica `clock_in_enabled_for(cargo)` (associado=False, resto=True).
+
+**Verification:** 5/5 testes pytest passam em `tests/test_clock_in_enabled_preserve.py`:
+- `test_put_without_clock_in_enabled_preserves_false` ✅
+- `test_put_explicit_true_still_works` ✅
+- `test_put_explicit_false_still_works` ✅
+- `test_create_with_associado_defaults_to_false` ✅
+- `test_create_with_tecnico_defaults_to_true` ✅
+
+**Files touched:** `/app/backend/routes/clock.py` (modelo + create + update), `/app/backend/tests/test_clock_in_enabled_preserve.py` (regression novo).
+
+**Confidence:** ALTO. Curl real + 2 testes do iter24 antigos também passaram (POST default true + PUT toggle false).
+
+---
+
+
 
 ## ✨ Feature: Sistema de Perfis de Acesso "Perfil Usuário" (12/06/2026 · CTO)
 

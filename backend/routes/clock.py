@@ -132,7 +132,7 @@ class CollaboratorIn(BaseModel):
     admitted_at: Optional[str] = None  # data de admissão ISO YYYY-MM-DD
     matricula: Optional[str] = None  # nº de matrícula interno
     is_test_mode: bool = False  # ADMIN: marca colaborador como TESTE — bypassa cerca/selfie
-    clock_in_enabled: bool = True  # CLT bate ponto. False = freelancer/MEI/3rd party — Lousa direta sem ponto.
+    clock_in_enabled: Optional[bool] = None  # CTO 13/06/2026 — None = "não tocou", preserva valor anterior. True/False = mudança explícita. Default no POST quando None: True (CLT). Lousa só libera se True.
     active: bool = True  # False = colaborador inativo (desligado, em férias longas, etc)
     can_attend_whatsapp: bool = False  # AUDITOR: libera o menu "Atendimento IA" para o colaborador acessar conversas WhatsApp
     requires_vehicle: bool = False  # Frota: técnico/instalador que precisa operar veículo (gera vistoria semanal)
@@ -563,6 +563,11 @@ async def create_collaborator(payload: CollaboratorIn, user: dict = Depends(requ
     # CTO 12/06/2026 — valida profile_id se informado e aplica guard Super Admin
     if payload.profile_id:
         await _validate_profile_assignment(payload.profile_id, cid_company, user)
+    # CTO 13/06/2026 — Default POST quando clock_in_enabled=None: aplica regra
+    # do cargo (associado=False, resto=True). Gestor pode marcar False
+    # explicitamente no form (ex.: estagiário/PJ).
+    if payload.clock_in_enabled is None:
+        payload.clock_in_enabled = clock_in_enabled_for(payload.cargo)
     cid = f"col-{uuid.uuid4().hex[:8]}"
     now = now_iso()
     coll = Collaborator(id=cid, **payload.model_dump(), created_at=now, updated_at=now)
@@ -621,6 +626,17 @@ async def update_collaborator(cid: str, payload: CollaboratorIn, user: dict = De
     # Marca quando foi desativado (para o KPI de perdas pendentes)
     if data.get("active") is False and (prev or {}).get("active") is not False:
         data["deactivated_at"] = now_iso()
+    # CTO 13/06/2026 — BLINDAGEM clock_in_enabled (igual cargo e profile_id):
+    # se cliente NÃO mandou o flag (None), preserva o valor atual no DB.
+    # Sem isso, edits parciais (toggle de cargo, mudança de nome) sobrescreviam
+    # `clock_in_enabled` de False pra True silenciosamente — o que fazia o app
+    # do colaborador sumir o botão "Você não bate ponto" e abrir tela de ponto.
+    if data.get("clock_in_enabled") is None:
+        prev_clock = await db.collaborators.find_one(
+            {"id": cid}, {"_id": 0, "clock_in_enabled": 1},
+        )
+        prev_val = (prev_clock or {}).get("clock_in_enabled")
+        data["clock_in_enabled"] = True if prev_val is None else bool(prev_val)
     # Permissão: SÓ auditor pode mexer no flag can_attend_whatsapp.
     # Se gestor tentar mudar, mantemos o valor anterior (silenciosamente).
     if user.get("role") not in ("auditor", "admin"):
