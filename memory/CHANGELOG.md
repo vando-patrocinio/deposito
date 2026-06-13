@@ -7981,3 +7981,18 @@ Relatório: `/app/docs/RELATORIO_RELACIONAMENTO_360.md`
   - `CadastroPanel.js`: lista de colaboradores agora usa `<SkeletonList items={5} />` enquanto `reload()` está em andamento. Adicionado state `listLoading`.
 - **Validação visual**: screenshot confirma skeleton renderizando corretamente no boot (header bar, sidebar 8 items, content com 5 cards skeleton).
 - **Impacto UX**: usuário vê a forma do conteúdo (placeholder fica no lugar real dos cards) ao invés de tela vazia com spinner — percepção de velocidade ~30-40% melhor (padrão LinkedIn/YouTube/Facebook).
+
+---
+## 2026-06-12 (parte 14) — Login PROD: tratamento explícito de 401/429/403/network
+- **Bug reportado**: em produção, ao tentar logar com senha errada, frontend mostrava "Sem conexão. Verifique sua internet" ao invés da mensagem real ("E-mail ou senha incorretos").
+- **Diagnóstico**: produção alcançável (Front 200, Backend 401 com JSON válido `{"detail":"E-mail ou senha incorretos"}` + CORS OK). LoginPage não fazia distinção entre status codes — fallback `err.message` exibia "Network Error" → traduzido pra "Sem conexão" em algum ponto da cadeia (axios + interceptor).
+- **Fix Frontend** (`LoginPage.js`):
+  - Submit handler agora trata 401, 429, 403, detail genérico, status sem detail e fallback de rede REAL com mensagens específicas.
+  - "Sem conexão" só aparece quando há erro de rede DE FATO (sem err.response E mensagem indicando network).
+- **Causa raiz secundária**: senha do Vando (`021206`) foi atualizada apenas no Mongo de PREVIEW. PROD continua com a senha antiga. Solução prática: user loga com `admin@empresa.com / 123456` em prod, usa `POST /api/users/set-password` (já existente) via console DevTools pra setar `021206` no Vando de prod, ou redeploy + script seed.
+- **Ações para o user em produção**:
+  1. Login admin@empresa.com / 123456 em https://dual-combine-3.emergent.host
+  2. DevTools console → fetch /api/users → identifica id do Vando
+  3. POST /api/users/set-password com user_id=vando + new_password=021206
+  4. Logout admin → login vando / 021206
+- **Reminder**: PREVIEW e PROD têm bancos Mongo separados. Mudanças via script no preview NÃO afetam prod.

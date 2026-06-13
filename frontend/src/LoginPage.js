@@ -24,8 +24,27 @@ export default function LoginPage({ onBack }) {
     try {
       await login(email.trim().toLowerCase(), password);
     } catch (err) {
+      // CTO 12/06/2026 — Tratamento explícito de erro de login:
+      // - 401 → "E-mail ou senha incorretos" (vinda do backend)
+      // - sem err.response → erro de rede REAL
+      // - outros statuses → mostra detail se houver
+      const status = err?.response?.status;
       const detail = err?.response?.data?.detail;
-      setError(typeof detail === "string" ? detail : (err.message || "Erro ao entrar."));
+      if (status === 401) {
+        setError(typeof detail === "string" ? detail : "E-mail ou senha incorretos.");
+      } else if (status === 429) {
+        setError("Muitas tentativas. Aguarde alguns instantes.");
+      } else if (status === 403) {
+        setError("Acesso negado. Verifique se sua conta está ativa.");
+      } else if (typeof detail === "string") {
+        setError(detail);
+      } else if (status) {
+        setError(`Erro do servidor (${status}). Tente novamente.`);
+      } else if (err?.message && /network|conex/i.test(err.message)) {
+        setError("Sem conexão com o servidor. Verifique sua internet ou tente em alguns segundos.");
+      } else {
+        setError(err?.message || "Erro ao entrar.");
+      }
     } finally {
       setBusy(false);
     }
