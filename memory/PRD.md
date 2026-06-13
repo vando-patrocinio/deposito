@@ -1,6 +1,37 @@
 # SmartProv — PRD (Product Requirements Document)
 
 > Documento vivo. Atualizado a cada sprint.
+## 🐛 BUG FIX (13/06/2026 · CTO) — Mudar perfil do colab não propagava pro User vinculado por email
+
+**Reclamação:** "da onde vem esse colaborador do cadastro do colaborador, coloquei para administrador e não foi" — Jefferson (cabelinhopolo@gmail.com) virou perfil "Administrador" no cadastro mas continuava 403 em /api/propostas, exibindo "COLABORADOR" no badge.
+
+**Evidence (CTO Mode, curl real PROD):**
+- `User usr-5879f5f087` (Jefferson): `role: colaborador`, `profile_id: prof-37ee2e12e5 (COLABORADOR)`, `collaborator_id: null`
+- `Collaborator col-f60464f5` (Jefferson, mesmo email): `profile_id: prof-b70fd621c4 (Administrador)`, `mobile_access_email: cabelinhopolo@gmail.com`
+- RBAC `/api/propostas` exige `role ∈ {gestor, atendimento}` → bate **role do user**, não profile do colab → 403.
+- Sync em `routes/clock.py:698` usava filtro `{"collaborator_id": cid}` — User com `collaborator_id=null` ficava órfão pro update_many → silenciosamente nada acontecia.
+
+**Root Cause (2 bugs encadeados):**
+1. Filtro do sync ignora vínculo por email (cobertura só de `collaborator_id` explícito).
+2. Sync atualiza `profile_id`+`access_tags`, mas **nunca toca no legacy `role`** que vários RBAC ainda checam.
+
+**Correção aplicada em `routes/clock.py`:**
+- Helper `_user_link_filter()` constrói filtro `{company_id, $or:[collaborator_id, email, mobile_access_email]}`.
+- Sync de `can_attend_whatsapp`, `profile_id`, `access_tags` agora usa esse filtro expandido.
+- Mapping `profile → role`: `is_super_admin=true` → administrador, `role_mapping` explícito → vence, nome canônico ("Administrador"/"Super Admin"/"Gestor"/"Atendimento"/"Auditor"/"Financeiro"/"Tecnico"/"Colaborador") → role correspondente.
+
+**Verification (pytest, MongoDB real):**
+2/2 testes novos passam em `tests/test_collaborator_profile_propagates_to_user.py`:
+- `test_profile_change_propagates_role_to_user_linked_by_email` ✅ — cenário PROD do Jefferson reproduz e fix funciona.
+- `test_profile_change_propagates_to_user_linked_by_collaborator_id` ✅ — caminho feliz não regrediu.
+
+Regressão total: **15/15** (clock_in_enabled 5 + modo_relaxado 3 + referrals 5 + profile_propagation 2).
+
+**Status PROD:** ⚠️ Mudança em backend. **Reimplantar é OBRIGATÓRIO.** Depois do redeploy: vai no Cadastro do Jefferson, salva o perfil "Administrador" de novo (mesmo já estando lá) — o PUT vai rodar com o código novo e propagar pro user record.
+
+---
+
+
 ## 🐛 BUG FIX (13/06/2026 · CTO) — PWA Lousa Mobile quebrada em PROD: endpoints públicos retornavam 401
 
 **Reclamação:** "TUDO O QUE VC ESTA FAZENDO EM PRODUÇÃO NÃO ESTA FUNCIONANDO" + URL https://universoligo.com/?cid=col-30aafc3c (DIOGO HENRIQUE).

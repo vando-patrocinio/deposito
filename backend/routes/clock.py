@@ -677,9 +677,30 @@ async def update_collaborator(cid: str, payload: CollaboratorIn, user: dict = De
         raise HTTPException(404, "Colaborador não encontrado")
     # Sincroniza permissão com User vinculado (se houver) — assim a sidebar
     # do colaborador vê o menu "Atendimento IA" imediatamente após salvar.
+    # CTO 13/06/2026 — vínculo expandido: não basta `collaborator_id == cid`,
+    # tem que olhar `email` e `mobile_access_email` também. Sem isso, users
+    # criados antes do vínculo explícito (collaborator_id=null) ficavam
+    # desincronizados. Bug real PROD: Jefferson colab admin não pegava role.
+    def _user_link_filter() -> dict:
+        emails = []
+        for e in (
+            (prev or {}).get("email"), data.get("email"),
+            (prev or {}).get("mobile_access_email"),
+            data.get("mobile_access_email"),
+        ):
+            if e:
+                el = str(e).strip().lower()
+                if el and el not in emails:
+                    emails.append(el)
+        ors: list = [{"collaborator_id": cid}]
+        if emails:
+            ors.append({"email": {"$in": emails}})
+            ors.append({"mobile_access_email": {"$in": emails}})
+        return {"company_id": company_id, "$or": ors}
+
     try:
         await db.users.update_many(
-            {"company_id": company_id, "collaborator_id": cid},
+            _user_link_filter(),
             {"$set": {
                 "can_attend_whatsapp": bool(data.get("can_attend_whatsapp")),
                 "updated_at": now_iso(),
@@ -688,26 +709,51 @@ async def update_collaborator(cid: str, payload: CollaboratorIn, user: dict = De
     except Exception as _e:
         logger.warning("[collab] sync can_attend_whatsapp falhou: %s", _e)
     # CTO 12/06/2026 — espalha o profile_id (e suas access_tags) para o User vinculado.
+    # CTO 13/06/2026 — TAMBÉM atualiza o legacy `role` baseado no profile,
+    # pois o RBAC de várias rotas (/api/propostas, /api/saas/*, etc.) ainda
+    # checa role e não access_tags. Sem isso, gestor coloca colab no perfil
+    # "Administrador" mas continua 403 pra qualquer recurso só-gestor.
     if "profile_id" in data:
         try:
             new_pid = data.get("profile_id") or None
+            update_fields: dict = {"profile_id": new_pid, "updated_at": now_iso()}
             if new_pid:
                 from services.access_profiles import get_profile
                 p = await get_profile(new_pid, company_id)
                 if p:
-                    await db.users.update_many(
-                        {"company_id": company_id, "collaborator_id": cid},
-                        {"$set": {
-                            "profile_id": new_pid,
-                            "access_tags": list(p.get("access_tags") or []),
-                            "updated_at": now_iso(),
-                        }},
-                    )
-            else:
-                await db.users.update_many(
-                    {"company_id": company_id, "collaborator_id": cid},
-                    {"$set": {"profile_id": None, "updated_at": now_iso()}},
-                )
+                    update_fields["access_tags"] = list(p.get("access_tags") or [])
+                    # Mapeia role legado a partir do profile:
+                    # 1) is_super_admin=true → administrador
+                    # 2) role_mapping explícito vence (gestor/atendimento/etc.)
+                    # 3) Nome canônico ("Administrador"/"Super Admin"/"Gestor"
+                    #    /"Atendimento"/"Auditor"/"Financeiro") → role correspondente
+                    # 4) caso contrário, NÃO troca role (preserva o atual).
+                    mapped_role: str | None = None
+                    if p.get("is_super_admin"):
+                        mapped_role = "administrador"
+                    elif p.get("role_mapping"):
+                        mapped_role = str(p["role_mapping"]).lower().strip()
+                    else:
+                        name_norm = (p.get("name") or "").lower().strip()
+                        canon = {
+                            "super admin": "administrador",
+                            "administrador": "administrador",
+                            "admin": "administrador",
+                            "gestor": "gestor",
+                            "atendimento": "atendimento",
+                            "auditor": "auditor",
+                            "financeiro": "financeiro",
+                            "tecnico": "tecnico",
+                            "técnico": "tecnico",
+                            "colaborador": "colaborador",
+                        }
+                        mapped_role = canon.get(name_norm)
+                    if mapped_role:
+                        update_fields["role"] = mapped_role
+            await db.users.update_many(
+                _user_link_filter(),
+                {"$set": update_fields},
+            )
         except Exception as _e:  # noqa: BLE001
             logger.warning("[collab] sync profile_id falhou: %s", _e)
     # Notifica gestor se desativou e há pertences ativos pendentes de devolução
