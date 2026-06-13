@@ -218,6 +218,20 @@ def start_scheduler() -> None:
         sch.add_job(_tick_6h, "interval", hours=6,
                        id="exec_6h_predictions",
                        max_instances=1, coalesce=True)
+        # CTO 13/06/2026 — Restart preventivo diário dos sidecars Baileys
+        # às 03:00 UTC (00:00 BRT) pra prevenir loops de "connecting" após
+        # 24h+ de uptime acumulando leak/sessão corrompida.
+        try:
+            from services.wa_sidecar_health import scheduled_daily_restart
+            sch.add_job(
+                scheduled_daily_restart,
+                "cron", hour=3, minute=0,
+                id="wa_sidecar_daily_restart",
+                max_instances=1, coalesce=True,
+            )
+            log.info("[scheduler] wa_sidecar_daily_restart agendado 03:00 UTC")
+        except Exception as e:
+            log.warning("[scheduler] wa_sidecar_daily_restart falhou: %s", e)
         sch.start()
         _scheduler = sch
         log.info("[scheduler] Executivo digital ATIVO "
