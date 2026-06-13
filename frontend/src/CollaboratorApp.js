@@ -1442,9 +1442,15 @@ function CollabLoginScreen({ onSuccess, isAdminTest, collabs, setCollabId, appCa
       // 3. fallback: API dedicada (pode existir endpoint /collaborators/me)
       if (!cid) {
         try {
-          const me = await api._client.get("/collaborators/me");
+          // CTO 13/06/2026 — marca como SILENT pra que 401/404 desse
+          // endpoint NÃO acione o interceptor global que apaga sessão.
+          // Lookup de collaborator é descoberta, não validação de JWT.
+          const me = await api._client.get(
+            "/collaborators/me",
+            { silent: true },
+          );
           cid = me?.data?.id || null;
-        } catch { /* ignora */ }
+        } catch { /* ignora — segue pra modo picker abaixo */ }
       }
 
       if (!cid) {

@@ -331,6 +331,9 @@ async def get_my_collaborator(user: dict = Depends(get_current_user)):
     3. user.cpf batendo com collaborator.cpf (se ambos cadastrados)
 
     Usado pelo app mobile do colaborador depois do login email+senha.
+
+    CTO 13/06/2026 — log estruturado pra audit quando lookup falha
+    (frustra muito o user em prod quando o link some por limpeza de DB).
     """
     cid_company = (user.get("company_id") or DEMO_COMPANY_ID)
     explicit = user.get("collaborator_id")
@@ -358,6 +361,14 @@ async def get_my_collaborator(user: dict = Depends(get_current_user)):
         )
         if doc:
             return doc
+
+    # CTO 13/06/2026 — log forense pra investigar "Sessão expirada" no PWA
+    import logging
+    logging.getLogger("clock").warning(
+        "[collaborators/me] vínculo órfão: user_id=%s email=%s "
+        "explicit_collab_id=%s company_id=%s — nenhum match nos 3 caminhos",
+        user.get("id"), em, explicit, cid_company,
+    )
     raise HTTPException(404, "Nenhum colaborador vinculado a esse usuário")
 
 

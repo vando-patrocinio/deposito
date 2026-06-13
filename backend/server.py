@@ -1192,6 +1192,9 @@ app.include_router(routes_admin_pwd_reset.router)
 
 from routes import admin_wa_sidecar as routes_admin_wa_sidecar  # noqa: E402
 app.include_router(routes_admin_wa_sidecar.router)
+
+from routes import auth_debug as routes_auth_debug  # noqa: E402
+app.include_router(routes_auth_debug.router)
 # ─── Integration Credentials (Grafana/Zabbix via Vault) ──────
 from routes import admin_integrations as routes_admin_int  # noqa: E402
 app.include_router(routes_admin_int.router)

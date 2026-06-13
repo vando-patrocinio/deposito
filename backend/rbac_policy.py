@@ -53,6 +53,7 @@ PUBLIC_PATHS: List[str] = [
     "/api/referrals/assets/",   # CTO 13/06/2026 — PNGs estáticos do programa
     "/api/referrals/collab/public/",  # CTO 13/06/2026 — landing parceiro/colab
     "/api/customer/login",     # CTO 13/06/2026 — login CPF (sem token ainda)
+    "/api/auth/debug/whoami",  # CTO 13/06/2026 — diagnóstico aberto
     "/api/lousa/onu-bridge/redirect/",  # iter232 — token na URL é a auth
     "/api/colaborador/",  # iter232 — app PWA estático do colaborador
     "/api/public/smartprov-ai-center",  # FASE 9 — landing pública V5.0
