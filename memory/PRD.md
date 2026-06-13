@@ -1,6 +1,51 @@
 # SmartProv — PRD (Product Requirements Document)
 
 > Documento vivo. Atualizado a cada sprint.
+## 🐛 BUG FIX (13/06/2026 · CTO) — PWA Lousa Mobile quebrada em PROD: endpoints públicos retornavam 401
+
+**Reclamação:** "TUDO O QUE VC ESTA FAZENDO EM PRODUÇÃO NÃO ESTA FUNCIONANDO" + URL https://universoligo.com/?cid=col-30aafc3c (DIOGO HENRIQUE).
+
+**Evidence (CTO Mode, curl real contra PROD com token de Vando auditor):**
+- `GET /api/collaborators/col-30aafc3c` → 200 (dados corretos: clock_in_enabled=false, schedule completo, profile_id vinculado)
+- `GET /api/field/me?cid=col-30aafc3c` → 200 (Vando consegue, lendo como auditor)
+- `GET /api/public/os-validation-toggles/col-30aafc3c` → **401 "Não autenticado"** ❌ — esse é endpoint PÚBLICO (URL contém `/public/`) chamado pelo `LousaMobile.js:1835` SEM token
+- Toggles em PROD: `{ipv6_required:false, cto_photo_required:false, mac_validation_required:false, cto_port_required:true}` — admin já tinha aplicado Modo Relaxado, mas front nunca conseguia ler
+
+**Root Cause:** vários endpoints `/public/` (que devem rodar sem auth, com `collab_id` na URL como autenticação implícita) não estavam declarados em `rbac_policy.py::PUBLIC_PATHS`. Middleware RBAC barra com 401 ANTES de chegar no handler. Lista bloqueada:
+- `/api/public/os-validation-toggles/{cid}`
+- `/api/lousa/public/*` (leaderboard, tech-performance, achievements, open, finalize, geofence-ping, ocr-sn, suggest-supplies, dashboard-config etc — 22 endpoints)
+- `/api/holerite/public/*`
+- `/api/stok/public/*`
+- `/api/onboarding/public/*`
+
+Cada um desses tem auth própria no handler (collab_id no body/URL).
+
+**Correção aplicada em `/app/backend/rbac_policy.py`:**
+Adicionados ao `PUBLIC_PATHS`:
+- `/api/public/os-validation-toggles/`
+- `/api/lousa/public/`
+- `/api/holerite/public/`
+- `/api/collab-assets/public`
+- `/api/stok/public/`
+- `/api/onboarding/public/`
+
+**Verification (preview, sem token):**
+- `/api/public/os-validation-toggles/col-30aafc3c` → **200** ✅
+- `/api/lousa/public/leaderboard?company_id=co-demo` → **200** ✅
+- `/api/lousa/public/tech-performance/col-30aafc3c` → **200** ✅
+- `/api/stok/public/collaborator/col-30aafc3c/stock` → **200** ✅
+- `/api/holerite/public/by-collaborator/col-30aafc3c` → 404 (dado ausente no preview-DB, **não** 401 — auth OK)
+
+Regressão: 13/13 testes passam (`clock_in_enabled` 5/5, `modo_relaxado` 3/3, `referrals_public` 5/5).
+
+**Status PROD:** ⚠️ Mudança em `rbac_policy.py`. **Reimplantar é obrigatório** — sem isso a Lousa Mobile continua quebrada em https://universoligo.com.
+
+**Credencial admin de PROD (cedida pelo user 13/06/2026):**
+- `vando@ligotelecom.com / Vs5879@@@` — auditor, co-demo, is_super_admin=false (mas pode resetar via `/api/auth/forgot-password`).
+
+---
+
+
 ## 🐛 BUG FIX (13/06/2026 · CTO) — Lousa Mobile: estoque negativo bloqueava, toggles globais ignorados
 
 **Reclamação:**
