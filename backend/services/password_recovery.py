@@ -1,26 +1,26 @@
-"""CTO 12/06/2026 — Password Recovery via WhatsApp.
+"""CTO 13/06/2026 — Password Recovery (modo simples autorizado opção A).
 
-Fluxo (autorizado opção A pelo CTO):
+Fluxo (autorizado pelo CTO em 13/06/2026, substitui fluxo OTP/WhatsApp anterior):
 1. User clica "Esqueci a senha" → POST /api/auth/forgot-password {email}
 2. Backend:
-   - Lookup user; se órfão (sem collaborator_id) → erro genérico (não vaza)
-   - Lookup colaborador → pega phone
-   - Se Super Admin → bloqueia (segurança)
-   - Gera senha aleatória 8 chars (alphanumeric sem ambíguos)
-   - Salva hash + flag password_reset_pending=True
-   - Envia plaintext via WhatsApp para o phone do colaborador
-3. User loga com nova senha → API retorna must_change_password=true
-4. Frontend força modal de troca de senha antes do uso
+   - Lookup user pelo e-mail (case-insensitive)
+   - Se existir e estiver ativo → reseta password_hash para "123456"
+   - Seta password_reset_pending=True → força troca no próximo login
+   - Responde com mensagem direta confirmando o reset
+3. User loga com 123456 → API retorna must_change_password=true
+4. Frontend força modal de troca de senha antes de liberar o app
 5. POST /api/auth/change-password-forced limpa o flag
 
-Rate limit: 3 tentativas/hora por email (Mongo collection password_reset_attempts).
+⚠️ DECISÃO CTO: simplicidade total — qualquer usuário (inclusive super admin)
+pode resetar via esse fluxo. Risco aceito pelo CTO em 13/06/2026.
+
+Rate limit: 5 tentativas/hora por email/IP (Mongo collection
+password_reset_attempts) — única proteção contra abuso.
 Audit log: db.audit_log_password_resets.
 """
 from __future__ import annotations
 
 import logging
-import secrets
-import string
 from datetime import datetime, timezone, timedelta
 from typing import Optional
 
@@ -31,33 +31,13 @@ from database import db
 
 logger = logging.getLogger("password_recovery")
 
-# Alphabet sem caracteres ambíguos (sem 0/O/1/l/I)
-PASSWORD_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789abcdefghjkmnpqrstuvwxyz"
-RATE_LIMIT_PER_HOUR = 3
-
-
-def _generate_password(length: int = 8) -> str:
-    """Gera senha aleatória cryptographically secure."""
-    return "".join(secrets.choice(PASSWORD_ALPHABET) for _ in range(length))
-
-
-def _normalize_phone(phone: str) -> Optional[str]:
-    """Normaliza phone para formato Baileys (apenas dígitos com DDI BR=55)."""
-    if not phone:
-        return None
-    digits = "".join(c for c in str(phone) if c.isdigit())
-    if not digits:
-        return None
-    # Se não começa com 55, adiciona DDI Brasil
-    if not digits.startswith("55"):
-        digits = "55" + digits
-    if len(digits) < 12:  # 55 + DDD(2) + número(8min)
-        return None
-    return digits
+# Senha de reset fixa (autorizada pelo CTO opção A em 13/06/2026)
+DEFAULT_RESET_PASSWORD = "123456"
+RATE_LIMIT_PER_HOUR = 5
 
 
 async def _check_rate_limit(email: str, ip: str) -> None:
-    """Permite max 3 requests/hora por email OU ip. Lança 429 se excedido."""
+    """Permite max N requests/hora por email OU ip. Lança 429 se excedido."""
     one_hour_ago = datetime.now(timezone.utc) - timedelta(hours=1)
     cutoff = one_hour_ago.isoformat()
     count_email = await db.password_reset_attempts.count_documents({
@@ -95,30 +75,28 @@ async def _audit(
 
 
 async def forgot_password_flow(email: str, ip: str) -> dict:
-    """Executa o fluxo completo. Sempre retorna 200 genérico (anti-enum).
+    """Reseta a senha do usuário para `123456` (modo simples opção A).
 
-    Casos que disparam erro real:
-    - 429 rate limit excedido
+    - 200 com mensagem confirmando o reset se o usuário existir e estiver ativo.
+    - 200 genérico se o usuário não existir (anti-enumeração).
+    - 429 se rate limit excedido.
     """
     email = (email or "").lower().strip()
     if not email or "@" not in email:
-        # Não vaza: retorna OK genérico
         return _generic_response()
 
     await _check_rate_limit(email, ip)
 
-    # Registra tentativa (mesmo se user não existir, pra evitar enum por timing)
-    attempt_doc = {
+    # Registra tentativa
+    await db.password_reset_attempts.insert_one({
         "email": email,
         "ip": ip,
         "created_at": datetime.now(timezone.utc).isoformat(),
-    }
-    await db.password_reset_attempts.insert_one(attempt_doc)
+    })
 
     user = await db.users.find_one(
         {"email": email},
-        {"_id": 0, "id": 1, "email": 1, "company_id": 1, "collaborator_id": 1,
-         "is_super_admin": 1, "profile_id": 1, "active": 1, "name": 1},
+        {"_id": 0, "id": 1, "email": 1, "active": 1, "name": 1},
     )
     if not user:
         await _audit(email, ip, None, "no_such_user")
@@ -128,95 +106,45 @@ async def forgot_password_flow(email: str, ip: str) -> dict:
         await _audit(email, ip, user["id"], "user_inactive")
         return _generic_response()
 
-    # Bloqueia Super Admin (não pode resetar via WhatsApp)
-    if user.get("is_super_admin"):
-        await _audit(email, ip, user["id"], "blocked_super_admin_flag")
-        return _generic_response()
-
-    # Bloqueia se perfil for Super Admin
-    if user.get("profile_id"):
-        from services.access_profiles import is_super_admin_profile_id
-        cid = user.get("company_id") or "co-demo"
-        if await is_super_admin_profile_id(user["profile_id"], cid):
-            await _audit(email, ip, user["id"], "blocked_super_admin_profile")
-            return _generic_response()
-
-    # Precisa colaborador vinculado
-    coll_id = user.get("collaborator_id")
-    if not coll_id:
-        await _audit(email, ip, user["id"], "no_collaborator_linked")
-        return _generic_response()
-
-    coll = await db.collaborators.find_one(
-        {"id": coll_id},
-        {"_id": 0, "id": 1, "phone": 1, "name": 1, "company_id": 1},
-    )
-    if not coll:
-        await _audit(email, ip, user["id"], "collaborator_not_found")
-        return _generic_response()
-
-    phone_norm = _normalize_phone(coll.get("phone"))
-    if not phone_norm:
-        await _audit(email, ip, user["id"], "no_phone_or_invalid")
-        return _generic_response()
-
-    # Gera nova senha + persiste hash + flag
-    new_pwd = _generate_password()
+    # Reset direto para 123456 + força troca no próximo login
     await db.users.update_one(
         {"id": user["id"]},
         {"$set": {
-            "password_hash": hash_password(new_pwd),
+            "password_hash": hash_password(DEFAULT_RESET_PASSWORD),
             "password_reset_pending": True,
             "password_reset_at": datetime.now(timezone.utc).isoformat(),
+            "locked_until": None,
+            "failed_attempts": 0,
+            "session_id": None,  # invalida sessões antigas
         }},
     )
+    # Limpa locks de brute-force em coleções separadas
+    for coll in ("auth_failed_attempts", "auth_locks"):
+        try:
+            await getattr(db, coll).delete_many({"email": email})
+        except Exception:
+            pass
 
-    # Envia via WhatsApp Baileys
-    msg = (
-        f"🔐 *Recuperação de senha — Ligo*\n\n"
-        f"Olá, {coll.get('name') or user.get('name') or 'colaborador'}!\n\n"
-        f"Sua nova senha temporária é:\n\n"
-        f"*{new_pwd}*\n\n"
-        f"⚠️ Por segurança, você será obrigado a trocá-la no próximo login.\n\n"
-        f"Se você NÃO solicitou essa recuperação, avise o auditor "
-        f"imediatamente."
-    )
+    await _audit(email, ip, user["id"], "success_reset_to_default")
 
-    try:
-        from services.wa.sidecar import _sidecar_post_silent
-        result = await _sidecar_post_silent(
-            "/send",
-            {
-                "phone": phone_norm,
-                "text": msg,
-                "company_id": coll.get("company_id") or user.get("company_id"),
-            },
-        )
-        if not result.get("ok", True):
-            logger.warning("[pwd-recovery] WhatsApp send falhou: %s", result)
-            await _audit(email, ip, user["id"], "whatsapp_send_failed",
-                          reason=str(result.get("error")))
-            # Mantém password reset (user pode pedir o admin pra mostrar)
-            # mas log adicionado pro audit detectar.
-        else:
-            await _audit(email, ip, user["id"], "success",
-                          reason=f"sent_to_{phone_norm[:6]}***")
-    except Exception as e:  # noqa: BLE001
-        logger.exception("[pwd-recovery] WhatsApp send exception: %s", e)
-        await _audit(email, ip, user["id"], "whatsapp_exception",
-                      reason=str(e))
-
-    return _generic_response()
+    return {
+        "ok": True,
+        "reset": True,
+        "message": (
+            f"Sua senha foi redefinida para *{DEFAULT_RESET_PASSWORD}*. "
+            "Faça login e você será obrigado a escolher uma nova senha."
+        ),
+    }
 
 
 def _generic_response() -> dict:
     """Resposta genérica anti-enumeração (sempre 200 OK)."""
     return {
         "ok": True,
+        "reset": False,
         "message": (
-            "Se a conta estiver vinculada a um colaborador com telefone "
-            "cadastrado, uma nova senha será enviada via WhatsApp em "
-            "instantes."
+            "Se a conta existir, a senha foi redefinida para 123456. "
+            "Faça login e você será obrigado a trocar a senha."
         ),
     }
 
@@ -224,8 +152,8 @@ def _generic_response() -> dict:
 async def consume_password_reset_pending(user_id: str, new_password: str
                                             ) -> None:
     """Após login forçado, troca senha e limpa o flag."""
-    if not new_password or len(new_password) < 8:
-        raise HTTPException(400, "Senha precisa ter pelo menos 8 caracteres")
+    if not new_password or len(new_password) < 6:
+        raise HTTPException(400, "Senha precisa ter pelo menos 6 caracteres")
     await db.users.update_one(
         {"id": user_id},
         {"$set": {
