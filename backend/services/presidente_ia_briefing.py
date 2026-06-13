@@ -143,6 +143,27 @@ async def build_briefing_text(cid: str) -> Dict[str, Any]:
         logger.info("[briefing] equipe ia skip: %s", e)
 
     lines.append("")
+    # CTO 13/06/2026 — Sync Score operacional (Isabella→Lousa→Mobile→KPI)
+    try:
+        from services.sync_watchdog import sync_score
+        sync = await sync_score(cid)
+        s = sync.get("score", 100)
+        m = sync.get("metrics") or {}
+        emoji_sync = "🟢" if s >= 95 else "🟡" if s >= 80 else "🔴"
+        lines.append(f"{emoji_sync} Sync Score (60min): *{s}/100*")
+        if m.get("created_total", 0) > 0:
+            lines.append(
+                f"• OS criadas: {m['created_total']} · "
+                f"eventos emitidos: {m['events_emitted']} · "
+                f"fechadas: {m['closed_tickets']}"
+            )
+        sub = sync.get("sub_scores") or {}
+        weak = [k for k, v in sub.items() if v < 80]
+        if weak:
+            lines.append(f"• ⚠ Fluxo fraco em: {', '.join(weak)}")
+    except Exception as e:
+        logger.info("[briefing] sync_score skip: %s", e)
+    lines.append("")
     lines.append("_Veja detalhes em Presidente IA._")
 
     return {
@@ -152,6 +173,7 @@ async def build_briefing_text(cid: str) -> Dict[str, Any]:
         "top_risk": top_risk,
         "top_opportunity": top_opp,
         "equipe_ia": equipe_payload,
+        "sync_score": sync if 'sync' in dir() else None,
     }
 
 

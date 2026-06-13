@@ -67,10 +67,11 @@ async def main():
 
     # ─── STEP 2: Verificar coleção appointments ─────────────────────────
     t0 = time.time()
-    appt_count = await db.appointments.count_documents({"company_id": COMPANY})
-    step("2. db.appointments tem dados?", appt_count > 10,
+    appt_before = await db.appointments.count_documents({"company_id": COMPANY})
+    # vai aumentar quando criarmos ticket com origin=isabella (step 3)
+    step("2. db.appointments collection ativa", appt_before >= 0,
          int((time.time()-t0)*1000),
-         f"docs={appt_count} (esperado >10 se Isabella agendasse de verdade)")
+         f"docs_before={appt_before} (vamos ver crescer em step 3b)")
 
     # ─── STEP 3: Criar ticket via /api/lousa/tickets (caminho atual) ─────
     t0 = time.time()
@@ -90,6 +91,17 @@ async def main():
          f"status={r.status_code} ticket_id={tid}")
     if not tid: return
 
+    # ─── STEP 3b: Appointment espelhado em db.appointments? ─────────────
+    t0 = time.time()
+    await asyncio.sleep(0.3)
+    appt_after = await db.appointments.count_documents({"company_id": COMPANY})
+    mirrored = await db.appointments.count_documents(
+        {"company_id": COMPANY, "ticket_id": tid}
+    )
+    step("3b. Appointment espelhado em db.appointments",
+         mirrored >= 1, int((time.time()-t0)*1000),
+         f"appointments_count={appt_after} ticket_mirror_found={mirrored>=1}")
+
     # ─── STEP 4: Ticket APARECE na Lousa (≤3s)? ─────────────────────────
     t0 = time.time()
     found = False
@@ -108,28 +120,32 @@ async def main():
 
     # ─── STEP 5: OS replica para Lousa Mobile (endpoint público)? ──────
     t0 = time.time()
-    r = requests.get(f"{BASE}/api/lousa/public/tickets/{tid}/signal", timeout=5)
+    r = requests.get(
+        f"{BASE}/api/lousa/public/tickets/{tid}/signal",
+        params={"collaborator_id": "col-demo-001"}, timeout=5,
+    )
     elapsed = int((time.time()-t0)*1000)
-    # Esse endpoint é o que o mobile usa pra ler signal. Lista de tickets
-    # do mobile vem de /api/lousa/by-collaborator (mesmo da Lousa).
-    step("5. OS visível no canal Mobile (≤5000ms)", r.status_code in (200, 404), elapsed,
-         f"status={r.status_code} (404 OK pois ticket não tem signal ainda)")
+    # 200 = signal lido / 404 = signal indisponível ainda (OS nova) /
+    # 403 = OS de outro colab — todos significam canal Mobile alcançável.
+    step("5. OS visível no canal Mobile (≤5000ms)",
+         r.status_code in (200, 404) and elapsed<=5000, elapsed,
+         f"status={r.status_code}")
 
     # ─── STEP 6: Evento ISABELLA_OS_CREATED foi emitido? ────────────────
     t0 = time.time()
-    # Procura nos 4 event collections paralelos
     events_found = {}
     for coll in ["nervous_events", "motor_ia_events", "system_events"]:
         if coll in await db.list_collection_names():
             n = await db[coll].count_documents({
                 "company_id": COMPANY,
-                "$or":[{"ref_id":tid},{"ticket_id":tid},{"data.ticket_id":tid}],
+                "$or":[{"ref_id":tid},{"ticket_id":tid},
+                       {"payload.ticket_id":tid},{"data.ticket_id":tid}],
             })
             events_found[coll] = n
     step("6. Evento ISABELLA_OS_CREATED persiste",
          sum(events_found.values()) > 0,
          int((time.time()-t0)*1000),
-         f"distrib={events_found} (esperado: 1 evento canônico)")
+         f"distrib={events_found}")
 
     # ─── STEP 7: Colaborador inicia (admin-open simula) ─────────────────
     t0 = time.time()

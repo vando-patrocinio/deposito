@@ -68,6 +68,16 @@ async def _tick_1min() -> None:
                        r["emitted_total"], r.get("per_kind"))
     except Exception as e:
         log.exception("scheduler 1min nervous_sync: %s", e)
+    # CTO 13/06/2026 — SyncWatchdog (alertas LOUSA/MOBILE/KPI sync failure)
+    try:
+        from services.sync_watchdog import watchdog_run_all
+        wd = await watchdog_run_all()
+        alerts_total = sum(len(r.get("alerts") or []) for r in wd.get("results", []))
+        if alerts_total:
+            log.warning("[scheduler] sync_watchdog %d alertas em %d tenants",
+                        alerts_total, wd.get("tenants"))
+    except Exception as e:
+        log.exception("scheduler 1min sync_watchdog: %s", e)
     # FASE 7 — Álvaro daily briefings (3x/dia)
     try:
         from datetime import datetime, timezone

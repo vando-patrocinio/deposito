@@ -404,6 +404,10 @@ class TicketIn(BaseModel):
     scheduled_time: Optional[str] = None
     assigned_collaborator_id: str
     test_history: List[NetworkTest] = Field(default_factory=list)
+    # CTO 13/06/2026 — Contrato OS único: rastreabilidade da origem.
+    origin: Optional[str] = None  # "isabella" | "atendimento" | "manual" | "api"
+    created_by_agent: Optional[str] = None  # "isabella" | nome do gestor | ...
+    isabella_context: Optional[dict] = None  # contexto livre da IA (opportunity_id, etc)
 
     @field_validator("scheduled_time")
     @classmethod
@@ -2093,6 +2097,10 @@ async def create_ticket(payload: TicketIn, user: dict = Depends(require_role("ge
         "whatsapp_status": "nao_enviado", "whatsapp_last_message": None,
         "completion_data": None, "admin_action": None, "admin_notes": None,
         "ai_triage_pending": True,
+        # CTO 13/06/2026 — Contrato OS único: rastreabilidade da origem
+        "origin": (payload.origin or "manual").lower(),
+        "created_by_agent": payload.created_by_agent,
+        "isabella_context": payload.isabella_context or {},
         # Quality notes — snapshot do sinal SmartOLT na abertura.
         # Preenchido best-effort (cliente pode não ter SmartOLT mapeado).
         "signal_at_open": None,
@@ -2123,6 +2131,58 @@ async def create_ticket(payload: TicketIn, user: dict = Depends(require_role("ge
         details=f"Atribuída a {coll.get('name', 'colaborador')} · {payload.client_name}",
         company_id=doc["company_id"],
     )
+    # CTO 13/06/2026 — EventBus operacional: toda OS criada emite evento
+    # canônico. Se vier da Isabella (origin=isabella), emite tipo dedicado.
+    try:
+        from services.event_bus import emit_event, EventType
+        origin = (getattr(payload, "origin", None) or "manual").lower()
+        is_isabella = origin in ("isabella", "ai_isabella", "ia_isabella")
+        evt_type = "ISABELLA_OS_CREATED" if is_isabella else EventType.TICKET_OPENED
+        await emit_event(
+            evt_type,
+            company_id=doc["company_id"],
+            user_id=user.get("id"),
+            source="lousa.create_ticket",
+            severity="alta" if payload.priority == "urgente" else "media",
+            payload={
+                "ticket_id": doc["id"], "type": doc["type"],
+                "priority": doc["priority"], "client_name": payload.client_name,
+                "neighborhood": payload.neighborhood,
+                "assigned_collaborator_id": coll.get("id"),
+                "assigned_collaborator_name": coll.get("name"),
+                "origin": origin,
+                "created_by_agent": getattr(payload, "created_by_agent", None),
+            },
+        )
+        # CTO 13/06/2026 — Espelha em `db.appointments` quando Isabella cria.
+        # Garante: agendamento rastreável + fonte única pra Presidente IA.
+        if is_isabella:
+            try:
+                from datetime import datetime, timezone
+                await db.appointments.insert_one({
+                    "id": f"apt-{doc['id'][4:]}",
+                    "company_id": doc["company_id"],
+                    "ticket_id": doc["id"],
+                    "subscriber_id": doc.get("client_id"),
+                    "customer_name": payload.client_name,
+                    "customer_phone": payload.phone,
+                    "address": payload.address,
+                    "neighborhood": payload.neighborhood,
+                    "type": doc["type"],
+                    "priority": doc["priority"],
+                    "scheduled_time": payload.scheduled_time,
+                    "assigned_collaborator_id": coll.get("id"),
+                    "assigned_collaborator_name": coll.get("name"),
+                    "origin": "isabella",
+                    "created_by_agent": getattr(payload, "created_by_agent", "isabella"),
+                    "isabella_context": getattr(payload, "isabella_context", None) or {},
+                    "status": "scheduled",
+                    "created_at": datetime.now(timezone.utc).isoformat(),
+                })
+            except Exception as _ae:
+                logger.warning("[lousa] mirror appointments falhou: %s", _ae)
+    except Exception as e:
+        logger.warning("[lousa] emit OS_CREATED falhou: %s", e)
     doc.pop("_id", None)
     return doc
 
@@ -4397,6 +4457,34 @@ async def public_finalize_ticket(ticket_id: str, payload: PublicFinalizeIn,
             logger.warning("[lousa] retirada workflow agendamento falhou: %s", e)
 
     result = await db.tickets.find_one({"id": ticket_id}, {"_id": 0})
+    # CTO 13/06/2026 — EventBus operacional: OS finalizada pelo mobile
+    try:
+        from services.event_bus import emit_event, EventType
+        await emit_event(
+            "FIELD_OS_COMPLETED",
+            company_id=result.get("company_id") or DEMO_COMPANY_ID,
+            user_id=payload.collaborator_id,
+            source="lousa.public_finalize",
+            severity="critica" if is_bad_signal else "media",
+            payload={
+                "ticket_id": ticket_id, "outcome": payload.outcome,
+                "type": result.get("type"),
+                "assigned_collaborator_id": payload.collaborator_id,
+                "sinal": cd.sinal, "bad_signal": is_bad_signal,
+                "duration_minutes": result.get("execution_minutes"),
+            },
+        )
+        # Sinaliza TICKET_CLOSED canônico também (cobre dashboards legados)
+        await emit_event(
+            EventType.TICKET_CLOSED,
+            company_id=result.get("company_id") or DEMO_COMPANY_ID,
+            user_id=payload.collaborator_id,
+            source="lousa.public_finalize",
+            severity="media",
+            payload={"ticket_id": ticket_id, "outcome": payload.outcome},
+        )
+    except Exception as _e:
+        logger.warning("[lousa] emit FIELD_OS_COMPLETED falhou: %s", _e)
     # Anexa warnings pra exibir no app
     result["_warnings"] = {
         "sn_mismatch": sn_mismatch,
@@ -5261,10 +5349,14 @@ async def admin_open_ticket(ticket_id: str, user: dict = Depends(require_role("g
     try:
         from services.event_bus import emit_event
         await emit_event(
-            "ticket.updated",
+            "FIELD_OS_STARTED",
             company_id=t.get("company_id") or DEMO_COMPANY_ID,
-            source="lousa",
-            payload={},
+            user_id=user.get("id"),
+            source="lousa.admin_open",
+            severity="media",
+            payload={"ticket_id": ticket_id,
+                     "assigned_collaborator_id": t.get("assigned_collaborator_id"),
+                     "opened_by": "admin"},
         )
     except Exception:
         pass

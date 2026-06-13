@@ -268,6 +268,20 @@ async def briefing_preview(user: dict = Depends(get_current_user)):
     return await build_briefing_text(cid)
 
 
+@router.get("/sync-score")
+async def sync_score_endpoint(user: dict = Depends(get_current_user)):
+    """CTO 13/06/2026 — Sync Score operacional do tenant em tempo real.
+
+    Mede a integridade do fluxo Isabella → Lousa → Mobile → KPI nos
+    últimos 60 minutos. <80 = atenção, <60 = alerta crítico.
+    """
+    cid = _cid(user)
+    from services.sync_watchdog import sync_score, watchdog_run
+    score = await sync_score(cid)
+    wd = await watchdog_run(cid)
+    return {"score": score, "watchdog": wd}
+
+
 
 # ─────────────────── Sprint 3 — Segurança & Compliance ───────────────────
 @router.get("/security/alerts")
