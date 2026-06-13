@@ -188,7 +188,14 @@ async def emit_event(
         "consumed": False,
     }
     try:
-        await db.motor_ia_events.insert_one(doc)
+        await db.motor_ia_events.insert_one({**doc})
+    except Exception:
+        pass
+    # CTO 13/06/2026 — Espelha TODO evento operacional em `nervous_events`
+    # (barramento canônico que alimenta KPIs, watchdogs e Presidente IA).
+    # Mantém doc separado por collection pra não compartilhar _id ObjectId.
+    try:
+        await db.nervous_events.insert_one({**doc, "_mirror_of": "motor_ia_events"})
     except Exception:
         pass
     return doc

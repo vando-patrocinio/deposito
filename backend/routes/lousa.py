@@ -2101,6 +2101,9 @@ async def create_ticket(payload: TicketIn, user: dict = Depends(require_role("ge
         "origin": (payload.origin or "manual").lower(),
         "created_by_agent": payload.created_by_agent,
         "isabella_context": payload.isabella_context or {},
+        # CTO 13/06/2026 — TODA OS é visível no mobile do colaborador
+        # (não há OS oculto/orphan).
+        "mobile_visible": True,
         # Quality notes — snapshot do sinal SmartOLT na abertura.
         # Preenchido best-effort (cliente pode não ter SmartOLT mapeado).
         "signal_at_open": None,
@@ -2152,6 +2155,23 @@ async def create_ticket(payload: TicketIn, user: dict = Depends(require_role("ge
                 "assigned_collaborator_name": coll.get("name"),
                 "origin": origin,
                 "created_by_agent": getattr(payload, "created_by_agent", None),
+            },
+        )
+        # CTO 13/06/2026 — Evento canônico operacional (alimenta KPIs+watchdogs)
+        await emit_event(
+            "ticket.created",
+            company_id=doc["company_id"],
+            user_id=user.get("id"),
+            source="lousa.create_ticket",
+            severity="alta" if payload.priority == "urgente" else "media",
+            payload={
+                "ticket_id": doc["id"], "type": doc["type"],
+                "priority": doc["priority"], "client_name": payload.client_name,
+                "neighborhood": payload.neighborhood,
+                "assigned_collaborator_id": coll.get("id"),
+                "origin": origin,
+                "created_by_agent": getattr(payload, "created_by_agent", None),
+                "mobile_visible": True,
             },
         )
         # CTO 13/06/2026 — Espelha em `db.appointments` quando Isabella cria.
@@ -4483,6 +4503,20 @@ async def public_finalize_ticket(ticket_id: str, payload: PublicFinalizeIn,
             severity="media",
             payload={"ticket_id": ticket_id, "outcome": payload.outcome},
         )
+        # CTO 13/06/2026 — Evento canônico operacional "ticket.finalized"
+        await emit_event(
+            "ticket.finalized",
+            company_id=result.get("company_id") or DEMO_COMPANY_ID,
+            user_id=payload.collaborator_id,
+            source="lousa.public_finalize",
+            severity="media",
+            payload={
+                "ticket_id": ticket_id, "outcome": payload.outcome,
+                "type": result.get("type"),
+                "assigned_collaborator_id": payload.collaborator_id,
+                "sinal": cd.sinal, "bad_signal": is_bad_signal,
+            },
+        )
     except Exception as _e:
         logger.warning("[lousa] emit FIELD_OS_COMPLETED falhou: %s", _e)
     # Anexa warnings pra exibir no app
@@ -5357,6 +5391,16 @@ async def admin_open_ticket(ticket_id: str, user: dict = Depends(require_role("g
             payload={"ticket_id": ticket_id,
                      "assigned_collaborator_id": t.get("assigned_collaborator_id"),
                      "opened_by": "admin"},
+        )
+        # CTO 13/06/2026 — Evento canônico operacional "ticket.updated"
+        await emit_event(
+            "ticket.updated",
+            company_id=t.get("company_id") or DEMO_COMPANY_ID,
+            user_id=user.get("id"),
+            source="lousa.admin_open",
+            severity="media",
+            payload={"ticket_id": ticket_id, "status": "aberta",
+                     "transition": "pendente->aberta"},
         )
     except Exception:
         pass

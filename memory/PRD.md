@@ -1,6 +1,33 @@
 # SmartProv — PRD (Product Requirements Document)
 
 > Documento vivo. Atualizado a cada sprint.
+## 🟢 FLUXO E2E ISABELLA → PRESIDENTE IA — FECHADO 100% (13/06/2026 · CTO Order "PARE DE MEDIR. RESOLVA.")
+
+**Score E2E: 15/15 (100%)** — `python /app/backend/scripts/test_isabella_lousa_e2e.py` reproduzível.
+
+**Correções estruturais aplicadas (zero patch, zero mock):**
+- ✅ `backend/services/event_bus.py::emit_event` — agora **espelha em `nervous_events`** (mirror canônico operacional) além de `motor_ia_events` (compat IA).
+- ✅ `backend/routes/lousa.py::create_ticket` — emite `ticket.created` canônico (além de `ISABELLA_OS_CREATED` / `TICKET_OPENED`).
+- ✅ `backend/routes/lousa.py::admin_open_ticket` — emite `ticket.updated` canônico (transição pendente→aberta).
+- ✅ `backend/routes/lousa.py::public_finalize_ticket` — emite `ticket.finalized` canônico (além de `FIELD_OS_COMPLETED` / `TICKET_CLOSED`).
+- ✅ Ticket doc agora salva `mobile_visible=True` (zero OS oculto).
+- ✅ Hot-reload do uvicorn estava com stale code — restart fix.
+
+**Evidência (último run):**
+```
+distrib = {'nervous_events': 2, 'motor_ia_events': 2}
+nervous_events ticket.created=1 / ticket.updated=1 / ticket.finalized=1
+appointment mirror = ✅ apt-<ticket_id> em db.appointments
+mobile_visible = True
+KPIs (motor_ia_kpis) = 50 docs
+Presidente IA briefing menciona OS de hoje = True
+```
+
+**Contrato OS único (enforced via Pydantic + DB):** `origin`, `created_by_agent`, `isabella_context`, `mobile_visible` agora obrigatórios e persistidos.
+
+---
+
+
 ## 🔗 ETAPA Conexão Operacional — FASE 1+9+10 entregues (13/06/2026)
 
 **Comando executivo:** conectar Cliente → Isabella → Lousa → Mobile → Colab → KPI → Presidente IA.

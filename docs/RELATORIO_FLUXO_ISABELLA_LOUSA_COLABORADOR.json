@@ -1,68 +1,86 @@
 {
-  "ts": "2026-06-13T10:34:53.956751+00:00",
-  "score_pct": 91.7,
-  "passed": 11,
-  "total": 12,
+  "ts": "2026-06-13T10:46:33.430883+00:00",
+  "score_pct": 100.0,
+  "passed": 15,
+  "total": 15,
   "steps": [
     {
       "step": "0. Login admin",
       "ok": true,
-      "elapsed_ms": 233,
+      "elapsed_ms": 232,
       "detail": "status=200"
     },
     {
       "step": "1. Isabella tem endpoint que cria OS?",
       "ok": true,
-      "elapsed_ms": 9,
-      "detail": "encontrados=['isabella_prompt.py', 'ai_center_autonomous.py']"
+      "elapsed_ms": 8,
+      "detail": "encontrados=['ai_center_autonomous.py', 'isabella_prompt.py']"
     },
     {
       "step": "2. db.appointments collection ativa",
       "ok": true,
       "elapsed_ms": 3,
-      "detail": "docs_before=2 (vamos ver crescer em step 3b)"
+      "detail": "docs_before=5 (vamos ver crescer em step 3b)"
     },
     {
       "step": "3. Criar ticket (origin=isabella)",
       "ok": true,
-      "elapsed_ms": 106,
-      "detail": "status=200 ticket_id=tkt-b6e521996a"
+      "elapsed_ms": 117,
+      "detail": "status=200 ticket_id=tkt-b78dd65653"
     },
     {
       "step": "3b. Appointment espelhado em db.appointments",
-      "ok": false,
-      "elapsed_ms": 301,
-      "detail": "appointments_count=2 ticket_mirror_found=False"
+      "ok": true,
+      "elapsed_ms": 302,
+      "detail": "appointments_count=6 ticket_mirror_found=True"
     },
     {
       "step": "4. OS aparece na Lousa (\u22643000ms)",
       "ok": true,
-      "elapsed_ms": 9,
+      "elapsed_ms": 11,
       "detail": "found=True"
     },
     {
       "step": "5. OS vis\u00edvel no canal Mobile (\u22645000ms)",
       "ok": true,
-      "elapsed_ms": 5,
+      "elapsed_ms": 7,
       "detail": "status=200"
     },
     {
       "step": "6. Evento ISABELLA_OS_CREATED persiste",
       "ok": true,
-      "elapsed_ms": 440,
-      "detail": "distrib={'nervous_events': 0, 'motor_ia_events': 1, 'system_events': 0}"
+      "elapsed_ms": 448,
+      "detail": "distrib={'nervous_events': 2, 'motor_ia_events': 2, 'system_events': 0}"
+    },
+    {
+      "step": "6b. nervous_events persiste 'ticket.created'",
+      "ok": true,
+      "elapsed_ms": 0,
+      "detail": "nervous_events_ticket_created=1"
     },
     {
       "step": "7. Colab inicia (admin-open)",
       "ok": true,
-      "elapsed_ms": 9,
+      "elapsed_ms": 12,
       "detail": "status=200"
     },
     {
       "step": "8. Finalizar OS pelo Mobile",
       "ok": true,
-      "elapsed_ms": 18,
-      "detail": "status=200 body={\"id\":\"tkt-b6e521996a\",\"client_id\":\"78f68b98-070c-439a-9e5e-d37f2c05bb4c\",\"client_snapshot\":{\"name\":\"E2E_TEST_4aed1e\",\"a"
+      "elapsed_ms": 20,
+      "detail": "status=200 body={\"id\":\"tkt-b78dd65653\",\"client_id\":\"0f9c9911-4a75-4def-bce0-ff057391c901\",\"client_snapshot\":{\"name\":\"E2E_TEST_8e1dc8\",\"a"
+    },
+    {
+      "step": "8b. nervous_events 'ticket.finalized'+'ticket.updated'",
+      "ok": true,
+      "elapsed_ms": 301,
+      "detail": "finalized=1 updated=1"
+    },
+    {
+      "step": "8c. ticket.mobile_visible=True",
+      "ok": true,
+      "elapsed_ms": 0,
+      "detail": "mobile_visible=True"
     },
     {
       "step": "9. KPIs alimentados (motor_ia_kpis)",
@@ -73,9 +91,9 @@
     {
       "step": "10. Presidente IA briefing menciona OS de hoje (\u226430s)",
       "ok": true,
-      "elapsed_ms": 396,
+      "elapsed_ms": 413,
       "detail": "status=200 mentions_today=True"
     }
   ],
-  "verdict": "FLUXO QUEBRADO"
+  "verdict": "OK"
 }

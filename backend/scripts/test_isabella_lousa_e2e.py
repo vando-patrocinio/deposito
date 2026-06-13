@@ -147,6 +147,17 @@ async def main():
          int((time.time()-t0)*1000),
          f"distrib={events_found}")
 
+    # ─── STEP 6b: nervous_events persiste o ticket.created? ─────────────
+    t0 = time.time()
+    nervous_created = await db.nervous_events.count_documents({
+        "company_id": COMPANY,
+        "event_type": "ticket.created",
+        "payload.ticket_id": tid,
+    })
+    step("6b. nervous_events persiste 'ticket.created'",
+         nervous_created >= 1, int((time.time()-t0)*1000),
+         f"nervous_events_ticket_created={nervous_created}")
+
     # ─── STEP 7: Colaborador inicia (admin-open simula) ─────────────────
     t0 = time.time()
     r = requests.post(f"{BASE}/api/lousa/tickets/{tid}/admin-open",
@@ -169,6 +180,32 @@ async def main():
     elapsed = int((time.time()-t0)*1000)
     step("8. Finalizar OS pelo Mobile", r.status_code==200, elapsed,
          f"status={r.status_code} body={r.text[:120]}")
+
+    # ─── STEP 8b: nervous_events persiste 'ticket.finalized'? ───────────
+    t0 = time.time()
+    await asyncio.sleep(0.3)
+    nervous_finalized = await db.nervous_events.count_documents({
+        "company_id": COMPANY,
+        "event_type": "ticket.finalized",
+        "payload.ticket_id": tid,
+    })
+    nervous_updated = await db.nervous_events.count_documents({
+        "company_id": COMPANY,
+        "event_type": "ticket.updated",
+        "payload.ticket_id": tid,
+    })
+    step("8b. nervous_events 'ticket.finalized'+'ticket.updated'",
+         nervous_finalized >= 1 and nervous_updated >= 1,
+         int((time.time()-t0)*1000),
+         f"finalized={nervous_finalized} updated={nervous_updated}")
+
+    # ─── STEP 8c: mobile_visible=True no ticket criado por Isabella? ────
+    t0 = time.time()
+    tdoc = await db.tickets.find_one({"id": tid})
+    mv = (tdoc or {}).get("mobile_visible")
+    step("8c. ticket.mobile_visible=True",
+         mv is True, int((time.time()-t0)*1000),
+         f"mobile_visible={mv}")
 
     # ─── STEP 9: KPI atualizado? ────────────────────────────────────────
     t0 = time.time()
