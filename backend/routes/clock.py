@@ -381,6 +381,107 @@ async def get_collaborator(cid: str):
 
 
 # ---------------------------------------------------------------------------
+# CTO 13/06/2026 — Diagnóstico de colaborador por link único.
+# Quando o gestor relata "técnico abriu o link e o app fica vazio", esse
+# endpoint mostra o estado REAL daquele ID em prod (sem precisar shell).
+# Permissão: gestor / auditor / super admin.
+# ---------------------------------------------------------------------------
+@router.get("/collaborators/{cid}/diag")
+async def diagnose_collaborator(
+    cid: str,
+    user: dict = Depends(require_role("gestor")),
+):
+    """Retorna o estado COMPLETO de um collaborator + diagnóstico do link único.
+
+    Resposta sempre 200 — campos `exists`/`reasons` indicam o que está faltando.
+    """
+    doc = await db.collaborators.find_one({"id": cid}, {"_id": 0, "reference_face": 0})
+    reasons: list[str] = []
+
+    if not doc:
+        # Talvez o ID tenha sido truncado ou migrado. Tenta achar por prefix.
+        prefix_matches = await db.collaborators.find(
+            {"id": {"$regex": f"^{cid}"}},
+            {"_id": 0, "id": 1, "name": 1, "active": 1, "company_id": 1},
+        ).limit(5).to_list(5)
+        return {
+            "cid_requested": cid,
+            "exists": False,
+            "reasons": [
+                f"Nenhum colaborador com id='{cid}'.",
+                "Possível causa: ID truncado no link compartilhado, "
+                "colaborador deletado, ou migrado pra outra tenant.",
+            ],
+            "prefix_matches": prefix_matches,
+        }
+
+    if not doc.get("active", True):
+        reasons.append("Colaborador está INATIVO (active=false).")
+    if not doc.get("name"):
+        reasons.append("Sem `name` no documento.")
+    if not doc.get("company_id"):
+        reasons.append("Sem `company_id` — não pertence a nenhuma tenant.")
+    if not doc.get("schedule") or not isinstance(doc.get("schedule"), dict):
+        reasons.append(
+            "Sem `schedule` configurado (entrada/saída) — "
+            "a UI vai renderizar 'undefined / undefined' sem fallback.")
+    else:
+        sch = doc["schedule"]
+        if not sch.get("entrada"):
+            reasons.append("`schedule.entrada` vazio.")
+        if not sch.get("saida"):
+            reasons.append("`schedule.saida` vazio.")
+    if not doc.get("praca_id"):
+        reasons.append(
+            "Sem `praca_id` — UI mostra '—' no campo Praça (não é bloqueante).")
+
+    # Verifica user vinculado (pra login email+senha alternativo)
+    user_doc = await db.users.find_one(
+        {"$or": [{"collaborator_id": cid},
+                 {"email": (doc.get("email") or "").lower()}]},
+        {"_id": 0, "id": 1, "email": 1, "role": 1, "active": 1,
+         "must_change_password": 1},
+    )
+
+    # Conta ponto recente (últimos 7d)
+    from datetime import timedelta
+    seven_days_ago = (datetime.now(timezone.utc) - timedelta(days=7)).date().isoformat()
+    recent_clock = await db.clock_records.count_documents(
+        {"collaborator_id": cid, "date": {"$gte": seven_days_ago}})
+
+    # Conta tickets abertos
+    open_tickets = await db.tickets.count_documents(
+        {"assigned_collaborator_id": cid,
+         "status": {"$in": ["pendente", "aberta"]}})
+
+    return {
+        "cid_requested": cid,
+        "exists": True,
+        "active": doc.get("active", True),
+        "reasons": reasons,
+        "collaborator": {
+            "id": doc.get("id"),
+            "name": doc.get("name"),
+            "email": doc.get("email"),
+            "phone": doc.get("phone"),
+            "company_id": doc.get("company_id"),
+            "role": doc.get("role"),
+            "cargo": doc.get("cargo"),
+            "praca_id": doc.get("praca_id"),
+            "schedule": doc.get("schedule"),
+            "clock_in_enabled": doc.get("clock_in_enabled"),
+            "active": doc.get("active", True),
+        },
+        "user_link": user_doc,
+        "recent_clock_records_7d": recent_clock,
+        "open_tickets": open_tickets,
+        "link_unico_url_pattern": f"/?cid={cid}",
+    }
+
+
+
+
+# ---------------------------------------------------------------------------
 # Grant mobile access — cria/atualiza User vinculado ao Collaborator para
 # que ele possa logar no app mobile via email+senha (em vez do link único).
 # Gera senha aleatória curta e retorna pro gestor copiar/enviar via WhatsApp.

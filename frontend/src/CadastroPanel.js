@@ -15,6 +15,7 @@ import AssetsSection from "@/AssetsSection";
 import DeactivationAssetsModal from "@/DeactivationAssetsModal";
 import VehicleChecklistModal from "@/VehicleChecklistModal";
 import { useAuth } from "@/AuthContext";
+import { humanizeError } from "@/utils/humanizeError";
 
 // Paleta de chips sóbria — usada nos cards de colaborador
 const CHIP_PALETTE = {
@@ -114,7 +115,7 @@ export default function CadastroPanel() {
       await reload();
       setTimeout(() => setFlash(""), 4000);
     } catch (e) {
-      setFlash(`❌ Erro: ${e?.response?.data?.detail || e.message}`);
+      setFlash(`❌ Erro: ${humanizeError(e)}`);
     }
     setTogglingId(null);
   }
@@ -143,7 +144,7 @@ export default function CadastroPanel() {
       setFenceCounts(counts);
       setAllFences(Object.values(fencesByCid).flat());
     } catch (e) {
-      setError(e?.response?.data?.detail || e.message);
+      setError(humanizeError(e));
     } finally {
       setListLoading(false);
     }
@@ -240,7 +241,7 @@ export default function CadastroPanel() {
         if (colObj) setDeactivatedFor({ ...colObj, active: false });
       }
     } catch (e) {
-      setError(e?.response?.data?.detail || e.message);
+      setError(humanizeError(e));
     }
     setBusy(false);
   }
@@ -254,7 +255,7 @@ export default function CadastroPanel() {
       setFlash("✅ Colaborador excluído.");
       setTimeout(() => setFlash(""), 2500);
     } catch (e) {
-      setFlash("❌ Erro: " + (e?.response?.data?.detail || e.message));
+      setFlash("❌ Erro: " + (humanizeError(e)));
       setTimeout(() => setFlash(""), 4000);
     }
     setDeletingId(null);
@@ -273,7 +274,7 @@ export default function CadastroPanel() {
       );
       setTimeout(() => setFlash(""), 5000);
     } catch (e) {
-      setFlash("❌ Erro: " + (e?.response?.data?.detail || e.message));
+      setFlash("❌ Erro: " + (humanizeError(e)));
       setTimeout(() => setFlash(""), 4000);
     }
     setResettingId(null);
@@ -1223,7 +1224,7 @@ function LinkedUserSection({ collaboratorId, collaboratorName, onChanged }) {
       setLinked(cur);
       setAvailable(unlinked || []);
     } catch (e) {
-      setError(e?.response?.data?.detail || e.message || "Falha ao carregar");
+      setError(humanizeError(e) || "Falha ao carregar");
     }
     setLoading(false);
   }
@@ -1246,7 +1247,7 @@ function LinkedUserSection({ collaboratorId, collaboratorName, onChanged }) {
       await reload();
       if (onChanged) onChanged();
     } catch (e) {
-      setError(e?.response?.data?.detail || e.message);
+      setError(humanizeError(e));
     }
     setBusy(false);
   }
@@ -1264,7 +1265,7 @@ function LinkedUserSection({ collaboratorId, collaboratorName, onChanged }) {
       await reload();
       if (onChanged) onChanged();
     } catch (e) {
-      setError(e?.response?.data?.detail || e.message);
+      setError(humanizeError(e));
     }
     setBusy(false);
   }
@@ -1397,7 +1398,7 @@ function GeofencesModal({ collaboratorId, collaborator, allCollaborators = [], o
       setFlash("✅ Cerca removida.");
       setTimeout(() => setFlash(""), 2500);
     } catch (e) {
-      setFlash("❌ Erro: " + (e?.response?.data?.detail || e.message));
+      setFlash("❌ Erro: " + (humanizeError(e)));
       setTimeout(() => setFlash(""), 4000);
     }
     setBusyId(null); setConfirmId(null);
@@ -1435,7 +1436,7 @@ function GeofencesModal({ collaboratorId, collaborator, allCollaborators = [], o
       setDuplicateOpen(null);
       setDupTargets({});
     } catch (e) {
-      setFlash("❌ Erro: " + (e?.response?.data?.detail || e.message));
+      setFlash("❌ Erro: " + (humanizeError(e)));
       setTimeout(() => setFlash(""), 4000);
     }
     setDupBusy(false);
@@ -1637,7 +1638,7 @@ function ClockHistoryModal({ collaborator, onClose }) {
     const dateFrom = dt.toISOString().slice(0, 10);
     api.listClockRecords({ collaborator_id: collaborator.id, date_from: dateFrom, date_to: dateTo })
       .then((r) => { if (alive) setRecords(r || []); })
-      .catch((e) => { if (alive) setErr(e?.response?.data?.detail || e.message); });
+      .catch((e) => { if (alive) setErr(humanizeError(e)); });
     return () => { alive = false; };
   }, [collaborator.id, days]);
 
@@ -1870,7 +1871,7 @@ function AvatarUploader({ collaboratorId, currentUrl, name, onUpdated }) {
       await api.uploadCollaboratorPhoto(collaboratorId, dataUrl);
       onUpdated && onUpdated(dataUrl);
     } catch (err) {
-      setError(err?.response?.data?.detail || err?.message || "Erro ao subir.");
+      setError(humanizeError(err) || "Erro ao subir.");
       setPreview(null);
     } finally {
       setBusy(false);
@@ -2197,7 +2198,7 @@ function GrantMobileAccessButton({ collaborator }) {
       const r = await api.collabGrantMobileAccess(collaborator.id);
       setResult(r);
     } catch (e) {
-      setErr(e?.response?.data?.detail || e.message);
+      setErr(humanizeError(e));
     } finally { setBusy(false); }
   };
 

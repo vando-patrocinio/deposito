@@ -986,7 +986,7 @@ function CollaboratorAppInner({ mobile = false, forcedCollabId = null, onLogout 
                   const p = pracas.find((x) => x.id === collab?.praca_id);
                   return <Row label="Praça" value={p ? `${p.city}/${p.state}` : (collab?.company || "—")} />;
                 })()}
-                <Row label="Horário" value={`${collab?.schedule?.entrada} / ${collab?.schedule?.saida}`} />
+                <Row label="Horário" value={(collab?.schedule?.entrada || collab?.schedule?.saida) ? `${collab?.schedule?.entrada || "—"} / ${collab?.schedule?.saida || "—"}` : "—"} />
                 {(() => {
                   const valid = (today?.records || []).filter((r) => r.status === "Válido" || r.status === "Offline sincronizado");
                   const byType = {};

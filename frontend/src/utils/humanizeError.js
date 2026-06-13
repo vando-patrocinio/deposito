@@ -35,7 +35,21 @@ function _detail(err) {
         || err?.data?.detail
         || err?.detail;
   if (typeof d === "string" && d.trim()) return d.trim();
-  if (Array.isArray(d) && d.length && d[0]?.msg) return d[0].msg;
+  if (Array.isArray(d) && d.length) {
+    // Pydantic v2 422 → array de {type, loc, msg, input, ctx}. Junta msgs.
+    const msgs = d
+      .map((e) => (typeof e === "string" ? e : (e?.msg || e?.message || "")))
+      .filter(Boolean);
+    if (msgs.length) return msgs.slice(0, 3).join(" · ");
+  }
+  // Objeto Pydantic isolado (não em array)
+  if (d && typeof d === "object") {
+    if (typeof d.msg === "string") return d.msg;
+    if (typeof d.message === "string") return d.message;
+    if (typeof d.code === "string" && typeof d.detail === "string") {
+      return d.detail;
+    }
+  }
   return null;
 }
 
