@@ -2,6 +2,70 @@
 
 > Documento vivo. Atualizado a cada sprint.
 
+## 🧹 LIGO EXECUTIVE OS — FASE A DISCOVERY ENTREGUE (14/06/2026)
+
+**CTO autorizou apenas Fase A (consolidação) + Fase B futura. Zero código escrito.**
+
+### Documentos de descoberta entregues em `/app/memory/`:
+1. `LIGO_EXECUTIVE_OS_ARQUITETURA.md` — visão geral, reaproveitamento, riscos, plano 6 fases
+2. `FASE_A_CONSOLIDACAO_EXECUTIVA.md` — diagnóstico detalhado + proposta de fusão + plano de rollback
+
+### Descobertas críticas (sem código):
+
+**4 Presidentes IA não são concorrentes — são 4 CAMADAS distintas:**
+- `presidente_ia.py` (660) = observability/memory
+- `presidente_executive.py` (884) = monetization (R$ 8 blocos)
+- `presidente_brain.py` (521) = simulation (V12 Causality + V13 Twin + V14 Autopilot)
+- `presidente_operator.py` (1.033) = execution (3 motores + Matriz Autonomia 4 níveis)
+- **Risco:** Health Score (presidente_ia) ≠ Executive Score (presidente_executive). Briefing precisa escolher uma.
+
+**3 Conselhos têm papéis claros — hierárquicos:**
+- `isabella_conselho.py` = ata operacional Commanders (input)
+- `conselho_ia.py` route = report executivo configurável (orquestrador)
+- `presidente_ia_conselho.py` = pareceres LLM CEO/COO/CTO/CFO/CPO (sob demanda)
+- Os 5 Conselhos do CTO (Comercial/Operacional/Financeiro/Produto/Universo Ligo) entram como SUBSEÇÕES do orquestrador.
+
+**5 Receitas são 5 ÂNGULOS, não 5 verdades:**
+- `agent_revenue.py` = por agente IA
+- `real_revenue.py` = estimado/confirmado/recebido (V6.2)
+- `v7_2_revenue.py` = fix de joins (não é receita — internalizar em revenue_attribution)
+- `revenue_attribution.py` = persistência (única coleção: `motor_ia_revenue_attribution`)
+- `isabella_revenue.py` = detector de oportunidades (não calcula)
+- **Risco:** "quanto a Ligo faturou no mês?" tem dois cálculos paralelos (`agent_revenue` vs `real_revenue`). Teste de fusão proposto: convergência ±2%.
+
+**3 "Briefings" — descoberta crítica:**
+- `presidente_ia_briefing.py` = ÚNICO briefing executivo real (Café com IA do CEO)
+- `briefing_dispatcher.py` = só transporte WhatsApp
+- `disparo_briefing.py` = **NÃO É BRIEFING DO CEO**. É injetor de contexto da campanha "Disparo IA" no prompt da Isabella. Nome confuso. **Renomear para `disparo_campaign_context.py`**.
+
+**Pamela e Camila — investigação confirmou (Q3-d):**
+- ❌ Não existem como módulos. Não há `services/pamela_*` nem `services/camila_*`. Não há collections próprias.
+- ✅ Aparecem como **persona** em prompts da Isabella + atribuição em `agent_revenue.py` (modulo='Receita')
+- **Decisão proposta:** declarar oficialmente como **personas** em `LIGO_AGENT_ROSTER.md` (a criar). Persona ≠ menos importante — é a voz da Ligo na comunicação.
+
+**4 Collections para arquivar:**
+- `executive_ledger`: 99,3% sintético (16/2.351 real) — TAG `pre_sanitize_2026_06_14=true` (não deletar — histórico)
+- `presidente_ledger`: 0 docs — drop (rename para `_archive_*`)
+- `briefing_executive`: 0 docs — drop
+- `agent_revenue_events`: 0 docs — drop
+
+### Plano Fase A (2-3 dias estimados)
+- D1: criar 5 docs (`LIGO_AGENT_ROSTER`, `PRESIDENTE_ARCHITECTURE`, `CONSELHO_HIERARCHY`, `REVENUE_TRUTH`, este) + atualizar 15 headers
+- D2: renomes com stubs (manter aliases por 30 dias) + archive 3 collections + tag 1
+- D3: teste `test_one_truth` (briefing/conselho/dashboard convergem ±2%) + entrega ao CTO
+
+### 3 perguntas para autorização final (Q-A1/Q-A2/Q-A3)
+- Q-A1: docs primeiro vs simultâneo com renomes?
+- Q-A2: stubs por 30d / 7d / sem stubs?
+- Q-A3: executive_ledger tag / archive / só filtrar?
+
+### Critério de sucesso da Fase A
+Teste `tests/test_phase_a_consolidation.py::test_one_truth` PASSA → fusão suficiente → liberar Fase B (Café com o CEO).
+
+---
+
+
+
 ## 🤝 P0.5 — Painel de Curadoria + NPS Mínimo + Tenant Guard — ENTREGUE (14/06/2026 · CTO autorizou)
 
 **Implementação E2E (backend + frontend + worker) para o piloto Universo Ligo.**
