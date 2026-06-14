@@ -2,6 +2,74 @@
 
 > Documento vivo. Atualizado a cada sprint.
 
+## 🤝 P0.5 — Painel de Curadoria + NPS Mínimo + Tenant Guard — ENTREGUE (14/06/2026 · CTO autorizou)
+
+**Implementação E2E (backend + frontend + worker) para o piloto Universo Ligo.**
+
+### Backend novos
+
+| Arquivo | Função |
+|---|---|
+| `workers/synthetic_tenant_guard.py` | Worker periódico (1h) — classifica tenants novos via regex/heurística, registra em `synthetic_tenant_guard_log`, dispara `system_alerts` |
+| `routes/universo_ligo_curadoria.py` | Endpoints `/api/universo-ligo/curadoria/*` (top10, validate, invite, dnc, invites, nps, nps/stats, guard/log) + helper global `should_contact_subscriber` |
+
+### Collections novas
+
+- `universo_ligo_invites` — schema completo: `id`, `subscriber_id`, `document`, `invite_source` (fundador/ouro/embaixador/manual), `decision` (APTO/REVISAR/NAO_CONVIDAR), **`decision_reason` (OBRIGATÓRIO ≥5 chars)**, `confidence` (alta/media/baixa), `validated_by`, `validated_at`, `status`, `invited_at`, `invited_by`, `channel`, `accepted_at`, `declined_at`, `decline_reason`, **`do_not_contact_universo_ligo`**, `do_not_contact_at`, `do_not_contact_reason`, `do_not_contact_by`, `notes` (array), `history` (array para re-validações).
+- `nps_responses_mvp` — 1 pergunta/1 resposta: `score` (0-10), `category` (promoter/passive/detractor auto), `comment` opcional, `source`.
+- `synthetic_tenant_guard_log` — auditoria do worker.
+
+### Subscribers — campos novos
+
+- `do_not_contact_universo_ligo` (bool) — **flag global respeitado por todo o sistema**, não só Universo Ligo. Setado via `POST /dnc`.
+- `do_not_contact_universo_ligo_at`, `_reason`, `_by` — auditoria.
+- Helper exportável: `routes.universo_ligo_curadoria.should_contact_subscriber(sub_id, scope="universo_ligo")` — para outros services consultarem antes de qualquer comunicação.
+
+### Frontend novo
+
+- `frontend/src/UniversoLigoCuradoriaPanel.js` — painel CRM-style (sem gamificação, sem ranking, sem score):
+  - Tab "TOP 10 fundadores": 6 KPI cards (Total/APTO/REVISAR/NÃO CONVIDAR/Aceitos/DNC) + cards por fundador com botões Validar / Registrar convite / DNC. Decision_reason e validated_by exibidos para auditoria.
+  - Tab "NPS mínimo": stats em tempo real + form 1-pergunta (score 0-10 + comentário opcional).
+  - Tab "Tenant Guard": log de classificações automáticas com cores e razões.
+  - Dialogs: ValidationDialog (motivo obrigatório), DncDialog (alerta de permanência), InviteDialog (canal/resultado/notas).
+- Registrado em `App.js` sidebar como "Curadoria Fundadores" (roles: administrador, auditor).
+
+### Worker rodando em prod
+- Primeiro scan: **16 tenants observados, 15 sintéticos novos classificados, 15 alertas gerados** em `system_alerts`.
+- Próximo scan: a cada 3.600s.
+
+### Validação E2E executada (curl + screenshot)
+- TOP 10: ✅ retorna 10 fundadores com CPF/phone mascarados, validação populada quando salva.
+- Validate sem motivo: ✅ HTTP 422.
+- Validate com motivo: ✅ HTTP 200, persistido com `decision_reason`, `validated_by`, `validated_at`, `confidence`, `invite_source`.
+- NPS submit: ✅ score=10 → category="promoter", stats em tempo real.
+- DNC: ✅ propaga em subscribers + todos os docs do invite (correção de bug encontrado em teste).
+- Invite após DNC: ✅ HTTP 422 ("Subscriber marcado como Do Not Contact — convite proibido").
+- Painel rendered: ✅ screenshot confirma renderização correta, KPIs corretos, badges de estado certos.
+
+### Bug encontrado e corrigido durante validação
+- DNC fazia upsert sem `invite_source`, criando segundo doc — invite anterior passava. **Corrigido:** check de DNC agora consulta `subscribers` (fonte de verdade) E `universo_ligo_invites`; `set_dnc` usa `update_many` em todos os docs do documento + upsert garantido.
+
+### Critério de aceite CTO atendido
+- ✅ Decisão com **motivo obrigatório** (≥5 chars)
+- ✅ `universo_ligo_invites` com `invite_source`, `validated_by`, `validated_at`, `confidence`
+- ✅ DNC respeitado pelo sistema todo (flag global + helper)
+- ✅ Painel CRM-style — zero gamificação
+- ✅ NPS mínimo viável (1 pergunta/1 resposta)
+- ✅ `synthetic_tenant_guard` worker rodando em produção
+
+### Ainda BLOQUEADO (não autorizado)
+- Pamela V3, Isabella V14, Universo Ligo Fase B, classificação níveis, comunicação massa, convite aos 130, benefícios oficiais
+
+### Próximo passo (aguarda decisão)
+1. Atendimento usa o painel para carimbar os 10 nomes (decisão + motivo).
+2. CTO revisa carimbos e libera piloto.
+3. Liderança Ligo executa convites humanos manuais.
+
+---
+
+
+
 ## 🛡️ OPERAÇÃO VERDADE EXECUTIVA + CURADORIA FUNDADORES — ENTREGUE P0 (14/06/2026 · CTO Order "Limpe a verdade antes de construir")
 
 **Contexto:** Após OPERAÇÃO MAPA DA BASE, CTO autorizou P0 em 3 frentes — corrigir contaminação dos dashboards executivos antes de avançar Universo Ligo Fase B.

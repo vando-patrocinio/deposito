@@ -128,6 +128,7 @@ from routes import (
     isabella_field as routes_isabella_field,
     isabella_commanders as routes_isabella_commanders,
     universo_ligo as routes_universo_ligo,
+    universo_ligo_curadoria as routes_universo_ligo_curadoria,
     shield as routes_shield,
     nervous_foundation as routes_nervous_foundation,
     whatsapp_twilio as routes_whatsapp_twilio,
@@ -1087,6 +1088,13 @@ async def _startup() -> None:
         # — varredura unificada a cada 30 min + reunião diária do conselho.
         from services.isabella_commanders_worker import isabella_commanders_worker
         asyncio.create_task(isabella_commanders_worker())
+        # Synthetic Tenant Guard — blindagem contra inflação por sintéticos.
+        # Roda a cada 1h, classifica tenants novos e alerta CTO via system_alerts.
+        try:
+            from workers.synthetic_tenant_guard import worker_loop as _stg_loop
+            asyncio.create_task(_stg_loop(interval_sec=3600))
+        except Exception as e:
+            logger.warning("[startup] synthetic_tenant_guard: %s", e)
         # Migração one-shot — unifica OpenRouter keys em motor_ia_config
         try:
             from services.openrouter_unify_migration import run_once as _ourun
@@ -1399,6 +1407,7 @@ app.include_router(routes_field_ops.router)
 app.include_router(routes_isabella_field.router)
 app.include_router(routes_isabella_commanders.router)
 app.include_router(routes_universo_ligo.router)
+app.include_router(routes_universo_ligo_curadoria.router)
 app.include_router(routes_shield.router)
 app.include_router(routes_nervous_foundation.router)
 app.include_router(routes_whatsapp_twilio.router)

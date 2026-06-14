@@ -97,6 +97,7 @@ import LousaAdminPanel from "@/LousaAdminPanel";
 import FieldOpsManagerPanel from "@/FieldOpsManagerPanel";
 import IsabellaConsole from "@/IsabellaConsole";
 import UniversoLigoPanel from "@/UniversoLigoPanel";
+import UniversoLigoCuradoriaPanel from "@/UniversoLigoCuradoriaPanel";
 import EstoquePanel from "@/EstoquePanel";
 import PropostasPanel from "@/PropostasPanel";
 import CentralComprasPanel from "@/CentralComprasPanel";
@@ -218,6 +219,8 @@ const NAV_GROUPS = [
         roles: ["gestor", "administrador", "auditor"] },
       { id: "universo-ligo", icon: Layout, label: "Universo Ligo",
         roles: ["gestor", "administrador", "auditor"] },
+      { id: "universo-ligo-curadoria", icon: Layout, label: "Curadoria Fundadores",
+        roles: ["administrador", "auditor"] },
       { id: "estoque", icon: Boxes, label: "Estoque", roles: ["gestor", "administrador"] },
       { id: "projects", icon: Trello, label: "Acompanhamento",
         roles: ["gestor", "administrador", "auditor"] },
@@ -1259,6 +1262,7 @@ function AppContent() {
           {view === "field-ops" && <FieldOpsManagerPanel />}
           {view === "isabella-console" && <IsabellaConsole />}
           {view === "universo-ligo" && <UniversoLigoPanel />}
+          {view === "universo-ligo-curadoria" && <UniversoLigoCuradoriaPanel />}
           {view === "estoque" && <EstoquePanel currentUser={user} />}
           {view === "central-compras" && <CentralComprasPanel currentUser={user} />}
           {view === "projects" && <ProjectsPanel currentUser={user} />}
