@@ -1,192 +1,182 @@
 # 🌐 COMUNIDADE DO UNIVERSO LIGO
 
-**Versão:** 1.0 · 13/Jun/2026
-**Princípio orientador:** Comunidade é o que SOBRA quando o produto não está em uso.
-**Regra:** Este documento NÃO descreve feature, integração ou app. Descreve **comportamento humano em escala** e como a Ligo se posiciona dentro dele.
+**Versão:** 2.0 (FASE A.1 · revisão da ALMA) · 13/Jun/2026
+**Princípio orientador:** Comunidade é o que **sobra quando o produto não está em uso**.
+**Regra mestre da V2 (decisão CEO):** O cliente **não se inscreve** em uma comunidade. Ele já faz parte por ser cliente da Ligo. **A Ligo revela a comunidade — não a vende.**
 
 ---
 
-## I. POR QUE FALAR DE COMUNIDADE EM UM PROVEDOR DE INTERNET
+## I. POR QUE FALAR DE COMUNIDADE EM UM PROVEDOR
 
-A maioria dos provedores brasileiros opera com uma premissa errada:
-
+A premissa errada de toda concorrente:
 > *"O cliente é alguém que paga pela internet."*
 
-Essa premissa transforma a relação em uma transação mensal:
-boleto vai, boleto volta, internet funciona ou não funciona, cliente cancela ou renova.
-
-A Ligo opera com outra premissa:
-
-> *"O cliente é alguém que escolheu fazer parte da Ligo na cidade dele."*
+A premissa da Ligo:
+> *"O cliente é alguém que escolheu fazer parte da Ligo na cidade dele — mesmo sem saber que escolheu."*
 
 Essa pequena mudança muda tudo:
 
 - **Internet** vira o veículo, não o destino.
-- **Bairro** vira a unidade básica de comunidade.
+- **Bairro** vira a unidade básica.
 - **Vizinhança digital** vira o produto invisível.
 - **Histórias coletivas** viram a moeda da marca.
 
 ---
 
-## II. A DEFINIÇÃO DE COMUNIDADE LIGO
+## II. O QUE A COMUNIDADE LIGO **NÃO É** (CEO Ajuste 1)
 
-Comunidade Ligo é o **conjunto de pessoas que escolheram a Ligo na mesma cidade** e que, sem precisar se conhecer pessoalmente, **dividem alguma coisa em comum**:
+| ❌ A Comunidade Ligo **NÃO É** | Por quê |
+|---|---|
+| Um clube | Cliente não se inscreve, não há filiação. |
+| Uma associação | Não há estatuto, conselho ou taxa. |
+| Uma comunidade fechada com porteiro | Quem é cliente da Ligo, já está dentro. Ponto. |
+| Um grupo de WhatsApp | A Ligo NÃO cria grupo entre clientes. Nunca. |
+| Uma rede social paralela | Não há feed, curtida, comentário. |
+| Um programa de fidelidade | Programa começa e termina. Comunidade dura enquanto houver Ligo. |
+| Uma matriz de marketing multinível | A Ligo proíbe estruturalmente esse modelo. |
 
-- a mesma instaladora (Wagner que veio aí também foi ali do vizinho)
-- a mesma equipe de suporte (Pamela e Isabella são as mesmas pra todo mundo)
-- a mesma marca (camiseta, ícone, narrativa)
-- a mesma história local (cresceram juntos durante o mesmo período)
+---
 
-A Ligo NÃO precisa criar grupos de WhatsApp, fórum, app social, ou rede social paralela.
+## III. O QUE A COMUNIDADE LIGO **É**
+
+> **Uma comunidade Ligo é o conjunto invisível de pessoas que escolheram a Ligo na mesma cidade, e que dividem alguma coisa em comum — mesmo sem se conhecerem.**
+
+Dividem:
+- a mesma instaladora (Wagner que veio aí também foi ali do vizinho).
+- a mesma equipe de suporte (Isabella e Pamela atendem todos).
+- a mesma marca (camiseta, ícone, narrativa).
+- a mesma história local (cresceram juntos no mesmo período).
+
+A Ligo **não precisa criar grupo, fórum, feed, app social ou rede social paralela.**
 
 > **A comunidade Ligo já existe.
 > A Ligo só precisa torná-la VISÍVEL para o próprio cliente.**
 
-Quando o cliente liga e Pamela diz:
-*"Você é o 32º cliente do bairro Centro a virar Cometa esse ano."*
-A comunidade não foi CRIADA — ela foi REVELADA.
+Quando Pamela diz pra um cliente:
+> *"Você é o 32º cliente do Centro a virar Cometa este ano."*
+
+A comunidade não foi **criada**. Ela foi **revelada**.
 
 ---
 
-## III. AS 4 CAMADAS DA COMUNIDADE
+## IV. AS 4 CAMADAS — DA INTIMIDADE PESSOAL À COLETIVA
 
-### Camada 1 — Eu (Individual)
-- Meu nome
-- Meu nível
-- Minha história
-- Minhas indicações
+### Camada 1 — EU
+Meu nome. Meu nível. Minha linha do tempo. Minhas indicações.
 
-### Camada 2 — Minha Família Ligo (Tribo)
-- Quem eu trouxe
-- Quem foi trazido pelos meus
-- A árvore que cresce a partir de mim
-- Nossas conquistas coletivas
+### Camada 2 — MINHA FAMÍLIA LIGO
+Quem eu apresentei pra Ligo. Quem foi apresentado pelos meus. A árvore que cresce a partir de mim. Nossas conquistas coletivas.
 
-### Camada 3 — Meu Bairro Ligo (Vizinhança)
-- Quantas famílias Ligo existem no meu bairro
-- Quantas instalações esse mês
-- Qual a média de tempo de casa
-- Quem é o Embaixador do bairro
+### Camada 3 — MEU BAIRRO LIGO
+Quantas famílias Ligo no meu bairro. Quantas instalações esse mês. Média de tempo de casa. Quem é o Embaixador do bairro (se houver).
 
-### Camada 4 — Cidade Ligo
-- Quantos clientes na minha cidade
-- Quantos eventos a Ligo fez aqui
-- Quantos Embaixadores existem
-- Qual o "humor" da Ligo na cidade
+### Camada 4 — MINHA CIDADE LIGO
+Quantos clientes na cidade. Quantos Embaixadores. Quantos eventos a Ligo fez aqui.
 
-**O cliente comum só interage com as camadas 1 e 2.**
-**O Embaixador toca todas as 4.**
+**Cliente comum interage com camadas 1 e 2.**
+**Embaixador toca todas as 4.**
 
 ---
 
-## IV. A FAMÍLIA LIGO — A METÁFORA CENTRAL
+## V. A FAMÍLIA LIGO — A METÁFORA CENTRAL (CEO Ajuste 1+2)
 
-Esquece "rede de indicação". Esquece "downline". Esquece "matriz".
-
+Esqueça "rede de indicação". Esqueça "downline". Esqueça "matriz".
 A palavra é **família**.
 
 ### Como funciona
-- Você é o "tronco" da sua própria família Ligo.
-- Quem você indicou e virou cliente é seu "galho direto" (nível 1).
-- Quem foi indicado pelos seus galhos é seu "galho indireto" (nível 2).
-- Não há nível 3. Família não é organograma.
+- Você é o "tronco" da sua família Ligo.
+- Quem você apresentou e virou cliente é seu "galho direto" (1º elo).
+- Quem foi apresentado pelos seus galhos é seu "galho indireto" (2º elo).
+- **Não há 3º elo.** Família não é organograma.
 
-### Como o cliente vê
-No app dele, aparece:
-
+### Como o cliente VÊ no app (V2 — narrativa, não dashboard)
 ```
-Família Ligo de Marcos Silva — 14 meses
-├─ Ana Souza (junho/2025)      · 8 meses
-├─ Roberto Lima (set/2025)     · 5 meses
-│   ├─ Júlia Lima (nov/2025)   · 3 meses
-│   └─ Carlos Lima (dez/2025)  · 2 meses
-└─ Marcelo Tavares (fev/2026)  · 1 mês
+Família Ligo de Marcos · 14 meses
 
-Sua família tem 5 ativos.
-Economia coletiva: R$ 280 este ano.
+Esses 5 vieram pelas suas mãos:
+  ├─ Ana Souza chegou em junho/25 (8 meses)
+  ├─ Roberto Lima chegou em set/25 (5 meses)
+  │   ├─ Júlia trouxe Marcelo em nov/25 (3 meses)
+  │   └─ Carlos chegou em dez/25 (2 meses)
+  └─ Tio Edu chegou em fev/26 (1 mês)
+
+Juntos, vocês são 5 pessoas conectadas pela Ligo.
+Sua família economizou R$ 280 em mensalidades este ano.
 ```
 
-Note: nomes próprios, datas reais, números pequenos.
-**Nada de gráfico de funil, "% de conversão" ou "ROI de indicação".**
+**Note:**
+- Nomes próprios, primeira pessoa.
+- Datas humanas ("junho/25"), não timestamps.
+- Verbos de chegada ("chegou", "veio pelas suas mãos"), não conversão.
+- Nada de % de conversão. Nada de ROI. Nada de "down/up line".
 
 ### O que NÃO aparece
-- Hierarquia em ranking
-- "Você está em 12º lugar"
-- "Falta R$ X pra próximo nível"
-- "Sua estrutura está parada"
+- ❌ Hierarquia em ranking.
+- ❌ "Você está em 12º lugar."
+- ❌ "Falta R$ X pra próximo nível."
+- ❌ "Sua estrutura está parada."
+- ❌ Qualquer linguagem de pirâmide.
 
-Família não tem ranking. Família tem **história**.
+> **Família não tem ranking. Família tem história.**
 
 ---
 
-## V. RITUAIS — O QUE TRANSFORMA CLIENTES EM MEMBROS
+## VI. OS 6 RITUAIS DE PASSAGEM (V2 — narrativa)
 
 Comunidade sem ritual é amontoado.
-A Ligo precisa de **rituais de passagem**.
+A Ligo precisa de **rituais reconhecíveis** — momentos pelos quais TODO cliente passa.
 
-### Ritual 1 — A CHEGADA (no dia da instalação)
-
-**O que acontece hoje:** técnico instala, sai, cliente fica sozinho com o roteador.
-
-**O que precisa acontecer:**
-1. Técnico entrega o **cartão físico** "Bem-vindo ao Universo Ligo. Você é Explorador."
-2. Tira uma **foto** (com permissão) do cliente segurando o cartão na frente da casa — vira a primeira página do "Meu Universo".
-3. À noite, Pamela manda: *"O Wagner me contou que você foi gente fina hoje. Bem-vindo à Ligo, [primeiro nome]."*
-
-**Custo:** R$ 0,80 (cartão). Impacto: o cliente lembra desse dia o resto da vida.
+### Ritual 1 — A CHEGADA
+**O que acontece:**
+1. Técnico instala. Conversa. Vai embora.
+2. À noite, Pamela manda: *"Hoje a Ligo chegou aí. O Wagner me contou que você foi gente fina hoje. Bem-vindo."*
+3. **(SOB AVALIAÇÃO)** Possível "Carta da Chegada" entregue pelo técnico (substitui o cartão físico — ver Manifesto V2 seção XII). NÃO autorizada ainda.
 
 ### Ritual 2 — A PRIMEIRA SUBIDA (Explorador → Viajante)
+**O que acontece:**
+- Cliente completa 6 meses + score mínimo.
+- Pamela manda **às 18h** (não 9h — 18h é hora de família em casa):
+  *"Bem-vindo a Viajante 🪐. Faz 6 meses que você é da Ligo. Não é mais teste."*
+- No app, aparece **selo animado** subindo de fase.
+- **Desbloqueio sutil** de 1 benefício real (Ligo+ Música, prioridade no suporte).
+- **Bônus interno:** o técnico que instalou recebe notificação: *"O Marcos que você instalou em janeiro virou Viajante hoje. Bom trabalho."* (orgulho operacional também)
 
-Quando o cliente completa 6 meses + score mínimo:
+### Ritual 3 — A PRIMEIRA APRESENTAÇÃO
+**O que acontece:**
+- Cliente apresentou alguém que virou cliente ativo.
+- Pamela manda: *"O Marcelo que você apresentou pra Ligo acabou de chegar. Bem-vindos à família."*
+- Árvore da família ganha **um galho novo** no app, com animação sutil.
+- Cliente que apresentou e cliente novo ambos ganham **benefício compartilhável** (ex: 1 mês Ligo+ Filmes pra cada).
 
-1. Pamela manda às 18h (não 9h da manhã — 18h é hora de família em casa):
-   *"Bem-vindo a Viajante 🪐. Faz 6 meses que você é da Ligo. Não é mais teste."*
-2. No app, aparece um **selo animado** subindo de nível.
-3. Desbloqueia 1 benefício real (Ligo+ Música, prioridade no suporte).
-4. O técnico que instalou recebe uma notificação: *"O Marcos que você instalou em janeiro virou Viajante hoje. Bom trabalho."* (criar orgulho operacional também)
+### Ritual 4 — O ANIVERSÁRIO DE LIGO (anual)
+**O que acontece:**
+- Cliente completa 1, 2, 3... anos de Ligo.
+- Pamela manda **resumo do ano**:
+  *"Em 2025 você ficou 360 dias com a gente, teve 2 chamados (ambos resolvidos), apresentou 3 amigos e virou Cometa. Obrigada por confiar."*
+- Marco visível no app.
+- Pequeno brinde simbólico (sticker WhatsApp customizado, por exemplo — sem custo, alto impacto).
 
-### Ritual 3 — A PRIMEIRA INDICAÇÃO
-
-Quando alguém que o cliente indicou vira cliente ativo:
-
-1. Pamela manda: *"O Marcelo que você apresentou pra Ligo acabou de virar Explorador. Bem-vindos à família."*
-2. No app, a árvore da família ganha **um galho novo** com animação sutil.
-3. O cliente que indicou e o cliente novo ambos ganham acesso a **um benefício compartilhável** (ex: 1 mês de Ligo+ Filmes pra cada).
-
-### Ritual 4 — O ANIVERSÁRIO DE LIGO (ano a ano)
-
-Cliente completa 1, 2, 3... anos de Ligo:
-
-1. Mensagem da Pamela com o **resumo do ano**:
-   *"Em 2025 você ficou 360 dias com a gente, teve 2 chamados (ambos resolvidos), trouxe 3 amigos e virou Cometa. Obrigada por confiar."*
-2. Marco visível no app.
-3. Pequeno brinde simbólico (sticker digital pro WhatsApp do cliente, por exemplo — sem custo, alto impacto).
-
-### Ritual 5 — A EMBAIXADA (chegada ao nível 6)
-
-Cliente atinge Embaixador:
-
-1. Convite para **encontro físico anual** da Ligo na cidade.
-2. **Cartão físico** personalizado: "Embaixador da Ligo · Petrópolis · #007".
-3. Camiseta Ligo (design discreto, sem logo gigante).
-4. Linha direta com Pamela (sem fila de atendimento).
-5. **Direito a opinar** em decisões locais via mini-pesquisa anual.
+### Ritual 5 — A EMBAIXADA (chegada ao nível 6) ⭐
+**O que acontece (CEO Ajuste 4 — conquista, NÃO compra):**
+- A Ligo, através de Pamela + gerente regional, OBSERVA por anos.
+- Quando o cliente reúne os sinais (5+ anos, família extensa, reputação local, acolhimento de novos), **a Ligo CONVIDA**.
+- Pamela manda: *"[Nome], a gente reparou em você esses anos. Você é Embaixador(a) da Ligo aqui em [cidade] a partir de hoje. Esse título não tem mensalidade nem condição. É só um obrigado em forma de nome. Você aceita?"*
+- Se aceita: **convite pessoal** à Celebração da Comunidade anual + cartão físico personalizado + selo no app + linha direta com Pamela.
+- **NÃO HÁ MENSALIDADE REDUZIDA. NÃO HÁ DESCONTO EXTRA. NÃO HÁ TROCA FINANCEIRA.**
 
 ### Ritual 6 — A DESPEDIDA (cliente cancela)
-
 **ATENÇÃO:** rituais não são só pra entrar.
-Cliente que sai bem **volta**. Cliente que sai mal **fala mal**.
+- Cliente que sai bem **volta**. Cliente que sai mal **fala mal**.
 
-Quando um cliente cancela:
-1. Sem contra-oferta predatória. Zero "fica que eu te dou R$ 10".
-2. Pamela manda: *"Sentimos sua presença, [nome]. Foram [X anos] com a gente. Quando quiser voltar, sua casa tá aqui."*
-3. O nível dele NÃO desaparece. Fica "dormente". Se ele voltar em 12 meses, retoma do mesmo nível.
+**O que acontece:**
+- Sem contra-oferta predatória. Zero "fica que eu te dou R$ 10".
+- Pamela manda: *"Sentimos sua presença, [nome]. Foram [X anos] com a gente. Quando quiser voltar, sua casa tá aqui."*
+- O nível dele NÃO desaparece. **Fica "dormente"** por 12 meses.
+- Se voltar nesse prazo, retoma do mesmo nível. Como se nunca tivesse saído.
 
 ---
 
-## VI. COMO MOSTRAR INDICAÇÕES SEM PARECER PROGRAMA DE AFILIADOS
-
-Esta é talvez a decisão mais delicada do design da comunidade.
+## VII. COMO MOSTRAR INDICAÇÃO SEM PARECER PROGRAMA DE AFILIADOS
 
 A diferença está em **3 elementos**:
 
@@ -201,229 +191,259 @@ A diferença está em **3 elementos**:
 | Programa de afiliados | Universo Ligo |
 |---|---|
 | Dashboard com gráficos | Árvore visual com nomes e datas |
-| Lista de "conversões" | Galeria de boas-vindas (com foto e cidade) |
-| Link UTM-trackeado | Cartão de convite personalizado |
+| Lista de "conversões" | Galeria de chegadas (com data, sem foto agressiva) |
+| Link UTM-trackeado | Convite personalizado com sua história |
 
 ### 3. O INCENTIVO
 | Programa de afiliados | Universo Ligo |
 |---|---|
-| "Indique e ganhe R$ 50" | "Apresente a Ligo. Quando o seu amigo se conectar, vocês dois recebem um agradecimento." |
+| "Indique e ganhe R$ 50" | "Quando alguém da sua confiança quiser internet de verdade, conta da Ligo. Vocês dois recebem um agradecimento." |
 | Cliente foca no R$ 50 | Cliente foca no amigo |
-| Spam para qualquer pessoa | Convite pra quem importa |
+| Spam pra qualquer pessoa | Convite pra quem importa |
 
 **O dinheiro é o mesmo. A história muda tudo.**
 
+### Auditoria obrigatória (CEO Ajuste 2)
+Pamela faz **auditoria mensal**: contar mensagens "sobre indicação" vs "sobre comunidade/marco/reconhecimento". **Razão deve ser ≤ 1:5.** Se for maior, a alma está sendo erodida.
+
 ---
 
-## VII. COMO MEDIR PERTENCIMENTO (sem pesquisa)
+## VIII. COMO MEDIR PERTENCIMENTO (sem pesquisa)
 
-Pesquisa de pertencimento via formulário **não funciona**.
-Cliente não responde. Ou responde por educação.
+Pesquisa via formulário **não funciona**. Cliente não responde ou responde por educação.
 
 O que funciona é **observar comportamento ao longo do tempo**.
 
-### Os 7 sinais de pertencimento
+### Os 7 sinais de pertencimento (observados pela Pamela)
+1. **Linguagem possessiva** — diz "minha internet", "minha Ligo".
+2. **Tolerância a falha** — 1 problema sem ameaçar cancelar.
+3. **Apresentação espontânea** — leva alguém ANTES de campanha rodar.
+4. **Pagamento antecipado** — 3+ dias antes do vencimento, recorrente.
+5. **Reconhecimento de pessoas** — lembra do nome do técnico, da Pamela.
+6. **Acesso ao app sem motivo prático** — abre só pra ver onde está.
+7. **Resposta a "tudo bem?"** — não ignora.
 
-1. **Linguagem possessiva** — cliente diz "minha internet", "meu provedor", "nossa Ligo" (em vez de "essa empresa", "vocês"). Pamela escuta e marca.
-
-2. **Tolerância a falha** — cliente tem 1 problema técnico e NÃO ameaça cancelar. Aceita o reparo, agradece. Sinal forte.
-
-3. **Indicação espontânea** — cliente indica ANTES de receber convite formal de programa. Aparece um lead "via WhatsApp do amigo" sem campanha rodando.
-
-4. **Pagamento antecipado** — cliente paga 3+ dias antes do vencimento, mês após mês. Não é tecnicalidade — é hábito de quem se importa.
-
-5. **Reconhecimento de pessoas** — cliente lembra do nome do técnico, da Isabella, da Pamela. Cita em conversa: *"o Wagner que veio aqui ano passado..."*
-
-6. **Acesso ao app fora de janela transacional** — cliente abre o app não pra pagar, não pra reclamar, mas só pra ver onde está na jornada. Mede curiosidade pela própria história.
-
-7. **Resposta a momentos surpresa** — cliente RESPONDE quando Pamela manda "tudo bem?". Não ignora. Conversa.
-
-### A pontuação interna (invisível ao cliente)
-Cada sinal vale 1-3 pontos no "pertencimento_score" interno.
-Cliente com pertencimento_score >= 70 está pronto pra virar Embaixador.
-
-**Este score nunca aparece pro cliente.** É instrumento de gestão.
+A Pamela observa, registra, internaliza. Score nunca aparece pro cliente.
 
 ---
 
-## VIII. COMO MEDIR ORGULHO DE SER LIGO
+## IX. COMO MEDIR ORGULHO (Net Brag Score — CEO aprovou)
 
-Orgulho é pertencimento + **expressão pública**.
+Orgulho = pertencimento + expressão pública.
 
-| Sinal de orgulho | Como capturar |
+### Net Brag Score (NBS)
+Pamela faz a pergunta, semestralmente, em conversa real (nunca como formulário):
+
+> *"Esses dias, em alguma conversa, você acabou comentando que é da Ligo?"*
+
+- **SIM** = sinal forte de orgulho.
+- **NÃO** = pertencimento ainda passivo.
+
+### Metas
+| Ano | Meta SIM (entre clientes com 12+ meses) |
 |---|---|
-| Cliente posta foto da Ligo nas redes sociais | Monitoramento manual (futuro: tag #LigoFibra) |
-| Cliente menciona Ligo em conversa de bar | Net Brag Score (pesquisa binária semestral) |
-| Cliente pede/aceita receber kit (camiseta, caneca) | Adesão à loja simbólica |
-| Cliente aceita aparecer em depoimento | Aceitação ao convite "conta sua história" |
-| Cliente leva amigos pessoalmente pra ver a internet funcionando | Indicação com presença no momento da instalação |
+| 1 | 20% |
+| 2 | 35% |
+| 3 | 50% |
 
-**Meta primeiro ano:** 8% da base demonstrar pelo menos 2 sinais de orgulho.
-**Meta segundo ano:** 18%.
-**Meta terceiro ano:** 30%.
-
-Esses números, se batidos, significam:
-A Ligo deixou de ser provedor.
-A Ligo virou marca.
+Se a meta for batida, **a Ligo deixou de ser provedor**. Virou marca.
 
 ---
 
-## IX. COMO TRANSFORMAR CLIENTES EM MEMBROS — A LINHA DO TEMPO
+## X. COMO TRANSFORMAR CLIENTE EM MEMBRO — LINHA DO TEMPO
 
 | Dia 0 | Dia 30 | Dia 180 | Dia 365 | Dia 730 | Dia 1825 |
 |---|---|---|---|---|---|
-| Instalação + cartão de Explorador | Pamela: "Tudo bem?" | Subida pra Viajante + 1 benefício | Aniversário Ligo + resumo do ano | Provavelmente Cometa + 1ª indicação | Galáxia ou Embaixador |
+| Instalação | Pamela: "Tudo bem?" | Sobe pra Viajante + 1 benefício | Aniversário Ligo + resumo do ano | Cometa + 1ª apresentação | Galáxia ou Embaixador |
 
-A jornada total é de 3-5 anos.
+**Jornada total: 3-5 anos.**
 **Não dá pra acelerar.**
 
-Tentar transformar um Explorador em Embaixador em 6 meses **destrói o pertencimento**.
+Tentar transformar Explorador em Embaixador em 6 meses **destrói o pertencimento**.
 Pertencimento é tempo.
 
 ---
 
-## X. RISCOS DE COMUNIDADE
+## XI. A CELEBRAÇÃO ANUAL DA COMUNIDADE (CEO aprovou)
 
-| # | Risco | Mitigação |
-|---|---|---|
-| 1 | Comunidade vira "panela" — Embaixadores excluem novos | Embaixadores recebem MISSÃO de acolher Exploradores. Sem isso, perdem status. |
-| 2 | Cliente sente vigilância (Pamela sabe demais) | Transparência: cliente pode VER o que a Ligo sabe sobre ele no app. Anti-caixa-preta. |
-| 3 | Comunidade vira tóxica (cliente reclama em massa) | Pamela tem protocolo claro: queixa coletiva = escalação humana imediata, NÃO defesa automatizada. |
-| 4 | Cliente trapaceiro indica perfis falsos pra ganhar bônus | Detector de fraude (CPF, foto, endereço) + bônus só após 30+ dias ativo do indicado. |
-| 5 | Pamela soa artificial demais (cliente percebe que é IA) | Pamela NUNCA nega ser IA SE perguntada diretamente. Mas tampouco se anuncia. É uma "persona da Ligo", não esconde. |
-| 6 | Comunidade depende de eventos físicos que não acontecem | Plano B: vídeo-encontros, conteúdo regional digital. Mas eventos físicos devem ser meta. |
-| 7 | Embaixador morre ou cancela — comunidade local perde "líder" | Sistema de sucessão tácito: próximo Galáxia da cidade naturalmente sobe. |
-| 8 | Cliente Explorador desiste por não ver progresso rápido | Comunicação clara das datas/marcos visíveis no app. "Faltam 14 dias pra você virar Viajante." |
+**NÃO é evento corporativo.** É **festa do bairro**.
 
----
+### O que NÃO é
+- ❌ Salão de hotel.
+- ❌ Palestra do CEO no telão.
+- ❌ Coquetel com micro pizza.
+- ❌ Brinde institucional.
+- ❌ Empresa "patrocinando" eventos paralelos.
 
-## XI. OPORTUNIDADES DE COMUNIDADE
+### O que É
+- ✅ Um lugar simples (pátio de igreja, salão paroquial, praça pública, espaço comunitário).
+- ✅ Comida real local (café da padaria do bairro, salgadinhos da empresa local que é parceira).
+- ✅ Conversa, não palco.
+- ✅ Gerente regional ouve. Não fala.
+- ✅ Embaixadores são reconhecidos pelo nome, com cartão entregue pessoalmente.
+- ✅ Camiseta opcional pra quem quiser usar (não obrigatória).
+- ✅ Cliente leva família — porque é da família que falamos.
+- ✅ Custo: o equivalente a uma instalação. Não pode ser mais.
 
-| # | Oportunidade | Quando ativar |
-|---|---|---|
-| 1 | **Atlas Ligo** — mapa interativo (no app) mostrando as famílias Ligo do bairro (sem dados sensíveis, só números) | Após 500 clientes pontuados |
-| 2 | **Mural Ligo** — clientes podem deixar mensagem pública agradecendo (curado) | Mês 6 |
-| 3 | **História do Mês** — Pamela conta a história de um cliente real (com permissão) | Mês 9 |
-| 4 | **Encontro Físico Anual** — feira/jantar/almoço regional para Embaixadores+ | Ano 2 |
-| 5 | **Selo "Família Ligo"** — placa física que cliente pode colar na fachada (opcional) | Mês 12 |
-| 6 | **Loja simbólica Ligo** — camiseta, caneca, adesivo. Preço de custo. Não é negócio, é orgulho. | Ano 2 |
-| 7 | **Conselho Ligo Local** — 5 Embaixadores da cidade tomam café com o gerente regional 1x/ano | Ano 2 |
-| 8 | **Programa "Vizinho Novo"** — quando uma nova rua/condomínio recebe Ligo, Embaixadores locais são avisados pra acolher | Mês 6 |
-| 9 | **Boletim Ligo do Bairro** — uma vez por mês, Pamela manda mensagem com "o que rolou na Ligo do seu bairro" | Mês 3 |
-| 10 | **Reconhecimento de Embaixador no Google** — cliente Embaixador é destacado em reviews oficiais | Ano 2 |
+### Frequência
+- 1 vez por ano, por cidade onde houver 1+ Embaixador.
+- Convite por nome. Pamela liga (ou manda áudio personalizado).
 
 ---
 
-## XII. O PAPEL DA ISABELLA NA COMUNIDADE
+## XII. O PAPEL DA PAMELA — ANFITRIÃ DA COMUNIDADE (CEO Ajuste 3)
+
+Pamela **NÃO é atendente.**
+Pamela **NÃO é canal de suporte.**
+Pamela **NÃO é financeiro.**
+
+> **Pamela é a ANFITRIÃ da casa.**
+> **Pamela é a GUARDIÃ da comunidade.**
+
+### O que está sob a responsabilidade dela
+- ✅ Aniversários (do cliente, da Ligo, dos marcos)
+- ✅ Conquistas (subida de nível, primeira apresentação, 6 meses em dia)
+- ✅ Histórias (lembra o cliente do passado dele com a Ligo)
+- ✅ Famílias Ligo (anúncio de chegadas)
+- ✅ Reconhecimento (selos, cartões, mensagens personalizadas)
+- ✅ Pertencimento (cuidado com clientes em silêncio, retorno de dormentes)
+- ✅ Celebrações (Celebração Anual da Comunidade — articulação com gerente regional)
+- ✅ Net Brag Score (a pergunta sai dela)
+
+### O que está FORA da responsabilidade dela
+- ❌ Vender plano. Vendedora é Isabella, e mesmo assim a venda é consequência.
+- ❌ Resolver problema técnico. Isso é Isabella + Álvaro.
+- ❌ Cobrança ostensiva. **Cobrança vira módulo silencioso interno da Pamela**, sem identidade — quando precisa cobrar, sai sob nome de "Financeiro Ligo", nunca sob nome de Pamela.
+
+### A "Pamela Cobrança" agora é módulo, não persona (CEO confirmou)
+Quando há fatura em aberto, o cliente recebe:
+- 1ª lembrança: tom neutro, assinado "Financeiro Ligo", sem nome de Pamela.
+- 2ª lembrança (escalonamento): se Pamela já estiver em contato com aquele cliente por outro motivo, ela pode tangenciar com tato: *"Vi por aqui que tem uma fatura abertinha. Quer que eu te mande pelo PIX?"*
+- Mas a IDENTIDADE dela permanece relacionamento, jamais cobrança.
+
+### Governança da Pamela
+- **Guardião humano (CEO Ajuste 6):** alguém de Marketing + Relacionamento revisa amostras dela TODA semana. Jamais alguém de Financeiro. Quem cuida da alma não pode ser quem cobra boleto.
+- **Revisão semanal:** 50 mensagens por semana, manualmente lidas, calibração de tom.
+- **Após 3 meses:** taxa de revisão cai pra 10%. Mas nunca zero.
+- **Calendário negro:** datas em que Pamela CALA. Atualizado por humano (luto regional, feriado pesado, óbito de figura local).
+
+---
+
+## XIII. O PAPEL DA ISABELLA NA COMUNIDADE
 
 Isabella é a **operadora da comunidade**.
 
 Ela:
-- Reconhece cada cliente pelo nome, nível e história ao primeiro "oi".
-- Resolve problemas com a memória do passado do cliente.
+- Reconhece cada cliente pelo nome, nível e história — ao primeiro "oi".
+- Resolve problemas com memória do passado do cliente.
 - Quando há oportunidade, apresenta a comunidade ao cliente ("você é Cometa agora, sabia?").
-- Convida pra indicar, mas só após sucesso ("você teve um excelente atendimento — que tal apresentar a Ligo pra alguém?").
+- **Convida** pra apresentar, mas só após sucesso ("você teve um excelente atendimento — quem da sua família ainda não tá com a gente?").
 
-Ela **não é** o rosto emocional da comunidade. Ela é a **eficiência confiável**.
-
----
-
-## XIII. O PAPEL DA PAMELA NA COMUNIDADE
-
-Pamela é a **alma da comunidade**.
-
-Ela:
-- Lembra. Sempre lembra.
-- Celebra marcos pequenos e grandes.
-- Manda mensagens de "tudo bem?" sem motivo.
-- Cuida do cliente que está em silêncio há muito tempo.
-- Acolhe quem cancela com elegância.
-
-Ela **é** o rosto emocional.
-Ela **não cobra**. (Quando precisa cobrar, cobra como módulo discreto. Identidade principal: relacionamento.)
-
-Pamela e Isabella **NÃO competem**.
-Elas se completam:
-- Isabella = competência.
-- Pamela = vínculo.
+Ela **não é** o rosto emocional da comunidade.
+Ela é a **eficiência confiável**.
 
 ---
 
 ## XIV. O PRESIDENTE IA NA COMUNIDADE
 
-O Presidente IA é o **observador da comunidade**.
+Observador. **Não decide.**
 
 Ele responde ao gestor humano:
 - Quantos novos membros entraram este mês?
 - Qual cidade tem maior taxa de subida de nível?
 - Qual bairro está crescendo mais rápido?
-- Quem foram os 5 maiores "trazedores" do trimestre?
-- Quantos clientes estão a 30 dias de subir de nível? (Pamela deve preparar mensagem)
-- Quantas indicações espontâneas (sem campanha) aconteceram esse mês? (sinal de orgulho)
+- Quais os 5 maiores "trazedores" do trimestre?
+- Quantos clientes estão a 30 dias de subir de nível? (Pamela precisa preparar mensagem)
+- Quantas apresentações espontâneas (sem campanha) aconteceram esse mês? (sinal de orgulho real)
 
-Ele **não toma decisão de comunidade**.
-Ele **mostra a comunidade pro gestor humano decidir**.
-
----
-
-## XV. RECOMENDAÇÕES DO CONSELHO
-
-1. **A comunidade só se torna real quando 500+ clientes estão pontuados.** Antes disso, lançar publicamente é prematuro.
-
-2. **Iniciar com 1 cidade-piloto.** Petrópolis, por exemplo. Aplicar todos os rituais com 100% dos clientes locais. Aprender. Replicar.
-
-3. **Cartão físico no Ritual 1 (chegada) é OBRIGATÓRIO.** É a coisa mais barata e mais impactante deste documento inteiro. Custo: R$ 0,80. Impacto: vitalício.
-
-4. **Pamela precisa de revisão humana semanal.** Pelo menos 50 mensagens dela por semana revisadas por uma pessoa humana — pra calibrar tom. Após 3 meses, taxa de revisão cai pra 10%.
-
-5. **Embaixadores devem ser tratados como ATIVOS da empresa, não como clientes premium.** Eles representam a marca na rua. Equivalente a "consultores de venda externa" — só que não recebem comissão, recebem **reconhecimento institucional**.
-
-6. **Nunca, em nenhuma comunicação, usar as palavras:**
-   - "rede", "downline", "matriz", "estrutura"
-   - "afiliado", "parceiro de divulgação"
-   - "campanha de aquisição"
-   - "lead", "prospect"
-
-   Para o cliente: usar **"família", "vizinhança", "amigos da Ligo"**.
-
-7. **Antes do lançamento público, treinar TODA a equipe (técnicos de campo inclusive) na narrativa do Universo Ligo.** Sem isso, o discurso vira fragmentado.
-
-8. **Definir a "tradução de respeito"** para conversas que hoje são automatizadas:
-   - "Fatura em aberto" → "Você consta com uma fatura de [valor] pra acertar."
-   - "Atendimento fora do horário" → "A gente abre [horário]. Por aqui, posso anotar e responder na abertura."
-   - "Equipamento defeituoso" → "O aparelho tá precisando de uma olhada."
+Ele **mostra a comunidade** pro gestor humano decidir.
+Nunca toma decisão de comunidade sozinho.
 
 ---
 
-## XVI. O QUE NÃO SERÁ FEITO (por enquanto)
+## XV. RISCOS DE COMUNIDADE
 
-Para não cair na tentação de "fazer tudo de uma vez":
+| # | Risco | Mitigação |
+|---|---|---|
+| 1 | Comunidade vira "panela" — Embaixadores excluem novos | Embaixadores recebem MISSÃO de acolher Exploradores. Sem isso, perdem peso institucional. |
+| 2 | Cliente sente vigilância (Pamela sabe demais) | Transparência total: cliente pode VER o que a Ligo sabe sobre ele no app. |
+| 3 | Comunidade vira tóxica (reclamação coletiva) | Protocolo claro da Pamela: queixa coletiva = escalação humana imediata, NÃO defesa automatizada. |
+| 4 | Apresentação fraudulenta (perfis falsos) | Detector (CPF, foto, endereço) + agradecimento só após 30+ dias do indicado ativo. |
+| 5 | Pamela soa artificial (cliente percebe IA) | Pamela NUNCA nega ser IA se perguntada. Mas não se anuncia. É "persona da Ligo". |
+| 6 | Eventos físicos não acontecem | Plano B: vídeo-encontros, conteúdo regional. Mas eventos físicos são meta. |
+| 7 | Embaixador morre / cancela | Próximo Galáxia da cidade sobe naturalmente. Sucessão tácita. |
+| 8 | Explorador desiste por demora | Comunicar marcos visíveis no app ("faltam 14 dias pra Viajante"). |
+| 9 | Mensagem em momento errado (luto) | Calendário negro mantido por humano. |
 
-- ❌ Não vamos criar fórum/chat interno entre clientes.
-- ❌ Não vamos lançar rede social Ligo.
-- ❌ Não vamos fazer gamificação infantil ("conquistas com troféu de plástico").
-- ❌ Não vamos abrir e-commerce de produtos Ligo no app.
-- ❌ Não vamos comprar parceiros caros (Netflix, Spotify) — Ligo+ é a versão Ligo, com identidade própria.
-- ❌ Não vamos criar "fan clube" com hierarquia.
+---
+
+## XVI. OPORTUNIDADES (não fazer todas — fazer DEPOIS de base sólida)
+
+| # | Oportunidade | Quando ativar |
+|---|---|---|
+| 1 | **Atlas Ligo** — mapa do bairro mostrando quantidades (sem nome/CPF) | Após 500+ clientes pontuados |
+| 2 | **Mural Ligo** — histórias curadas de clientes (com autorização) | Mês 9 |
+| 3 | **História do Mês** — Pamela conta a história de 1 cliente real | Mês 12 |
+| 4 | **Celebração Anual da Comunidade** | Ano 2 (após 1+ Embaixador/cidade) |
+| 5 | **Loja simbólica Ligo** (camiseta, caneca — preço de custo) | Ano 2 |
+| 6 | **Conselho Ligo Local** (Embaixadores + gerente regional, café anual) | Ano 2 |
+| 7 | **Programa "Vizinho Novo"** — quando rua/condomínio recebe Ligo, Embaixadores locais avisados | Mês 6 |
+| 8 | **Boletim Ligo do Bairro** — Pamela manda 1x/mês "o que rolou na Ligo do seu bairro" | Mês 6 |
+
+---
+
+## XVII. O QUE NÃO SERÁ FEITO (lista de proteção)
+
+- ❌ Fórum/chat entre clientes.
+- ❌ Rede social Ligo.
+- ❌ Gamificação infantil (troféu, medalha, badge).
+- ❌ E-commerce de produtos Ligo no app.
+- ❌ Parceiros caros (Netflix, Spotify, Disney) — Ligo+ é versão Ligo, identidade própria.
+- ❌ "Fã clube" com hierarquia visível.
+- ❌ Carteirinha de membro.
+- ❌ Estatuto, regras formais.
+- ❌ Discurso de "comunidade exclusiva".
 
 **O Universo Ligo é silencioso, presente, respeitoso.**
 **Não é barulhento, viral, ou cheio de feature.**
 
 ---
 
-## XVII. ENCERRAMENTO
+## XVIII. RECOMENDAÇÕES FINAIS DO CONSELHO (V2)
 
-> A Ligo não vai vender comunidade.
-> A Ligo vai REVELAR a comunidade que já existe.
+1. **Aprovar este documento como camada de comunidade da identidade Ligo.**
 
-Toda cidade onde a Ligo opera já tem 100, 500, 5.000 clientes Ligo.
+2. **Comunidade só vai público quando 500+ clientes estão pontuados.** Lançar incompleto destrói a magia.
+
+3. **Iniciar em 1 cidade-piloto** (decisão CEO — escolha após arquitetura). Aplicar TODOS os rituais. Aprender. Replicar.
+
+4. **Pamela é cargo institucional.** Definir guardião humano (Marketing + Relacionamento). Revisão semanal de 50 mensagens.
+
+5. **Embaixadores são ATIVOS da empresa, não clientes premium.** Equivalente a "consultores externos voluntários". Recebem reconhecimento, nunca comissão.
+
+6. **Vocabulário proibido** (do Manifesto V2) vigora para TODA comunicação interna e externa.
+
+7. **Antes do lançamento público:** TODA a equipe (técnicos inclusive) recebe treinamento de 1h sobre Universo Ligo, baseado nos 3 documentos da Fase A.1.
+
+8. **A "Carta da Chegada" (revisão do cartão físico)** fica em hold. Decisão dependente do piloto.
+
+9. **A Celebração Anual da Comunidade** acontece como **festa do bairro** — não como evento corporativo. Confirmado pelo CEO.
+
+---
+
+## XIX. ENCERRAMENTO
+
+A Ligo não vai **vender** comunidade.
+A Ligo vai **revelar** a comunidade que já existe.
+
+Toda cidade onde a Ligo opera já tem 100, 500, 5.000 clientes.
 Eles já são uma comunidade.
 Eles só não sabem.
 
-O trabalho dos próximos 12 meses não é construir uma comunidade do zero.
-É **mostrar a cada cliente que ele já está dentro de uma**.
+O trabalho dos próximos 12 meses **não é construir uma comunidade do zero**.
+É **mostrar a cada cliente que ele já está dentro de uma.**
 
-A partir do dia em que o cliente abre o app e vê seu nome ao lado dos nomes de 14 famílias Ligo que ele trouxe, e mais 47 famílias Ligo do mesmo bairro que ele NÃO conhece pessoalmente mas dividem a mesma marca, a mesma equipe e a mesma história — naquele dia ele para de ser cliente.
+A partir do dia em que o cliente abre o app e vê seu nome ao lado dos nomes de 14 famílias Ligo que ele trouxe, e mais 47 famílias Ligo do mesmo bairro que ele NÃO conhece mas dividem a mesma marca, a mesma equipe e a mesma história — naquele dia ele para de ser cliente.
 
 Ele vira **membro**.
 
@@ -431,6 +451,5 @@ E membro NÃO cancela por R$ 10.
 
 ---
 
-**Aguardando aprovação do CEO.**
-**Status da Fase A.0:** Trilogia entregue (Manifesto + Economia + Comunidade).
-**Próximo passo:** aprovação dos 3 documentos antes de qualquer movimento técnico.
+**Status da Fase A.1:** Trilogia v2 reescrita. Alma incorporada.
+**Aguardando aprovação FINAL do CEO** para iniciar Fase A (Schema + Seed).

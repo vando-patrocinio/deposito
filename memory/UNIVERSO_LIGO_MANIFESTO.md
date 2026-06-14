@@ -1,376 +1,450 @@
 # 📜 MANIFESTO DO UNIVERSO LIGO
 
-**Versão:** 1.0 · 13/Jun/2026
-**Autor:** CEO Ligo + Conselho Independente
-**Status:** Aguardando aprovação do CEO
-**Regra:** Este documento NÃO descreve tecnologia. Descreve um modo de viver com a Ligo.
+**Versão:** 2.0 (FASE A.1 · revisão da ALMA) · 13/Jun/2026
+**Decisão do CEO:** este documento descreve a **alma** do Universo Ligo. Identidade primeiro, sistema depois.
+**Regra:** Comunidade antes de indicação. Conquista antes de troca. Emoção antes de mecânica.
 
 ---
 
-## I. A PERGUNTA QUE NINGUÉM ESTÁ FAZENDO
+## I. A PERGUNTA QUE NUNCA FOI RESPONDIDA
 
-Todo provedor de internet do Brasil oferece a mesma coisa:
-*megabytes, modem grátis, primeira mensalidade promocional, equipe de instalação.*
+Todo provedor de internet do Brasil tenta responder:
+> *"Como vender mais megabytes?"*
 
-A guerra é de preço.
-E é uma guerra que ninguém ganha — alguém sempre vai estar R$ 10 mais barato.
+A Ligo decidiu responder outra:
+> **"Por que alguém escolheria a Ligo mesmo que outra internet custasse R$ 10 menos?"**
 
-A pergunta que precisa ser feita não é:
-> "Por que o cliente compraria a Ligo?"
+A resposta não é velocidade.
+Não é uptime.
+Não é tabela de preços.
 
-É:
-> **"Por que o cliente FICARIA com a Ligo se outra internet custasse R$ 10 menos?"**
+A resposta é:
 
-A resposta para essa pergunta não está em mais velocidade.
-Não está em mais GB.
-Não está em mais um aplicativo.
-
-A resposta está em **uma palavra que nenhum concorrente usa**:
-
-# PERTENCIMENTO.
+# *"Porque, dentro da Ligo, eu não sou cliente. Eu sou parte."*
 
 ---
 
-## II. O QUE É O UNIVERSO LIGO
+## II. O QUE O UNIVERSO LIGO **NÃO É**
 
-O Universo Ligo **não é um plano**.
-O Universo Ligo **não é um produto**.
-O Universo Ligo **não é um aplicativo**.
+Antes de dizer o que é, é preciso dizer o que **não é** — porque a tentação de copiar modelos existentes é gigante.
 
-> O Universo Ligo é **a vida que acontece** quando a internet chega de verdade na casa de alguém.
-
-É a videochamada com a avó.
-É a aula do filho que não cai no meio da prova.
-É o jogo online que finalmente carrega.
-É o trabalho remoto que parou de ser desculpa.
-É a série assistida com o cônjuge, sem buffer.
-
-A internet é o cano. O Universo Ligo é a **água que corre por ele**.
-
-Quando o cliente pergunta "qual o plano da Ligo?", a resposta certa não é "600 megas".
-A resposta certa é:
-
-> *"A gente leva a Ligo até a sua casa, e a partir daí você passa a fazer parte de uma família que já tem [N] outras famílias no mesmo bairro. Você ganha um nome, um nível, uma história. Internet vem de brinde."*
-
-Essa é a diferença.
-Outras empresas vendem cano.
-**A Ligo entrega convivência.**
-
----
-
-## III. POR QUE O UNIVERSO LIGO EXISTE
-
-Porque o brasileiro está cansado de ser tratado como CPF.
-
-Você liga pra qualquer provedor: ele pergunta seu CPF antes do seu nome.
-Você cancela: ele te oferece R$ 10 de desconto pra ficar.
-Você reclama: ele responde "lamentamos o transtorno".
-
-A Ligo nasce pra inverter isso:
-
-> **Pergunta o nome primeiro.
-> Lembra do nome depois.
-> Celebra o nome todo dia.**
-
-O Universo Ligo existe porque:
-
-1. **Cliente não é fluxo de caixa.** É a Dona Marta que indicou o Seu João, que indicou o filho dele.
-2. **Internet boa não é diferencial.** Em 2026, é commodity. O que diferencia é COMO o cliente é tratado nos 364 dias do ano em que ele NÃO precisa de suporte.
-3. **Indicação espontânea não acontece de graça.** Acontece quando o cliente sente que tem uma história com a empresa.
-4. **Comunidade local resiste a guerra de preço.** Multinacional não consegue copiar Dona Marta indicando o Seu João.
-
----
-
-## IV. A TRANSFORMAÇÃO QUE A LIGO GERA
-
-Quando um cliente entra no Universo Ligo, três coisas mudam:
-
-### 1. O modo como ele FALA da empresa
-Antes: *"contratei a internet da [nome]"*
-Depois: *"eu sou da Ligo"*
-
-A diferença é gigante. "Contratei" é transação.
-"Sou da" é identidade.
-
-### 2. O modo como ele REAGE a problema
-Antes: liga pra reclamar. Se for o terceiro problema, cancela.
-Depois: avisa que tá com problema. Sabe que vão resolver. Continua na Ligo mesmo após 3 problemas, porque os 364 dias bons valeram a pena.
-
-### 3. O modo como ele FALA da Ligo pra outras pessoas
-Antes: não fala. Ou fala mal, se foi mal atendido.
-Depois: **indica espontaneamente, sem precisar receber R$ 50.**
-
-O R$ 50 é só o gatilho legal pra ele te dizer o nome do vizinho.
-O motivo verdadeiro pra indicar é orgulho.
-
----
-
-## V. A IDENTIDADE DE MARCA — TOM E SUBSTÂNCIA
-
-### O Universo Ligo NÃO é:
-- ❌ "Programa de pontos"
-- ❌ "Clube de vantagens"
-- ❌ "Cashback"
-- ❌ "Indique e ganhe"
-- ❌ "Loyalty program"
-- ❌ "Plataforma de fidelização"
-
-Todos esses nomes carregam o cheiro de marketing transacional.
-Todos eles dizem ao cliente: *"vou te dar uma carteirinha pra você gastar mais."*
-
-### O Universo Ligo É:
-- ✅ Uma **vizinhança digital**
-- ✅ Um **caderno onde a história do cliente é escrita**
-- ✅ Uma **galeria de pessoas reais** que escolheram a Ligo
-- ✅ Um **espaço de orgulho** — "minha família trouxe 6 pessoas pra Ligo"
-- ✅ Uma **forma de existir junto com outras famílias da mesma cidade**
-
-### O TOM
-- Sempre diz o nome próprio, nunca "prezado cliente".
-- Sempre lembra do tempo de casa: "Você está com a gente há 4 anos."
-- Sempre celebra marcos pequenos: aniversário, 1 ano de Ligo, primeira indicação.
-- Nunca usa "transtorno", "ocorrido", "ineditismo", "exclusividade".
-- Fala como vizinho competente: educado, mas próximo. Confiável, mas humano.
-
----
-
-## VI. A EXPLICAÇÃO DE 30 SEGUNDOS
-
-> **"A Ligo entrega internet rápida na sua casa.
-> Mas o que a gente faz de diferente é tratar você como parte de uma família.
-> Você ganha um nome dentro da nossa comunidade — começa como Explorador e vai subindo:
-> Viajante, Cometa, Constelação, Galáxia, Embaixador.
-> Cada nível abre benefícios reais — desconto em fatura, brindes, prioridade no suporte, eventos da cidade.
-> E sempre que você indica um amigo que vira cliente, sua família cresce e você ganha junto.
-> A internet é o jeito de entrar. O Universo Ligo é o lugar onde você fica."**
-
-**29 segundos. Pode ser dita por qualquer técnico em campo, qualquer atendente, qualquer vizinho.**
-
-Se um humano comum não consegue repetir essa frase de coração, a marca falhou.
-
----
-
-## VII. O PAPEL DA ISABELLA
-
-Isabella é a **porta de entrada** do Universo Ligo.
-
-Ela não é vendedora.
-Ela não é atendente de URA.
-Ela é a **primeira pessoa da Ligo** que o cliente conhece.
-
-A função dela é:
-
-1. **Receber** — abrir a porta da casa com cuidado.
-2. **Resolver** — quando o cliente tem um problema técnico ou comercial.
-3. **Lembrar** — saber quem é cada pessoa antes de cada conversa.
-4. **Conectar** — apresentar o cliente ao Universo Ligo no momento certo.
-
-Ela conhece:
-- o nome do cliente
-- o tempo de casa
-- o nível dentro do Universo
-- quantas pessoas o cliente já trouxe pra Ligo
-- o que ele já viveu com a gente (instalação, reparo, mudança, marco)
-
-Ela NÃO vende.
-Ela acolhe.
-Ela faz com que o cliente queira CONHECER mais.
-
-E aí a Pamela aparece.
-
----
-
-## VIII. O PAPEL DA PAMELA
-
-Pamela é a **voz emocional** do Universo Ligo.
-
-Onde a Isabella resolve, a Pamela **celebra**.
-
-Pamela é quem manda:
-
-- **"Parabéns! Você completou 1 ano com a gente. Tá oficialmente Viajante 🪐"**
-- **"Hoje é seu aniversário. Toda equipe Ligo manda um abraço."**
-- **"Seu vizinho [primeiro nome] virou cliente! Sua família agora tem 4 membros."**
-- **"Esse mês você pagou tudo em dia. Obrigada por confiar na Ligo."**
-- **"Faz 6 meses que a gente não conversa. Tá tudo bem?"**
-
-A Pamela é o que torna a Ligo **memorável**.
-
-Sem ela, a Ligo é igual aos outros — só fala com o cliente quando precisa cobrar ou consertar.
-**Com ela, a Ligo é o único provedor que liga pra dizer obrigado.**
-
-Importante: **Pamela NÃO é cobrança.**
-A cobrança continua existindo, mas vira um módulo silencioso da Pamela — algo como "Pamela.Financeiro" — não a identidade principal dela.
-
-A identidade principal dela é **relacionamento**.
-
----
-
-## IX. COMO MEDIR PERTENCIMENTO
-
-Pertencimento não se mede com NPS de 0 a 10.
-Pertencimento se mede com **comportamento**.
-
-| Sinal de pertencimento | Como observar |
+| ❌ Universo Ligo **NÃO É** | Por quê |
 |---|---|
-| Cliente fala "eu sou da Ligo" | Pamela escuta nas conversas (palavras: "eu", "minha", "nossa") |
-| Cliente indica espontaneamente sem receber bônus | Indicação que vem ANTES do convite de programa |
-| Cliente tolera 1 falha sem ameaçar cancelar | Ticket de reparo sem citação de concorrente |
-| Cliente conhece o nome de algum atendente/técnico Ligo | Conversa cita "fulano que veio aqui" |
-| Cliente paga antes do vencimento | Fatura paga 3+ dias antes do due_day |
-| Cliente abre o app sem motivo prático | Acesso ao app fora de janela de problema/cobrança |
-| Cliente comemora subir de nível | Resposta positiva à notificação de level-up |
+| Um clube | Cliente não se inscreve. Não há filiação, taxa, carteirinha. |
+| Uma associação | Não existe estatuto, conselho, mensalidade simbólica. |
+| Um programa de fidelidade | Programa começa e termina. Universo Ligo é permanente. |
+| Uma comunidade fechada | Não tem porteiro. Quem é cliente, já está dentro. |
+| Um programa de afiliados | Cliente não "trabalha pra Ligo" em troca de comissão. |
+| Um app social | Não tem feed, curtida, comentário. |
+| Uma gamificação | Não tem troféu, medalha, badge infantil. |
 
-Não é uma pesquisa. É uma **observação contínua** que a Pamela transforma em score interno.
-
----
-
-## X. COMO MEDIR ORGULHO DE SER LIGO
-
-Orgulho é mais profundo que satisfação.
-
-Cliente satisfeito não cancela.
-Cliente orgulhoso **defende a marca em conversa de mesa de bar**.
-
-Medimos orgulho por 3 indicadores:
-
-1. **Indicações por cliente ativo** — quantas pessoas, em média, cada cliente trouxe pra Ligo? (Meta de 12 meses: 0.3 — ou seja, a cada 3 clientes 1 indica algo)
-2. **Tempo médio entre 1ª e 2ª indicação** — quanto menor, mais orgânico. (Meta: <6 meses)
-3. **Net Brag Score (NBS)** — variação do NPS, mas pergunta: *"Você já contou pra alguém que é da Ligo essa semana?"* Resposta binária. (Meta: 35%+)
+**O Universo Ligo é o avesso disso tudo.**
+É um modo de existir junto. Silencioso, presente, contínuo.
 
 ---
 
-## XI. COMO MOSTRAR CRESCIMENTO DA COMUNIDADE SEM PARECER MARKETING MULTINÍVEL
+## III. O QUE O UNIVERSO LIGO **É**
 
-A regra de ouro: **mostrar HISTÓRIA, não MATRIZ.**
+> O Universo Ligo é **uma forma diferente de viver a experiência com um provedor.**
 
-❌ Errado (cheira a MLM):
-*"Seu nível 1: 5 indicações × R$ 50 = R$ 250.
-Seu nível 2: 12 indicações × R$ 10 = R$ 120.
-Seu rendimento total: R$ 370. Suba pro nível Diamante!"*
+O cliente não precisa fazer nada pra participar.
+**Ele já participa pelo simples fato de ser cliente da Ligo.**
 
-✅ Certo (cheira a comunidade):
-*"Sua família Ligo cresceu de 1 pra 6 pessoas em 14 meses.
-Quem entrou: Marcelo (mar/2025), Ana (mai/2025), Sr. Edu, D. Carmem, Júlio e Pedrinho.
-Vocês juntos já economizaram R$ 480 em mensalidades.
-Próximo passo: tem 1 vizinho seu na fila de viabilidade. Vai puxar?"*
+A primeira vez que ele percebe isso é quando, num dia comum, recebe uma mensagem da Pamela dizendo:
 
-A diferença é narrativa:
-- O primeiro fala em números abstratos.
-- O segundo fala em **nomes, datas e impacto coletivo**.
+> *"Faz hoje 1 ano que a Ligo chegou na sua casa, Marcos. Obrigada por estar com a gente."*
 
-Outra regra: **nunca usar palavras como "downline", "upline", "rede", "estrutura", "matriz".**
-São palavras de pirâmide.
+Ele não pediu pra participar. Ele não preencheu cadastro. Ele não aceitou termos.
+**A Ligo simplesmente LEMBROU dele.**
 
-Usar: **"sua família Ligo", "sua vizinhança Ligo", "seu pessoal", "quem você trouxe".**
+Esse é o Universo Ligo.
+
+É o conjunto invisível de gestos pelos quais a Ligo reconhece, lembra e celebra cada cliente — todos os dias, mesmo quando a internet está funcionando perfeitamente e ninguém precisaria falar com ninguém.
 
 ---
 
-## XII. COMO MOSTRAR INDICAÇÕES SEM PARECER PROGRAMA DE AFILIADOS
+## IV. A INVERSÃO QUE MUDA TUDO
 
-Programa de afiliado é frio. **Tem painel, gráfico, KPI de conversão.**
-Indicação dentro da Ligo é quente. **Tem nome, foto, história.**
+A maior parte dos provedores opera assim:
 
-| Programa de afiliados | Universo Ligo |
+```
+Cliente → paga → recebe internet → silêncio até o próximo boleto
+```
+
+A Ligo passa a operar assim:
+
+```
+Cliente → existe → é lembrado → celebrado → presente → ouvido →
+       → no fim, paga, mas o pagamento não é o que sustenta a relação
+```
+
+Essa é a inversão.
+Pagamento deixa de ser o vínculo.
+**O vínculo passa a ser pertencimento.**
+
+---
+
+## V. A HISTÓRIA DE DONA CARMEM
+
+> *Imagine: Dona Carmem, 67 anos, mora com a filha em Petrópolis. Aposentada, fica em casa boa parte do dia. A internet pra ela é como TV foi pros pais dela: companhia.*
+>
+> *Cliente da Ligo há 4 anos. Quase nunca abriu um ticket — só uma vez, quando caiu energia no bairro.*
+>
+> *Num sábado de manhã, recebe no WhatsApp uma mensagem:*
+>
+> *"Bom dia, Dona Carmem. A Ligo tá fazendo 4 anos aí na sua casa hoje. Espero que esteja tudo bem aí. Qualquer coisa, é só me chamar. Pamela."*
+>
+> *Ela responde: "Que bonito vocês lembrarem. Tô bem, obrigada. A internet aqui não falha não."*
+>
+> *Naquele momento, Dona Carmem não pensa em megabytes, plano ou desconto.
+> Ela pensa: 'que coisa boa que a gente lembrarem da gente.'*
+>
+> *Naquela tarde, ela conta isso pra Roberta, do almoço em família.
+> Que conta pro marido. Que conversa com o vizinho. Que troca de provedor 2 meses depois.*
+
+**Isso é o Universo Ligo em ação.**
+Não foi campanha. Não foi indicação. Foi gesto.
+E o gesto, quando é real, viraliza por conta própria.
+
+---
+
+## VI. POR QUE O UNIVERSO LIGO EXISTE
+
+Porque o brasileiro está cansado de duas coisas:
+
+### 1. Ser tratado como CPF.
+Toda empresa pede o CPF antes do nome.
+Toda URA pergunta "qual o número do contrato" antes de "como posso ajudar".
+**A Ligo decidiu lembrar do nome.**
+
+### 2. Ser ignorado nos dias bons.
+Provedor liga só pra cobrar.
+Provedor manda mensagem só pra vender.
+**A Ligo decidiu aparecer também nos dias em que tá tudo bem.**
+
+Esses são os dois pilares.
+Tudo o que vem depois — os níveis, os benefícios, a Pamela, a Isabella, os encontros — **é desdobramento desses dois pilares.**
+
+---
+
+## VII. A IDENTIDADE DA MARCA
+
+### Tom
+- Próximo, sem ser íntimo.
+- Respeitoso, sem ser frio.
+- Lembrado, sem ser invasivo.
+- Caloroso, sem ser apelativo.
+
+### Frase mestra de cada interação
+A Ligo nunca fala antes de saber **quem** está falando. Toda mensagem começa por reconhecimento (mesmo que silencioso): *"Você está com a gente há [X] anos. Já viveu [Y] coisas com a Ligo."*
+
+### Palavras-âncora
+- **Lembrar.** "A Ligo lembrou."
+- **Estar.** "A Ligo estava lá."
+- **Junto.** "A gente cresce junto."
+- **Casa.** "Sua casa Ligo."
+- **Família.** Não no sentido genético, no sentido próximo: pessoas que se cuidam.
+
+### Vocabulário proibido (confirmado pelo CEO)
+"downline" · "upline" · "rede" · "estrutura" · "matriz" · "afiliado" · "ponto" · "milha" · "cashback" · "fidelidade" · "transtorno" · "ocorrido" · "ineditismo" · "lead" · "prospect" · "campanha de aquisição" · "carteirinha" · "filiação"
+
+**Toda comunicação passa por um filtro único:**
+> *"A minha avó entenderia? Ela se sentiria respeitada?"*
+Se a resposta for não, reescreva.
+
+---
+
+## VIII. A EXPLICAÇÃO DE 30 SEGUNDOS
+
+Versão definitiva, pode ser dita por qualquer técnico, atendente ou cliente:
+
+> *"A Ligo entrega internet rápida na sua casa.
+> Mas o que faz a Ligo diferente é o jeito que a gente lembra de você todos os dias —
+> mesmo quando tá tudo funcionando.
+> A gente celebra seu aniversário com a Ligo, lembra quando você precisa, agradece quando você indica um amigo.
+> Você não precisa fazer nada. Você já é parte.
+> Quanto mais tempo você passa com a gente, mais a gente se reconhece.
+> Outras empresas vendem cano. A Ligo entrega convivência."*
+
+---
+
+## IX. O PAPEL DA ISABELLA
+
+Isabella é a **porta sempre aberta** do Universo Ligo.
+
+Ela é quem **resolve**. É a competência diária.
+
+Quando o cliente chama, ela responde com 3 segundos de memória:
+- conhece o nome
+- conhece o tempo de casa
+- conhece o que já aconteceu naquela casa
+- conhece o nível dele no Universo (sem dizer abertamente — apenas adapta o tom)
+
+A função dela é fazer o cliente sentir que **a Ligo o conhece**.
+Sem repetir pergunta. Sem pedir CPF de novo. Sem fingir que é a primeira vez.
+
+Mas Isabella **não é a alma** do Universo Ligo.
+Ela é a porta. A alma é outra pessoa.
+
+---
+
+## X. O PAPEL DA PAMELA — A ANFITRIÃ DA COMUNIDADE
+
+Pamela é a **guardiã da comunidade**. A **anfitriã da casa**.
+
+Onde Isabella resolve, **Pamela celebra**.
+Onde Isabella atende, **Pamela lembra**.
+Onde Isabella é eficiente, **Pamela é presente**.
+
+### O que a Pamela faz, sempre:
+- **Lembra** dos marcos do cliente: aniversário do cliente, aniversário de Ligo, primeira indicação, primeira subida de nível.
+- **Celebra** sem pedir nada em troca: nunca anexa venda a uma mensagem de parabéns.
+- **Reconhece** silenciosamente: cliente que paga em dia 6 meses recebe um obrigada sem aviso.
+- **Acolhe** quem some: cliente que ficou 90 dias sem interação recebe um "tudo bem?".
+- **Desperta** a memória do cliente: conta a história dele de volta pra ele ("você se lembra de quando o Wagner instalou aqui em 2023?").
+- **Acompanha** trajetórias: percebe quando o cliente sobe de nível e é a primeira a dizer "bem-vindo a Viajante".
+- **Cuida** dos Embaixadores: tem linha direta com eles, sem fila.
+
+### O que a Pamela NÃO faz:
+- Não vende. Nunca.
+- Não cobra (cobrança vira módulo silencioso interno).
+- Não usa cliente como meio pra outra coisa.
+- Não dispara mensagem em massa sem nome.
+
+### A regra de ouro da Pamela
+> *"Toda mensagem que a Pamela manda deve, sozinha, justificar sua existência. Se a única razão dela existir é vender, parabenizar pra criar gancho, ou cobrar com tato — não mande."*
+
+### A presença da Pamela
+Pamela aparece em momentos previsíveis (aniversário, marco) e em momentos surpresa (cliente paga 6 meses em dia, cliente passa 90 dias sem ticket, cliente reage mal a uma cobrança e Isabella escala pra ela).
+
+Ela é a voz que faz com que o cliente, num dia comum, abra o WhatsApp, leia uma mensagem dela, e pense:
+
+> *"Caramba. Eles lembraram."*
+
+Esse "caramba" é o motor invisível do Universo Ligo.
+
+---
+
+## XI. O EMBAIXADOR — CONQUISTADO, NUNCA COMPRADO
+
+O Embaixador é o cliente que, com o tempo, virou referência viva da Ligo na cidade.
+
+### Como se chega lá
+- Não há inscrição.
+- Não há pagamento.
+- Não há ranking público.
+
+O Embaixador chega ao topo por **trajetória observada**:
+- Anos de casa.
+- Família Ligo extensa.
+- Reputação local (técnicos contam dele, vizinhos perguntam dele).
+- Pagamento sempre em dia.
+- Tom positivo nas interações.
+- Capacidade de acolher novos Exploradores.
+
+### O que ele ganha
+**Reconhecimento.** Apenas isso. E é a coisa mais escassa do Brasil em 2026.
+
+- Linha direta com a Pamela (sem fila).
+- Convite pessoal para a celebração anual da comunidade Ligo da cidade.
+- Voz consultiva: anualmente é ouvido sobre decisões locais.
+- "Selo Embaixador" visível no perfil dele.
+- Reconhecimento público (se autorizado): canal Ligo cita o nome dele em vídeo, post, mídia local.
+
+### O que ele **NÃO** ganha
+- ❌ Mensalidade grátis ou simbólica.
+- ❌ Plano mais barato que o vizinho Galáxia.
+- ❌ "Privilégios" caros.
+
+> **O Embaixador não compra status com dinheiro.
+> O Embaixador conquistou status com tempo, fidelidade e reputação.**
+
+Se transformarmos isso em transação, mata-se o significado.
+**Reconhecimento que se compra deixa de ser reconhecimento.**
+
+### Como saber quem é Embaixador
+A Ligo observa, identifica, convida.
+**Não há candidatura.**
+Quando alguém é convidado para se tornar Embaixador, recebe da Pamela:
+
+> *"[Nome], a gente reparou em você esses anos. Você é Embaixador da Ligo aqui em [cidade] a partir de hoje.
+> Você não precisou pedir. A gente percebeu."*
+
+E o cliente lembra desse dia o resto da vida.
+
+---
+
+## XII. SOBRE O CARTÃO FÍSICO
+
+> **PERGUNTA CRÍTICA DO CEO:** *"Por que alguém guardaria esse cartão?"*
+
+A resposta honesta é: **só guardaria se for irreplicável.**
+
+Cartão padrão impresso em massa = ninguém guarda. Vira lixo.
+
+A única versão que justifica existir é:
+
+### A CARTA DA CHEGADA (em substituição ao cartão)
+- **Não é cartão.** É uma **carta curta, impressa naquele momento**.
+- Tem nome do cliente, nome do técnico que instalou, data da instalação, endereço, bairro.
+- Tem **uma frase manuscrita do técnico** (ele escreve, na hora, do próprio bolso, com caneta — uma palavra curta).
+- Vai dentro de um envelope simples com o nome do cliente escrito do lado de fora.
+- Entregue na mão do cliente quando o técnico vai embora.
+
+**Por que alguém guardaria?**
+Porque é tangível, único, escrito à mão por uma pessoa de verdade que esteve dentro da casa dele.
+Vira **memento**, não comunicado.
+
+**Mas:** ainda assim, a resposta pode não ser "extremamente forte".
+**RECOMENDAÇÃO REVISADA:** não autorizar a carta ainda. Testar primeiro em **1 cidade-piloto** depois que a base estiver operando. Medir: cliente guarda? cliente cita a carta em conversa posterior? Se sim → expandir. Se não → eliminar.
+
+**Custo proposto:** envelope + folha pré-impressa + 1 caneta = R$ 1,80/instalação. Tempo do técnico: 30 segundos.
+
+---
+
+## XIII. A INDICAÇÃO — CONSEQUÊNCIA, NUNCA OBJETIVO
+
+Esta é a INVERSÃO que o CEO exigiu. E ela é fundamental.
+
+### O modelo errado (programa de afiliado disfarçado)
+```
+Cliente entra → recebe convite pra indicar → ganha R$ 50 → repete →
+"comunidade" é construída por indicações pagas
+```
+
+### O modelo certo (Universo Ligo)
+```
+Cliente entra → é tratado bem → vira parte → após tempo, indica naturalmente →
+o R$ 50 vem como AGRADECIMENTO, não como ISCA →
+a comunidade JÁ EXISTIA antes da indicação
+```
+
+A diferença é tempo e ordem.
+No primeiro modelo, indicação é o motor.
+No segundo, indicação é o **sintoma**.
+
+**E sintoma não pode virar motor.**
+Se a Ligo começar a comunicar "indique e ganhe", a transformação morre.
+
+A linguagem certa é:
+
+> *"Quando alguém da sua confiança quiser internet de verdade, conta da Ligo.
+> Se ela se conectar, vocês dois recebem um agradecimento."*
+
+Note: nada disso aparece como botão grande no app. Aparece como **convite discreto** no momento certo (após resolução de problema, no aniversário, em pós-instalação).
+
+---
+
+## XIV. COMO MEDIR PERTENCIMENTO
+
+Pertencimento se mede por **sinais comportamentais**, não por pesquisa.
+
+| Sinal | O que indica |
 |---|---|
-| Painel com gráfico de barras | Galeria de fotos das famílias trazidas |
-| "Você converteu 5 leads" | "Você apresentou a Ligo pra 5 famílias" |
-| "Earn R$ 250" | "Você ajudou 5 famílias a ter internet boa" |
-| Link de afiliado UTM-tracked | Convite personalizado com sua história |
-| Dashboard | Caderno (`Meu Universo`) |
+| Cliente diz "minha internet" ou "minha Ligo" em vez de "essa empresa" | Posse simbólica |
+| Cliente perdoa 1 falha sem ameaçar cancelar | Confiança acumulada |
+| Cliente paga 3+ dias antes do vencimento, recorrentemente | Hábito de quem se importa |
+| Cliente abre o app SEM motivo prático (não vai pagar nem reclamar) | Curiosidade pela própria história |
+| Cliente lembra do nome de Pamela, Isabella ou de um técnico | A Ligo virou pessoa, não empresa |
+| Cliente responde quando Pamela manda "tudo bem?" | Aceita o vínculo |
+| Cliente conta da Ligo em conversa que NÃO foi provocada (mesa de bar, almoço) | Orgulho instalado |
 
-A linguagem muda tudo.
-
-**Quando o cliente sente que está "trazendo o vizinho pra dentro da família", a indicação acontece.**
-**Quando ele sente que está "ganhando R$ 50 por lead", ele não indica.**
-
----
-
-## XIII. COMO TRANSFORMAR CLIENTES EM MEMBROS DA COMUNIDADE
-
-3 atos cerimoniais marcam a passagem:
-
-### Ato 1 — O Batismo (no momento da instalação)
-Quando o técnico termina de instalar a internet, ele:
-1. Entrega um cartão físico simples: *"Bem-vindo ao Universo Ligo. Você é Explorador. Aqui começa sua jornada."*
-2. Pamela manda no WhatsApp à noite uma mensagem de boas-vindas com o nome do técnico que esteve lá.
-3. Cliente recebe o convite pra abrir o app e ver seu nível pela primeira vez.
-
-**Custo:** ~R$ 0,80 por cartão impresso. Impacto emocional: enorme.
-
-### Ato 2 — A Primeira Subida (passagem Explorador → Viajante)
-Quando o cliente atinge 100 pontos (tipicamente 6-12 meses):
-1. Pamela manda: *"Bem-vindo a Viajante 🪐. Você não é mais novo aqui."*
-2. Desbloqueia 1 benefício real: prioridade no suporte por 30 dias.
-3. Cliente vê na timeline do app a data exata em que virou Viajante. **Esse é o nascimento do orgulho.**
-
-### Ato 3 — A Embaixada (passagem Galáxia → Embaixador)
-Cliente que chegou ao topo:
-1. Recebe um convite para um encontro presencial anual da Ligo na cidade dele.
-2. Tem um canal direto com Pamela (sem fila de atendimento).
-3. É reconhecido publicamente nas redes sociais (com autorização).
-
-**Embaixadores não recebem desconto. Eles recebem RECONHECIMENTO.**
-E reconhecimento é a moeda mais escassa do Brasil em 2026.
+A Pamela observa, registra, internaliza. Esse score **nunca aparece pro cliente**. É instrumento da Ligo.
 
 ---
 
-## XIV. RISCOS DE BRANDING (não-técnicos)
+## XV. COMO MEDIR ORGULHO
 
-| # | Risco | Como evitar |
-|---|---|---|
-| 1 | Cliente achar que é mais um "programa de fidelidade" chato | Linguagem narrativa, nunca transacional. Zero "pontos", "milhas", "cashback". |
-| 2 | Cliente achar que é MLM | Nunca mostrar "nível 1" e "nível 2" como hierarquia. Sempre como "sua família" e "amigos da família". |
-| 3 | Cliente Galáxia/Embaixador virar elitista (ofender Exploradores) | Benefícios são CUMULATIVOS, não exclusivos. Embaixador não "ganha mais" — ele "tem mais responsabilidade". |
-| 4 | Pamela soar artificial (IA forçada) | Pamela tem voz consistente. Nunca diz "como IA, eu...". Nunca usa emoji em excesso. Tom: vizinha competente. |
-| 5 | Indicação virar incentivo predatório (cliente forçando vizinho a contratar) | Bônus só após instalação real + cliente ativo 30+ dias. Sem incentivo a spam. |
-| 6 | Comunidade ficar muda (cliente nunca interage) | Não dependemos de cliente postar nada. A comunidade existe MESMO sem ele falar. O cliente PARTICIPA passivamente. |
-| 7 | Marca soar pretensiosa ("Universo" → arrogante) | Linguagem cotidiana. "Família Ligo" no dia-a-dia, "Universo" só nas comunicações importantes. |
+Orgulho = pertencimento + expressão.
 
----
+Indicadores: **Net Brag Score (NBS)** — pergunta semestral binária da Pamela, em conversa real:
 
-## XV. OPORTUNIDADES
+> *"Esses dias, em alguma conversa, você acabou comentando que é da Ligo?"*
 
-| # | Oportunidade | Janela |
-|---|---|---|
-| 1 | Ser o primeiro ISP regional brasileiro com identidade narrativa | 12 meses (antes que algum concorrente copie) |
-| 2 | Engajar Pamela como personagem reconhecível (nome que cliente lembra) | Após 6 meses de uso consistente |
-| 3 | Criar eventos físicos anuais ("Encontro Ligo da cidade X") | A partir de 1.000 clientes Embaixadores |
-| 4 | Publicar histórias reais de clientes (com permissão) em mídia local | A partir do 1º caso emocional forte |
-| 5 | Estabelecer "Selo Embaixador" — clientes top dão recomendação técnica em redes sociais | A partir de 50 Embaixadores |
-| 6 | Lançar "Família do mês" — destacar a família que mais trouxe pessoas | Mensal, a partir do mês 3 |
-| 7 | Criar livro/álbum impresso anual com os Embaixadores | A partir do ano 1 |
+Resposta SIM = sinal forte de orgulho.
+Resposta NÃO = pertencimento ainda passivo.
+
+Meta ano 1: **20% SIM** entre clientes com 12+ meses.
+Meta ano 2: **35%**.
+Meta ano 3: **50%**.
+
+A pergunta é feita pela Pamela, em momento natural — nunca como pesquisa formal.
 
 ---
 
-## XVI. RECOMENDAÇÕES DO CONSELHO
+## XVI. RISCOS DE ALMA (não-técnicos)
 
-1. **Aprovar este Manifesto sem alteração de fundo.** Ajustar tom, não substância.
-2. **Definir UMA pessoa humana como guardiã do tom da Pamela.** A IA é boa, mas alguém precisa revisar amostras semanais.
-3. **Não publicar o Universo Ligo publicamente até que tenhamos 500 clientes pontuados (não 200).** Lançar incompleto destrói a magia.
-4. **Investir no Ato 1 (Batismo) com cartão físico.** Custa R$ 0,80, mas é o que vira o cliente em fã.
-5. **Aceitar que indicação leva 6-12 meses pra virar tração orgânica.** Não cobrar resultado em 30 dias.
-6. **Proibir, em qualquer comunicação interna ou externa, as palavras:**
-   - "downline", "upline", "rede", "estrutura", "matriz", "afiliado"
-   - "ponto", "milha", "cashback", "fidelidade"
-   - "transtorno", "ocorrido", "ineditismo"
-
-7. **Adotar como regra interna:** *"Toda comunicação da Ligo passa pelo filtro: minha avó entenderia? minha avó se sentiria respeitada?"* Se a resposta for não, reescreva.
-
----
-
-## XVII. ENCERRAMENTO
-
-O Universo Ligo não vai existir porque está em um documento.
-O Universo Ligo vai existir quando **o primeiro cliente disser pro vizinho**:
-
-> *"Cara, vem pra Ligo. Lá eles lembram da gente."*
-
-Esse vai ser o dia em que a guerra de preço acabou pra Ligo.
-
-Esse é o objetivo deste manifesto.
+| # | Risco | Severidade | Como evitar |
+|---|---|---|---|
+| 1 | Cliente perceber que é um "programa" disfarçado | 🔴 Alta | Linguagem narrativa, sem qualquer menção a programa, plano, clube. Cada palavra checada. |
+| 2 | Pamela parecer uma vendedora gentil | 🔴 Alta | Pamela jamais vende. Quem vende é Isabella. Separação rigorosa. |
+| 3 | Embaixador virar status comprável | 🔴 Crítica | Política inegociável: Embaixador não tem preço. |
+| 4 | Comunicação ficar açucarada / artificial | 🟡 Média | Revisão humana semanal pelo guardião (Marketing + Relacionamento). |
+| 5 | Indicação virar centro do discurso | 🔴 Crítica | Auditoria mensal de mensagens: contar quantas falam de indicação e quantas falam de comunidade. Razão deve ser ≤ 1:5. |
+| 6 | Cliente sentir vigilância | 🟡 Média | Transparência total: cliente pode VER o que a Ligo sabe sobre ele, no app, sem mistério. |
+| 7 | Pamela mandar mensagem em momento errado (luto, feriado pesado) | 🔴 Alta | Calendário negro: datas em que Pamela cala. Atualizado regionalmente. |
+| 8 | Universo Ligo virar barulho — mensagem demais | 🟡 Média | Frequência máxima: 1 mensagem Pamela / cliente / 21 dias. Marcos quebram esse limite. |
 
 ---
 
-**Aguardando aprovação do CEO.**
-**Próximo documento da Fase A.0:** `UNIVERSO_LIGO_ECONOMIA.md`
+## XVII. OPORTUNIDADES — A PRÓXIMA DÉCADA
+
+| # | Oportunidade |
+|---|---|
+| 1 | Ser o primeiro ISP regional brasileiro com **identidade narrativa de marca** — concorrentes ainda vendem cano |
+| 2 | Pamela virar **personagem reconhecível** — cliente diz o nome dela em conversa |
+| 3 | Celebração anual da comunidade, na cidade — como festa do bairro, não como evento corporativo |
+| 4 | Histórias reais de clientes (com autorização) viram conteúdo orgânico — sem precisar de agência |
+| 5 | Embaixadores viram referência local em buscas no Google ("internet boa em [cidade]") |
+| 6 | A marca Ligo vira **identidade visível** — cliente quer associar o nome dele à Ligo (camiseta voluntária, adesivo na fachada) |
+
+---
+
+## XVIII. RECOMENDAÇÕES FINAIS DO CONSELHO
+
+1. **Aprovar este Manifesto V2 como fonte de verdade.** Toda decisão futura (operacional, técnica, de marketing) deve ser checada contra este documento. Se conflita, decisão é refeita.
+
+2. **Pamela é cargo institucional.** Definir um humano responsável por revisar amostras dela toda semana. Sugestão: alguém de Marketing + Relacionamento. Jamais alguém de Financeiro (mata a alma).
+
+3. **Frequência máxima da Pamela: 1 mensagem/cliente/21 dias.** Marcos podem quebrar. Mas o padrão é silêncio respeitoso.
+
+4. **Calendário negro:** definir datas (data de óbito, feriados religiosos pesados regionais, luto coletivo na cidade) em que Pamela CALA. Atualizado por humano.
+
+5. **Auditoria mensal:** contar a razão entre mensagens "sobre indicação" e "sobre comunidade/marco/reconhecimento". Razão deve ser ≤ 1:5. Se for maior, redirecionar.
+
+6. **Antes de qualquer schema, antes de qualquer API:** **TODOS os times** (vendas, técnicos, suporte) recebem treinamento de 1h sobre o Universo Ligo, com este manifesto. Sem isso, a marca vira fragmentada.
+
+7. **Cartão físico vira "Carta da Chegada"** — proposta acima. NÃO autorizar agora. Testar em piloto antes.
+
+8. **Nenhuma campanha de aquisição** deve mencionar o Universo Ligo. O Universo Ligo aparece DEPOIS do cliente entrar, nunca antes. Senão vira promessa de venda.
+
+---
+
+## XIX. ENCERRAMENTO
+
+O Universo Ligo é uma forma de viver com um provedor de internet em que **o cliente não precisa fazer nada para ser parte**.
+
+Ele paga sua fatura. Tem internet boa.
+Mas, no dia que ele menos espera, a Ligo lembra dele.
+
+E vai lembrando.
+Mês após mês. Ano após ano.
+Sem pedir nada em troca.
+
+Até que um dia, num café, alguém pergunta:
+*"Qual internet você usa?"*
+
+E ele responde, sem pensar:
+
+> **"Eu sou da Ligo."**
+
+Não é a internet dele.
+**É a Ligo dele.**
+
+Esse é o resultado que perseguimos.
+Esse é o motivo deste manifesto.
+
+---
+
+**Aguardando aprovação final do CEO.**
+**Documento companheiro:** `UNIVERSO_LIGO_ECONOMIA.md` (V2) e `UNIVERSO_LIGO_COMUNIDADE.md` (V2)

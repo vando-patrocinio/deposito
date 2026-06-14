@@ -1,318 +1,351 @@
 # 💎 ECONOMIA DO UNIVERSO LIGO
 
-**Versão:** 1.0 · 13/Jun/2026
-**Princípio orientador:** Toda troca de valor dentro do Universo Ligo deve fazer o cliente se sentir RECONHECIDO, não REMUNERADO.
-**Regra:** Este documento descreve VALOR HUMANO. Não descreve banco, fluxo de caixa ou tabela. Os números são âncoras de comportamento, não de contabilidade.
+**Versão:** 2.0 (FASE A.1 · revisão da ALMA) · 13/Jun/2026
+**Princípio orientador:** Toda troca de valor faz o cliente sentir-se **reconhecido**, nunca **remunerado**.
+**Regra mestre da V2 (decisão CEO):** Indicação é **consequência** da comunidade, nunca o motor.
+Reconhecimento é **conquistado**, nunca comprado.
+Embaixador não paga por status — ele O vive.
 
 ---
 
-## I. A FILOSOFIA POR TRÁS DA ECONOMIA
+## I. A FILOSOFIA QUE SUSTENTA TUDO
 
-A maior parte dos programas de fidelidade do Brasil tem o mesmo defeito:
+A maioria dos programas de fidelidade brasileiros tem o mesmo defeito de berço:
 
 > Tratam o cliente como **comprador a ser estimulado**.
 
-A pessoa acumula pontos, troca por um liquidificador, esquece da marca.
-A relação é puramente extracional.
+Acumular ponto, trocar por brinde, esquecer da marca. A relação é transacional do começo ao fim.
 
 O Universo Ligo inverte essa lógica:
 
-> Trata o cliente como **membro de uma comunidade que cresce em respeito.**
+> Trata o cliente como **alguém de quem a empresa se lembra todos os dias**.
 
-A pessoa ganha **status, reconhecimento e voz** — e, como bônus desses três, ganha também alguma vantagem material.
-
-A vantagem material **nunca é o motivo principal**.
-Ela é a **prova externa** de que o cliente é parte.
+A vantagem material **nunca é o motivo principal** de o cliente ficar.
+Ela é a **prova externa**, modesta e cumulativa, de que a Ligo está prestando atenção.
 
 ---
 
-## II. AS 5 LEIS DA ECONOMIA LIGO
+## II. AS 5 LEIS DA ECONOMIA DA ALMA
 
 ### Lei 1 — Reconhecimento antes de desconto.
-Cliente prefere ouvir "obrigada por estar com a gente há 4 anos" a receber R$ 5 de desconto na fatura.
-A primeira frase custa zero e cria laço.
-O desconto custa R$ 5 e ele esquece em 30 dias.
+Cliente prefere ouvir *"obrigada por estar com a gente há 4 anos"* a receber R$ 5 de desconto na fatura.
+A primeira frase custa zero e cria laço. O desconto custa R$ 5 e é esquecido em 30 dias.
 
-### Lei 2 — Benefício pequeno, frequente e visível bate benefício grande e raro.
+### Lei 2 — Pequeno e frequente vence grande e raro.
 1 brinde por ano = esquecido.
-1 reconhecimento por mês = parte da vida do cliente.
+1 mensagem genuína por mês = vira hábito de afeto.
 
-### Lei 3 — Benefício de TEMPO vale mais que benefício de DINHEIRO.
+### Lei 3 — Tempo vale mais que dinheiro.
 "Prioridade no suporte" vale mais que "R$ 10 de desconto" — porque tempo é o que falta na vida moderna.
 
-### Lei 4 — Benefício compartilhável é melhor que benefício individual.
-"Você ganhou 1 mês de Ligo+ Filmes pra você E pra uma família que você escolher" é melhor que "você ganhou 1 mês de Ligo+ Filmes".
-Compartilhar é o vetor de orgulho.
+### Lei 4 — Compartilhável vence individual.
+"Você ganhou 1 mês de Ligo+ Filmes pra você E pra uma família que você escolher" vale mais que "você ganhou 1 mês". Compartilhar é o vetor de orgulho.
 
-### Lei 5 — Toda perda é sinalizada com cuidado, não com punição.
-Cliente que cai de nível NÃO recebe mensagem "você perdeu seu status".
+### Lei 5 — Toda perda é convite, nunca punição.
+Cliente que cai de nível NÃO recebe *"você perdeu seu status"*.
 Recebe: *"Faz tempo que a gente não conversa. Vamos retomar?"*
 **Universo Ligo não pune. Universo Ligo convida de volta.**
 
 ---
 
-## III. OS 6 NÍVEIS — A JORNADA HUMANA
+## III. OS 6 NÍVEIS — A JORNADA COMO BIOGRAFIA
 
-Cada nível é um **capítulo na vida do cliente com a Ligo**. Não é uma faixa de pontos. É uma **fase**.
+Cada nível **não é uma faixa de pontos**. É uma **fase de vida** do cliente dentro da Ligo.
+
+Para cada nível, abaixo, uma história real-arquétipo (personagens fictícios compostos a partir de comportamentos observáveis em ISP regional brasileiro). Ela existe pra que QUALQUER pessoa da Ligo — técnico, atendente, gestor — consiga reconhecer aquele cliente no dia-a-dia.
+
+---
 
 ### 🌱 NÍVEL 1 — EXPLORADOR
-**Quem é:** acabou de chegar. Está experimentando a Ligo. Talvez ainda dependa do prazo de fidelidade pra ficar.
 
-**Tempo médio neste nível:** 0 a 6 meses.
+**Tempo médio:** 0 a 6 meses
+**Quem é, em uma frase:** quem acaba de chegar e está vendo se vai dar certo.
 
-**O que ele sente:**
-> *"Tô vendo se vai dar certo."*
+#### A HISTÓRIA DO MARCOS
+> *Marcos, 34 anos, casado, pai de 2 crianças, mora em casa alugada num bairro novo de Petrópolis. Trocou a internet anterior porque caía no meio das aulas das crianças. A Ligo foi indicada pela cunhada.*
+>
+> *Na primeira semana, ele testa tudo: pede pra esposa abrir Zoom, deixa o filho jogando, vê se o roteador chega no quarto. Tudo funciona.*
+>
+> *No 10º dia, recebe a primeira mensagem da Pamela:*
+> *"Bom dia, Marcos. Só passando pra saber se a internet tá indo bem aí. Qualquer coisa, me chama."*
+>
+> *Ele não responde. Mas lê. E pensa: "essa empresa é diferente."*
 
-**Como a Ligo se comporta:**
-- Acolhimento total. Sem expectativa, sem cobrança de engajamento.
-- Pamela aparece 1 vez no primeiro mês ("tudo bem com a internet?"), depois some.
-- Isabella é a voz principal. Resolve qualquer problema sem repetir pergunta.
+#### O que a Ligo entrega no Explorador
+- **Silêncio respeitoso:** zero venda, zero pesquisa nos primeiros 30 dias.
+- **Aparição mínima da Pamela:** 1 mensagem aos 10 dias, 1 aos 60 dias. Nada mais.
+- **Isabella faz o resto:** resolve qualquer dúvida ou problema.
+- **No app:** o nome dele, o nível, e uma linha do tempo começando.
 
-**Benefícios reais que ele recebe:**
-- Acesso ao app Ligo com sua história começando a ser escrita.
-- Visualização do próprio nível e do caminho até o próximo (transparência total).
-- Prioridade comum no suporte.
+#### Marco silencioso de subida
+- 90 dias de cliente ativo + 0 fatura em aberto + 0 reclamação grave.
+- OU: 1 indicação convertida.
 
-**Marco para subir:**
-- 90 dias de cliente ativo + 0 inadimplência + 0 reclamação grave OU
-- 1ª indicação convertida
+Cliente NÃO precisa ser avisado de que está "subindo". O sistema sobe e a Pamela aparece celebrando.
 
 ---
 
 ### 🚶 NÍVEL 2 — VIAJANTE
-**Quem é:** passou da prova inicial. Já entende que a Ligo é estável. Começou a contar pros amigos.
 
-**Tempo médio neste nível:** 6 a 18 meses.
+**Tempo médio:** 6 a 18 meses
+**Quem é, em uma frase:** quem passou da prova inicial e começou a contar pros amigos.
 
-**O que ele sente:**
-> *"Tô gostando. A internet aqui é boa mesmo."*
+#### A HISTÓRIA DA ANA
+> *Ana, 28 anos, freelancer designer, mora sozinha em apartamento. Cliente Ligo há 11 meses. No 6º mês de Ligo, recebeu uma mensagem da Pamela aos 18h num domingo:*
+>
+> *"Boa noite, Ana. Faz 6 meses que a Ligo chegou aí. Tá oficialmente Viajante 🪐. Obrigada por confiar na gente."*
+>
+> *Ela mostra a mensagem pro namorado, rindo. "Olha que fofo." E volta a trabalhar.*
+>
+> *Mas, no dia seguinte, quando o cliente dela perguntou "qual internet você usa em casa?", a resposta saiu sozinha: "Ah, eu sou da Ligo."*
+>
+> *Ela não percebeu que essa frase mudou.*
 
-**Como a Ligo se comporta:**
-- Pamela aparece em momentos pontuais: 6 meses de Ligo, primeiro aniversário, primeira indicação.
-- Isabella começa a personalizar mais: "lembro que você prefere agendar de manhã".
+#### O que a Ligo entrega no Viajante
+- **Prioridade declarada:** quando ela liga, é atendida primeiro.
+- **Um pequeno gesto no aniversário de Ligo:** 1 mês de Ligo+ Música incluso. Sem cobrança extra. Sem comunicado pomposo. Aparece no app.
+- **Pamela aparece em momentos pontuais:** 6 meses, 1 ano, primeira indicação (se houver).
+- **Isabella começa a personalizar:** "lembrei que você prefere de manhã."
 
-**Benefícios reais:**
-- Prioridade declarada no suporte (a cara de Marisa atende você primeiro).
-- 1 mês cortesia de UM dos produtos Ligo+ no aniversário de 1 ano.
-- Convite para grupos locais informais (WhatsApp da vizinhança Ligo, se existir na cidade).
-
-**Marco para subir:**
-- 1 ano de casa + 0 inadimplência + (1 indicação convertida OU NPS 9+)
+#### Marco silencioso de subida
+- 1 ano de casa + 0 fatura aberta + (1 indicação convertida OU NPS implícito 9+ via tom de conversa).
 
 ---
 
 ### ☄️ NÍVEL 3 — COMETA
-**Quem é:** trouxe gente. Já é fonte de novos clientes. É influenciador local.
 
-**Tempo médio neste nível:** 18 a 36 meses.
+**Tempo médio:** 18 a 36 meses
+**Quem é, em uma frase:** quem virou "regular" — a Ligo lembra dele, ele lembra da Ligo.
 
-**O que ele sente:**
-> *"A Ligo me lembra. Eu lembro da Ligo."*
+#### A HISTÓRIA DO SEU EDU
+> *Edu, 67 anos, aposentado, mora em casa própria com a esposa. Cliente Ligo há 26 meses. Já indicou 2 amigos da pescaria — ambos viraram clientes.*
+>
+> *Edu paga sempre 4 dias antes do vencimento. Toda fatura.*
+>
+> *Num sábado pela manhã, abre o app pra ver "se tinha alguma coisa nova". Vê o avatar dele com um pequeno selo ☄️ Cometa. E uma linha do tempo de 26 meses: instalação em junho/2024, primeira indicação (Sr. Joaquim, ago/2024), aniversário 1 ano (jun/2025), subida pra Cometa (set/2025).*
+>
+> *Edu fecha o app e não conta pra ninguém. Mas naquele almoço, quando o genro comenta que tá pensando em trocar de internet, Edu diz: "Filho, vem pra Ligo. Eles cuidam da gente."*
 
-**Como a Ligo se comporta:**
-- Pamela manda mensagens **sem motivo aparente**: dia das mães, dia do trabalho, agradecimento por uma indicação recente.
-- Em cada interação, o nome do cliente é dito 1 vez (não mais, não menos).
-- Isabella oferece serviços EXTRAS antes de o cliente pedir: "vi que você tem 4 dispositivos, quer agendar uma vistoria gratuita do Wi-Fi?"
+#### O que a Ligo entrega no Cometa
+- **Ligo+ Música incluso permanente.**
+- **5% de desconto automático** na fatura — aparece como linha simples: "Obrigada pelas indicações."
+- **1 "passe livre" por ano:** se Edu tiver um problema, ele pula a fila. Não precisa pedir. Isabella reconhece e age.
+- **Mensagens da Pamela sem motivo:** dia das mães, dia do trabalhador. Tom: vizinha que lembra.
 
-**Benefícios reais:**
-- Desconto **automático** de 5% na fatura quando uma de suas indicações vira cliente.
-- Acesso a Ligo+ Música incluso, sem cobrança extra.
-- Direito a 1 "passe livre" por ano — um problema seu pula a fila.
-
-**Marco para subir:**
+#### Marco silencioso de subida
 - 2 anos de casa + 3 indicações convertidas OU
-- 18 meses + score continuamente acima de 500
+- 18 meses + observação contínua de comportamento Cometa (Pamela detecta).
 
 ---
 
 ### ✨ NÍVEL 4 — CONSTELAÇÃO
-**Quem é:** sua família Ligo já tem 3+ membros. Os benefícios que ele desbloqueia também afetam quem ele indicou.
 
-**Tempo médio neste nível:** 36 a 60 meses.
+**Tempo médio:** 36 a 60 meses
+**Quem é, em uma frase:** quem virou referência da Ligo no bairro dele.
 
-**O que ele sente:**
-> *"Eu virei referência da Ligo aqui no bairro."*
+#### A HISTÓRIA DA DONA CARMEM
+> *Carmem, 67 anos, viúva, mora com a filha em Petrópolis. Cliente Ligo há 4 anos. Trouxe 6 famílias pra Ligo: a filha (depois que ela mudou), a vizinha do lado, o irmão da vizinha, a costureira do bairro, e duas amigas da igreja.*
+>
+> *No quarto ano de Ligo, recebe uma mensagem:*
+> *"Dona Carmem, a senhora tá oficialmente Constelação ✨ a partir de hoje. Por causa da senhora, a Ligo tá em 6 outras casas. Obrigada de coração."*
+>
+> *Ela leu. Releu. Mostrou pra filha. Mostrou pro irmão dela quando ele veio jantar.*
+>
+> *Naquela semana, ela já tinha falado da Ligo pra mais 2 pessoas.*
 
-**Como a Ligo se comporta:**
-- Pamela parabeniza não só você, mas a SUA família Ligo nos marcos coletivos ("seus 4 amigos estão todos sem reclamação esse mês!").
-- Convites para eventos locais quando houver.
-- Mensagens de "tudo bem?" sem motivo, sem oferta — só relacionamento.
+#### O que a Ligo entrega no Constelação
+- **10% de desconto fixo** na fatura.
+- **Ligo+ Filmes incluso.**
+- **1 mês grátis para CADA nova família que ela trouxer** — compartilhável.
+- **Reconhecimento público discreto** (se autorizado): a Ligo cita o nome dela em um post de mídia local ("famílias que constroem a Ligo").
+- **Convite para a Celebração da Comunidade** anual.
 
-**Benefícios reais:**
-- Desconto de 10% na sua fatura.
-- 1 mês grátis para cada novo membro que você trouxer.
-- Ligo+ Filmes incluso.
-- Reconhecimento público nas redes da Ligo (se autorizado).
-
-**Marco para subir:**
-- 4 anos de casa + 6 indicações convertidas OU
-- 3 anos + Família Ligo com 5+ ativos
+#### Marco silencioso de subida
+- 4 anos + 6 indicações convertidas OU
+- 3 anos + Família Ligo de 5+ ativos + reputação local
 
 ---
 
 ### 🌌 NÍVEL 5 — GALÁXIA
-**Quem é:** seu nome aparece em conversa de mesa quando alguém pergunta "qual internet usar?".
 
-**Tempo médio neste nível:** 60+ meses.
+**Tempo médio:** 60+ meses
+**Quem é, em uma frase:** quem construiu algo dentro da Ligo. É lembrado por nome dentro da empresa.
 
-**O que ele sente:**
-> *"Eu construí algo aqui."*
+#### A HISTÓRIA DO ROBERTO
+> *Roberto, 51 anos, comerciante, dono de um mercadinho de bairro. Cliente Ligo há 6 anos. Família Ligo: 11 pessoas, incluindo 3 funcionários do mercado.*
+>
+> *No 6º aniversário de Ligo, recebeu um cartão impresso (não imprimido em massa — impresso especificamente pra ele) assinado pelo gerente regional, com uma frase manuscrita: "Roberto, a Ligo é Ligo aqui em Itaipava em parte por sua causa. Obrigado."*
+>
+> *Ele pendurou no balcão do mercado.*
+>
+> *Toda vez que um cliente pergunta "que internet usa?", ele aponta pro cartão e responde: "Aquela ali."*
 
-**Como a Ligo se comporta:**
-- Pamela tem uma linha direta (não precisa abrir ticket).
-- Em cada aniversário de Ligo, ele recebe um cartão físico assinado pelo gerente regional.
-- Pode pedir verificação preferencial de viabilidade para qualquer endereço que indicar.
+#### O que a Ligo entrega no Galáxia
+- **15% de desconto fixo** na fatura.
+- **Todos os Ligo+ inclusos:** TV, Filmes, Música.
+- **"Selo Galáxia" 🌌 visível** no perfil do app.
+- **2 "passes livres" por ano.**
+- **Cartão impresso anual personalizado** — assinado à mão pelo gerente regional.
+- **Pamela tem linha direta** (sem fila de atendimento). Roberto manda mensagem, Pamela responde.
+- **Direito de viabilidade preferencial:** se ele pedir que verifiquem um endereço, vai na frente.
 
-**Benefícios reais:**
-- 15% de desconto fixo na fatura.
-- Todos os Ligo+ inclusos (TV, Filmes, Música).
-- Direito a "Selo Galáxia" no perfil — uma marca visível no app.
-- 2 "passes livres" por ano.
-
-**Marco para subir:**
-- 5 anos de casa + 10 indicações convertidas OU
-- 4 anos + Família com 8+ ativos + NPS médio 9+
+#### Marco para Embaixador (próximo nível)
+- 5 anos + 10 indicações + reputação local sólida + Pamela observa "comportamento de Embaixador" (acolhe novos Exploradores).
+- **Mas atenção:** Embaixador não tem fórmula. É decisão observada.
 
 ---
 
 ### ⭐ NÍVEL 6 — EMBAIXADOR
-**Quem é:** o cliente que representa a Ligo na cidade. É quem o gerente regional quer no almoço de fim de ano.
 
-**Quantos vão existir:** poucos. Não é meta ter muitos. É meta ter os CERTOS.
+**Não há "tempo médio".** É um nível que vive enquanto a pessoa for cliente. Não há queda automática.
+**Quantos vão existir:** poucos. Talvez 50 a 200 em uma operação de 30.000 clientes. **Não é meta multiplicar.**
 
-**O que ele sente:**
-> *"A Ligo é minha. Eu fiz parte disso."*
+#### A HISTÓRIA DA DONA ROSA
+> *Rosa, 71 anos, professora aposentada, conhecida do bairro como "a Dona Rosa do correio" porque trabalhou 40 anos no posto. Cliente Ligo há 7 anos. Família Ligo: 23 pessoas. Aniversária do bairro dela em maio.*
+>
+> *Num dia comum de quinta-feira, recebe da Pamela:*
+>
+> *"Dona Rosa, a Ligo tá te convidando pra ser Embaixadora da Ligo em Itaipava. A gente percebeu que a senhora carrega a Ligo aí há anos. Esse título não tem mensalidade nem condição. É só um obrigado em forma de nome. A senhora aceita?"*
+>
+> *Ela ligou pra Pamela chorando. Aceitou. E nunca mais cancelou nada.*
 
-**Como a Ligo se comporta:**
-- Mensagens da Pamela em **momentos da VIDA dele**, não da relação com a Ligo (formatura do filho, aniversário do cônjuge — se informado).
-- Convite para o encontro anual da Ligo da cidade.
-- Voz nas decisões locais ("vamos abrir um POP no bairro X? o que você acha?").
+#### O que muda quando o cliente vira Embaixador
+- **NÃO há pagamento simbólico.** NÃO há plano gratuito. NÃO há "mensalidade reduzida".
+  → **Conforme decisão CEO: status NÃO é comprado.**
+- **Mantém todos os benefícios do Galáxia.**
+- **NOVO:**
+  - Cartão de Embaixador físico personalizado, numerado (#001, #002... por cidade) — entregue pessoalmente pelo gerente regional.
+  - Linha direta com a Pamela (já tinha como Galáxia, mas com prioridade absoluta).
+  - **Convite formal** à Celebração da Comunidade anual da cidade.
+  - **Voz consultiva:** uma vez por ano, conversa com gerente regional sobre decisões locais (POP novo, mudança de horário, expansão de cobertura). Não vota — é ouvida.
+  - **Reconhecimento público pelo nome** — se autorizado, vira referência em vídeo/depoimento/post.
+  - **Selo Embaixador** ⭐ visível.
 
-**Benefícios reais:**
-- Mensalidade simbólica (definir % de desconto — sugerido: 25% ou plano gratuito por 1 ano).
-- Todos os Ligo+ inclusos vitalícios enquanto for cliente.
-- "Selo Embaixador" visível.
-- Cartão físico personalizado com nome e número do Embaixador (ex: Embaixador #007 — Petrópolis).
-- Camiseta Ligo (sem logo gigante — design de orgulho discreto).
-
-**Como permanece:** anualmente, revisão tácita. Não há "saída" automática se o cliente segue ativo.
+#### A regra inegociável (CEO)
+> **Status de Embaixador NÃO se compra. NÃO se conquista por dinheiro.
+> Conquista-se por TEMPO, REPUTAÇÃO e ACOLHIMENTO de novos exploradores.**
+> Se aceitarmos uma única exceção, mata-se o significado.
 
 ---
 
-## IV. A ECONOMIA DA INDICAÇÃO — REPENSADA
+## IV. A ECONOMIA DA INDICAÇÃO — REPENSADA (CEO Ajuste 2)
 
-### Antes (programa tradicional)
-> "Indique um amigo e ganhe R$ 50."
+> **Decisão CEO:** indicação é **consequência** da comunidade, nunca o **motor**.
+> Não dizemos: *"Indique e ganhe R$ 50."*
+> Dizemos: *"Quando alguém da sua confiança quiser internet de verdade, conta da Ligo."*
 
-**Problema:** transforma a relação em transação. Cliente fica calculando ROI.
-
-### Agora (Universo Ligo)
-> "Apresente a Ligo pra uma família. Quando ela se conectar, vocês dois recebem um agradecimento. E sua família Ligo cresce."
-
-**Diferença sutil mas decisiva:** mudou o verbo. Saiu de "INDIQUE" (afiliação) pra "APRESENTE" (introdução social).
+### O que muda
+- **A palavra "indique" sai do vocabulário interno e externo.** Substituída por "apresente", "conta", "leva".
+- **Não há campanha de indicação.** Existe um **convite discreto**, no momento certo:
+  - Após resolução de problema bem feita.
+  - No aniversário de Ligo do cliente.
+  - Após uma instalação tranquila.
+  - Após uma conversa positiva onde o cliente menciona um amigo ou familiar.
+- **A "matemática do bônus" continua existindo internamente, mas comunicada como agradecimento, não isca.**
 
 ### Estrutura financeira (mantida do que já existe)
-- **Indicação direta** (você trouxe Marcelo): R$ 50 de desconto pra você + 1 mês de Ligo+ para Marcelo.
-- **Indicação indireta** (Marcelo trouxe Ana): R$ 10 de desconto pra você + reconhecimento na sua árvore.
-- **Sem 3º nível.** Para não confundir com MLM.
+- **Apresentação direta** (cliente trouxe Marcelo): R$ 50 de desconto na próxima fatura **como agradecimento** + 1 mês de Ligo+ para Marcelo.
+- **Apresentação indireta** (Marcelo apresentou Ana, e você foi o tronco): R$ 10 + a satisfação de ver a família crescer.
+- **Sem 3º nível.** Política inegociável.
 
 ### Como é COMUNICADO
-- **Não dizemos:** *"você ganhou R$ 50."*
-- **Dizemos:** *"você ajudou Marcelo a entrar na Ligo. Sua próxima fatura tem um agradecimento de R$ 50."*
+- ❌ *"Você ganhou R$ 50 por essa indicação."*
+- ✅ *"O Marcelo virou cliente da Ligo. Sua próxima fatura tem um agradecimento de R$ 50."*
 
-O dinheiro é o mesmo. A história é diferente.
+O dinheiro é o mesmo. A história é outra.
+
+### Auditoria mensal (CEO Ajuste 1+2)
+A cada mês, a Pamela conta quantas mensagens dela falaram de "indicação" vs quantas falaram de "comunidade/marco/reconhecimento". **Razão deve ser no máximo 1:5.** Se aumentar, a alma está sendo erodida.
 
 ---
 
 ## V. ECONOMIA TEMPORAL — O CALENDÁRIO DO CLIENTE
 
-Pertencimento depende de **ritmo**.
-A Ligo precisa estar presente na vida do cliente em momentos previsíveis e em momentos surpresa.
+A Ligo deve estar presente em **dois tipos** de momento:
 
-### Momentos PREVISÍVEIS (cliente espera)
-| Momento | Quem comunica | Conteúdo |
+### Momentos previsíveis (cliente espera)
+| Momento | Voz | Conteúdo |
 |---|---|---|
-| Dia da instalação | Técnico físico + Pamela à noite | Boas-vindas, cartão físico |
-| 30 dias após instalação | Pamela | "Tudo bem?" + canal aberto pra feedback |
-| Aniversário do cliente | Pamela | Mensagem curta, sem oferta |
-| Aniversário Ligo (1, 2, 3... anos) | Pamela | Marco celebrado + benefício temporário |
+| Dia da instalação | Técnico + Pamela à noite | Boas-vindas, **possível Carta da Chegada** (decisão de piloto) |
+| 30 dias após instalação | Pamela | "Tudo bem?" — sem oferta |
+| Aniversário do cliente | Pamela | Mensagem curta, jamais com venda |
+| Aniversário Ligo (1, 2, 3...) | Pamela | Marco celebrado + benefício temporário |
 | Subida de nível | Pamela | "Bem-vindo a [Nível]" + 1 benefício real |
-| Final do ano | CEO Ligo (mensagem assinada) | Resumo do ano + agradecimento |
+| Final do ano | CEO Ligo (mensagem assinada) | Carta breve, presença simbólica |
 
-### Momentos SURPRESA (cliente não espera)
-| Trigger | Quem comunica | Conteúdo |
+### Momentos surpresa (cliente NÃO espera)
+| Trigger | Voz | Conteúdo |
 |---|---|---|
-| Cliente pagou 6 meses seguidos em dia | Pamela | "Obrigada pela confiança" |
-| Cliente passou 90 dias sem ticket | Pamela | "Tudo certo por aí?" |
-| Cliente teve 3 tickets em 30 dias | Pamela (com tato) | "Como podemos melhorar?" + opção de conversa real |
-| Cliente reagiu mal a uma cobrança | Pamela (não Isabella) | Acolhimento + caminho rápido pra resolver |
-| Cliente subiu 2 níveis em 1 ano | Pamela | "Cara, você tá voando" |
+| 6 meses seguidos pagando em dia | Pamela | "Obrigada pela confiança" |
+| 90 dias sem ticket | Pamela | "Tudo certo por aí?" |
+| 3 tickets em 30 dias | Pamela (após Isabella resolver) | "Como podemos melhorar?" |
+| Reação ruim a cobrança | Pamela | Acolhimento + caminho de resolução |
+| Subiu 2 níveis em 1 ano | Pamela | "Você tá voando" |
 
-### Momentos PROIBIDOS (jamais)
-- ❌ Mensagem de venda em horário de luto/feriado pesado.
-- ❌ Promo automática no aniversário da pessoa.
-- ❌ "Estamos lamentando..." (palavra proibida).
-- ❌ Cobrança travestida de mensagem amigável.
-- ❌ Pesquisa de NPS após problema mal resolvido.
+### Momentos proibidos (calendário negro)
+- ❌ Aniversário do cliente: zero venda. Só parabéns.
+- ❌ Feriado religioso pesado: silêncio.
+- ❌ Luto coletivo na cidade (catástrofe, falecimento de figura local): silêncio.
+- ❌ Após problema mal resolvido: nenhuma pesquisa NPS.
 
 ---
 
 ## VI. ECONOMIA DOS PRODUTOS LIGO+
 
-Os produtos extras (TV, Filmes, Música, IP Fixo, WiFi+) **não são vendidos**.
-Eles são **desbloqueados**.
+Os produtos extras (TV, Filmes, Música, IP Fixo, WiFi+) **nunca são vendidos**.
+Eles são **desbloqueados** ou **desbravados em conversa real**.
 
 | Produto | Quando aparece |
 |---|---|
-| **Ligo+ TV** | Surge como sugestão no momento certo (Pós-reparo com "Wi-Fi não pega na sala", ou contexto de família com várias TVs). Cliente Constelação+ recebe 30 dias grátis automaticamente. |
-| **Ligo+ Filmes** | Aparece pra clientes que demonstram interesse em entretenimento (em conversa real). Cliente Constelação ganha incluso. |
-| **Ligo+ Música** | Inclusivo a partir de Cometa. Posicionado como "música de fundo da casa", não como streaming premium. |
-| **Ligo+ Benefícios** | Clube de descontos em parceiros locais (padaria, farmácia, açougue). Embaixador tem voz na escolha dos parceiros. |
+| **Ligo+ Música** | Inclusivo a partir de Cometa. "Música de fundo da casa." |
+| **Ligo+ Filmes** | Aparece pra quem demonstra interesse em entretenimento, em conversa real. Constelação ganha incluso. |
+| **Ligo+ TV** | Sugestão em contexto certo: cliente comenta que tem várias TVs, ou pós-reparo de Wi-Fi com queixa de cobertura. Constelação+ ganha 30 dias automáticos. |
+| **Ligo+ Benefícios** | Clube de descontos em parceiros locais (padaria, farmácia, açougue). Embaixadores votam quais parceiros entram. |
 | **IP Fixo / WiFi+** | Produtos técnicos. Aparecem só quando o cliente tem caso de uso real (gamer, home office, vigilância). Nunca empurrados. |
 
-**Regra mestra:** nenhum produto Ligo+ pode ser oferecido como "promoção". Sempre como "isso aqui combina com o que você me contou".
+**Regra mestra:** nenhum Ligo+ pode ser oferecido como "promoção". Sempre como *"isso aqui combina com o que você me contou."*
 
 ---
 
-## VII. MATEMÁTICA OPERACIONAL (apenas pra orientação interna)
+## VII. MATEMÁTICA INTERNA (invisível ao cliente)
 
-> Os números abaixo são **alvos de comportamento**, não tabelas de produto. Só existem pra o time interno calibrar o sistema. **Nada disso aparece pro cliente como "regra"**.
+Esta seção existe **apenas para calibração da equipe**. Cliente JAMAIS vê fórmula.
 
-### Pontuação interna (invisível ao cliente)
-- Tempo de casa: vale pontos cumulativos.
-- Pagamentos em dia: vale pontos cumulativos.
-- Indicações convertidas: vale pontos (cap baixo pra não distorcer).
-- NPS alto: vale pontos.
-- Produtos Ligo+ ativos: vale pontos.
-- Ter problema mal-resolvido = NÃO desconta pontos. Conta como sinal de risco, mas não pune.
+### Pontuação interna
+- Tempo de casa: pontos cumulativos (cap 60 meses).
+- Pagamento em dia: pontos cumulativos.
+- Apresentação convertida (indicação): pontos (cap baixo — não distorcer).
+- NPS alto / orgulho observado: pontos.
+- Produtos Ligo+ ativos: pontos.
+- Problema mal-resolvido: **NÃO desconta.** Sinaliza risco, sem punir.
 
-### Faixas
-- Explorador: 0-99
-- Viajante: 100-249
-- Cometa: 250-499
-- Constelação: 500-799
-- Galáxia: 800-1199
-- Embaixador: 1200+
+### Faixas (mantidas)
+- Explorador: 0–99
+- Viajante: 100–249
+- Cometa: 250–499
+- Constelação: 500–799
+- Galáxia: 800–1199
+- Embaixador: convite por observação, **não por pontos**.
 
-### Política de "queda de nível"
-- **Não há queda automática por inatividade curta.**
-- Cliente que cai abaixo do mínimo **só perde nível após 6 meses CONSECUTIVOS abaixo**.
-- E mesmo assim, recebe convite ANTES da queda: *"Pamela: tá tudo bem? a gente sente sua falta."*
+### Política de "queda"
+- **Não há queda automática por inatividade.**
+- Cliente abaixo do mínimo: só perde nível após **6 meses consecutivos** abaixo.
+- E antes da queda, **convite**: *"Faz tempo que a gente não conversa. Como tá tudo aí?"*
 
 ---
 
-## VIII. CUSTO INTERNO ESTIMADO POR NÍVEL (apenas orientação)
+## VIII. CUSTO INTERNO POR NÍVEL (orientação)
 
 | Nível | Custo médio Ligo/mês/cliente | Retorno esperado |
 |---|---|---|
-| Explorador | ~R$ 0 (custo de operação normal) | Retenção dos primeiros 6 meses |
-| Viajante | ~R$ 2 (brinde de aniversário, prioridade) | Indicação espontânea |
-| Cometa | ~R$ 8 (Ligo+ Música + 5% desconto quando aplica) | 1-2 indicações/ano |
-| Constelação | ~R$ 18 (10% desconto + Filmes incluso) | 3+ indicações/ano + advocacy local |
-| Galáxia | ~R$ 30 (15% desconto + todos Ligo+) | Selo Galáxia + 6+ indicações |
-| Embaixador | ~R$ 60-80 (mensalidade simbólica) | Embaixada local + voz de marca |
+| Explorador | ~R$ 0 | Retenção dos primeiros 6 meses |
+| Viajante | ~R$ 2 | Indicação espontânea ocasional |
+| Cometa | ~R$ 8 | 1-2 indicações/ano, advocacy |
+| Constelação | ~R$ 18 | 3+ indicações/ano, referência de bairro |
+| Galáxia | ~R$ 30 | 6+ indicações, defesa pública |
+| Embaixador | ~R$ 30 (igual Galáxia — não há desconto extra) | Embaixada local, voz de marca |
 
-**Análise:** o custo cresce com o nível, MAS o LTV cresce mais rápido. Embaixador custa R$ 80/mês mas mantém 10 outros clientes ativos. ROI mínimo: 10x.
+**Importante (mudança v2):** Embaixador NÃO custa mais que Galáxia em dinheiro. Custa mais em **reconhecimento simbólico** (cartão, convite, voz). Isso é grátis financeiramente — caríssimo emocionalmente.
 
 ---
 
@@ -320,50 +353,75 @@ Eles são **desbloqueados**.
 
 | # | Risco | Mitigação |
 |---|---|---|
-| 1 | Cliente sobe rápido, esgota benefícios, cancela | Benefícios são VITALÍCIOS enquanto ativo. Saída custa o status acumulado. |
-| 2 | Indicação massiva sem conversão real (fraude) | Bônus só após cliente indicado ativo 30+ dias. Auditoria contínua. |
-| 3 | Custo total dos descontos > receita gerada | Calcular margem por nível trimestralmente. Ajustar % se necessário. |
-| 4 | Cliente Galáxia/Embaixador exige privilégios excessivos | Política clara: Selo é reconhecimento, não imunidade. |
-| 5 | Cliente Explorador se desmotiva por ver longa caminhada até Embaixador | Comunicar progresso incremental ("você está a 12 dias de subir pra Viajante"). |
-| 6 | Comunidade colapsa se a Ligo perder qualidade técnica | A economia só funciona com base sólida. Cuidar do produto primeiro. |
+| 1 | Cliente sobe rápido, esgota benefícios, cancela | Benefícios são vitalícios enquanto ativo. Sair custa o status acumulado. |
+| 2 | Apresentação fraudulenta (CPF reciclado) | Bônus só após indicado ativo 30+ dias + auditoria de duplicidade. |
+| 3 | Custo dos descontos > receita gerada | Trimestralmente: calcular margem por nível. Ajustar % se necessário. |
+| 4 | Cliente Constelação+ exige privilégios excessivos | Política clara: selo é reconhecimento, não imunidade. |
+| 5 | Cliente Explorador se desmotiva pela distância até Embaixador | Comunicar progresso em datas próximas ("faltam 14 dias pra você virar Viajante"). |
+| 6 | Comunidade colapsa se Ligo perder qualidade técnica | A economia só funciona com base técnica sólida. Produto primeiro. |
+| 7 | Embaixador morre / cancela | Próximo Galáxia da cidade naturalmente vira candidato. Sistema de sucessão tácito. |
 
 ---
 
 ## X. OPORTUNIDADES ECONÔMICAS
 
-| # | Oportunidade | Como capturar |
+| # | Oportunidade | Quando |
 |---|---|---|
-| 1 | Embaixadores como vendedores locais informais | Comissão simbólica + voz nas decisões |
-| 2 | "Família Ligo do Bairro" como cluster de pricing | Pacote vizinhança: 5 casas, 5% desconto coletivo |
-| 3 | Parcerias locais (Ligo+ Benefícios) com custo zero pra Ligo | Negociar desconto em parceiros em troca de visibilidade no app |
-| 4 | Conteúdo gerado pelo cliente Embaixador | Vídeos curtos contando a história — distribuídos nas redes |
-| 5 | Eventos físicos anuais como ativação de marca | Custo baixo, impacto altíssimo em retenção |
-| 6 | Vender "kit Ligo" (camiseta, caneca) sem lucro — só pra orgulho | Cliente que paga pra usar a marca é cliente vitalício |
+| 1 | Embaixadores como referência informal de venda na cidade | Sempre. Não recebem comissão, recebem reconhecimento. |
+| 2 | "Família Ligo do Bairro" como cluster | Após 50+ clientes/bairro: oferta de pacote de vizinhança com pequeno desconto coletivo. |
+| 3 | Ligo+ Benefícios com parceiros locais | Negociar descontos em padaria/farmácia/açougue em troca de visibilidade no app. Custo zero pra Ligo. |
+| 4 | Conteúdo gerado por Embaixadores | Vídeos curtos com história deles — distribuídos em redes. |
+| 5 | Celebração anual da comunidade na cidade | Como festa do bairro, não evento corporativo (decisão CEO). |
+| 6 | Loja simbólica Ligo (camiseta, caneca) — preço de custo | Quem paga pra usar a marca é vitalício. |
 
 ---
 
-## XI. RECOMENDAÇÕES DO CONSELHO
+## XI. RECOMENDAÇÕES DO CONSELHO (V2)
 
-1. **Aprovar a estrutura de 6 níveis com os nomes propostos pelo CEO.**
-2. **Calibrar pontuação real só DEPOIS de coletar 6 meses de dados de base completa.** Por enquanto, manter a fórmula atual com ajuste de NPS.
-3. **Nunca chamar a economia interna de "programa".** No discurso interno usar: "jornada", "trajetória", "comunidade". A palavra "programa" sugere início e fim.
-4. **Criar política clara de "passe livre"** — o cliente Cometa+ pode pular fila de suporte 1x ao ano. Comunicar isso como direito, não como favor.
-5. **Não publicar a tabela de pontos pro cliente.** Mostrar apenas o caminho ("faltam X dias / Y indicações pra subir") — o cliente NÃO precisa ver fórmula. Programa de fidelidade mostra fórmula. Universo Ligo mostra **jornada**.
-6. **Investir o equivalente a 1% da receita anual em economia comunitária** (descontos, brindes, eventos). Esse é o orçamento. Tudo que passar disso é exceção e precisa de justificativa.
+1. **Aprovar a estrutura de 6 níveis** com os nomes definidos pelo CEO: Explorador, Viajante, Cometa, Constelação, Galáxia, Embaixador.
+
+2. **Embaixador NÃO paga simbolicamente.** Reconhecimento é grátis em dinheiro, caro em reputação. **Esta é regra inegociável conforme decisão CEO.**
+
+3. **A indicação só aparece como CONVITE DISCRETO em momentos certos.** Nunca como banner, nunca como botão grande, nunca como campanha.
+
+4. **Pontuação invisível ao cliente.** Mostrar apenas o caminho ("faltam X dias pra subir") — programa mostra fórmula, Universo mostra trajetória.
+
+5. **Auditoria mensal de mensagens da Pamela:**
+   - Razão "indicação vs comunidade/marco" ≤ 1:5.
+   - Frequência máxima 1 mensagem/cliente/21 dias (marcos podem quebrar).
+
+6. **Investimento orçado:** 1% da receita anual em economia comunitária (descontos + brindes + eventos). Tudo que passar disso precisa de justificativa.
+
+7. **Cartão físico (Carta da Chegada) NÃO autorizado ainda.** Testar em piloto. Decisão dependente da pergunta: *"o cliente guarda?"*
+
+8. **Os 6 níveis são chamados "fases", "trajetória" ou "jornada"** — nunca "tier", "nível" no sentido gamificado, "categoria" ou "patamar".
 
 ---
 
 ## XII. ENCERRAMENTO
 
-A economia do Universo Ligo é uma economia de **gratidão**.
+A economia do Universo Ligo é **economia de gratidão**.
 
 A Ligo gratuiza pequenos gestos.
 O cliente reciproca com fidelidade.
 O ciclo gera margem.
 
-O dia que o cliente diz **"eu pago pra ser da Ligo"** — ao invés de **"eu pago pela internet da Ligo"** — esse é o dia em que a economia funcionou.
+E margem aqui não é só financeira.
+É **margem de paciência** (cliente perdoa 1 falha).
+É **margem de advocacy** (cliente fala bem nas mesas de bar).
+É **margem de retenção** (cliente não cancela por R$ 10).
+
+O dia em que o cliente diz:
+
+> **"Eu pago pra ser da Ligo"**
+
+— ao invés de —
+
+> *"Eu pago pela internet da Ligo"*
+
+— esse é o dia em que a economia da alma deu certo.
 
 ---
 
-**Aguardando aprovação do CEO.**
-**Próximo documento da Fase A.0:** `UNIVERSO_LIGO_COMUNIDADE.md`
+**Aguardando aprovação final do CEO.**
+**Documentos companheiros:** `UNIVERSO_LIGO_MANIFESTO.md` (V2) e `UNIVERSO_LIGO_COMUNIDADE.md` (V2)
