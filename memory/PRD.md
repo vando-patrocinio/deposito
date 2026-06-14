@@ -2,6 +2,97 @@
 
 > Documento vivo. Atualizado a cada sprint.
 
+## 🎯 ONE_TRUTH_MATRIX ENTREGUE (14/06/2026 · pré-Etapa 3)
+
+**CTO aprovou Etapa 1 + pediu este documento ANTES dos renames.**
+
+📎 `/app/memory/ONE_TRUTH_MATRIX.md` — matriz completa Pergunta → Fonte Oficial para 9 categorias executivas.
+
+### Tolerâncias oficiais (CTO)
+- **Primária = 0%**: Receita / Clientes Ativos / Tickets / Cancelamentos
+- **Derivada = até 1%**: Ticket médio / % conversão / saldo líquido / Health Score
+- **Preditiva = até 5%**: Previsão 30d / dinheiro em risco / ROI esperado
+
+### Fontes oficiais documentadas
+- "Quantos clientes ativos?" → **2.746** (`subscribers` + `loyalty_imported_db`)
+- "Quanto faturou?" → `revenue_realization.month_total(cid)`
+- "Quanto cada agente gerou?" → `revenue_agent.by_agent(cid, days=30)`
+- "Quem é Embaixador?" → `universo_ligo_invites.find({decision:"APTO", status:"accepted"})` (convite humano, NUNCA por score)
+- "Health Score" (interno) vs "Executive Score" (R$ ao CEO) — DIFERENTES por design
+
+### 6 perguntas declaradas oficialmente INDISPONÍVEIS (zero invenção)
+- Indicações reais convertidas (referrals 100% sintéticos)
+- Clientes irritados (sem flag estruturada)
+- Elogios espontâneos (sem NLP)
+- NPS robusto (1 doc — confiança baixa por meses)
+- Vendedor humano do mês (sem `sales_users`)
+- Causa-raiz de cada incidente (campo raramente preenchido)
+
+### Stub log [DEPRECATED_CALL] spec
+- 5 campos obrigatórios (origem, destino, tenant, usuario, timestamp)
+- Persistido em coleção nova `deprecated_call_log`
+- Worker `deprecated_ranking_worker.py` gera ranking semanal em `deprecated_ranking_weekly`
+- Painel admin `/api/admin/deprecated-ranking`
+- Critério de sucesso: ranking vazio após 30d
+
+### Tag dual em `executive_ledger`
+- `pre_sanitize_2026_06_14=true` + `synthetic_detected=true`
+- Esperado: ~2.335 docs atualizados
+- Filtro padrão dos endpoints executivos passa a usar `synthetic_detected != true`
+
+### test_one_truth — 5 testes formalizados
+- `test_revenue_month_zero_tolerance` (receita = entre 3 fontes)
+- `test_clients_active_zero_tolerance` (subscribers vs loyalty)
+- `test_tickets_zero_tolerance` (tickets count vs dashboard)
+- `test_derived_within_1pct` (ticket médio)
+- `test_predictive_within_5pct` (forecast 30d)
+
+### Status
+- ⛔ Zero código alterado
+- ⛔ Zero collection tagueada
+- ⛔ Zero renome executado
+- ⏳ Aguardando CTO ratificar matriz → autoriza Etapa 3 técnica (3-4 dias)
+
+---
+
+
+
+## 🌌 UNIVERSO LIGO CUSTOMER INTELLIGENCE — Arquitetura entregue (14/06/2026)
+
+**CTO Mode. Zero código. Documento `/app/memory/UNIVERSO_LIGO_CUSTOMER_INTELLIGENCE.md`.**
+
+### Entrega (10 itens pedidos)
+1. ✅ Mapa do que já existe (6 collections universo_ligo_* já vivas, scores=200 docs, levels=6 seedados)
+2. ✅ Reaproveitamento integral — universo_ligo_levels/scores/invites + relatórios já gerados (Fundadores/Embaixadores/Invisíveis) + experience_campaigns + nps_responses_mvp
+3. ✅ Coleções existentes mapeadas — fonte primária `subscribers` + `loyalty_imported_db` (24k docs ricos)
+4. ✅ Integrações com Isabella (prompt_loader pattern), Pâmela (persona — mesma rota), WhatsApp/CRM/Lousa/Perfil
+5. ✅ Arquitetura: **1 módulo novo só** (`customer_intelligence.py` ~400 linhas) + 1 endpoint + 1 coleção nova (`universo_ligo_score_audit` — histórico)
+6. ✅ Wireframe compacto (badge) + expandido (card) com motivos auditáveis
+7. ✅ Fórmula auditável: 6 dimensões com pesos (tempo 30% / estabilidade 20% / relacionamento 20% / participação 10% / indicações 10% / técnico 10%) × multiplicador Fundador (1.0 ou 1.5)
+8. ✅ Plano de implantação em 5 etapas (~6-7 dias, rollout gradual mês 1)
+9. ✅ Plano de rollback com feature flags + audit trail preservado
+10. ✅ Plano evolução V1→V5 (NLP em mensagens, score familiar, tratamento por nível)
+
+### Princípios reforçados
+- Embaixador é **convite humano**, nunca por score
+- 7 tags secundárias com critérios numéricos (HIGH TICKET / BLACK / FUNDADOR / EMBAIXADOR NATURAL / INVISÍVEL / EM RISCO / RECUPERADO)
+- Score é **interno** — cliente nunca vê
+- Confiança declarada (alta/media/baixa) em cada classificação
+- **PROIBIDO**: cashback, pontos, milhas, ranking público, gamificação
+
+### Bloqueio
+⛔ Nenhuma linha de código escrita
+⛔ Esperando 3 respostas CTO (Q1 defaults D1-D7, Q2 visualização cliente, Q3 hook Isabella) antes de Etapa 2
+
+### Continua BLOQUEADO
+- Pamela V3, Isabella V14, Universo Ligo Fase B
+- Etapa 3 Fase A (renomes/tags) — autorização anterior ainda aberta também
+- Fases C/D/E/F (Conselhos/Barramento/CEO Mode/Observabilidade)
+
+---
+
+
+
 ## 📚 LIGO EXECUTIVE OS — FASE A · ETAPA 1 ENTREGUE (14/06/2026)
 
 **CTO autorizou apenas a criação dos 5 documentos contratuais. Zero código alterado.**
