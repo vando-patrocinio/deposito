@@ -36,7 +36,7 @@ const STATUS_LABEL = {
 function Card({ children, testid, className = "" }) {
   return (
     <div
-      className={`rounded-xl border border-zinc-800 bg-zinc-900/60 p-5 ${className}`}
+      className={`rounded-xl border border-zinc-200 bg-white p-5 ${className}`}
       data-testid={testid}
     >
       {children}
@@ -52,7 +52,7 @@ function LevelBar({ panel }) {
       <div className="text-xs uppercase text-zinc-500 mb-2">
         Distribuição por nível ({total.toLocaleString("pt-BR")} clientes)
       </div>
-      <div className="flex h-8 rounded-lg overflow-hidden bg-zinc-950">
+      <div className="flex h-8 rounded-lg overflow-hidden bg-zinc-100">
         {(panel.distribution || []).map((d) => {
           const lvl = panel.levels.find((l) => l.id === d.level_id);
           const pct = (d.n_subscribers / total) * 100;
@@ -82,7 +82,7 @@ function LevelBar({ panel }) {
                 style={{ backgroundColor: LEVEL_COLORS[lvl?.key] || "#444" }}
                 className="w-3 h-3 rounded-sm"
               />
-              <span className="text-zinc-300 truncate">
+              <span className="text-zinc-700 truncate">
                 {d.level_name}{" "}
                 <span className="text-zinc-500">
                   · {d.n_subscribers.toLocaleString("pt-BR")}
@@ -122,7 +122,7 @@ function IdentifyTab() {
             value={phone}
             onChange={(e) => setPhone(e.target.value)}
             placeholder="Telefone (com DDD)"
-            className="flex-1 bg-zinc-950 border border-zinc-800 rounded-md px-3 py-2 text-zinc-100"
+            className="flex-1 bg-white border border-zinc-300 rounded-md px-3 py-2 text-zinc-900"
             data-testid="ul-identify-phone-input"
           />
           <Button onClick={lookup} data-testid="ul-identify-btn">
@@ -130,10 +130,10 @@ function IdentifyTab() {
           </Button>
         </div>
         {result && (
-          <div className="border-t border-zinc-800 pt-4" data-testid="ul-identify-result">
+          <div className="border-t border-zinc-200 pt-4" data-testid="ul-identify-result">
             <div className="flex items-center justify-between mb-3">
               <div>
-                <div className="text-lg font-semibold text-zinc-100">
+                <div className="text-lg font-semibold text-zinc-900">
                   {result.name}
                 </div>
                 <div className="text-xs text-zinc-500">
@@ -153,23 +153,23 @@ function IdentifyTab() {
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
               <div>
                 <div className="text-zinc-500 text-xs">Plano</div>
-                <div className="text-zinc-200">{result.plan_name || "—"}</div>
+                <div className="text-zinc-800">{result.plan_name || "—"}</div>
               </div>
               <div>
                 <div className="text-zinc-500 text-xs">Score</div>
-                <div className="text-zinc-200">
+                <div className="text-zinc-800">
                   {result.universo_ligo?.score?.toFixed(1)}
                 </div>
               </div>
               <div>
                 <div className="text-zinc-500 text-xs">Tempo de casa</div>
-                <div className="text-zinc-200">
+                <div className="text-zinc-800">
                   {result.universo_ligo?.factors?.tempo_casa_meses || 0} meses
                 </div>
               </div>
               <div>
                 <div className="text-zinc-500 text-xs">Faturas em dia</div>
-                <div className="text-zinc-200">
+                <div className="text-zinc-800">
                   {result.universo_ligo?.factors?.pagamentos_em_dia || 0}
                 </div>
               </div>
@@ -294,31 +294,31 @@ function CampaignsTab() {
                     </Badge>
                   )}
                 </div>
-                <div className="text-zinc-200 font-semibold truncate">
+                <div className="text-zinc-800 font-semibold truncate">
                   {c.target_label}{" "}
                   <span className="text-xs text-zinc-500">
                     {c.target_phone}
                   </span>
                 </div>
-                <div className="text-sm text-zinc-300 mt-1 italic">
+                <div className="text-sm text-zinc-600 mt-1 italic">
                   “{c.message}”
                 </div>
                 <div className="text-xs text-zinc-500 mt-2 flex gap-4">
                   <span>
-                    Custo: <span className="text-zinc-300">{BRL(c.estimated_cost_brl)}</span>
+                    Custo: <span className="text-zinc-700">{BRL(c.estimated_cost_brl)}</span>
                   </span>
                   <span>
                     ROI esperado:{" "}
-                    <span className="text-emerald-400">{BRL(c.expected_roi_brl)}</span>
+                    <span className="text-emerald-600">{BRL(c.expected_roi_brl)}</span>
                   </span>
                 </div>
                 {c.message_warnings && c.message_warnings.length > 0 && (
-                  <div className="text-xs text-rose-400 mt-1">
+                  <div className="text-xs text-rose-600 mt-1">
                     ⚠ {c.message_warnings.join(" · ")}
                   </div>
                 )}
                 {c.council_review && (
-                  <div className="text-xs text-zinc-400 mt-2 border-t border-zinc-800 pt-2">
+                  <div className="text-xs text-zinc-500 mt-2 border-t border-zinc-200 pt-2">
                     <strong>Conselho:</strong>{" "}
                     {c.council_review.recomendacao.toUpperCase()} · risco{" "}
                     {c.council_review.risco}
@@ -398,11 +398,11 @@ export default function UniversoLigoPanel() {
   };
 
   return (
-    <div className="p-6 bg-zinc-950 min-h-screen" data-testid="universo-ligo-panel">
+    <div className="p-6 bg-white min-h-screen" data-testid="universo-ligo-panel">
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-zinc-100">Universo Ligo</h1>
-          <p className="text-zinc-400 text-sm mt-1">
+          <h1 className="text-2xl font-bold text-zinc-900">Universo Ligo</h1>
+          <p className="text-zinc-600 text-sm mt-1">
             Anfitriã da comunidade · níveis · Experience Commander · Human
             Authorization Gate
           </p>
