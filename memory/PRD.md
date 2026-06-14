@@ -1,6 +1,33 @@
 # SmartProv — PRD (Product Requirements Document)
 
 > Documento vivo. Atualizado a cada sprint.
+
+## 🗺️ OPERAÇÃO MAPA DA BASE — ENTREGUE (14/06/2026 · CTO Order "Limpe a verdade antes de construir")
+
+**Contexto:** Antes de migrar a base ao Universo Ligo, CTO ordenou auditoria documental read-only para identificar a base **real** de clientes Ligo e isolar dados sintéticos/QA que vinham inflando todos os dashboards em ~9x. Zero código, zero migração, zero schema change.
+
+**5 relatórios entregues em `/app/memory/`:**
+
+1. **`TENANT_SANITY_CHECK.md`** — Inventário oficial de tenants: `co-demo` é o único REAL (2.746 ativos). Tudo o que começa com `co-colosso`, `co-fantasma-*`, `co-attribution-*`, `co-id-auto`, hash UUID, ou `test-*` é SINTÉTICO/QA e deve ser explicitamente excluído de toda métrica produtiva. Inclui `SYNTHETIC_TENANTS $nin` pronto para aplicação.
+2. **`MAPA_DA_BASE_LIGO.md`** — Foto da base ativa: 77% RJ + 23% SP, **CORDOVIL concentra 32,6% sozinho**, Zona Norte RJ inteira = 67%. Ticket médio R$ 103,37. 92% em dia. 193 nomes de planos distintos (catálogo fragmentado).
+3. **`CLIENTE_FUNDADOR_REPORT.md`** — 130 fundadores estritos: Ativo + zero cancelamentos + ≥50 faturas pagas + registrado antes de 2020. Os 5 mais antigos (RENATO DO NASCIMENTO FREITAS, ALCIDES DE OLIVEIRA VARGAS, VANESSA ALVES DE SOUZA, IONE DA SILVA AZEVEDO, ANDERSON FAUSTINO DA SILVA) representam o início concreto da Ligo em 2017.
+4. **`EMBAIXADORES_NATURAIS.md`** — 113 candidatos a Embaixador. Lista Ouro de 17 já formalmente marcados pelo time operacional via `experience_campaigns` (aniv_1y/3y/5y, vip_pizza). Sinalizada **honestamente** a indisponibilidade de evidência para "indicou alguém" (referrals 100% sintéticos) e "elogiou atendimento" (NPS = 0 docs).
+5. **`CLIENTES_INVISIVEIS.md`** — 84 "diamantes silenciosos": ativos + zero tickets lifetime + zero atraso + ≥12 faturas pagas. 3,1% da base ativa. Sustentam ~R$ 104 mil/ano de receita silenciosa sem custo de suporte.
+
+**Campo obrigatório em todos os 5 relatórios:** `CONFIANÇA DOS DADOS` (Alta/Média/Baixa) com justificativa por dimensão.
+
+**Achados críticos descobertos durante a auditoria:**
+- `nps_responses` = **0 documentos** no banco inteiro — sem coleta de NPS, todo dashboard NPS gerencial é falacioso.
+- `referrals` = **7 documentos, 100% sintéticos** — sistema de indicação não tem dados reais.
+- `tickets` co-demo = 350 vs `loyalty_imported_db.tickets_closed` somando 11k+ → **pipeline rompido** Atlaz↔interno.
+- Catálogo de planos: **193 nomes distintos para 2.746 ativos** → falta governança de catálogo.
+- Concentração geográfica: **1 OLT em Cordovil afeta 33% do faturamento** → risco de disponibilidade.
+
+**Próxima decisão CTO:** definir mecânica de convite (não conquista) ao Universo Ligo para fundadores/embaixadores, aplicar `SYNTHETIC_TENANTS $nin` em endpoints de dashboard (P0 ainda BLOQUEADO até autorização).
+
+---
+
+
 ## 🟢 FLUXO E2E ISABELLA → PRESIDENTE IA — FECHADO 100% (13/06/2026 · CTO Order "PARE DE MEDIR. RESOLVA.")
 
 **Score E2E: 15/15 (100%)** — `python /app/backend/scripts/test_isabella_lousa_e2e.py` reproduzível.
