@@ -106,7 +106,7 @@ async def ensure_indexes(db, dry_run: bool = True) -> Dict[str, Any]:
         ("universo_ligo_scores", [("subscriber_id", 1)], {"unique": False}),
         ("universo_ligo_scores", [("company_id", 1), ("level_key_v2", 1)], {}),
         ("subscribers", [("referral_code", 1)],
-            {"unique": True, "sparse": True, "partialFilterExpression":
+            {"unique": True, "partialFilterExpression":
              {"referral_code": {"$type": "string"}}}),
         ("subscribers", [("universo_level_key", 1)], {"sparse": True}),
         ("universo_ligo_milestones", [("subscriber_id", 1), ("milestone_type", 1)], {}),
