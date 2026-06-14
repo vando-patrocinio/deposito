@@ -2,6 +2,41 @@
 
 > Documento vivo. Atualizado a cada sprint.
 
+## 📚 LIGO EXECUTIVE OS — FASE A · ETAPA 1 ENTREGUE (14/06/2026)
+
+**CTO autorizou apenas a criação dos 5 documentos contratuais. Zero código alterado.**
+
+### 5 documentos contratuais em `/app/memory/`:
+1. `EXECUTIVE_OS_CONTRACTS.md` — 4 Presidentes como 4 camadas (memória/financeiro/simulação/execução)
+2. `EXECUTIVE_COUNCILS_CONTRACTS.md` — 3 Conselhos em hierarquia pirâmide + 5 do CTO como subseções do orquestrador
+3. `EXECUTIVE_REVENUE_CONTRACTS.md` — 5 motores de receita com fonte única por pergunta
+4. `EXECUTIVE_BRIEFING_CONTRACTS.md` — 3 "briefings" desambiguados (1 CEO + 1 transporte + 1 contexto de campanha)
+5. `PERSONAS_GOVERNANCE.md` — Pâmela/Camila/Leo declarados oficialmente como personas, não agentes
+
+**Resumo executivo:** `FASE_A_ETAPA1_RESUMO.md`
+
+### Decisões "uma verdade por pergunta":
+- "Quanto a Ligo faturou?" → `revenue_realization` (lê `subscriber_invoices`)
+- "Quanto cada agente gerou?" → `revenue_agent` (lê `motor_ia_revenue_attribution`)
+- "Onde registramos outcomes?" → `revenue_attribution.py` (único escritor)
+- "Health Score vs Executive Score?" → DIFERENTES por design (interno vs monetizado)
+- "Quem manda o Café com o CEO?" → `ceo_briefing` (ex-`presidente_ia_briefing`)
+- "O que é `disparo_briefing.py`?" → **NÃO é briefing CEO** — é contexto de campanha pra Isabella
+- "Pâmela é agente?" → **PERSONA**. Sem código próprio. Voz de relacionamento.
+
+### Status
+- ⛔ Nenhum código alterado
+- ⛔ Nenhuma collection tagueada
+- ⛔ Nenhum renome executado
+- ⏳ Aguardando CTO revisar nominalmente os 5 documentos para autorizar Etapa 3
+
+### 13 dúvidas em aberto consolidadas em `FASE_A_ETAPA1_RESUMO.md`
+Inclui: tolerância do `test_one_truth` (±2%), LLM no briefing ou determinístico, owner editorial das personas, frequência de pareceres LLM, e mais.
+
+---
+
+
+
 ## 🧹 LIGO EXECUTIVE OS — FASE A DISCOVERY ENTREGUE (14/06/2026)
 
 **CTO autorizou apenas Fase A (consolidação) + Fase B futura. Zero código escrito.**
