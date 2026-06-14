@@ -68,7 +68,9 @@ def _safe(brl: float) -> float:
 
 
 def _base_q(cid: Optional[str]) -> Dict[str, Any]:
-    return {"company_id": cid} if cid else {}
+    # OPERAÇÃO VERDADE EXECUTIVA (14/06/2026): cross-tenant exclui sintéticos.
+    from constants.synthetic_tenants import real_tenant_filter
+    return real_tenant_filter(cid)
 
 
 # ─────────────────── Fontes resilientes ───────────────────

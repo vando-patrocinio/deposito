@@ -30,6 +30,7 @@ from core import (
     haversine_m,
     is_super_admin,
 )
+from constants.synthetic_tenants import real_tenant_filter, extend_filter_real
 from database import db
 
 router = APIRouter(prefix="/api/dashboard", tags=["dashboard"])
@@ -219,10 +220,10 @@ async def dwell_heatmap(year: int, month: int, user: dict = Depends(get_current_
     start = datetime(year, month, 1, tzinfo=timezone.utc).isoformat()
     end = datetime(year, month, last_day, 23, 59, 59, tzinfo=timezone.utc).isoformat()
 
-    pq: dict = {} if cid is None else {"company_id": cid}
+    pq: dict = real_tenant_filter(cid)
     pracas = await db.pracas.find(pq, {"_id": 0}).to_list(2000)
     praca_by_id = {p["id"]: p for p in pracas}
-    fq: dict = {"active": True} if cid is None else {"active": True, "company_id": cid}
+    fq: dict = extend_filter_real({"active": True}, cid)
     fences = await db.geofences.find(fq, {"_id": 0}).to_list(5000)
 
     def _nearest_praca(lat: float, lng: float) -> Optional[str]:
@@ -246,7 +247,7 @@ async def dwell_heatmap(year: int, month: int, user: dict = Depends(get_current_
                         best_d, best_pid = d, p["id"]
         return best_pid
 
-    cq: dict = {} if cid is None else {"company_id": cid}
+    cq: dict = real_tenant_filter(cid)
     colls = await db.collaborators.find(cq, {"_id": 0, "id": 1, "name": 1, "praca_id": 1}).to_list(5000)
     by_praca: dict[str, dict] = {}
     by_day = [0] * (last_day + 1)
@@ -311,10 +312,10 @@ async def dwell_heatmap_day(year: int, month: int, day: int, user: dict = Depend
     day_start = datetime(year, month, day, 0, 0, 0, tzinfo=timezone.utc).isoformat()
     day_end = datetime(year, month, day, 23, 59, 59, tzinfo=timezone.utc).isoformat()
 
-    pq: dict = {} if cid is None else {"company_id": cid}
+    pq: dict = real_tenant_filter(cid)
     pracas = await db.pracas.find(pq, {"_id": 0}).to_list(2000)
     praca_by_id = {p["id"]: p for p in pracas}
-    fq: dict = {"active": True} if cid is None else {"active": True, "company_id": cid}
+    fq: dict = extend_filter_real({"active": True}, cid)
     fences = await db.geofences.find(fq, {"_id": 0}).to_list(5000)
 
     def _nearest_praca(lat: float, lng: float) -> Optional[str]:
@@ -338,7 +339,7 @@ async def dwell_heatmap_day(year: int, month: int, day: int, user: dict = Depend
                         best_d, best_pid = d, p["id"]
         return best_pid
 
-    cq: dict = {} if cid is None else {"company_id": cid}
+    cq: dict = real_tenant_filter(cid)
     colls = await db.collaborators.find(cq, {"_id": 0, "id": 1, "name": 1, "praca_id": 1, "avatar_data_url": 1}).to_list(5000)
     out_stays: list[dict] = []
     for c in colls:

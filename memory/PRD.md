@@ -2,6 +2,62 @@
 
 > Documento vivo. Atualizado a cada sprint.
 
+## 🛡️ OPERAÇÃO VERDADE EXECUTIVA + CURADORIA FUNDADORES — ENTREGUE P0 (14/06/2026 · CTO Order "Limpe a verdade antes de construir")
+
+**Contexto:** Após OPERAÇÃO MAPA DA BASE, CTO autorizou P0 em 3 frentes — corrigir contaminação dos dashboards executivos antes de avançar Universo Ligo Fase B.
+
+### FRENTE 1 — Filtro anti-sintético em KPIs (CÓDIGO ALTERADO)
+
+**Novo módulo:** `/app/backend/constants/synthetic_tenants.py`
+- `SYNTHETIC_TENANTS` = 26 tenants nominais (co-colosso, co-fantasma-v3/v4/test, co-attribution-test, co-id-auto, demo-cto-audit, benchmark, etc.)
+- `real_tenant_filter(cid, *, include_synthetic=False)` — helper padrão
+- `is_synthetic_tenant(tenant_id)` — regex de prefixo (`test-|tst-|co-test-|test-dq-|test-e2e-`) + hash (`^(co-)?[0-9a-f]{10,}$`)
+
+**Endpoints corrigidos (3 chokepoints críticos):**
+1. `services/presidente_ia.py::_base_q` — agora aplica `$nin SYNTHETIC_TENANTS` em cross-tenant (afeta `compute_corporate_health` e todas funções dependentes)
+2. `services/presidente_executive.py::_base_q` — idem (afeta relatórios executivos full)
+3. `routes/dashboard.py` — 6 substituições inline (`/dashboard/overtime/trend`, `/dwell-heatmap`, `/dwell-heatmap/day`)
+
+**Impacto medido (cross-tenant, 16 coleções principais):**
+- `subscribers`: 26.851 → 2.816 (−89,5%)
+- `tickets`: 4.163 → 352 (−91,5%)
+- **`executive_ledger`: 2.351 → 16 (−99,3%) 🚨** — receita executiva era 99% sintética
+- **`incidents`: 80 → 1 (−98,8%) 🚨** — só 1 incidente real
+- **`ctos`: 1.240 → 40 (−96,8%) 🚨** — 1.200 CTOs sintéticos no dashboard
+- `motor_ia_events`: 427k → 372k (−12,9%)
+- TOTAL: 737.203 docs → 646.997 docs (90k sintéticos removidos)
+
+**Lint:** ✅ zero blocking. **Backend restart:** ✅ supervisorctl restart OK, workers iniciando normais.
+
+### FRENTE 2 — TOP 10 Fundadores Validação
+
+**Entrega:** `/app/memory/TOP_10_FUNDADORES_VALIDACAO.md` — lista operacional para Atendimento carimbar APTO/REVISAR/NÃO CONVIDAR. Confiança 🟡 MÉDIA-ALTA (pendência: confirmar manualmente "sem cancel" entre 2 registros Atlaz). Todos: 9 anos de casa, 52-68 faturas pagas, zero tickets nos últimos 12 meses, zero inadimplência atual.
+
+### FRENTE 3 — Mecânica de Convite Humano
+
+**Entrega:** `/app/memory/CONVITE_FUNDADORES_UNIVERSO_LIGO.md` — responde às 10 perguntas obrigatórias + 3 roteiros prontos (WhatsApp / Ligação / Visita). Princípio: "Reconhecimento, não recompensa". Pamela é Guardiã do tom, CTO é Guardião do limite, Atendimento é Guardião da pessoa.
+
+### Risco residual de contaminação documentado
+- 🟡 Workers/schedulers em `services/*.py` ainda não auditados por `find({})` sem filtro
+- 🔴 Histórico já gravado em `motor_ia_kpis` permanece contaminado (precisa re-agregação para últimos 90d)
+- 🟡 `include_synthetic=true` como query-param ainda não exposto (pendente fase seguinte)
+
+### Critério de aceite atendido
+- ✅ Dashboards executivos não somam mais sintéticos por padrão
+- ✅ Top 10 com confiança média-alta
+- ✅ Zero clientes comunicados
+
+### Próxima decisão CEO/CTO (bloqueado aguardando)
+- Atendimento valida 10 fundadores
+- Criar `universo_ligo_invites` collection + DNC field
+- Estender FRENTE 1 (auditar workers, re-agregar histórico, login guard)
+
+📎 Relatório consolidado: `/app/memory/RELATORIO_VERDADE_EXECUTIVA_E_CURADORIA.md`
+
+---
+
+
+
 ## 🗺️ OPERAÇÃO MAPA DA BASE — ENTREGUE (14/06/2026 · CTO Order "Limpe a verdade antes de construir")
 
 **Contexto:** Antes de migrar a base ao Universo Ligo, CTO ordenou auditoria documental read-only para identificar a base **real** de clientes Ligo e isolar dados sintéticos/QA que vinham inflando todos os dashboards em ~9x. Zero código, zero migração, zero schema change.

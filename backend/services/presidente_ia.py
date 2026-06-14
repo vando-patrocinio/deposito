@@ -195,7 +195,9 @@ async def _safe_one(col: str, q: Dict[str, Any]):
 
 
 def _base_q(cid: str) -> Dict[str, Any]:
-    return {"company_id": cid} if cid else {}
+    # OPERAÇÃO VERDADE EXECUTIVA (14/06/2026): cross-tenant exclui sintéticos.
+    from constants.synthetic_tenants import real_tenant_filter
+    return real_tenant_filter(cid)
 
 
 # ─────────────────── Health Score ───────────────────
