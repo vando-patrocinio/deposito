@@ -23,7 +23,7 @@ NERVOUS_METADATA = {
 }
 
 import os
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Header, HTTPException
@@ -422,6 +422,20 @@ async def openapi_spec(request_url: str = ""):
                                             "content": {"application/json": {"schema": {"$ref": "#/components/schemas/GoalsList"}}}}},
                 }
             },
+            "/api/ceo/cto/digest": {
+                "get": {
+                    "operationId": "ctoDigest",
+                    "summary": "Primeira tela CTO-style: tudo que o CEO precisa em uma única chamada",
+                    "description": (
+                        "Combina em um único payload as mensagens pendentes do CTO, "
+                        "as decisões aguardando aprovação do CEO, os KPIs do dia, o "
+                        "course_correction e o top_focus (pior KPI). Use isto como "
+                        "primeira chamada de cada conversa para economizar tokens."
+                    ),
+                    "responses": {"200": {"description": "Digest executivo",
+                                            "content": {"application/json": {"schema": {"$ref": "#/components/schemas/CtoDigest"}}}}},
+                }
+            },
         },
         "components": {
             "schemas": {
@@ -520,6 +534,38 @@ async def openapi_spec(request_url: str = ""):
                             "type": "array",
                             "items": {"$ref": "#/components/schemas/GoalItem"},
                         },
+                    },
+                },
+                "CtoDigest": {
+                    "type": "object",
+                    "properties": {
+                        "generated_at": {"type": "string"},
+                        "company_id": {"type": "string"},
+                        "snapshot_date": {"type": "string"},
+                        "counts": {
+                            "type": "object",
+                            "properties": {
+                                "pending_messages": {"type": "integer"},
+                                "cto_replies_unread": {"type": "integer"},
+                                "decisions_awaiting_approval": {"type": "integer"},
+                            },
+                        },
+                        "pending_messages": {
+                            "type": "array",
+                            "items": {"type": "object", "additionalProperties": True},
+                        },
+                        "cto_replies_unread": {
+                            "type": "array",
+                            "items": {"type": "object", "additionalProperties": True},
+                        },
+                        "decisions_awaiting_approval": {
+                            "type": "array",
+                            "items": {"$ref": "#/components/schemas/DecisionItem"},
+                        },
+                        "course_summary": {"type": "string"},
+                        "kpis": {"type": "object", "additionalProperties": True},
+                        "course_status": {"type": "object", "additionalProperties": True},
+                        "top_focus": {"type": "object", "additionalProperties": True},
                     },
                 },
             },
@@ -699,3 +745,88 @@ async def cto_reply(payload: dict):
                    "replied_at": reply["created_at"]}})
     reply.pop("_id", None)
     return {"ok": True, "reply_id": reply["id"]}
+
+
+
+# ────────────────────────── DIGEST (primeira tela CTO-style) ──────────────────────────
+@router.get("/cto/digest", dependencies=[Depends(require_token)])
+async def cto_digest():
+    """Primeira tela CEO: tudo que precisa decidir/saber em uma única chamada.
+
+    Retorna:
+      - pending_messages: mensagens do CEO em cto_inbox com status=open (esperando CTO)
+      - cto_replies_unread: respostas do CTO/system que o CEO ainda não viu (status=delivered ou open com from!=ceo)
+      - decisions_awaiting_approval: executive_decisions com status=proposed
+      - course_status: snapshot mais recente (date, KPIs, course_correction)
+      - counts: contadores agregados para a barra de topo
+    """
+    # 1. Mensagens do CEO ainda não respondidas pelo CTO.
+    pending_cur = db.cto_inbox.find(
+        {"from": "ceo", "to": "cto", "status": "open"},
+        {"_id": 0}).sort("created_at", -1).limit(20)
+    pending_messages = await pending_cur.to_list(20)
+
+    # 2. Respostas/avisos do CTO+system que o CEO ainda não confirmou leitura
+    # (proxy: status=delivered ou open && from!=ceo, últimas 24h).
+    cutoff = (datetime.now(timezone.utc) - timedelta(hours=24)).isoformat()
+    replies_cur = db.cto_inbox.find(
+        {"from": {"$in": ["cto", "system"]},
+         "status": {"$in": ["delivered", "open"]},
+         "created_at": {"$gte": cutoff}},
+        {"_id": 0}).sort("created_at", -1).limit(20)
+    cto_replies_unread = await replies_cur.to_list(20)
+
+    # 3. Decisões aguardando aprovação do CEO.
+    pending_decs = await exd.list_decisions(CO, status="proposed", limit=20)
+
+    # 4. Snapshot mais recente (course_correction + KPIs).
+    today_key = datetime.now(timezone.utc).date().isoformat()
+    snap = await db.president_daily.find_one(
+        {"company_id": CO, "date_key": today_key, "one_truth": {"$exists": True}},
+        {"_id": 0})
+    if not snap:
+        # fallback: pega o último disponível
+        snap = await db.president_daily.find_one(
+            {"company_id": CO, "one_truth": {"$exists": True}},
+            {"_id": 0}, sort=[("date_key", -1)])
+    ot = (snap or {}).get("one_truth") or {}
+    course = (snap or {}).get("course_correction") or {}
+    summary = (snap or {}).get("course_summary") or ""
+
+    # 5. Top decisão recomendada: pior KPI (status critico/piorando).
+    top_focus = None
+    for kpi, c in course.items():
+        st = c.get("status")
+        if st in ("critico", "piorando"):
+            top_focus = {
+                "kpi": kpi, "status": st,
+                "projected_90d": c.get("projected_90d"),
+                "target": c.get("target"),
+            }
+            break
+
+    return {
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "company_id": CO,
+        "snapshot_date": (snap or {}).get("date_key"),
+        "counts": {
+            "pending_messages": len(pending_messages),
+            "cto_replies_unread": len(cto_replies_unread),
+            "decisions_awaiting_approval": len(pending_decs),
+        },
+        "pending_messages": pending_messages,
+        "cto_replies_unread": cto_replies_unread,
+        "decisions_awaiting_approval": pending_decs,
+        "course_summary": summary,
+        "kpis": {
+            "clientes_ativos": ot.get("clientes_ativos"),
+            "mrr_brl": ot.get("mrr"),
+            "inadimplencia_brl": ot.get("inadimplencia_brl"),
+            "inadimplencia_n_faturas": ot.get("inadimplencia_n_faturas"),
+            "tickets_abertos": ot.get("tickets_abertos"),
+            "fundadores_aptos": ot.get("fundadores_aptos"),
+            "embaixadores": ot.get("embaixadores"),
+        },
+        "course_status": {k: v.get("status") for k, v in course.items()},
+        "top_focus": top_focus,
+    }

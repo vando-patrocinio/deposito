@@ -1,6 +1,22 @@
 # PontoIA — Changelog
 
 
+## 2026-06-15 — CEO DIGITAL · DIGEST ENDPOINT (PRIMEIRA TELA CTO-STYLE)
+
+### Ordem CEO
+"Sim" ao enhancement: digest unificado. Wake-up adiado.
+
+### Entrega
+- **Endpoint novo** `GET /api/ceo/cto/digest` — retorna em UMA chamada: pending_messages (CEO ainda não respondidas), cto_replies_unread (24h), decisions_awaiting_approval (status=proposed), KPIs do dia, course_summary, course_status, e top_focus (pior KPI).
+- **OpenAPI 3.1.0** estendido com operation `ctoDigest` + schema `CtoDigest`. Total: 11 operations no Custom GPT do CEO.
+- **Cleanup**: 2 decisions de teste deixadas pelo testing agent (dec-1698c0d098b845, dec-e5ab1e6c6b2949) movidas para status=cancelled.
+- **Testado**: HTTP 200 com payload completo; counts={pending_messages: 0, cto_replies_unread: 9, decisions_awaiting_approval: 0} pós-cleanup.
+
+### Notificação CEO
+- Reply `cto-f302ea5a69b546` postado no inbox com instruções de Refresh schema e sugestão de prompt para o Custom GPT.
+
+
+
 ## 2026-06-15 — CEO DIGITAL · P0 AUDIT ACTION 1 + 2 (CORPORATE_GOALS + EXECUTIVE_DECISIONS)
 
 ### Ordem CTO
