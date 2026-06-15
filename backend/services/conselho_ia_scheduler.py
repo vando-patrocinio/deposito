@@ -174,6 +174,58 @@ async def _maybe_send_presidente_briefing(cid: str) -> None:
             "[presidente-briefing] cron err %s: %s", cid, e)
 
 
+async def _post_daily_briefing_to_cto_inbox(cid: str) -> None:
+    """CEO Digital — gera snapshot do dia + posta briefing em cto_inbox.
+
+    O CEO recebe ao abrir o ChatGPT e chamar `ctoInbox(unread_only=true)`.
+    Idempotente: se já há um DAILY_BRIEFING criado hoje para o cid, não duplica.
+    """
+    cfg = await db.conselho_ia_settings.find_one(
+        {"company_id": cid}, {"_id": 0}) or {}
+    if not cfg.get("ceo_digital_daily_briefing_enabled"):
+        return
+    try:
+        from services import executive_memory as em
+        import uuid as _uuid
+        today_iso = datetime.now(timezone.utc).date().isoformat()
+        already = await db.cto_inbox.find_one({
+            "from": "system", "kind": "DAILY_BRIEFING",
+            "company_id": cid, "date_key": today_iso})
+        if already:
+            return
+        snap = await em.snapshot_today(cid)
+        ot = snap.get("one_truth") or {}
+        course = snap.get("course_correction") or {}
+        text_lines = [
+            f"☕ BRIEFING 08H · {today_iso}",
+            "",
+            f"Clientes: {ot.get('clientes_ativos')} · MRR: R$ {(ot.get('mrr') or 0):,.2f}",
+            f"Inadimplência: R$ {(ot.get('inadimplencia_brl') or 0):,.2f} ({ot.get('inadimplencia_n_faturas')} faturas)",
+            f"Tickets abertos: {ot.get('tickets_abertos')} · Fundadores aptos: {ot.get('fundadores_aptos')} · Embaixadores: {ot.get('embaixadores')}",
+            "",
+            f"Rota: {snap.get('course_summary')}",
+            "",
+            "Status por KPI:",
+        ]
+        for k, c in course.items():
+            text_lines.append(f"  • {k}: {c.get('status')} (proj 90d: {c.get('projected_90d')})")
+        await db.cto_inbox.insert_one({
+            "id": f"cto-{_uuid.uuid4().hex[:14]}",
+            "from": "system",
+            "to": "ceo",
+            "kind": "DAILY_BRIEFING",
+            "company_id": cid,
+            "date_key": today_iso,
+            "text": "\n".join(text_lines),
+            "priority": "p1",
+            "status": "open",
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        })
+        logger.info("[ceo-digital] daily_briefing posted to cto_inbox %s/%s", cid, today_iso)
+    except Exception as e:
+        logger.exception("[ceo-digital] daily briefing err %s: %s", cid, e)
+
+
 async def _worker_loop():
     logger.info("[conselho-ia-cron] worker iniciado")
     # Aguarda 30s no boot pra deixar app subir
@@ -197,6 +249,8 @@ async def _worker_loop():
                     await _run_for_company(cid)
                     # iter219 — Café com a IA do CEO (briefing matinal)
                     await _maybe_send_presidente_briefing(cid)
+                    # CEO Digital — briefing 08h vai pra cto_inbox (ChatGPT)
+                    await _post_daily_briefing_to_cto_inbox(cid)
                     # COMPLIANCE — Auto-sync diário da Equipe IA
                     try:
                         from services.agent_compliance_scheduler import (
