@@ -30,6 +30,7 @@ from datetime import datetime, timezone
 from typing import Optional
 
 from database import db
+from services import data_provenance as _dp
 
 ALLOWED_STATUS = {"proposed", "approved", "in_progress", "done", "cancelled"}
 # Aliases aceitos em filtros (status=pending == proposed) para alinhar com
@@ -75,6 +76,7 @@ async def create_decision(cid: str, payload: dict) -> dict:
         "owner": payload.get("owner") or "ceo",
         "deadline": payload.get("deadline"),
         "status": status,
+        "source": _dp.current_source(),
         "created_at": now,
         "updated_at": now,
         "completed_at": None,

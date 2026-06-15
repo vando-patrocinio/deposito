@@ -33,6 +33,7 @@ from database import db
 from services import executive_memory as em
 from services import corporate_goals as cg
 from services import executive_decisions as exd
+from services import data_provenance as dp
 
 router = APIRouter(prefix="/api/ceo", tags=["ceo-digital"])
 
@@ -534,6 +535,25 @@ async def openapi_spec(request_url: str = ""):
                             "type": "array",
                             "items": {"$ref": "#/components/schemas/GoalItem"},
                         },
+                        "source": {"type": "string"},
+                        "_data_provenance": {"$ref": "#/components/schemas/DataProvenance"},
+                    },
+                },
+                "DataProvenance": {
+                    "type": "object",
+                    "description": (
+                        "Bloco de procedência do dado. Use isto para decidir se "
+                        "pode recomendar ação executiva. Se stale_warning=true "
+                        "ou source!=prod, NÃO recomende decisão sem refresh."
+                    ),
+                    "properties": {
+                        "source": {"type": "string", "enum": ["prod","test","mock"]},
+                        "collected_at": {"type": "string"},
+                        "stale_hours": {"type": "number"},
+                        "stale_threshold_hours": {"type": "number"},
+                        "stale_warning": {"type": "boolean"},
+                        "decision_safe": {"type": "boolean"},
+                        "message": {"type": "string"},
                     },
                 },
                 "CtoDigest": {
@@ -581,6 +601,9 @@ async def openapi_spec(request_url: str = ""):
 async def briefing_now():
     snap = await em.snapshot_today(CO)
     snap["briefing_text"] = _build_text(snap)
+    ot = snap.get("one_truth") or {}
+    snap["source"] = dp.current_source()
+    snap["_data_provenance"] = dp.freshness_block(ot.get("_collected_at"))
     return snap
 
 
@@ -592,14 +615,15 @@ async def briefing_today():
         {"_id": 0})
     if not doc:
         snap = await em.snapshot_today(CO)
+        ot = snap.get("one_truth") or {}
     else:
         snap = {"date_key": today,
                 "one_truth": doc.get("one_truth"),
                 "compare": doc.get("compare"),
                 "course_correction": doc.get("course_correction"),
                 "course_summary": doc.get("course_summary")}
+        ot = snap.get("one_truth") or {}
     text = _build_text(snap)
-    ot = snap.get("one_truth") or {}
     course = snap.get("course_correction") or {}
     # Payload enxuto: só o que o LLM precisa pra narrar.
     return {
@@ -614,6 +638,8 @@ async def briefing_today():
         "course_summary": snap.get("course_summary"),
         "course_status": {k: v.get("status") for k, v in course.items()},
         "briefing_text": text,
+        "source": dp.current_source(),
+        "_data_provenance": dp.freshness_block(ot.get("_collected_at")),
     }
 
 
@@ -626,28 +652,44 @@ async def memory(days: int = 30):
          "course_correction": 1, "course_summary": 1},
         sort=[("date_key", -1)], limit=days)
     items = []
+    latest_collected_at = None
     async for d in cur:
+        ot = d.get("one_truth") or {}
+        if latest_collected_at is None:
+            latest_collected_at = ot.get("_collected_at")
         items.append({
             "date_key": d.get("date_key"),
-            "kpis": d.get("one_truth") or {},
+            "kpis": ot,
             "course": d.get("course_correction") or {},
             "summary": d.get("course_summary"),
+            "source": ot.get("source") or dp.current_source(),
         })
-    return {"days_returned": len(items), "items": items}
+    return {"days_returned": len(items), "items": items,
+            "source": dp.current_source(),
+            "_data_provenance": dp.freshness_block(latest_collected_at)}
 
 
 @router.get("/metas", dependencies=[Depends(require_token)])
 async def metas():
-    """Lê metas do MongoDB (corporate_goals). Auto-seed na primeira chamada."""
+    """Lê metas do MongoDB (corporate_goals). Auto-seed na primeira chamada.
+
+    Metas são configuração estática (não snapshot temporal), portanto NÃO
+    carregam stale_warning. Carregam apenas source.
+    """
     m = await cg.get_metas(CO)
     return {"metas_2026": m, "baseline_date": cg.BASELINE_DATE,
-            "source": "corporate_goals"}
+            "source": dp.current_source(),
+            "store": "corporate_goals",
+            "kind": "config"}
 
 
 @router.get("/goals", dependencies=[Depends(require_token)])
 async def goals_list():
+    """Lista goals corporativos. Configuração (não snapshot)."""
     items = await cg.list_goals(CO)
-    return {"count": len(items), "items": items}
+    return {"count": len(items), "items": items,
+            "source": dp.current_source(),
+            "kind": "config"}
 
 
 @router.post("/goals/{kpi_key}", dependencies=[Depends(require_token)])
@@ -670,7 +712,7 @@ async def decisions_create(payload: dict):
         doc = await exd.create_decision(CO, payload or {})
     except ValueError as e:
         raise HTTPException(400, str(e))
-    return {"ok": True, "decision": doc}
+    return {"ok": True, "decision": doc, "source": dp.current_source()}
 
 
 @router.get("/decisions", dependencies=[Depends(require_token)])
@@ -679,7 +721,9 @@ async def decisions_list(status: Optional[str] = None, limit: int = 50):
         items = await exd.list_decisions(CO, status=status, limit=limit)
     except ValueError as e:
         raise HTTPException(400, str(e))
-    return {"count": len(items), "items": items}
+    return {"count": len(items), "items": items,
+            "source": dp.current_source(),
+            "kind": "registry"}
 
 
 @router.patch("/decisions/{decision_id}", dependencies=[Depends(require_token)])
@@ -836,4 +880,6 @@ async def cto_digest():
         },
         "course_status": {k: v.get("status") for k, v in course.items()},
         "top_focus": top_focus,
+        "source": dp.current_source(),
+        "_data_provenance": dp.freshness_block(ot.get("_collected_at")),
     }

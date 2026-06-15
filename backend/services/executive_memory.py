@@ -24,6 +24,7 @@ from typing import Any
 from database import db
 from constants.synthetic_tenants import SYNTHETIC_TENANTS
 from services import corporate_goals as _cg
+from services import data_provenance as _dp
 
 logger = logging.getLogger(__name__)
 
@@ -261,11 +262,14 @@ async def snapshot_today(cid: str, day_iso: str | None = None) -> dict:
 
     one_truth = await _one_truth(cid, today_key)
     metas = await _resolve_metas(cid)
+    # Item 9 (CEO 15/06/2026): tag source em todo snapshot persistido.
+    one_truth["source"] = _dp.current_source()
 
     # Para o compare, salvamos PRIMEIRO o one_truth do dia, DEPOIS comparamos
     await db.president_daily.update_one(
         {"company_id": cid, "date_key": today_key},
         {"$set": {"one_truth": one_truth,
+                   "source": _dp.current_source(),
                    "_em_added_by": ADDED_BY,
                    "_em_added_at": now.isoformat()},
          "$setOnInsert": {"id": f"pd-{cid}-{today_key}",
@@ -283,11 +287,14 @@ async def snapshot_today(cid: str, day_iso: str | None = None) -> dict:
                    "course_correction": course,
                    "course_summary": summary,
                    "metas_oficiais": metas,
+                   "source": _dp.current_source(),
                    "_em_added_by": ADDED_BY}})
 
     return {"date_key": today_key, "one_truth": one_truth,
             "compare": cmp_block, "course_correction": course,
-            "course_summary": summary}
+            "course_summary": summary,
+            "source": _dp.current_source(),
+            "_collected_at": one_truth.get("_collected_at")}
 
 
 async def backfill_history(cid: str, days: int = 30) -> dict:

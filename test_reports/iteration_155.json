@@ -1,0 +1,67 @@
+{
+  "summary": "Validated CEO Digital audit items 9 (source flag) + 10 (stale warning). 17/17 backend tests pass covering all 11 CEO endpoints, persistence verification, OpenAPI 3.1.0 schema, and edge cases (malformed DATA_SOURCE_MODE, missing _collected_at, source override). Source override scenario (DATA_SOURCE_MODE=test) manually verified via supervisor restart — decision_safe correctly becomes false. State restored to prod + fresh snapshot.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {
+        "endpoint": "PUT /api/ceo/goals/{kpi_key}",
+        "issue": "upsert_goal() does NOT refresh 'source' field on UPDATE path. Only sets fields from payload + updated_at. Existing seeded docs (from before fix) still carry legacy source='seed_metas_2026' and never get re-tagged. New docs work fine. If full audit compliance requires legacy goals also showing source='prod', add `set_doc['source'] = _dp.current_source()` in the if-existing branch of corporate_goals.upsert_goal()."
+      }
+    ]
+  },
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_ceo_provenance.py",
+    "/app/test_reports/pytest/iter155_provenance.xml"
+  ],
+  "action_items": [
+    "OPTIONAL (minor): In corporate_goals.upsert_goal(), also tag set_doc['source'] = _dp.current_source() on UPDATE branch so legacy seed docs converge to current source on next write. Spec literal only mandates NEW docs persist source — current behavior is compliant.",
+    "OPTIONAL (hardening): Add a small migration to backfill source='prod' on existing corporate_goals where source matches legacy value 'seed_metas_2026'."
+  ],
+  "critical_code_review_comments": [
+    "data_provenance.py is clean, small, well-encapsulated. decision_safe = (src=='prod') AND (not stale) is exactly the right semantic — Presidente IA cannot recommend on test/mock OR on stale prod data.",
+    "freshness_block correctly treats missing/malformed _collected_at as STALE (conservative) — verified by unit test.",
+    "OpenAPI 3.1.0 exposes 11 operations + DataProvenance schema. No regression vs previous iteration.",
+    "executive_memory.snapshot_today tags one_truth.source and root.source at both upsert phases — solid.",
+    "executive_decisions.create_decision persists 'source' on doc creation — verified end-to-end via list."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_ceo_provenance.py (new — 17 tests, ~250 lines)"
+  ],
+  "success_rate": {"backend": "100%", "frontend": "n/a (not requested)"},
+  "test_credentials": "CEO_BRIEFING_TOKEN read directly from /app/backend/.env",
+  "seed_data_creation": "Test creates ephemeral decision (TEST_provenance_source_persist) and ephemeral goal (TEST_kpi_provenance) — the goal is cleaned up by the test itself; the decision persists harmlessly (priority p3, proposed_by presidente_ia).",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "test_ceo_provenance.py is the regression suite for audit items 9+10. To re-run: `python -m pytest backend/tests/test_ceo_provenance.py -v`. The stale-warning test mutates one_truth._collected_at via pymongo directly then calls POST /briefing/now to restore. If you change DATA_SOURCE_MODE in .env for testing, you MUST restart backend (sudo supervisorctl restart backend) AND restore to prod + run POST /briefing/now to refresh snapshot. Backend restart takes ~5s.",
+  "validations_performed": {
+    "item9_source_flag": {
+      "briefing_today": "source='prod' + _data_provenance present, stale_warning=false, decision_safe=true",
+      "briefing_now": "source='prod' + stale_hours<0.5 + decision_safe=true",
+      "memory_days_3": "top-level source='prod' + _data_provenance + each item.source='prod'",
+      "cto_digest": "source='prod' + _data_provenance",
+      "metas": "source='prod' + kind='config' + store='corporate_goals' + NO _data_provenance",
+      "goals_list": "source='prod' + kind='config' + NO _data_provenance",
+      "decisions_list": "source='prod' + kind='registry' + NO _data_provenance",
+      "decisions_create": "POST creates doc with source='prod' persisted in Mongo (verified via GET list)",
+      "goals_upsert_new": "NEW doc via PUT carries source='prod' (verified)"
+    },
+    "item10_stale_warning": {
+      "forced_48h_stale": "stale_warning=true, decision_safe=false, message contains 'ATENÇÃO'/'stale', stale_hours>=24",
+      "restored_via_briefing_now": "stale_warning=false, decision_safe=true",
+      "missing_collected_at": "treated as STALE (decision_safe=false, message='sem timestamp')",
+      "malformed_iso": "treated as STALE"
+    },
+    "source_override": {
+      "DATA_SOURCE_MODE=test": "VERIFIED via supervisor restart — source='test', decision_safe=false even when snapshot fresh (stale_warning=false). Restored to prod, snapshot refreshed, decision_safe back to true.",
+      "DATA_SOURCE_MODE=foo (malformed)": "Falls back to 'prod' (verified via unit test)",
+      "DATA_SOURCE_MODE='' (empty)": "Falls back to 'prod'",
+      "DATA_SOURCE_MODE='TEST' (uppercase)": "Normalized to 'test'",
+      "DATA_SOURCE_MODE=' mock '": "Trimmed to 'mock'"
+    },
+    "openapi": "openapi=3.1.0, components.schemas.DataProvenance present with all 7 fields, 11 operations exposed (ceoBriefingToday, ceoBriefingNow, ceoMemory, ceoMetas, ctoSendMessage, ctoInbox, decisionsList, decisionsCreate, decisionsUpdate, goalsList, ctoDigest) — no regression",
+    "DATA_STALE_HOURS_override": "Set to 1h, 2h-old data correctly flagged stale",
+    "auth": "GET /briefing/today without Bearer => 401"
+  },
+  "rca_of_the_issue": "N/A — no functional bugs. One minor improvement noted: upsert_goal doesn't refresh source on existing-doc update path, leaving legacy seed docs with old source='seed_metas_2026'. Spec wording 'Documentos novos ... persistem source=prod' is satisfied. Worth fixing in a small follow-up for full convergence."
+}

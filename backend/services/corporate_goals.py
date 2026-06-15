@@ -32,6 +32,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 from database import db
+from services import data_provenance as _dp
 
 logger = logging.getLogger(__name__)
 
@@ -99,7 +100,8 @@ async def ensure_seeded(cid: str) -> dict:
             "owner": m["owner"],
             "deadline": m["deadline"],
             "status": "active",
-            "source": "seed_metas_2026",
+            "source": _dp.current_source(),
+            "source_label": "seed_metas_2026",
             "created_at": now,
             "updated_at": now,
         }
@@ -166,7 +168,8 @@ async def upsert_goal(cid: str, kpi_key: str, payload: dict) -> dict:
         "owner": payload.get("owner") or "ceo",
         "deadline": payload.get("deadline") or "2026-12-31",
         "status": payload.get("status") or "active",
-        "source": "manual",
+        "source": _dp.current_source(),
+        "source_label": "manual",
         "created_at": now,
         "updated_at": now,
     }
