@@ -129,6 +129,7 @@ from routes import (
     isabella_commanders as routes_isabella_commanders,
     universo_ligo as routes_universo_ligo,
     universo_ligo_curadoria as routes_universo_ligo_curadoria,
+    customer_intelligence as routes_customer_intelligence,
     shield as routes_shield,
     nervous_foundation as routes_nervous_foundation,
     whatsapp_twilio as routes_whatsapp_twilio,
@@ -1408,6 +1409,7 @@ app.include_router(routes_isabella_field.router)
 app.include_router(routes_isabella_commanders.router)
 app.include_router(routes_universo_ligo.router)
 app.include_router(routes_universo_ligo_curadoria.router)
+app.include_router(routes_customer_intelligence.router)
 app.include_router(routes_shield.router)
 app.include_router(routes_nervous_foundation.router)
 app.include_router(routes_whatsapp_twilio.router)
