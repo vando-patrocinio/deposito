@@ -80,6 +80,7 @@ NON_STAFF_AUTH_PREFIXES: List[str] = [
     "/api/security-portal",
     "/api/collaborator-auth",
     "/api/wifi-hotspot/portal",
+    "/api/ceo",  # CEO Digital · auth Bearer próprio (CEO_BRIEFING_TOKEN)
 ]
 
 

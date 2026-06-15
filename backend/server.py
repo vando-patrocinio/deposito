@@ -1196,6 +1196,8 @@ from routes import access_profiles as routes_access_profiles  # noqa: E402
 app.include_router(routes_access_profiles.router)
 from routes import ai_center_v51 as routes_ai_center_v51  # noqa: E402
 app.include_router(routes_ai_center_v51.router)
+from routes import ceo_digital as routes_ceo_digital  # noqa: E402
+app.include_router(routes_ceo_digital.router)
 from routes import ai_center_observability as routes_observ  # noqa: E402
 app.include_router(routes_observ.router)
 from routes import ai_center_homologation as routes_homo  # noqa: E402
