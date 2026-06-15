@@ -119,36 +119,90 @@ def _build_text(snap: dict) -> str:
 @router.get("/openapi.json", include_in_schema=False)
 async def openapi_spec(request_url: str = ""):
     base = os.environ.get("PUBLIC_BACKEND_URL") or os.environ.get("REACT_APP_BACKEND_URL") or ""
+
+    BriefingSchema = {
+        "type": "object",
+        "properties": {
+            "date_key": {"type": "string"},
+            "one_truth": {
+                "type": "object",
+                "properties": {
+                    "clientes_ativos": {"type": "integer"},
+                    "mrr": {"type": "number"},
+                    "inadimplencia_brl": {"type": "number"},
+                    "inadimplencia_n_faturas": {"type": "integer"},
+                    "tickets_abertos": {"type": "integer"},
+                    "tickets_fechados_no_dia": {"type": "integer"},
+                    "novos_clientes_no_dia": {"type": "integer"},
+                    "cancelamentos_no_dia": {"type": "integer"},
+                    "fundadores_aptos": {"type": "integer"},
+                    "embaixadores": {"type": "integer"},
+                },
+            },
+            "compare": {"type": "object", "additionalProperties": True},
+            "course_correction": {"type": "object", "additionalProperties": True},
+            "course_summary": {"type": "string"},
+            "briefing_text": {"type": "string"},
+        },
+    }
+
+    MemorySchema = {
+        "type": "object",
+        "properties": {
+            "days_returned": {"type": "integer"},
+            "items": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "date_key": {"type": "string"},
+                        "kpis": {"type": "object", "additionalProperties": True},
+                        "course": {"type": "object", "additionalProperties": True},
+                        "summary": {"type": "string"},
+                    },
+                },
+            },
+        },
+    }
+
+    MetasSchema = {
+        "type": "object",
+        "properties": {
+            "metas_2026": {"type": "object", "additionalProperties": True},
+            "baseline_date": {"type": "string"},
+        },
+    }
+
     return JSONResponse({
-        "openapi": "3.0.3",
+        "openapi": "3.1.0",
         "info": {
             "title": "SmartProv CEO Digital API",
-            "description": "Endpoints somente-leitura para ChatGPT Custom GPT do CEO da Ligo. Briefing executivo, memoria 30d e metas oficiais.",
+            "description": (
+                "Endpoints somente-leitura para o ChatGPT Custom GPT do CEO "
+                "da Ligo. Briefing executivo, memoria 30d e metas oficiais. "
+                "Lê dados reais do SmartProv: clientes, MRR, inadimplencia, "
+                "tickets, fundadores, embaixadores."
+            ),
             "version": "1.0.0",
         },
         "servers": [{"url": (base.rstrip("/") if base else "https://EDITAR-AQUI")}],
+        "security": [{"BearerAuth": []}],
         "paths": {
             "/api/ceo/briefing/today": {
                 "get": {
                     "operationId": "ceoBriefingToday",
                     "summary": "Briefing executivo do dia",
-                    "description": "Retorna o snapshot de hoje com KPIs reais (clientes, MRR, inadimplencia, tickets), comparacao vs ontem/7d/30d, course_correction por KPI e texto pronto do briefing.",
+                    "description": (
+                        "Retorna snapshot de hoje com KPIs reais, comparacoes "
+                        "vs ontem/7d/30d, course_correction por KPI e texto "
+                        "pronto do briefing."
+                    ),
                     "responses": {
                         "200": {
                             "description": "Briefing executivo completo",
                             "content": {
                                 "application/json": {
-                                    "schema": {
-                                        "type": "object",
-                                        "properties": {
-                                            "date_key": {"type": "string"},
-                                            "one_truth": {"type": "object"},
-                                            "compare": {"type": "object"},
-                                            "course_correction": {"type": "object"},
-                                            "course_summary": {"type": "string"},
-                                            "briefing_text": {"type": "string"},
-                                        },
-                                    }
+                                    "schema": {"$ref": "#/components/schemas/Briefing"}
                                 }
                             },
                         }
@@ -159,13 +213,16 @@ async def openapi_spec(request_url: str = ""):
                 "post": {
                     "operationId": "ceoBriefingNow",
                     "summary": "Gera snapshot novo agora",
-                    "description": "Forca recalculo do snapshot do dia e devolve briefing atualizado.",
+                    "description": (
+                        "Forca recalculo do snapshot do dia e devolve briefing "
+                        "atualizado."
+                    ),
                     "responses": {
                         "200": {
-                            "description": "Snapshot novo gerado",
+                            "description": "Snapshot atualizado",
                             "content": {
                                 "application/json": {
-                                    "schema": {"type": "object"}
+                                    "schema": {"$ref": "#/components/schemas/Briefing"}
                                 }
                             },
                         }
@@ -176,7 +233,10 @@ async def openapi_spec(request_url: str = ""):
                 "get": {
                     "operationId": "ceoMemory",
                     "summary": "Memoria executiva 30 dias",
-                    "description": "Retorna array compacto dos snapshots dos ultimos N dias para analise de tendencia.",
+                    "description": (
+                        "Retorna array compacto dos snapshots dos ultimos N "
+                        "dias para analise de tendencia."
+                    ),
                     "parameters": [{
                         "name": "days", "in": "query", "required": False,
                         "description": "Numero de dias (default 30, max 365)",
@@ -185,16 +245,10 @@ async def openapi_spec(request_url: str = ""):
                     }],
                     "responses": {
                         "200": {
-                            "description": "Lista de snapshots",
+                            "description": "Array de snapshots",
                             "content": {
                                 "application/json": {
-                                    "schema": {
-                                        "type": "object",
-                                        "properties": {
-                                            "days_returned": {"type": "integer"},
-                                            "items": {"type": "array", "items": {"type": "object"}},
-                                        },
-                                    }
+                                    "schema": {"$ref": "#/components/schemas/Memory"}
                                 }
                             },
                         }
@@ -205,19 +259,17 @@ async def openapi_spec(request_url: str = ""):
                 "get": {
                     "operationId": "ceoMetas",
                     "summary": "Metas anuais oficiais Ligo 2026",
-                    "description": "Retorna baseline e target de cada KPI (clientes, MRR, inadimplencia, embaixadores, fundadores).",
+                    "description": (
+                        "Retorna baseline e target de cada KPI estrategico "
+                        "(clientes, MRR, inadimplencia, embaixadores, "
+                        "fundadores)."
+                    ),
                     "responses": {
                         "200": {
                             "description": "Metas oficiais",
                             "content": {
                                 "application/json": {
-                                    "schema": {
-                                        "type": "object",
-                                        "properties": {
-                                            "metas_2026": {"type": "object"},
-                                            "baseline_date": {"type": "string"},
-                                        },
-                                    }
+                                    "schema": {"$ref": "#/components/schemas/Metas"}
                                 }
                             },
                         }
@@ -226,11 +278,15 @@ async def openapi_spec(request_url: str = ""):
             },
         },
         "components": {
+            "schemas": {
+                "Briefing": BriefingSchema,
+                "Memory": MemorySchema,
+                "Metas": MetasSchema,
+            },
             "securitySchemes": {
                 "BearerAuth": {"type": "http", "scheme": "bearer"}
-            }
+            },
         },
-        "security": [{"BearerAuth": []}],
     })
 
 
