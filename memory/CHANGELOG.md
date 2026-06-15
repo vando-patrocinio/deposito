@@ -1,6 +1,32 @@
 # PontoIA — Changelog
 
 
+## 2026-06-15 — CEO DIGITAL · AUDIT P0 ITEMS 9 + 10 (DATA PROVENANCE + STALE WARNING)
+
+### Ordem CEO (cto_inbox cto-5d5c9c8aeef94c)
+Opção B: executar apenas itens 9 (source=prod|test|mock) e 10 (stale warning >24h). Não avançar para 6/7/8 sem nova ordem.
+
+### Entrega
+- **Module novo** `backend/services/data_provenance.py`: `current_source()` lê `DATA_SOURCE_MODE` do .env (fallback duro prod se inválido), `freshness_block(collected_at)` retorna `{source, collected_at, stale_hours, stale_threshold_hours, stale_warning, decision_safe, message}`. `decision_safe = (source==prod) AND (not stale)`. Conservador: snapshot sem timestamp tratado como stale.
+- **.env**: novas vars `DATA_SOURCE_MODE=prod` e `DATA_STALE_HOURS=24`.
+- **Write paths taggeados**: `executive_memory.snapshot_today` (one_truth + root president_daily), `executive_decisions.create_decision`, `corporate_goals.ensure_seeded` + `upsert_goal` (insert E update branch).
+- **Backfill**: 5 docs legacy de corporate_goals (source=seed_metas_2026/manual) atualizados para source=prod.
+- **Read paths**: briefing/today, briefing/now, memory, cto/digest agora retornam `source` + `_data_provenance`. Metas/goals/decisions retornam `source` + `kind=config|registry` mas SEM `_data_provenance` (config estática não tem snapshot temporal).
+- **OpenAPI 3.1.0**: schema `DataProvenance` adicionado em `components.schemas` com description direcionando o LLM: "Se stale_warning=true ou source!=prod, NÃO recomende decisão sem refresh."
+
+### Testes
+- `testing_agent_v3_fork` iteração 155: **17/17 PASS** (100%). Zero issues críticos, zero minor blocking.
+- Edge cases cobertos: `DATA_SOURCE_MODE` malformado (fallback prod), `_collected_at` ausente (tratado stale), override `DATA_SOURCE_MODE=test` muda decision_safe pra false.
+- Live test stale: forcei `_collected_at = now - 48h`, briefing retornou stale_warning=true + message conservadora. Restaurado via POST briefing/now → stale_warning=false em <1s.
+
+### Notificação CEO
+- Reply `cto-68da95f36a6540` postado com evidência completa de cada critério de aceite.
+
+### Próximo bloco (aguarda nova ordem)
+Item 8: negotiation_rules collection + validate_response() guardrail Isabella. 4h. P0.
+
+
+
 ## 2026-06-15 — CEO DIGITAL · DIGEST ENDPOINT (PRIMEIRA TELA CTO-STYLE)
 
 ### Ordem CEO

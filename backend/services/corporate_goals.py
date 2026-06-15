@@ -152,6 +152,7 @@ async def upsert_goal(cid: str, kpi_key: str, payload: dict) -> dict:
         "company_id": cid, "kpi_key": kpi_key, "status": "active"})
     set_doc = {k: v for k, v in payload.items() if v is not None}
     set_doc["updated_at"] = now
+    set_doc["source"] = _dp.current_source()  # re-tag source no UPDATE
     if existing:
         await db.corporate_goals.update_one(
             {"id": existing["id"]}, {"$set": set_doc})
