@@ -65,6 +65,7 @@ PUBLIC_PATHS: List[str] = [
     "/api/onboarding/public/",  # Magic links de onboarding
     "/api/rede-ia/public/",  # App PWA do técnico externo (auth via collab_id na URL)
     "/api/treasury/webhooks/asaas",
+    "/api/atlaz/notify/",  # CTO 2026-02 — Atlaz webhooks inbound (auth via token no body)
     "/docs", "/redoc", "/openapi.json",
 ]
 

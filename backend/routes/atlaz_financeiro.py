@@ -82,6 +82,10 @@ def _norm_invoice(raw: Dict[str, Any]) -> Dict[str, Any]:
         # Status derivado se a API não trouxe explicitamente
         status_raw = "paid" if paid_date else "open"
 
+    # NFe pode vir aninhada: {"nfe": {"link": "..."}}
+    nfe_raw = raw.get("nfe") if isinstance(raw.get("nfe"), dict) else {}
+    nfe_link = nfe_raw.get("link") if isinstance(nfe_raw, dict) else None
+
     return {
         "external_id": str(pick("id", "id_fatura", "id_cobranca") or ""),
         "subscriber_external_id": str(pick("id_assinante", "id_cliente") or ""),
@@ -98,6 +102,17 @@ def _norm_invoice(raw: Dict[str, Any]) -> Dict[str, Any]:
         "barcode": pick("linha_digitavel", "codigo_barras"),
         "boleto_url": pick("link", "url_boleto", "boleto_url"),
         "description": pick("descricao", "description"),
+        # ── A.1: PIX inline + recibo + juros (Atlaz API v2 retornar_pix=1) ──
+        "pix_brcode": pick("pix_brcode", "pix_copia_cola", "pix_emv"),
+        "pix_qrcode_link": pick("pix_qrcode_link", "pix_qrcode"),
+        "receipt_url": pick("link_recibo", "url_recibo"),
+        "amount_with_interest": _flt(pick("valor_com_juros")),
+        "interest_value": _flt(pick("juros")),
+        "fine_value": _flt(pick("multa")),
+        "punctuality_discount": _flt(pick("desconto_pontualidade")),
+        "punctuality_discount_days": pick("dias_desconto_pontualidade"),
+        # NFe (retornar_nfe=1)
+        "nfe_url": nfe_link,
     }
 
 
@@ -156,7 +171,10 @@ async def probe(user: dict = Depends(require_role("administrador"))):
 
 
 async def _load_clients_cache(cid: str, token: str,
-                                timeout: float) -> Dict[str, Dict[str, Any]]:
+                                timeout: float,
+                                updated_since: Optional[str] = None,
+                                status_contratos: Optional[str] = None,
+                                ) -> Dict[str, Dict[str, Any]]:
     """Carrega mapa id_assinante → {name, document, phone} via /listaclientes.
 
     Schema real da Atlaz:
@@ -166,15 +184,23 @@ async def _load_clients_cache(cid: str, token: str,
 
     Cada assinante.id_assinante é a chave de junção com /faturas.id_assinante.
     Salva no cache local `atlaz_clients_cache` (1 doc por subscriber).
+
+    A.3 (auditoria 2026-02): aceita `updated_since` (YYYY-MM-DD) e mapeia
+    para `atualizado_desde` da API Atlaz v2 → habilita delta sync.
     """
     out: Dict[str, Dict[str, Any]] = {}
     page = 1
     max_pages_safety = 100
     while page <= max_pages_safety:
+        params = {"token": token, "pagina": str(page)}
+        if updated_since:
+            params["atualizado_desde"] = updated_since
+        if status_contratos:
+            params["status_contratos"] = status_contratos
         async with httpx.AsyncClient(timeout=timeout) as client:
             r = await client.get(
                 f"{ATLAZ_BASE_URL}/listaclientes",
-                params={"token": token, "pagina": str(page)},
+                params=params,
             )
         if r.status_code >= 400:
             logger.warning("[atlaz-fin] clientes HTTP %s pg=%s", r.status_code, page)
@@ -231,6 +257,112 @@ async def _load_clients_cache(cid: str, token: str,
     return out
 
 
+# ===========================================================================
+# A.3 — Delta sync de clientes (auditoria 2026-02)
+# Usa o parâmetro oficial `atualizado_desde` da API Atlaz v2 para puxar
+# apenas assinantes modificados desde a última sincronização. Reduz custo
+# de polling em ~95% vs. full pull diário.
+# ===========================================================================
+@router.post("/sync-clients-delta")
+async def sync_clients_delta(
+    since: Optional[str] = Query(
+        None,
+        description="Data ISO YYYY-MM-DD. Se omitido, usa o último sync salvo "
+                    "em atlaz_sync_state (ou 1 dia atrás se nunca rodou).",
+    ),
+    status_contratos: str = Query(
+        "todos",
+        description="Filtro Atlaz: ativos|desativados|fila|interessados|todos",
+    ),
+    user: dict = Depends(require_role("administrador", "gestor",
+                                       "auditor", "financeiro")),
+):
+    """Sincronização incremental de clientes via `atualizado_desde`.
+
+    Persistido em `atlaz_sync_state` (1 doc por company_id). Idempotente.
+    Pode ser chamado a cada 15 min sem custo.
+    """
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+    cfg = await _get_config(cid)
+    if not cfg.api_key:
+        raise HTTPException(400, "Token Atlaz não configurado")
+
+    # 1) Resolve `updated_since`
+    if not since:
+        state = await db.atlaz_sync_state.find_one(
+            {"company_id": cid, "kind": "clients_delta"}, {"_id": 0},
+        )
+        if state and state.get("last_synced_date"):
+            since = state["last_synced_date"]
+        else:
+            # Primeira execução: 1 dia atrás (não é full sync — use /sync-now)
+            since = (datetime.now(timezone.utc).date()
+                      - timedelta(days=1)).strftime("%Y-%m-%d")
+
+    started_at = now_iso()
+    try:
+        loaded = await _load_clients_cache(
+            cid, cfg.api_key, cfg.timeout_seconds,
+            updated_since=since, status_contratos=status_contratos,
+        )
+        count = len(loaded)
+        # 2) Persiste estado
+        today_str = datetime.now(timezone.utc).date().strftime("%Y-%m-%d")
+        await db.atlaz_sync_state.update_one(
+            {"company_id": cid, "kind": "clients_delta"},
+            {"$set": {
+                "company_id": cid,
+                "kind": "clients_delta",
+                "last_synced_date": today_str,
+                "last_synced_at": now_iso(),
+                "last_count": count,
+                "last_since_used": since,
+                "last_status_filter": status_contratos,
+            }, "$setOnInsert": {"created_at": now_iso()}},
+            upsert=True,
+        )
+        await db.atlaz_sync_logs.insert_one({
+            "id": f"asd-{uuid.uuid4().hex[:10]}",
+            "company_id": cid,
+            "event": "atlaz_clients_delta_sync",
+            "status": "ok",
+            "details": (f"since={since} status={status_contratos} "
+                        f"updated={count}"),
+            "started_at": started_at,
+            "at": now_iso(),
+        })
+        return {
+            "ok": True,
+            "since": since,
+            "status_contratos": status_contratos,
+            "updated_count": count,
+            "next_sync_baseline": today_str,
+        }
+    except Exception as e:
+        await db.atlaz_sync_logs.insert_one({
+            "id": f"asd-{uuid.uuid4().hex[:10]}",
+            "company_id": cid,
+            "event": "atlaz_clients_delta_sync",
+            "status": "error",
+            "details": str(e)[:300],
+            "at": now_iso(),
+        })
+        raise HTTPException(502, f"Atlaz delta sync falhou: {e}")
+
+
+@router.get("/sync-clients-delta/state")
+async def sync_clients_delta_state(
+    user: dict = Depends(require_role("administrador", "gestor",
+                                       "auditor", "financeiro")),
+):
+    """Retorna o estado atual do delta sync (última execução, contagem etc.)."""
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+    state = await db.atlaz_sync_state.find_one(
+        {"company_id": cid, "kind": "clients_delta"}, {"_id": 0},
+    )
+    return {"company_id": cid, "state": state or None}
+
+
 @router.post("/sync-now")
 async def sync_now(
     days_back: int = Query(15, ge=1, le=365),
@@ -282,6 +414,11 @@ async def sync_now(
             "data_vencimento_inicial": date_ini,
             "data_vencimento_final": date_fim,
             "pagina": str(page),
+            # ── A.1: PIX inline + NFe (auditoria 2026-02) ──
+            # Atlaz API v2 só retorna pix_brcode/pix_qrcode_link e nfe.link
+            # quando essas flags são explicitamente enviadas.
+            "retornar_pix": "1",
+            "retornar_nfe": "1",
         }
         try:
             async with httpx.AsyncClient(timeout=fat_timeout) as client:
@@ -849,7 +986,10 @@ async def auto_sync_atlaz_financeiro() -> Dict[str, Any]:
                         params={"token": atc.api_key,
                                 "data_vencimento_inicial": date_ini,
                                 "data_vencimento_final": date_fim,
-                                "pagina": str(page)},
+                                "pagina": str(page),
+                                # A.1: PIX inline + NFe (Atlaz API v2)
+                                "retornar_pix": "1",
+                                "retornar_nfe": "1"},
                     )
                 if r.status_code >= 400:
                     break

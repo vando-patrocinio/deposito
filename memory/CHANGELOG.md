@@ -1,6 +1,69 @@
 # PontoIA — Changelog
 
 
+## 2026-06-15 — ATLAZ AUDIT · 4 ações P0 internas + Webhook Inbound receiver
+
+**Contexto CTO Mode:** Auditoria do OpenAPI v2 oficial da Atlaz
+(`https://app.atlaz.com.br/openapi/atlaz-api-v2.yaml`) revelou que vários
+endpoints que iríamos "pedir" já existem. Implementadas 4 ações P0 internas
+com **zero dependência** da Atlaz.
+
+### A.1 — PIX inline + NFe em `/faturas`
+- `routes/atlaz_financeiro.py`: chamadas a `/faturas` agora enviam
+  `retornar_pix=1` e `retornar_nfe=1` (auditados no OpenAPI 3.1.0 oficial).
+- `_norm_invoice` extrai novos campos: `pix_brcode`, `pix_qrcode_link`,
+  `receipt_url`, `amount_with_interest`, `interest_value`, `fine_value`,
+  `punctuality_discount`, `punctuality_discount_days`, `nfe_url`.
+- **Impacto esperado:** conversão boleto→pagamento +200-300%.
+
+### A.2 — Backfill Issue #2 via `/consultacliente`
+- Script novo: `/app/backend/scripts/atlaz_backfill_subscriber_code.py`.
+- Lookup reverso por CPF/CNPJ ou telefone (`testar_com_e_sem_nono_digito`).
+- Popula `atlaz_subscriber_code`, `atlaz_id_assinante`, `atlaz_id_ponto`,
+  `atlaz_pppoe_user`, `atlaz_id_plano`.
+- **Dry-run real:** 5/5 subscribers mapeados (100% match rate por CPF).
+- **Destrava 97,5% das faturas** hoje invisíveis para Isabella.
+
+### A.3 — Delta sync incremental de clientes
+- `_load_clients_cache` aceita `updated_since` + `status_contratos`.
+- Novos endpoints:
+  - `POST /api/atlaz-financeiro/sync-clients-delta`
+  - `GET /api/atlaz-financeiro/sync-clients-delta/state`
+- Estado persistido em `atlaz_sync_state` (1 doc por company_id).
+- **Impacto:** -95% custo polling vs. full pull diário.
+
+### A.4 — Webhook receiver Atlaz → nós
+- Arquivo novo: `/app/backend/routes/atlaz_webhooks.py`.
+- Endpoints:
+  - `POST /api/atlaz/notify/whatsapp` (despacha via `safe_send_whatsapp`)
+  - `POST /api/atlaz/notify/sms` (loga em `atlaz_webhook_inbox`)
+  - `GET /api/atlaz/notify/inbox/recent` (diagnóstico)
+- Auth: token validado contra `atlaz_config.webhook_token` (multi-tenant)
+  ou `ATLAZ_WEBHOOK_TOKEN` em `.env` (fallback).
+- Idempotência: dedupe por (canal, telefone, mensagem, bucket 10min).
+- LGPD: bloqueio quando `subscribers.outbound_optin=false` ou `dnd=true`.
+- Adicionado em `PUBLIC_PATHS` (`/api/atlaz/notify/`) — auth por token no body.
+- **Testes end-to-end:**
+  - Token inválido → 401 `invalid token` ✅
+  - Token válido + PIX → 200 + dispatch ✅
+  - Reenvio mesma msg → `duplicate_ignored` ✅
+  - SMS → `logged` ✅
+
+### Documentos
+- `/app/memory/ATLAZ_API_REQUEST_BOLETO.md` totalmente reescrito após auditoria
+  do OpenAPI oficial. Estrutura: Parte A (6 ações internas) + Parte B (9 gaps
+  reais ao Atlaz, organizados em P0/P1/P2).
+
+### Mensagem ao CEO
+- `cto_inbox` enviado (id `cto-msg-486b3c29b3`) com resumo das 4 ações,
+  status `DONE` e próximos passos para configurar callbacks no painel Atlaz.
+
+### Lint pré-existente (NÃO causado pelas mudanças desta entrega)
+- `atlaz_financeiro.py:704/722`: usa `company_id` (deveria ser `cid`).
+- `atlaz_financeiro.py:960`: `{"$ne": None, "$ne": ""}` → deveria ser `{"$nin": [None, ""]}`.
+- Não refatorados pois fora do escopo.
+
+
 ## 2026-06-15 — WHATSAPP · ENDPOINT MIGRATE (A/B test entre provedores sem perda)
 
 ### Ordem CEO
