@@ -1,6 +1,33 @@
 # PontoIA — Changelog
 
 
+## 2026-06-15 — WHATSAPP MULTI-PROVIDER · EVOLUTION API COMO OPÇÃO
+
+### Ordem CEO
+"faz como opção para escolha" — adicionar Evolution API ao lado dos sidecars Baileys atuais. Não substituir.
+
+### Entrega (preview)
+- **NOVO** `backend/services/whatsapp_evolution.py`: `EvolutionClient` adapter httpx para os 5 endpoints essenciais (create_instance idempotente com webhook opcional, get_qr base64, connectionState, sendText com normalização de número, logout). Auth header `apikey` conforme Evolution API v2.
+- **Estendido** `backend/services/whatsapp_channels.py`: schema do canal ganha `provider` (baileys|evolution) + `evolution_url`/`evolution_api_key`/`evolution_instance_name`. `ensure_channels_seeded` agora faz backfill nos canais antigos (corrigido bug detectado pelo testing_agent iter156). Nova função `set_provider_config()` com validação.
+- **Estendido** `backend/routes/whatsapp_channels.py`: NOVO endpoint `PATCH /api/whatsapp-channels/{id}/provider`. Os 4 endpoints existentes (`/qr` `/status` `/send` `/logout`) agora despacham Baileys vs Evolution dinamicamente baseado no `provider` do canal. Zero regressão no caminho Baileys. Mascaramento de `evolution_api_key` em todas as respostas (nunca retorna em claro).
+- **Frontend** `WhatsAppChannelsPanel.js`: cada card ganha badge colorida do provedor (Baileys azul / Evolution roxo) + botão "Provedor" com ícone settings → abre modal `ProviderModal` com 2 opções e 3 inputs Evolution (URL, API key, instance). Salva via novo `api.waChannelSetProvider`.
+
+### Testes
+- `testing_agent_v3_fork` iteração 156: inicialmente 10/11 PASS, identificado backfill faltante em canais antigos. Após fix, **11/11 PASS** (100%).
+- Frontend manual verificado: modal abre, opções selecionam, inputs Evolution aparecem, save funciona, badges aparecem corretas no card.
+- Edge cases cobertos: provider inválido → 400; Evolution sem credenciais → 400; trocar pra baileys limpa credenciais Evolution; URL fake do Evolution → 502 limpo (não cai pra Baileys silenciosamente).
+
+### Pendente (próximos passos, aguarda decisão CEO)
+A) Deploy do container Evolution API (docker-compose pronto se autorizar).
+B) Webhook receiver `POST /api/whatsapp-channels/{id}/webhook/evolution` (2h).
+C) Send media (imagem/áudio/pdf) via Evolution (1h).
+D) Encriptação da api_key em repouso (Fernet, security advisory minor) (1h).
+
+### Notificação CEO
+- `cto_inbox` cto-7e719940552d43 (CTO→CEO, p1, status=open).
+
+
+
 ## 2026-06-15 — LOGIN UX · MENSAGEM "Sem conexão" REESCRITA + BOTÃO DIAGNOSTICAR
 
 ### Ordem CEO

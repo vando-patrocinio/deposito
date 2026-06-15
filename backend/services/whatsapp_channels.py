@@ -100,8 +100,22 @@ def _doc_to_public(doc: dict) -> dict:
 
 
 async def ensure_channels_seeded(db, company_id: str) -> None:
-    """Garante 4 entries de canal pra empresa (cria placeholders se faltar)."""
+    """Garante 4 entries de canal pra empresa (cria placeholders se faltar)
+    e BACKFILL campos novos (provider/evolution_*) em docs antigos.
+    """
     coll = db["whatsapp_channels"]
+    # Backfill: docs antigos sem os campos novos (CTO 15/06/2026).
+    await coll.update_many(
+        {"company_id": company_id, "provider": {"$exists": False}},
+        {"$set": {
+            "provider": "baileys",
+            "evolution_url": None,
+            "evolution_api_key": None,
+            "evolution_instance_name": None,
+            "updated_at": now_iso(),
+        }},
+    )
+
     existing_ids = set()
     async for d in coll.find({"company_id": company_id}, {"id": 1}):
         existing_ids.add(d.get("id"))
