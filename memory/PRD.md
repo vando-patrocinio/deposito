@@ -2,6 +2,42 @@
 
 > Documento vivo. Atualizado a cada sprint.
 
+## 💰 P0 CEO — Treasury Filial completa (15/02/2026 · CTO)
+
+**Pedido:** (1) Coluna "Filial" na tabela A Pagar, (2) Mini-card KPI "Total por filial" no header do TreasuryPanel, (3) Endpoint backend para Custom GPT do CEO consultar gastos por filial.
+
+**Entregue:**
+
+### Backend — `GET /api/treasury/kpis-by-filial`
+- Em `routes/treasury.py` (auth: gestor+).
+- Aceita `month=YYYY-MM` OU `month_from`/`month_to`. Default: mês atual.
+- Agrega `scheduled_payments` por `(filial_id, status)` no período, retornando:
+  - `by_filial[]`: ordenado desc por `total_committed` (paid + pending). Inclui bucket `Sem filial` quando há legados e TODAS as filiais ativas (mesmo com zero pagamento).
+  - Por filial: `total_paid`, `total_pending`, `total_blocked`, `total_failed`, `total_committed`, `count_payments`, `filial_id`, `filial_name`.
+  - `totals`: somatório geral.
+  - `_data_provenance`: `{source, company_id, computed_at, filter, filial_field, synthetic_filtered}`.
+
+### Frontend
+- `TreasuryPanel.jsx` — novo componente `FilialMiniCard` (`data-testid="treasury-kpi-by-filial"`) acima das tabs. Mostra header com total comprometido/pago + Top 6 filiais com nome, barra dupla (laranja=comprometido / verde=pago), valor, pago, contagem de pagamentos.
+- `PaymentsList.jsx` — coluna **"Filial"** entre Forma e Vencimento (`data-testid="pay-filial-{payment_id}"`). Mostra nome da filial em badge cinza ou `—` se vazio. `Td` agora propaga `...rest` props.
+- `treasury/api.js` — método `kpisByFilial(monthFrom, monthTo)`.
+
+### Testes
+- 7/7 backend (happy path, default month, invalid period 400, no-auth, filter ?filial_id, filter __none__, POST 404 invalid filial).
+- 3/3 frontend (KPI card renderiza, coluna Filial visível, period change recarrega).
+- Arquivo: `/app/backend/tests/test_iter_p0_ceo_filial.py`.
+
+### Pendências do mesmo bloco
+- ⚠️ React Hook exhaustive-deps warnings (P2 pré-existentes em `PaymentsList.jsx:75` e `TreasuryPanel.jsx:53`) — NÃO introduzidas.
+- ⚠️ PROD (universoligo.com) ainda aponta para backend de preview — qualquer mudança em DB afeta cliente real. Decoupling pendente (Issue #1 do handoff).
+
+---
+
+
+# SmartProv — PRD (Product Requirements Document)
+
+> Documento vivo. Atualizado a cada sprint.
+
 ## 🎯 ONE_TRUTH_MATRIX ENTREGUE (14/06/2026 · pré-Etapa 3)
 
 **CTO aprovou Etapa 1 + pediu este documento ANTES dos renames.**
