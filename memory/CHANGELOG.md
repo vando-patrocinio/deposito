@@ -1,6 +1,41 @@
 # PontoIA — Changelog
 
 
+## 2026-06-15 — UNIVERSO LIGO · CUSTOMER INTELLIGENCE — ETAPA 2 BACKEND (FECHADA)
+
+### Ordem CTO
+"Fechar Etapa 2 Backend: criar script de testes contra Mongo real, validar as 10 regras obrigatórias e gerar relatório. Flags continuam OFF. Não tocar Etapa 3."
+
+### Entrega
+- `backend/scripts/test_customer_intelligence.py` — suite ZERO-MOCK · 10 testes · fixtures `test_run_id` com cleanup garantido.
+- Execução real em `co-demo`: **10/10 PASS** · latência avg 27.4 ms · p95 45.4 ms.
+- `/app/memory/RELATORIO_CUSTOMER_INTELLIGENCE_ETAPA2.md` — relatório completo (arquivos, evidências, payload amostra, riscos, próximos passos).
+
+### Regras validadas
+1. Tenants sintéticos bloqueados (sub-cls-000000 → error=synthetic_tenant_blocked).
+2. Subscriber inexistente → error=subscriber_not_found.
+3. Score nunca exposto (`visible_to_customer=false` em score, financial_context e todas as tags secundárias).
+4. High Ticket = monthly_fee ≥ 3× ticket médio real (validado em sub-a81e6aa90364, 369,90 vs base 103,71).
+5. Black = monthly_fee ≥ 6× ticket médio (fixture 999,99).
+6. Fundador histórico aplica multiplicador 1.5× (sub-2e42658cae0e, score=1000, razão registrada).
+7. Embaixador **somente** por convite humano aceito — bloqueia elevação por perfil "ambassador natural" sem convite.
+8. Cache em memória + invalidação por evento funcional (cold 27ms → warm ~0ms; refresh muda `last_updated_at`).
+9. Confidence cai para "baixa" quando falta loyalty / tenure < 6 m.
+10. Audit trail grava em `universo_ligo_score_audit` (count antes/depois, level_key, tags, company_id).
+
+### Feature flags · CONFIRMADAS OFF
+- `CUSTOMER_INTELLIGENCE_ENABLED=false`
+- `CUSTOMER_INTELLIGENCE_ISABELLA_CONTEXT=false`
+- `CUSTOMER_INTELLIGENCE_UI_BADGES=false`
+- Endpoint `GET /api/customer-intelligence/{id}` responde **503** até autorização explícita.
+
+### Riscos remanescentes registrados
+R1 experience_campaigns por nome (baixo impacto · peso 10%) · R2 cache de avg ticket 24h em memória · R3 universo_ligo_score_audit precisa TTL antes de UI ligar · R4 DNC pós-aceite não revoga invite · R5 detecção sintética só por lista exata no CI (regex coberta pelo guard worker).
+
+### Próxima etapa (BLOQUEADA · aguarda `VOCÊ AUTORIZA?`)
+- Etapa 3 — Consolidation: renames Presidentes/Revenue com `[DEPRECATED_CALL]` stubs · `pre_sanitize_2026_06_14=true` em executive_ledger · `scripts/test_one_truth.py` (0% divergência).
+
+
 ## 2026-02-12 — iter235/236 — CONTAS A PAGAR ENTERPRISE (DDA + Recorrência + Boleto + Comprovante WA)
 
 ### Ordem CTO
