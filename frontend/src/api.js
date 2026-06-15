@@ -1104,6 +1104,10 @@ export const api = {
     client.get(`/whatsapp-channels/${channelId}/status`).then((r) => r.data),
   waChannelLogout: (channelId) =>
     client.post(`/whatsapp-channels/${channelId}/logout`).then((r) => r.data),
+  // CTO 15/06/2026 — Provider config (baileys | evolution)
+  waChannelSetProvider: (channelId, payload) =>
+    client.patch(`/whatsapp-channels/${channelId}/provider`, payload)
+      .then((r) => r.data),
   waBaileysRefreshQR: () => client.post(`/whatsapp-baileys/qr/refresh`).then((r) => r.data),
   waBaileysStatus: () => client.get(`/whatsapp-baileys/status`).then((r) => r.data),
   waBaileysSend: (phone, text, polishedByAi = false) =>

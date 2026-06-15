@@ -17,11 +17,15 @@ Collection schema (`whatsapp_channels`):
         id: "channel-{N}",         # channel-1..channel-4
         company_id: str,
         channel_name: str,          # alias customizado pelo admin (ex: "Vendas")
-        port: int,                  # 3002..3005
-        session_id: str,            # WA_SESSION_ID do sidecar
+        port: int,                  # 3002..3005 (relevante só pra Baileys)
+        session_id: str,            # WA_SESSION_ID do sidecar Baileys
         is_default_outbound: bool,  # canal padrão para envios proativos
         phone_number: str|None,     # preenchido após QR scan (cache do `me`)
         last_status: str|None,      # cache do último status conhecido
+        provider: "baileys"|"evolution",  # CTO 15/06/2026 — provedor ativo
+        evolution_url: str|None,     # Evolution API base URL
+        evolution_api_key: str|None, # apikey global do Evolution
+        evolution_instance_name: str|None, # nome da instance no Evolution
         created_at: iso8601,
         updated_at: iso8601,
     }
@@ -117,6 +121,10 @@ async def ensure_channels_seeded(db, company_id: str) -> None:
             "is_default_outbound": cid == "channel-1",
             "phone_number": None,
             "last_status": None,
+            "provider": "baileys",  # CTO 15/06/2026 — default seguro
+            "evolution_url": None,
+            "evolution_api_key": None,
+            "evolution_instance_name": None,
             "created_at": now,
             "updated_at": now,
         })
@@ -192,3 +200,42 @@ async def update_channel_runtime(db, company_id: str, channel_id: str,
         {"company_id": company_id, "id": channel_id},
         {"$set": upd}, upsert=False,
     )
+
+
+VALID_PROVIDERS = ("baileys", "evolution")
+
+
+async def set_provider_config(db, company_id: str, channel_id: str,
+                                provider: str,
+                                evolution_url: Optional[str] = None,
+                                evolution_api_key: Optional[str] = None,
+                                evolution_instance_name: Optional[str] = None,
+                                ) -> Optional[dict]:
+    """Atualiza provider + credenciais Evolution de um canal.
+
+    Para provider='evolution', os 3 campos evolution_* são obrigatórios.
+    Para provider='baileys', limpa os campos Evolution.
+    """
+    if provider not in VALID_PROVIDERS:
+        raise ValueError(f"provider inválido. use {VALID_PROVIDERS}")
+
+    set_doc: dict = {"provider": provider, "updated_at": now_iso()}
+    if provider == "evolution":
+        if not (evolution_url and evolution_api_key and evolution_instance_name):
+            raise ValueError(
+                "Evolution requer evolution_url + evolution_api_key + evolution_instance_name"
+            )
+        set_doc["evolution_url"] = evolution_url.rstrip("/")
+        set_doc["evolution_api_key"] = evolution_api_key
+        set_doc["evolution_instance_name"] = evolution_instance_name
+    else:
+        # baileys → limpa Evolution config pra não confundir
+        set_doc["evolution_url"] = None
+        set_doc["evolution_api_key"] = None
+        set_doc["evolution_instance_name"] = None
+
+    await db["whatsapp_channels"].update_one(
+        {"company_id": company_id, "id": channel_id},
+        {"$set": set_doc},
+    )
+    return await get_channel(db, company_id, channel_id)

@@ -38,8 +38,11 @@ from services.whatsapp_channels import (
     list_channels,
     rename_channel,
     set_default_outbound,
+    set_provider_config,
     update_channel_runtime,
+    VALID_PROVIDERS,
 )
+from services.whatsapp_evolution import EvolutionClient
 
 logger = logging.getLogger("ponto.wa_channels")
 router = APIRouter(prefix="/api/whatsapp-channels", tags=["whatsapp-channels"])
@@ -55,6 +58,33 @@ class ChannelRenamePayload(BaseModel):
 class ChannelSendPayload(BaseModel):
     phone: str
     text: str
+
+
+class ChannelProviderPayload(BaseModel):
+    """Configura provider + credenciais (CTO 15/06/2026)."""
+    provider: str = Field(..., description="baileys | evolution")
+    evolution_url: Optional[str] = None
+    evolution_api_key: Optional[str] = None
+    evolution_instance_name: Optional[str] = None
+
+
+# --------------------------------------------------------------------------- #
+# Provider-aware adapter
+# --------------------------------------------------------------------------- #
+def _is_evolution(channel: dict) -> bool:
+    return (channel or {}).get("provider") == "evolution"
+
+
+def _evolution_client(channel: dict) -> EvolutionClient:
+    """Constrói EvolutionClient a partir do doc do canal. Levanta 400 se faltar config."""
+    try:
+        return EvolutionClient(
+            base_url=channel.get("evolution_url") or "",
+            api_key=channel.get("evolution_api_key") or "",
+            instance_name=channel.get("evolution_instance_name") or "",
+        )
+    except ValueError as e:
+        raise HTTPException(400, f"Canal mal configurado para Evolution: {e}")
 
 
 # --------------------------------------------------------------------------- #
@@ -123,6 +153,12 @@ async def list_all_channels(user=Depends(require_role(
 
     import asyncio
     enriched = await asyncio.gather(*[_fetch_status(c) for c in channels])
+    # CTO 15/06/2026 — Mascara api_key Evolution na listagem (segurança)
+    for ch in enriched:
+        if ch.get("evolution_api_key"):
+            tail = ch["evolution_api_key"][-4:] if len(ch["evolution_api_key"]) >= 4 else ""
+            ch["evolution_api_key_masked"] = f"***{tail}"
+            ch.pop("evolution_api_key", None)
     return {"channels": enriched}
 
 
@@ -155,12 +191,54 @@ async def make_default_outbound(
     return updated
 
 
+@router.patch("/{channel_id}/provider")
+async def patch_provider(
+    channel_id: str,
+    payload: ChannelProviderPayload,
+    user=Depends(require_role("administrador", "gestor", "auditor")),
+):
+    """Configura o provider do canal: 'baileys' (sidecar interno) ou
+    'evolution' (Evolution API externa). Para evolution exige url+api_key+instance.
+    """
+    _validate_channel_id(channel_id)
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+    try:
+        updated = await set_provider_config(
+            db, cid, channel_id,
+            provider=payload.provider,
+            evolution_url=payload.evolution_url,
+            evolution_api_key=payload.evolution_api_key,
+            evolution_instance_name=payload.evolution_instance_name,
+        )
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    if not updated:
+        raise HTTPException(404, "Canal não encontrado")
+    # Não retorna api_key em claro (defesa de log)
+    safe = dict(updated)
+    if safe.get("evolution_api_key"):
+        safe["evolution_api_key_masked"] = "***" + (safe["evolution_api_key"][-4:] or "")
+        safe.pop("evolution_api_key", None)
+    return safe
+
+
 @router.get("/{channel_id}/qr")
 async def channel_qr(
     channel_id: str,
     user=Depends(require_role("administrador", "gestor", "auditor")),
 ):
     _validate_channel_id(channel_id)
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+    ch = await get_channel(db, cid, channel_id)
+    if _is_evolution(ch):
+        try:
+            evo = _evolution_client(ch)
+            # Cria instance se não existir; webhook ainda não configurado aqui.
+            await evo.create_instance(webhook_url=None)
+            return await evo.get_qr()
+        except httpx.HTTPError as e:
+            raise HTTPException(502, f"Evolution API inacessível: {e}")
+    # Baileys (default)
     try:
         return await _proxy_get(channel_id, "/qr")
     except httpx.HTTPError as e:
@@ -174,11 +252,23 @@ async def channel_status(
 ):
     _validate_channel_id(channel_id)
     cid = user.get("company_id") or DEMO_COMPANY_ID
+    ch = await get_channel(db, cid, channel_id)
+    if _is_evolution(ch):
+        try:
+            evo = _evolution_client(ch)
+            data = await evo.status()
+            await update_channel_runtime(
+                db, cid, channel_id,
+                phone_number=None, status=data.get("state"),
+            )
+            return data
+        except httpx.HTTPError as e:
+            raise HTTPException(502, f"Evolution API inacessível: {e}")
+    # Baileys (default)
     try:
         data = await _proxy_get(channel_id, "/status")
     except httpx.HTTPError as e:
         raise HTTPException(502, f"Sidecar inacessível: {e}")
-    # Atualiza cache de phone/status
     me_obj = (data or {}).get("me") or {}
     me_id = (me_obj.get("id") or "").split(":")[0]
     await update_channel_runtime(
@@ -197,6 +287,14 @@ async def channel_send(
 ):
     """Envio outbound direto pelo canal escolhido (debug / disparo manual)."""
     _validate_channel_id(channel_id)
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+    ch = await get_channel(db, cid, channel_id)
+    if _is_evolution(ch):
+        try:
+            evo = _evolution_client(ch)
+            return await evo.send_text(payload.phone, payload.text)
+        except httpx.HTTPError as e:
+            raise HTTPException(502, f"Evolution API inacessível: {e}")
     try:
         return await _proxy_post(channel_id, "/send",
                                   {"phone": payload.phone, "text": payload.text})
@@ -209,14 +307,21 @@ async def channel_logout(
     channel_id: str,
     user=Depends(require_role("administrador", "gestor", "auditor")),
 ):
-    """Desconecta o número e limpa a auth state Mongo do canal."""
+    """Desconecta o número e limpa a auth state do canal."""
     _validate_channel_id(channel_id)
     cid = user.get("company_id") or DEMO_COMPANY_ID
-    try:
-        result = await _proxy_post(channel_id, "/logout", {})
-    except httpx.HTTPError as e:
-        raise HTTPException(502, f"Sidecar inacessível: {e}")
-    # Limpa cache de phone
+    ch = await get_channel(db, cid, channel_id)
+    if _is_evolution(ch):
+        try:
+            evo = _evolution_client(ch)
+            result = await evo.logout()
+        except httpx.HTTPError as e:
+            raise HTTPException(502, f"Evolution API inacessível: {e}")
+    else:
+        try:
+            result = await _proxy_post(channel_id, "/logout", {})
+        except httpx.HTTPError as e:
+            raise HTTPException(502, f"Sidecar inacessível: {e}")
     await update_channel_runtime(
         db, cid, channel_id,
         phone_number=None, status="disconnected",

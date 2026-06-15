@@ -1,0 +1,40 @@
+{
+  "summary": "Validated Evolution API provider feature (iter156) — backend + frontend. 10/11 backend pytest pass; 1 LEGITIMATE BUG: existing seeded channel docs (channel-2/3/4) don't have provider/evolution_url/evolution_instance_name fields because ensure_channels_seeded() only inserts new docs and there's no backfill migration. Frontend modal fully functional: provider button, modal, both options, 3 Evolution inputs, save button — all data-testids present and reachable from Atendimento IA → Canais tab.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {
+        "endpoint": "GET /api/whatsapp-channels",
+        "issue": "Existing seeded channel docs (channel-2, channel-3, channel-4) DO NOT have the new fields 'provider', 'evolution_url', 'evolution_instance_name' present in the response. The spec literally requires these to be present (even if null). ensure_channels_seeded() in services/whatsapp_channels.py only inserts NEW channel docs; existing docs created before the iter156 schema change are not backfilled. Once you PATCH a channel (e.g. via /provider endpoint), it gains the fields — but in the steady-state listing, channels never PATCHed will lack them. FIX: add an idempotent backfill in ensure_channels_seeded (or a one-shot migration) to $set provider='baileys' + evolution_*=null on docs missing those keys.",
+        "priority": "MEDIUM"
+      }
+    ]
+  },
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_iter156_evolution_provider.py",
+    "/app/test_reports/pytest/iter156_evolution.xml"
+  ],
+  "action_items": [
+    "Add backfill in services/whatsapp_channels.ensure_channels_seeded(): for existing docs missing 'provider', run an update_many to $set provider='baileys' and evolution_url/api_key/instance_name=null. Alternatively, add a startup migration. After fix, all 4 channels' listing will carry the new fields explicitly."
+  ],
+  "critical_code_review_comments": [
+    "whatsapp_evolution.EvolutionClient adapter is clean & narrowly scoped (5 methods). Auth header 'apikey' matches Evolution v2 spec. create_instance is idempotent (403/409 swallowed). Good.",
+    "Mask logic in routes/whatsapp_channels.py duplicated in 2 places (list endpoint + patch endpoint). Consider extracting helper _mask_channel(ch) -> ch to avoid drift if mask format changes (e.g. '***CDEF').",
+    "patch_provider correctly catches ValueError from set_provider_config and converts to 400. Good error mapping.",
+    "_is_evolution check is correctly applied to /qr, /status, /send, /logout — no silent Baileys fallback. Verified via 502 path with fake URL.",
+    "set_provider_config when provider='baileys' explicitly nulls the 3 evolution_* fields (no orphan credentials lingering). Good defensive cleanup.",
+    "MINOR security: evolution_api_key is stored in clear text in MongoDB. For production, consider encryption-at-rest with Fernet key from env. Not blocker for MVP but worth a TODO/audit log.",
+    "Preview ingress (Cloudflare) rewrites 502 JSON bodies to its own HTML 502 page — backend response 'Evolution API inacessível: [Errno -2]' is correct, but UI/curl users won't see the structured detail. Frontend should rely on status code (502) rather than body when surfacing 'Evolution inacessível' to user."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter156_evolution_provider.py (NEW — 11 tests covering all 9 requirements from review_request)"
+  ],
+  "success_rate": {"backend": "91% (10/11)", "frontend": "100% (UI elements + flow verified manually)"},
+  "test_credentials": "admin@empresa.com / 123456 (from /app/memory/test_credentials.md)",
+  "seed_data_creation": "None — test sets+reverts channel-1 provider in autouse cleanup fixture. Channel-1 restored to provider='baileys' after suite.",
+  "retest_needed": true,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Re-run: `python -m pytest /app/backend/tests/test_iter156_evolution_provider.py -v --junitxml=/app/test_reports/pytest/iter156_evolution.xml`. The single failing test (test_each_channel_has_provider_and_evolution_fields) documents the backfill bug — once main agent adds the migration, this test will pass for all 4 channels. Direct backend curl (http://127.0.0.1:8001) was used to confirm 502 carries JSON body 'Evolution API inacessível: [Errno -2] Name or service not known'; preview ingress rewrites public 502 body to HTML, so the test relaxes the JSON-body check when content-type is not JSON. Frontend access path: sidebar 'Atendimento IA' → tab 'Canais' → button 'Provedor' on each channel card.",
+  "rca_of_the_issue": "BACKFILL MISSING. services/whatsapp_channels.py:ensure_channels_seeded() at line ~102 only inserts MISSING channel IDs; it does not update existing docs to add new schema fields. When iter156 added provider/evolution_* to the seed dict (line 124-127), only fresh installs got the fields. Co-demo's channel-1/2/3/4 were seeded earlier with the old schema and remain without those keys until each is individually PATCHed. Reproduce: drop nothing; just GET /api/whatsapp-channels — channel-2/3/4 will show no 'provider' key. Fix: in ensure_channels_seeded after the insert_many, add: `await coll.update_many({'company_id': company_id, 'provider': {'$exists': False}}, {'$set': {'provider': 'baileys', 'evolution_url': None, 'evolution_api_key': None, 'evolution_instance_name': None, 'updated_at': now}})`."
+}

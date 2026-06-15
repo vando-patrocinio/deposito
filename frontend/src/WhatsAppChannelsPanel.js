@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from "react";
-import { Loader2, RefreshCw, Star, StarOff, LogOut, Pencil, Check, X, QrCode } from "lucide-react";
+import { Loader2, RefreshCw, Star, StarOff, LogOut, Pencil, Check, X, QrCode, Settings } from "lucide-react";
 import { api } from "@/api";
 
 /* =============================================================
@@ -52,10 +52,13 @@ function StateBadge({ state, connected }) {
   );
 }
 
-function ChannelCard({ ch, onRename, onSetDefault, onConnect, onLogout, busy }) {
+function ChannelCard({ ch, onRename, onSetDefault, onConnect, onLogout, onConfigProvider, busy }) {
   const [editing, setEditing] = useState(false);
   const [draftName, setDraftName] = useState(ch.channel_name || "");
   const connected = ch.live_connected || ch.live_state === "connected";
+  const provider = ch.provider || "baileys";
+  const providerLabel = provider === "evolution" ? "Evolution API" : "Baileys (interno)";
+  const providerColor = provider === "evolution" ? "#7c3aed" : "#0ea5e9";
 
   useEffect(() => { setDraftName(ch.channel_name || ""); }, [ch.channel_name]);
 
@@ -138,8 +141,8 @@ function ChannelCard({ ch, onRename, onSetDefault, onConnect, onLogout, busy }) 
         )}
       </div>
 
-      {/* Status + phone */}
-      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14 }}>
+      {/* Status + phone + provider */}
+      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14, flexWrap: "wrap" }}>
         <StateBadge state={ch.live_state} connected={connected} />
         {ch.phone_number && (
           <span style={{ fontSize: 13, color: "#475569", fontFamily: "JetBrains Mono, monospace" }}
@@ -152,6 +155,23 @@ function ChannelCard({ ch, onRename, onSetDefault, onConnect, onLogout, busy }) 
             sem número
           </span>
         )}
+        <span
+          data-testid={`channel-provider-badge-${ch.id}`}
+          style={{
+            marginLeft: "auto",
+            padding: "3px 10px",
+            fontSize: 11,
+            fontWeight: 700,
+            letterSpacing: 0.4,
+            color: providerColor,
+            background: `${providerColor}15`,
+            border: `1px solid ${providerColor}55`,
+            borderRadius: 999,
+            textTransform: "uppercase",
+          }}
+        >
+          {providerLabel}
+        </span>
       </div>
 
       {/* Ações */}
@@ -208,6 +228,28 @@ function ChannelCard({ ch, onRename, onSetDefault, onConnect, onLogout, busy }) 
             <StarOff size={14}/> usado pra envios proativos
           </span>
         )}
+        <button
+          data-testid={`channel-provider-btn-${ch.id}`}
+          onClick={() => onConfigProvider(ch)}
+          disabled={busy}
+          title="Escolher provedor: Baileys interno ou Evolution API"
+          style={{
+            padding: "8px 14px",
+            background: "white",
+            color: providerColor,
+            border: `1px solid ${providerColor}55`,
+            borderRadius: 8,
+            cursor: "pointer",
+            fontWeight: 600,
+            fontSize: 13,
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 6,
+            marginLeft: "auto",
+          }}
+        >
+          <Settings size={14}/> Provedor
+        </button>
       </div>
     </div>
   );
@@ -281,11 +323,171 @@ function QRModal({ channel, onClose }) {
   );
 }
 
+function ProviderModal({ channel, onClose, onSaved }) {
+  const initialProvider = channel?.provider || "baileys";
+  const [provider, setProvider] = useState(initialProvider);
+  const [evoUrl, setEvoUrl] = useState(channel?.evolution_url || "");
+  const [evoKey, setEvoKey] = useState("");
+  const [evoInstance, setEvoInstance] = useState(channel?.evolution_instance_name || channel?.id || "");
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState("");
+
+  const handleSave = async () => {
+    setSaving(true); setErr("");
+    try {
+      const payload = { provider };
+      if (provider === "evolution") {
+        if (!evoUrl.trim() || !evoKey.trim() || !evoInstance.trim()) {
+          throw new Error("Para Evolution preencha URL, API key e nome da instance.");
+        }
+        payload.evolution_url = evoUrl.trim();
+        payload.evolution_api_key = evoKey.trim();
+        payload.evolution_instance_name = evoInstance.trim();
+      }
+      await api.waChannelSetProvider(channel.id, payload);
+      onSaved();
+      onClose();
+    } catch (e) {
+      setErr(e?.response?.data?.detail || e?.message || "Falha ao salvar provedor");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div
+      data-testid="provider-modal"
+      onClick={onClose}
+      style={{
+        position: "fixed", inset: 0, background: "rgba(15,23,42,0.55)",
+        display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000,
+      }}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          background: "white", borderRadius: 14, padding: 24, width: 520, maxWidth: "92vw",
+          boxShadow: "0 20px 50px rgba(15,23,42,0.25)",
+        }}
+      >
+        <h3 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: "#0f172a" }}>
+          Provedor WhatsApp — {channel?.channel_name}
+        </h3>
+        <p style={{ color: "#64748b", fontSize: 13, marginTop: 6 }}>
+          Escolha como este canal envia/recebe mensagens. <b>Baileys</b> usa o sidecar interno (atual).
+          <b> Evolution API</b> usa um container Evolution self-hosted (mais estável em produção).
+        </p>
+
+        <div style={{ display: "flex", gap: 10, marginTop: 18, marginBottom: 14 }}>
+          {[
+            { value: "baileys", label: "Baileys (sidecar interno)", color: "#0ea5e9" },
+            { value: "evolution", label: "Evolution API (externo)", color: "#7c3aed" },
+          ].map((opt) => (
+            <button
+              key={opt.value}
+              data-testid={`provider-option-${opt.value}`}
+              onClick={() => setProvider(opt.value)}
+              style={{
+                flex: 1, padding: "12px 14px", borderRadius: 10, fontWeight: 700, fontSize: 13,
+                cursor: "pointer",
+                background: provider === opt.value ? opt.color : "white",
+                color: provider === opt.value ? "white" : opt.color,
+                border: `2px solid ${opt.color}`,
+              }}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
+
+        {provider === "evolution" && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 6 }}>
+            <label style={{ fontSize: 12, fontWeight: 700, color: "#475569" }}>
+              URL Evolution API
+              <input
+                data-testid="provider-evolution-url"
+                value={evoUrl}
+                onChange={(e) => setEvoUrl(e.target.value)}
+                placeholder="https://evo.seudominio.com"
+                style={{ width: "100%", padding: "8px 10px", border: "1px solid #cbd5e1",
+                          borderRadius: 8, marginTop: 4, fontSize: 13 }}
+              />
+            </label>
+            <label style={{ fontSize: 12, fontWeight: 700, color: "#475569" }}>
+              API Key global (apikey header)
+              <input
+                data-testid="provider-evolution-key"
+                value={evoKey}
+                onChange={(e) => setEvoKey(e.target.value)}
+                placeholder={channel?.evolution_api_key_masked
+                  ? `(atual: ${channel.evolution_api_key_masked}) — cole nova chave pra trocar`
+                  : "cole a AUTHENTICATION_API_KEY do container Evolution"}
+                type="password"
+                style={{ width: "100%", padding: "8px 10px", border: "1px solid #cbd5e1",
+                          borderRadius: 8, marginTop: 4, fontSize: 13, fontFamily: "monospace" }}
+              />
+            </label>
+            <label style={{ fontSize: 12, fontWeight: 700, color: "#475569" }}>
+              Nome da instance
+              <input
+                data-testid="provider-evolution-instance"
+                value={evoInstance}
+                onChange={(e) => setEvoInstance(e.target.value)}
+                placeholder={`ex: ${channel?.id || "channel-1"}`}
+                style={{ width: "100%", padding: "8px 10px", border: "1px solid #cbd5e1",
+                          borderRadius: 8, marginTop: 4, fontSize: 13, fontFamily: "monospace" }}
+              />
+            </label>
+            <p style={{ fontSize: 11, color: "#64748b", marginTop: 4 }}>
+              💡 Após salvar, clique <b>Conectar via QR</b> no card pra Evolution gerar a instance e
+              retornar o QR. Configure o webhook depois apontando pro seu backend.
+            </p>
+          </div>
+        )}
+
+        {err && (
+          <div data-testid="provider-error" style={{
+            marginTop: 12, padding: "10px 12px", background: "#fef2f2", color: "#b91c1c",
+            border: "1px solid #fecaca", borderRadius: 8, fontSize: 12,
+          }}>
+            {err}
+          </div>
+        )}
+
+        <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 22 }}>
+          <button
+            data-testid="provider-cancel-btn"
+            onClick={onClose}
+            disabled={saving}
+            style={{ padding: "10px 18px", background: "white", color: "#475569",
+                      border: "1px solid #cbd5e1", borderRadius: 8, cursor: "pointer",
+                      fontWeight: 600, fontSize: 13 }}
+          >
+            Cancelar
+          </button>
+          <button
+            data-testid="provider-save-btn"
+            onClick={handleSave}
+            disabled={saving}
+            style={{ padding: "10px 18px", background: "#0d9488", color: "white",
+                      border: "none", borderRadius: 8, cursor: saving ? "wait" : "pointer",
+                      fontWeight: 700, fontSize: 13 }}
+          >
+            {saving ? "Salvando…" : "Salvar provedor"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
 export default function WhatsAppChannelsPanel() {
   const [channels, setChannels] = useState([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [qrFor, setQrFor] = useState(null);
+  const [providerFor, setProviderFor] = useState(null);
   const [err, setErr] = useState(null);
 
   const load = useCallback(async () => {
@@ -380,12 +582,20 @@ export default function WhatsAppChannelsPanel() {
               onSetDefault={handleSetDefault}
               onConnect={(c) => setQrFor(c)}
               onLogout={handleLogout}
+              onConfigProvider={(c) => setProviderFor(c)}
             />
           ))}
         </div>
       )}
 
       {qrFor && <QRModal channel={qrFor} onClose={() => { setQrFor(null); load(); }} />}
+      {providerFor && (
+        <ProviderModal
+          channel={providerFor}
+          onClose={() => setProviderFor(null)}
+          onSaved={load}
+        />
+      )}
     </div>
   );
 }
