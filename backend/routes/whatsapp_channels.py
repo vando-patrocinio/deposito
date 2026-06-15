@@ -43,6 +43,7 @@ from services.whatsapp_channels import (
     VALID_PROVIDERS,
 )
 from services.whatsapp_evolution import EvolutionClient
+from services.whatsapp_provider_health import collect as collect_provider_health
 
 logger = logging.getLogger("ponto.wa_channels")
 router = APIRouter(prefix="/api/whatsapp-channels", tags=["whatsapp-channels"])
@@ -231,6 +232,29 @@ async def patch_provider(
         safe["evolution_api_key_masked"] = "***" + (safe["evolution_api_key"][-4:] or "")
         safe.pop("evolution_api_key", None)
     return safe
+
+
+@router.get("/{channel_id}/provider-health")
+async def channel_provider_health(
+    channel_id: str,
+    days: int = 7,
+    user=Depends(require_role("administrador", "gestor", "auditor")),
+):
+    """Snapshot de saúde do provider atual + status do alternativo, c/ recomendação.
+
+    Dados agregados:
+    - total_sent / success_rate / latency p50+p95 (wa_dispatch_metrics)
+    - crash_count_7d (wa_sidecar_restart_log, só Baileys)
+    - última event do sistema (wa_system_events)
+
+    Recomendação automática: stay | configure_alt | consider_migrate.
+    """
+    _validate_channel_id(channel_id)
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+    ch = await get_channel(db, cid, channel_id)
+    if not ch:
+        raise HTTPException(404, "Canal não encontrado")
+    return await collect_provider_health(db, cid, ch, days=days)
 
 
 @router.post("/{channel_id}/migrate")

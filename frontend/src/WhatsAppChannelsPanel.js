@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from "react";
-import { Loader2, RefreshCw, Star, StarOff, LogOut, Pencil, Check, X, QrCode, Settings } from "lucide-react";
+import { Loader2, RefreshCw, Star, StarOff, LogOut, Pencil, Check, X, QrCode, Settings, Activity, AlertTriangle, ArrowRightLeft } from "lucide-react";
 import { api } from "@/api";
 
 /* =============================================================
@@ -52,7 +52,7 @@ function StateBadge({ state, connected }) {
   );
 }
 
-function ChannelCard({ ch, onRename, onSetDefault, onConnect, onLogout, onConfigProvider, busy }) {
+function ChannelCard({ ch, onRename, onSetDefault, onConnect, onLogout, onConfigProvider, onQuickMigrate, busy }) {
   const [editing, setEditing] = useState(false);
   const [draftName, setDraftName] = useState(ch.channel_name || "");
   const connected = ch.live_connected || ch.live_state === "connected";
@@ -322,6 +322,149 @@ function QRModal({ channel, onClose }) {
     </div>
   );
 }
+
+function ProviderHealthCard({ channelId, onMigrate }) {
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [expanded, setExpanded] = useState(false);
+  const [err, setErr] = useState(null);
+
+  const load = useCallback(async () => {
+    setLoading(true); setErr(null);
+    try {
+      const d = await api.waChannelProviderHealth(channelId, 7);
+      setData(d);
+    } catch (e) {
+      setErr(e?.response?.data?.detail || e?.message || "Falha");
+    } finally { setLoading(false); }
+  }, [channelId]);
+
+  useEffect(() => { load(); }, [load]);
+
+  if (loading && !data) {
+    return (
+      <div data-testid={`provider-health-loading-${channelId}`}
+            style={{ marginTop: 12, padding: 10, fontSize: 12, color: "#64748b" }}>
+        <Loader2 size={12} className="animate-spin"/> Coletando telemetria…
+      </div>
+    );
+  }
+  if (err || !data) return null;
+
+  const rec = data.recommendation || {};
+  const severity = rec.severity || "low";
+  const sevColor = severity === "high" ? "#dc2626"
+                  : severity === "medium" ? "#ca8a04" : "#16a34a";
+  const sevBg = severity === "high" ? "#fef2f2"
+                : severity === "medium" ? "#fefce8" : "#f0fdf4";
+  const sevBorder = severity === "high" ? "#fca5a5"
+                    : severity === "medium" ? "#fde047" : "#86efac";
+  const cur = data.current || {};
+  const fmt = (v, suf = "") => (v === null || v === undefined) ? "—" : `${v}${suf}`;
+
+  return (
+    <div
+      data-testid={`provider-health-card-${channelId}`}
+      style={{
+        marginTop: 14,
+        background: sevBg,
+        border: `1px solid ${sevBorder}`,
+        borderRadius: 10,
+        padding: 12,
+      }}
+    >
+      {/* Header com recomendação */}
+      <div
+        onClick={() => setExpanded((s) => !s)}
+        style={{
+          display: "flex", alignItems: "center", gap: 8,
+          cursor: "pointer", userSelect: "none",
+        }}
+      >
+        {severity === "high" ? (
+          <AlertTriangle size={16} color={sevColor}/>
+        ) : (
+          <Activity size={16} color={sevColor}/>
+        )}
+        <div style={{ flex: 1, fontSize: 12, fontWeight: 700, color: sevColor }}>
+          {rec.action === "consider_migrate" ? "🔁 Considere migrar de provider"
+            : rec.action === "configure_alt" ? "⚙️ Configure o provider alternativo"
+            : "✅ Provider saudável"}
+        </div>
+        <span style={{ fontSize: 11, color: "#475569" }}>
+          {expanded ? "▴ ocultar" : "▾ ver detalhes"}
+        </span>
+      </div>
+
+      {/* Razão da recomendação */}
+      <div style={{ fontSize: 11, color: "#475569", marginTop: 6, lineHeight: 1.55 }}>
+        {rec.reason}
+      </div>
+
+      {expanded && (
+        <div style={{ marginTop: 12, display: "grid",
+                       gridTemplateColumns: "repeat(2, 1fr)", gap: 8 }}>
+          <Metric label="Mensagens 7d" value={fmt(cur.total_sent)} />
+          <Metric label="Taxa de sucesso" value={cur.success_rate !== null
+            ? `${cur.success_rate}%` : "—"} />
+          <Metric label="Latência p50" value={fmt(cur.latency_p50_ms, "ms")} />
+          <Metric label="Latência p95" value={fmt(cur.latency_p95_ms, "ms")} />
+          {data.current_provider === "baileys" && (
+            <Metric label="Crashes sidecar 7d" value={fmt(cur.crash_count_7d)}
+                     highlight={cur.crash_count_7d >= 2} />
+          )}
+          <Metric label="Conectado agora?" value={cur.connected_now ? "sim" : "não"}
+                   highlight={!cur.connected_now} />
+        </div>
+      )}
+
+      {/* Ação rápida */}
+      {rec.action === "consider_migrate" && data.alternative?.configured && (
+        <button
+          data-testid={`provider-health-migrate-btn-${channelId}`}
+          onClick={() => onMigrate(channelId, data.alternative_provider)}
+          style={{
+            marginTop: 12, padding: "8px 12px", width: "100%",
+            background: sevColor, color: "white", border: "none",
+            borderRadius: 6, fontWeight: 700, fontSize: 12,
+            cursor: "pointer", display: "inline-flex",
+            alignItems: "center", justifyContent: "center", gap: 6,
+          }}
+        >
+          <ArrowRightLeft size={12}/>
+          Migrar agora para {data.alternative_provider}
+        </button>
+      )}
+      {rec.action === "configure_alt" && (
+        <div style={{ marginTop: 8, fontSize: 11, color: "#64748b", fontStyle: "italic" }}>
+          {data.alternative?.note}
+        </div>
+      )}
+    </div>
+  );
+}
+
+
+function Metric({ label, value, highlight }) {
+  return (
+    <div style={{
+      background: "white",
+      border: `1px solid ${highlight ? "#fca5a5" : "#e2e8f0"}`,
+      borderRadius: 8,
+      padding: "8px 10px",
+    }}>
+      <div style={{ fontSize: 10, color: "#64748b",
+                     textTransform: "uppercase", letterSpacing: 0.4 }}>
+        {label}
+      </div>
+      <div style={{ fontSize: 14, fontWeight: 700,
+                     color: highlight ? "#b91c1c" : "#0f172a", marginTop: 2 }}>
+        {value}
+      </div>
+    </div>
+  );
+}
+
 
 function ProviderModal({ channel, onClose, onSaved }) {
   const initialProvider = channel?.provider || "baileys";

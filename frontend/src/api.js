@@ -1111,6 +1111,9 @@ export const api = {
   waChannelMigrate: (channelId, payload) =>
     client.post(`/whatsapp-channels/${channelId}/migrate`, payload)
       .then((r) => r.data),
+  waChannelProviderHealth: (channelId, days = 7) =>
+    client.get(`/whatsapp-channels/${channelId}/provider-health`, { params: { days } })
+      .then((r) => r.data),
   waBaileysRefreshQR: () => client.post(`/whatsapp-baileys/qr/refresh`).then((r) => r.data),
   waBaileysStatus: () => client.get(`/whatsapp-baileys/status`).then((r) => r.data),
   waBaileysSend: (phone, text, polishedByAi = false) =>
