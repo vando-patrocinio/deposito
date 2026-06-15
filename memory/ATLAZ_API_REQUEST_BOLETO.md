@@ -1,265 +1,306 @@
-# Solicitação Formal — Endpoints Atlaz para Disparo de Boleto via WhatsApp
+# Auditoria Atlaz API v2 — Disparo de Boleto via WhatsApp
 
 **Remetente:** CTO — Universo Ligo / SmartProv
-**Destinatário:** Equipe de Produto/API Atlaz
 **Data:** 2026-02
-**Assunto:** Pedido de evolução da API v2 para suportar disparo de cobrança via WhatsApp em conformidade com LGPD e melhores práticas PIX/CIP.
+**Fonte oficial auditada:** `https://app.atlaz.com.br/docs/api` + OpenAPI YAML (`https://app.atlaz.com.br/openapi/atlaz-api-v2.yaml`, 1.117 linhas)
+**Confiança:** HIGH (auditoria linha-por-linha do OpenAPI 3.1.0 oficial)
 
 ---
 
-## 1. Contexto
+## 1. Inventário REAL da API Atlaz v2
 
-A Universo Ligo opera um motor de disparo automatizado de boletos pelo WhatsApp (módulo `disparo_boleto`), integrado à Atlaz via API v2 (`https://app.atlaz.com.br/api/v2`).
+A API v2 expõe **7 endpoints + 2 webhooks inbound**. Não há mais nada.
 
-**Endpoints atualmente consumidos:**
-| Endpoint | Uso atual |
-|---|---|
-| `GET /listaclientes` | Cache local de telefones (`atlaz_clients_cache`) |
-| `GET /listachamados` | Histórico de tickets para IA Isabella |
-| `GET /faturas` | Faturas em aberto (campos: `valor`, `vencimento`, `linha_digitavel`, `link`) |
+| # | Endpoint | Método | Tag | Status no nosso código |
+|---|---|---|---|---|
+| 1 | `/consultacliente` | GET | Clientes | ❌ **NÃO usamos** (mas resolve Issue #2) |
+| 2 | `/listaclientes` | GET | Clientes | ✅ usamos, **sem `atualizado_desde`** |
+| 3 | `/faturas` | GET | Faturas | ✅ usamos, **sem `retornar_pix=1`** |
+| 4 | `/listachamados` | GET | Chamados | ✅ usamos |
+| 5 | `/criarchamado` | POST | Chamados | ❌ não usamos |
+| 6 | `/desbloquear` | POST | Ações | ❌ não usamos |
+| 7 | `/derrubarponto` | POST | Ações | ❌ não usamos |
+| W1 | Webhook **WhatsApp Notification** | Atlaz → nós | Webhooks | ❌ **não implementado** |
+| W2 | Webhook **SMS Notification** | Atlaz → nós | Webhooks | ❌ não implementado |
 
-**Volume:** ~XX mil mensagens/mês, base de XX mil assinantes.
-
-**Lacunas críticas identificadas** (impacto financeiro, jurídico e operacional):
-
-1. Telefone do cache não traz `opt-in` de cobrança → **risco LGPD/Marco Civil**.
-2. Faturas não expõem **PIX (copia-e-cola + QR Code)** → conversão pagamento−mobile prejudicada.
-3. Não há endpoint de **2ª via** com recálculo de juros/multa → enviamos boleto vencido com valor errado.
-4. URL do PDF (`link`) **expira em horas** → cliente clica e o link quebra.
-5. Sem webhook `fatura.paga` → disparamos cobrança para quem já pagou (cache 22h de atraso).
-6. Sem confirmação de entrega no Atlaz → quebra na rastreabilidade fiscal/auditoria.
+**Autenticação:** parâmetro `token` (query/body), obtido em *Painel → Configurações → Recursos*.
+**Base URL:** `https://app.atlaz.com.br/api/v2`.
+**Convenção:** campo `success` retorna como **string** `"true"`/`"false"` (não booleano).
 
 ---
 
-## 2. Solicitações P0 — Críticas (sem isso, entregamos com erro ou em desconformidade legal)
+## 2. PARTE A — Ações Internas (Universo Ligo): Executar HOJE, zero pedido ao Atlaz
 
-### 2.1 Contatos do cliente com flags de consentimento
-```
-GET /api/v2/clientes/{id}/contatos
-```
-**Resposta esperada:**
+### A.1 [P0] Habilitar PIX inline em `/faturas` — conversão pagamento +200-300%
+
+**Evidência:** o endpoint `/faturas` aceita `retornar_pix=1` e devolve `pix_brcode` (copia-e-cola) + `pix_qrcode_link`.
+
+**Ação:** alterar `/app/backend/routes/atlaz_financeiro.py` para sempre incluir `retornar_pix=1` (e `retornar_nfe=1` quando aplicável).
+
+**Esforço:** 1h. **Risco:** zero.
+
+---
+
+### A.2 [P0] Resolver Issue #2 (Sprint 1.1) usando `/consultacliente`
+
+**Evidência:** `GET /consultacliente?cpf_cnpj=...` ou `?telefone=...&testar_com_e_sem_nono_digito=true` retorna `id_assinante` + `pontos_de_acesso[].username` (PPPoE) + `id_plano`.
+
+**Ação:** backfill `subscribers.atlaz_subscriber_code` (e `atlaz_id_ponto`) executando lookup reverso para os 97,5% de assinantes sem mapping.
+
+**Esforço:** 4-6h (script + indexação). **Risco:** baixo (read-only).
+
+**Impacto:** desbloqueia histórico financeiro completo para a Isabella, sem aguardar Atlaz.
+
+---
+
+### A.3 [P0] Habilitar delta sync em `/listaclientes`
+
+**Evidência:** parâmetro oficial `atualizado_desde=YYYY-MM-DD`.
+
+**Ação:** trocar nosso job de 22h por delta sync incremental (a cada 15min).
+
+**Esforço:** 2h. **Risco:** zero.
+
+**Impacto:** dado fresco no `atlaz_clients_cache` em quase tempo real; -95% custo de polling.
+
+---
+
+### A.4 [P0] Implementar receiver do **Webhook WhatsApp Notification (inbound)**
+
+**Evidência (OpenAPI):** Atlaz envia POST com payload pronto:
 ```json
 {
-  "contatos": [
-    {
-      "id": "ctt_1",
-      "tipo": "whatsapp",
-      "telefone": "+5511999998888",
-      "principal": true,
-      "whatsapp_validado": true,
-      "optin_cobranca": true,
-      "optin_marketing": false,
-      "dnd": false,
-      "atualizado_em": "2026-02-10T12:34:56Z"
-    }
+  "token": "...",
+  "telefone": "5511912345678",
+  "mensagem": "Atlaz: ...",
+  "arquivo_url": "https://.../boleto.pdf",
+  "arquivo_tipo": "pdf",
+  "linha_digitavel": "...",
+  "pix_brcode": "..."
+}
+```
+
+**Ação:** criar endpoint `POST /api/atlaz/notify/whatsapp`:
+- Valida `token` contra `ATLAZ_WEBHOOK_TOKEN` em `.env`.
+- Verifica opt-in interno (`outbound_optin`).
+- Despacha via WhatsApp (Baileys ou Evolution).
+- Responde HTTP 200.
+
+**Esforço:** 4h. **Risco:** baixo.
+
+**Impacto:** **estrutural** — paramos de fazer polling e o Atlaz nos avisa exatamente quando e o que disparar, com PIX já embutido. Mesmo modelo para SMS (W2).
+
+---
+
+### A.5 [P1] Backfill canônico `subscribers.atlaz_optin_cobranca`
+
+**Evidência:** API Atlaz não expõe campo de opt-in (gap real, ver Parte B).
+
+**Ação:** maquinaria interna nossa — guardar opt-in em `subscribers.outbound_optin` capturado via fluxo de boas-vindas + dupla opt-in.
+
+**Esforço:** 6h. **Risco:** mitigação LGPD.
+
+---
+
+### A.6 [P1] Adotar `link_recibo` e `valor_com_juros` para mensagem após pagamento
+
+**Evidência:** `/faturas` retorna `link_recibo` (PDF), `valor_com_juros`, `valor_pago`, `data_pagamento`.
+
+**Ação:** atualizar template do `boleto_flow` para enviar mensagem de confirmação com `link_recibo` quando `data_pagamento != null`.
+
+**Esforço:** 1h. **Risco:** zero.
+
+---
+
+## 3. PARTE B — Pedido Formal Atlaz: Gaps REAIS (não existem hoje)
+
+Estes são pedidos **legítimos** após auditoria. Cada item abaixo foi confirmado como ausente na API v2 atual.
+
+### B.1 [P0] CRUD completo de Chamado (hoje só tem CRIAR)
+
+| Operação | Status hoje | Pedido |
+|---|---|---|
+| Criar | ✅ `POST /criarchamado` | — |
+| Listar | ✅ `GET /listachamados` | — |
+| **Detalhar** | ❌ inexistente | `GET /chamado/{id}` |
+| **Responder** | ❌ inexistente | `POST /chamado/{id}/resposta` |
+| **Transferir** (handoff) | ❌ inexistente | `POST /chamado/{id}/transferir` |
+| **Fechar** | ❌ inexistente | `POST /chamado/{id}/fechar` |
+| **Anotação interna** | ❌ inexistente | `POST /chamado/{id}/anotacao` |
+
+**Justificativa:** sem isso, IA Isabella (Audit P0 Item 7 — `handoff_to_human`) não tem como agir no Atlaz. Hoje ela só lê.
+
+---
+
+### B.2 [P0] 2ª Via com NOVO vencimento + recálculo dinâmico
+
+**Estado atual:** `/faturas` retorna `valor_com_juros` com base no vencimento **original**. Não há como pedir novo vencimento e regerar boleto + PIX.
+
+**Pedido:**
+```
+POST /faturas/{id}/segundavia
+Body: { token, nova_data_vencimento }
+Resp: {
+  linha_digitavel, pix_brcode, pix_qrcode_link,
+  link (PDF), valor_total, multa, juros,
+  novo_vencimento
+}
+```
+
+**Justificativa:** cliente em atraso clica no link e o boleto vence em horas. Reclamações na ouvidoria.
+
+---
+
+### B.3 [P0] Endpoints de Negociação (Audit Isabella Item 8 — `negotiation_rules`)
+
+| Endpoint sugerido | Função |
+|---|---|
+| `POST /faturas/{id}/promessa_pagamento` | registrar promessa com data |
+| `GET /assinante/{id}/promessas_pagamento` | histórico (anti-fraude) |
+| `POST /faturas/{id}/desconto` | aplicar desconto autorizado |
+| `POST /faturas/{id}/parcelamento` | parcelar título |
+
+**Justificativa:** sem isso, IA não pode negociar autonomamente sem expor a empresa a risco financeiro.
+
+---
+
+### B.4 [P0] Campo `optin_cobranca` em `assinante`
+
+**Estado atual:** o objeto `AssinanteResumo` tem apenas `id_assinante`, `nome`, `cpf_cnpj`, `dia_de_vencimento`, `email`, `telefone`. **Sem flag de consentimento.**
+
+**Pedido:** acrescentar ao schema `AssinanteResumo`:
+```yaml
+optin_cobranca: { type: boolean }
+optin_marketing: { type: boolean }
+canal_preferido: { enum: [whatsapp, email, sms, ligacao] }
+horario_permitido: { type: object, properties: { inicio, fim, timezone } }
+dnd: { type: boolean }
+```
+
+**Justificativa:** LGPD Art. 7º + Marco Civil. Hoje despachamos sem prova de consentimento documentado no provedor de origem do dado.
+
+---
+
+### B.5 [P1] Webhooks Outbound: `fatura.paga`, `fatura.cancelada`, `chamado.respondido`, `chamado.fechado`
+
+**Estado atual:** os 2 webhooks existentes (W1/W2) são **somente para notificar comunicação** (cobrança a disparar). Não há webhooks de mudança de estado.
+
+**Pedido:**
+```
+POST /webhooks/subscribe
+Body: {
+  callback_url, secret,
+  events: [
+    "fatura.paga", "fatura.cancelada", "fatura.gerada",
+    "chamado.respondido", "chamado.fechado", "chamado.transferido",
+    "assinante.bloqueado", "assinante.desbloqueado",
+    "contrato.suspenso", "contrato.reativado"
   ]
 }
 ```
-**Por que:** Hoje pegamos o primeiro telefone do cache, sem garantia de validade ou opt-in. Risco jurídico real (LGPD Art. 7º + Marco Civil + Resolução CGI).
+Assinatura HMAC SHA-256 no header `X-Atlaz-Signature` + retry exponencial (1m / 5m / 15m / 1h).
+
+**Justificativa:** sem isso, mesmo com delta sync, há janela de minutos em que disparamos cobrança a quem acabou de pagar.
 
 ---
 
-### 2.2 PIX inline na fatura
+### B.6 [P1] Conciliação PIX em tempo real
+
+**Pedido:** evento `pix.recebido` no webhook subscription B.5 com payload `{ fatura_id, txid, valor, pagador_documento, data_credito }`.
+
+**Justificativa:** fechamento automático de tickets de cobrança e atualização de KPI em segundos, não horas.
+
+---
+
+### B.7 [P1] Confirmação de entrega no Atlaz (auditoria fiscal/ouvidoria)
+
+**Pedido:**
 ```
-GET /api/v2/faturas/{id}/pix
-```
-**Resposta esperada:**
-```json
-{
-  "fatura_id": "FAT-123",
-  "pix_copia_cola": "00020126...6304ABCD",
-  "pix_qrcode_base64": "iVBORw0KGgoAAAA...",
-  "pix_txid": "TX2026021012345",
-  "pix_chave": "12345678000199",
-  "pix_expiracao": "2026-02-15T23:59:59-03:00",
-  "valor": 149.90
+POST /faturas/{id}/notificacoes
+Body: {
+  token, canal: "whatsapp"|"sms"|"email",
+  status: "entregue"|"lida"|"falha",
+  message_id, timestamp, telefone_destino
 }
 ```
-**Por que:** Conversão boleto→pagamento aumenta 3-5× quando o cliente paga via PIX direto pelo WhatsApp, sem precisar digitar linha digitável de 47 dígitos.
+
+**Justificativa:** registra no histórico do cliente no Atlaz que a cobrança foi notificada — peça-chave em disputa de ouvidoria / Procon.
 
 ---
 
-### 2.3 2ª via com recálculo de juros e multa
-```
-POST /api/v2/faturas/{id}/segunda-via
-```
-**Body:**
-```json
-{ "nova_data_vencimento": "2026-02-20" }
-```
-**Resposta esperada:**
-```json
-{
-  "fatura_id": "FAT-123-V2",
-  "fatura_original_id": "FAT-123",
-  "linha_digitavel": "23793...",
-  "codigo_barras": "23791...",
-  "pdf_url": "https://atlaz-cdn/.../FAT-123-V2.pdf",
-  "pdf_ttl_seconds": 604800,
-  "pix_copia_cola": "0002012...",
-  "valor_principal": 149.90,
-  "juros": 1.20,
-  "multa": 3.00,
-  "valor_total": 154.10,
-  "novo_vencimento": "2026-02-20"
-}
-```
-**Por que:** Hoje enviamos boleto vencido com valor original. Cliente reclama na ouvidoria; perdemos liquidez.
+### B.8 [P2] Endpoints estruturais para contexto 360º (Audit Isabella Item 6 — `interactions`)
+
+| Endpoint sugerido | Função |
+|---|---|
+| `GET /assinante/{id}/atendimentos` | timeline unificada |
+| `GET /assinante/{id}/contratos` | contratos ativos + histórico |
+| `GET /assinante/{id}/equipamentos` | ONT/CPE atual |
+| `GET /assinante/{id}/consumo` | banda/uptime 30d |
+| `GET /assinante/{id}/visitas` | visitas técnicas |
+| `GET /planos` | catálogo |
+| `GET /filiais` | multi-empresa |
+| `GET /tecnicos` | reassign de OS |
 
 ---
 
-### 2.4 PDF do boleto com URL estável
-```
-GET /api/v2/faturas/{id}/pdf
-```
-- Retornar `application/pdf` **ou** URL pré-assinada com TTL ≥ 7 dias.
-- Header `Cache-Control: max-age=604800` aceitável.
+### B.9 [P2] Flag `registrado_cip` na fatura
 
-**Por que:** O campo `link` atual quebra em horas; cliente abre o WhatsApp horas depois e o link já não funciona.
+**Pedido:** acrescentar a `/faturas[].fatura`:
+```yaml
+registrado_cip: { type: boolean }
+banco_emissor: { type: string }
+convenio: { type: string }
+nosso_numero: { type: string }
+```
+
+**Justificativa:** identificar se o boleto liquida na CIP (banco) ou é avulso/promissória.
 
 ---
 
-## 3. Solicitações P1 — Eliminar envios incorretos
+## 4. Resumo executivo
 
-### 3.1 Webhook `fatura.paga`
-```
-POST /api/v2/webhooks/subscribe
-```
-**Body:**
-```json
-{
-  "callback_url": "https://api.universoligo.com/api/atlaz/webhooks",
-  "events": [
-    "fatura.paga",
-    "fatura.cancelada",
-    "fatura.gerada",
-    "cliente.optout_atualizado"
-  ],
-  "secret": "..."
-}
-```
-- Assinatura HMAC SHA-256 no header `X-Atlaz-Signature`.
-- Retry exponencial 1m / 5m / 15m / 1h.
+### O que entendemos **errado** antes desta auditoria
+- Achávamos que PIX, consulta por CPF/telefone e delta sync não existiam. **Existem.**
+- Achávamos que precisávamos pedir webhook outbound de cobrança. **Atlaz já notifica inbound — basta receber.**
 
-**Por que:** Cache de 22h faz dispararmos cobrança para quem pagou às 08h59 do mesmo dia. Embaraço operacional recorrente.
+### O que de fato precisa ser pedido ao Atlaz (resumo)
+| Prioridade | Item |
+|---|---|
+| **P0** | CRUD completo de chamado (responder, transferir, fechar, detalhar) |
+| **P0** | 2ª via com novo vencimento e recálculo |
+| **P0** | Endpoints de negociação (promessa, desconto, parcelamento) |
+| **P0** | Campo `optin_cobranca` + preferências no schema `Assinante` |
+| **P1** | Webhooks outbound de estado (`fatura.paga`, `chamado.respondido`, etc.) |
+| **P1** | Evento `pix.recebido` (conciliação) |
+| **P1** | `POST /faturas/{id}/notificacoes` (rastreabilidade fiscal) |
+| **P2** | Endpoints de contexto 360º (atendimentos, contratos, equipamentos, consumo, visitas, planos, filiais, técnicos) |
+| **P2** | Flag `registrado_cip` |
 
----
-
-### 3.2 Delta sync de faturas
-```
-GET /api/v2/faturas?modified_after=2026-02-10T08:00:00Z&status=aberto
-```
-- Suportar `modified_after` (ISO 8601) e `cursor` para paginação.
-
-**Por que:** Reduz custo de polling em ~95% e nos permite enviar sempre com dado fresco.
+### O que podemos fazer **hoje** sem depender do Atlaz
+1. PIX inline em `/faturas` (`retornar_pix=1`).
+2. Backfill Issue #2 via `/consultacliente?cpf_cnpj=`.
+3. Delta sync via `atualizado_desde`.
+4. Implementar receiver de Webhook WhatsApp inbound (Atlaz já entrega tudo pronto, inclusive PIX e PDF).
+5. Opt-in interno em `subscribers.outbound_optin` enquanto Atlaz não expõe.
+6. Usar `link_recibo` para confirmação pós-pagamento.
 
 ---
 
-### 3.3 Preferências de canal e horário do cliente
-```
-GET /api/v2/clientes/{id}/preferencias
-```
-**Resposta esperada:**
-```json
-{
-  "canal_preferido": "whatsapp",
-  "horario_permitido": { "inicio": "09:00", "fim": "20:00", "timezone": "America/Sao_Paulo" },
-  "idioma": "pt-BR",
-  "dias_permitidos": ["seg","ter","qua","qui","sex","sab"]
-}
-```
-**Por que:** Conformidade com Marco Civil Art. 7º (autonomia do usuário) + reduz reclamações.
+## 5. Compromissos da Universo Ligo
+
+- Implementar HMAC SHA-256 nos webhooks novos.
+- Respeitar `dnd` e `optin_cobranca=false` quando expostos.
+- Honrar `horario_permitido` por cliente.
+- Reportar entregas (`POST /faturas/{id}/notificacoes`) sempre que o endpoint existir.
 
 ---
 
-## 4. Solicitações P2 — Rastreabilidade fiscal e conciliação
-
-### 4.1 Confirmação de entrega no Atlaz
-```
-POST /api/v2/faturas/{id}/notificacoes
-```
-**Body:**
-```json
-{
-  "canal": "whatsapp",
-  "status": "entregue",
-  "message_id": "wamid.HBgN...",
-  "timestamp": "2026-02-10T14:32:10-03:00",
-  "telefone_destino": "+5511999998888"
-}
-```
-**Por que:** Registra no histórico do cliente Atlaz que a cobrança foi notificada — peça-chave para auditoria fiscal e ouvidoria.
-
----
-
-### 4.2 Webhook `pix.recebido` para conciliação em tempo real
-```
-Evento: pix.recebido
-```
-**Body:**
-```json
-{
-  "fatura_id": "FAT-123",
-  "txid": "TX2026021012345",
-  "valor": 154.10,
-  "data_credito": "2026-02-10T14:35:00-03:00",
-  "pagador_documento": "12345678901"
-}
-```
-**Por que:** Conciliação automática + fechamento imediato de tickets de cobrança aberta.
-
----
-
-### 4.3 Flag `registrado_cip` no boleto
-```
-GET /api/v2/faturas/{id}
-```
-**Acrescentar ao payload:**
-```json
-{
-  "registrado_cip": true,
-  "banco_emissor": "001",
-  "convenio": "12345",
-  "nosso_numero": "00000000123456789"
-}
-```
-**Por que:** Sabermos se o boleto vai liquidar via banco (CIP) ou se é avulso/promissória.
-
----
-
-## 5. Resumo executivo
-
-| Prioridade | Endpoint | Impacto esperado |
-|---|---|---|
-| **P0** | `GET /clientes/{id}/contatos` com `optin_cobranca` | Risco LGPD eliminado |
-| **P0** | `GET /faturas/{id}/pix` | Conversão pagamento **+200-300%** |
-| **P0** | `POST /faturas/{id}/segunda-via` | Reclamações ouvidoria **−80%** |
-| **P0** | `GET /faturas/{id}/pdf` (TTL ≥ 7d) | Quebra de link → zero |
-| **P1** | Webhook `fatura.paga` | Disparo para quem já pagou → zero |
-| **P1** | `GET /faturas?modified_after=` | Custo polling **−95%** |
-| **P1** | `GET /clientes/{id}/preferencias` | Conformidade Marco Civil |
-| **P2** | `POST /faturas/{id}/notificacoes` | Rastreabilidade fiscal |
-| **P2** | Webhook `pix.recebido` | Conciliação automática |
-| **P2** | Flag `registrado_cip` | Distinção bancária |
-
----
-
-## 6. Compromissos da Universo Ligo
-
-- Implementar autenticação de webhooks com HMAC SHA-256.
-- Respeitar `dnd` e `optin_cobranca=false` (mensagem nunca disparada).
-- Honrar `horario_permitido` do cliente.
-- Reportar `notificacoes` ao Atlaz sempre que a mensagem for entregue.
-- Auditoria pública das taxas de entrega/leitura/pagamento por cohort.
-
----
-
-## 7. Contato técnico
+## 6. Contato técnico
 
 - **CTO Universo Ligo:** [a preencher pelo CEO]
 - **E-mail técnico:** [a preencher]
-- **Documentação interna:** este arquivo, mantido em `/app/memory/ATLAZ_API_REQUEST_BOLETO.md`
+- **Documento de referência interno:** `/app/memory/ATLAZ_API_REQUEST_BOLETO.md`
 
 ---
 
-*Documento gerado em CTO Mode — Evidência → Causa Raiz → Impacto → Confidence (HIGH).*
+*Documento revisado em CTO Mode após auditoria do OpenAPI oficial. Evidência → Causa Raiz → Impacto → Confidence: HIGH.*
