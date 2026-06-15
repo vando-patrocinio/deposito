@@ -276,6 +276,53 @@ async def openapi_spec(request_url: str = ""):
                     },
                 }
             },
+            "/api/ceo/cto/message": {
+                "post": {
+                    "operationId": "ctoSendMessage",
+                    "summary": "CEO envia mensagem direta para o CTO (Claude)",
+                    "description": (
+                        "Use quando o CEO quiser deixar uma ordem, pergunta tecnica, "
+                        "feedback ou tarefa para o CTO/Claude. A mensagem fica em "
+                        "cto_inbox aguardando resposta. Sempre confirme ao CEO que "
+                        "registrou o recado e diga o message_id."
+                    ),
+                    "requestBody": {
+                        "required": True,
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "required": ["text"],
+                                    "properties": {
+                                        "text": {"type": "string", "description": "Texto integral do CEO"},
+                                        "priority": {"type": "string", "enum": ["p0","p1","p2","p3"], "default": "p2"},
+                                    },
+                                }
+                            }
+                        },
+                    },
+                    "responses": {"200": {"description": "Recado registrado",
+                                            "content": {"application/json": {"schema": {"type": "object"}}}}},
+                }
+            },
+            "/api/ceo/cto/inbox": {
+                "get": {
+                    "operationId": "ctoInbox",
+                    "summary": "Lista mensagens trocadas com o CTO",
+                    "description": (
+                        "Retorna o historico de mensagens entre CEO e CTO. Use "
+                        "unread_only=true para ver apenas as nao respondidas."
+                    ),
+                    "parameters": [
+                        {"name": "unread_only", "in": "query", "required": False,
+                         "schema": {"type": "boolean", "default": False}},
+                        {"name": "limit", "in": "query", "required": False,
+                         "schema": {"type": "integer", "default": 20, "minimum": 1, "maximum": 100}},
+                    ],
+                    "responses": {"200": {"description": "Mensagens",
+                                            "content": {"application/json": {"schema": {"type": "object"}}}}},
+                }
+            },
         },
         "components": {
             "schemas": {
@@ -353,3 +400,64 @@ async def memory(days: int = 30):
 @router.get("/metas", dependencies=[Depends(require_token)])
 async def metas():
     return {"metas_2026": em.METAS_2026, "baseline_date": em.BASELINE_DATE}
+
+
+# ────────────────────────── CTO INBOX (canal direto CEO ↔ Claude) ──────────────────────────
+import uuid
+
+@router.post("/cto/message", dependencies=[Depends(require_token)])
+async def cto_message(payload: dict):
+    """CEO deixa um recado/pergunta/ordem para o CTO (Claude).
+    Body: {"text": "...", "priority": "p0|p1|p2|p3" (opcional)}
+    """
+    text = (payload.get("text") or "").strip()
+    if not text:
+        raise HTTPException(400, "campo 'text' obrigatório")
+    doc = {
+        "id": f"cto-{uuid.uuid4().hex[:14]}",
+        "from": "ceo",
+        "to": "cto",
+        "text": text,
+        "priority": payload.get("priority", "p2"),
+        "status": "open",
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    await db.cto_inbox.insert_one(doc)
+    doc.pop("_id", None)
+    return {"ok": True, "message_id": doc["id"], "created_at": doc["created_at"]}
+
+
+@router.get("/cto/inbox", dependencies=[Depends(require_token)])
+async def cto_inbox(unread_only: bool = False, limit: int = 20):
+    flt = {"status": "open"} if unread_only else {}
+    cur = db.cto_inbox.find(flt, {"_id": 0}).sort("created_at", -1).limit(min(limit, 100))
+    items = await cur.to_list(limit)
+    return {"count": len(items), "items": items}
+
+
+@router.post("/cto/reply", dependencies=[Depends(require_token)])
+async def cto_reply(payload: dict):
+    """CTO (Claude) responde a uma mensagem do CEO.
+    Body: {"in_reply_to": "cto-...", "text": "...", "action_taken": "..." (opcional)}
+    """
+    parent_id = payload.get("in_reply_to")
+    text = (payload.get("text") or "").strip()
+    if not parent_id or not text:
+        raise HTTPException(400, "campos 'in_reply_to' e 'text' obrigatórios")
+    reply = {
+        "id": f"cto-{uuid.uuid4().hex[:14]}",
+        "from": "cto",
+        "to": "ceo",
+        "in_reply_to": parent_id,
+        "text": text,
+        "action_taken": payload.get("action_taken"),
+        "status": "delivered",
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    await db.cto_inbox.insert_one(reply)
+    await db.cto_inbox.update_one(
+        {"id": parent_id},
+        {"$set": {"status": "replied",
+                   "replied_at": reply["created_at"]}})
+    reply.pop("_id", None)
+    return {"ok": True, "reply_id": reply["id"]}
