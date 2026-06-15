@@ -31,6 +31,8 @@ from fastapi.responses import JSONResponse
 
 from database import db
 from services import executive_memory as em
+from services import corporate_goals as cg
+from services import executive_decisions as exd
 
 router = APIRouter(prefix="/api/ceo", tags=["ceo-digital"])
 
@@ -102,7 +104,8 @@ def _build_text(snap: dict) -> str:
     for kpi, c in course.items():
         st = c.get("status")
         if st in ("critico", "piorando"):
-            worst = kpi; break
+            worst = kpi
+            break
         if st in ("atrasado",) and not worst:
             worst = kpi
     if worst:
@@ -323,6 +326,102 @@ async def openapi_spec(request_url: str = ""):
                                             "content": {"application/json": {"schema": {"$ref": "#/components/schemas/CtoInbox"}}}}},
                 }
             },
+            "/api/ceo/decisions": {
+                "get": {
+                    "operationId": "decisionsList",
+                    "summary": "Lista decisoes executivas (IA propoe -> CEO aprova)",
+                    "description": (
+                        "Retorna o historico de decisoes executivas. Pode filtrar "
+                        "por status (proposed, approved, in_progress, done, cancelled)."
+                    ),
+                    "parameters": [
+                        {"name": "status", "in": "query", "required": False,
+                         "schema": {"type": "string"}},
+                        {"name": "limit", "in": "query", "required": False,
+                         "schema": {"type": "integer", "default": 50, "minimum": 1, "maximum": 200}},
+                    ],
+                    "responses": {"200": {"description": "Decisoes",
+                                            "content": {"application/json": {"schema": {"$ref": "#/components/schemas/DecisionsList"}}}}},
+                },
+                "post": {
+                    "operationId": "decisionsCreate",
+                    "summary": "CEO ou IA cria nova decisao executiva",
+                    "description": (
+                        "Use quando o CEO quiser registrar uma decisao com owner e "
+                        "deadline auditaveis, ou quando a IA propor uma acao para "
+                        "aprovacao posterior. Status inicial default = 'proposed'."
+                    ),
+                    "requestBody": {
+                        "required": True,
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "required": ["decision"],
+                                    "properties": {
+                                        "decision": {"type": "string"},
+                                        "context": {"type": "string"},
+                                        "related_kpi": {"type": "string"},
+                                        "priority": {"type": "string", "enum": ["p0","p1","p2","p3"]},
+                                        "proposed_by": {"type": "string", "enum": ["isabella","presidente_ia","cto","ceo"]},
+                                        "owner": {"type": "string"},
+                                        "deadline": {"type": "string", "description": "YYYY-MM-DD"},
+                                        "status": {"type": "string", "enum": ["proposed","approved","in_progress","done","cancelled"]},
+                                    },
+                                }
+                            }
+                        },
+                    },
+                    "responses": {"200": {"description": "Decisao criada",
+                                            "content": {"application/json": {"schema": {"$ref": "#/components/schemas/DecisionResult"}}}}},
+                }
+            },
+            "/api/ceo/decisions/{decision_id}": {
+                "patch": {
+                    "operationId": "decisionsUpdate",
+                    "summary": "Atualiza status/owner/deadline de uma decisao",
+                    "description": (
+                        "Permite ao CEO mover a decisao para approved/in_progress/done/cancelled "
+                        "e ajustar owner/deadline/context/priority."
+                    ),
+                    "parameters": [
+                        {"name": "decision_id", "in": "path", "required": True,
+                         "schema": {"type": "string"}},
+                    ],
+                    "requestBody": {
+                        "required": True,
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "status": {"type": "string", "enum": ["proposed","approved","in_progress","done","cancelled"]},
+                                        "approved_by": {"type": "string"},
+                                        "owner": {"type": "string"},
+                                        "deadline": {"type": "string"},
+                                        "context": {"type": "string"},
+                                        "priority": {"type": "string", "enum": ["p0","p1","p2","p3"]},
+                                    },
+                                }
+                            }
+                        },
+                    },
+                    "responses": {"200": {"description": "Decisao atualizada",
+                                            "content": {"application/json": {"schema": {"$ref": "#/components/schemas/DecisionResult"}}}}},
+                }
+            },
+            "/api/ceo/goals": {
+                "get": {
+                    "operationId": "goalsList",
+                    "summary": "Lista metas corporativas vigentes",
+                    "description": (
+                        "Retorna metas armazenadas em corporate_goals (KPI, baseline, "
+                        "target, direction, owner, deadline, status)."
+                    ),
+                    "responses": {"200": {"description": "Metas",
+                                            "content": {"application/json": {"schema": {"$ref": "#/components/schemas/GoalsList"}}}}},
+                }
+            },
         },
         "components": {
             "schemas": {
@@ -358,6 +457,68 @@ async def openapi_spec(request_url: str = ""):
                                     "replied_at": {"type": "string"},
                                 },
                             },
+                        },
+                    },
+                },
+                "DecisionItem": {
+                    "type": "object",
+                    "properties": {
+                        "id": {"type": "string"},
+                        "decision": {"type": "string"},
+                        "context": {"type": "string"},
+                        "related_kpi": {"type": "string"},
+                        "priority": {"type": "string"},
+                        "proposed_by": {"type": "string"},
+                        "approved_by": {"type": "string"},
+                        "owner": {"type": "string"},
+                        "deadline": {"type": "string"},
+                        "status": {"type": "string"},
+                        "created_at": {"type": "string"},
+                        "updated_at": {"type": "string"},
+                        "completed_at": {"type": "string"},
+                    },
+                },
+                "DecisionsList": {
+                    "type": "object",
+                    "properties": {
+                        "count": {"type": "integer"},
+                        "items": {
+                            "type": "array",
+                            "items": {"$ref": "#/components/schemas/DecisionItem"},
+                        },
+                    },
+                },
+                "DecisionResult": {
+                    "type": "object",
+                    "properties": {
+                        "ok": {"type": "boolean"},
+                        "decision": {"$ref": "#/components/schemas/DecisionItem"},
+                    },
+                },
+                "GoalItem": {
+                    "type": "object",
+                    "properties": {
+                        "id": {"type": "string"},
+                        "kpi_key": {"type": "string"},
+                        "baseline": {"type": "number"},
+                        "target": {"type": "number"},
+                        "direction": {"type": "string"},
+                        "baseline_date": {"type": "string"},
+                        "owner": {"type": "string"},
+                        "deadline": {"type": "string"},
+                        "status": {"type": "string"},
+                        "source": {"type": "string"},
+                        "created_at": {"type": "string"},
+                        "updated_at": {"type": "string"},
+                    },
+                },
+                "GoalsList": {
+                    "type": "object",
+                    "properties": {
+                        "count": {"type": "integer"},
+                        "items": {
+                            "type": "array",
+                            "items": {"$ref": "#/components/schemas/GoalItem"},
                         },
                     },
                 },
@@ -431,7 +592,52 @@ async def memory(days: int = 30):
 
 @router.get("/metas", dependencies=[Depends(require_token)])
 async def metas():
-    return {"metas_2026": em.METAS_2026, "baseline_date": em.BASELINE_DATE}
+    """Lê metas do MongoDB (corporate_goals). Auto-seed na primeira chamada."""
+    m = await cg.get_metas(CO)
+    return {"metas_2026": m, "baseline_date": cg.BASELINE_DATE,
+            "source": "corporate_goals"}
+
+
+@router.get("/goals", dependencies=[Depends(require_token)])
+async def goals_list():
+    items = await cg.list_goals(CO)
+    return {"count": len(items), "items": items}
+
+
+@router.post("/goals/{kpi_key}", dependencies=[Depends(require_token)])
+async def goals_upsert(kpi_key: str, payload: dict):
+    res = await cg.upsert_goal(CO, kpi_key, payload or {})
+    return res
+
+
+# ─────────────── EXECUTIVE DECISIONS (IA propõe -> CEO aprova) ───────────────
+@router.post("/decisions", dependencies=[Depends(require_token)])
+async def decisions_create(payload: dict):
+    try:
+        doc = await exd.create_decision(CO, payload or {})
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    return {"ok": True, "decision": doc}
+
+
+@router.get("/decisions", dependencies=[Depends(require_token)])
+async def decisions_list(status: Optional[str] = None, limit: int = 50):
+    try:
+        items = await exd.list_decisions(CO, status=status, limit=limit)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    return {"count": len(items), "items": items}
+
+
+@router.patch("/decisions/{decision_id}", dependencies=[Depends(require_token)])
+async def decisions_update(decision_id: str, payload: dict):
+    try:
+        doc = await exd.update_status(CO, decision_id, payload or {})
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    except LookupError as e:
+        raise HTTPException(404, str(e))
+    return {"ok": True, "decision": doc}
 
 
 # ────────────────────────── CTO INBOX (canal direto CEO ↔ Claude) ──────────────────────────

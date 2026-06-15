@@ -23,6 +23,7 @@ from typing import Any
 
 from database import db
 from constants.synthetic_tenants import SYNTHETIC_TENANTS
+from services import corporate_goals as _cg
 
 logger = logging.getLogger(__name__)
 
@@ -36,9 +37,10 @@ INVOICE_OVERDUE = {"$in": ["overdue", "OVERDUE", "atrasado"]}
 INVOICE_PAID = {"$in": ["paid", "RECEIVED", "CONFIRMED", "Pago"]}
 
 
-# ───────────────────────── METAS 2026 ─────────────────────────
-# Trajetória anual oficial (CEO 14/06/2026). Base: snapshot 15/06/2026.
-# Tudo expresso como GANHO ANUAL (12 meses).
+# ───────────────────────── METAS 2026 (FALLBACK SEED) ─────────────────────────
+# Esses valores foram migrados para a collection `corporate_goals` (15/06/2026).
+# Mantidos AQUI APENAS como fallback para tenants ainda não semeados e como
+# fonte canônica de re-seed. Em runtime, sempre lemos `corporate_goals`.
 METAS_2026 = {
     "clientes_ativos": {"baseline": 2753, "target": 3500, "direction": "up"},
     "mrr": {"baseline": 325241.59, "target": 450000.0, "direction": "up"},
@@ -48,6 +50,20 @@ METAS_2026 = {
     "fundadores_aptos": {"baseline": 2, "target": 30, "direction": "up"},
 }
 BASELINE_DATE = "2026-06-15"
+
+
+async def _resolve_metas(cid: str) -> dict:
+    """Carrega metas vigentes do MongoDB (corporate_goals).
+
+    Cai no METAS_2026 hardcoded somente se a leitura falhar (proteção).
+    """
+    try:
+        m = await _cg.get_metas(cid)
+        if m:
+            return m
+    except Exception:
+        logger.exception("falha lendo corporate_goals; usando fallback hardcode")
+    return {k: dict(v) for k, v in METAS_2026.items()}
 
 
 # ───────────────────────── ONE TRUTH SNAPSHOT ─────────────────────────
@@ -135,7 +151,7 @@ async def _value_at_date(cid: str, date_key: str, field: str) -> float:
     return float(((doc.get("one_truth") or {}).get(field)) or 0.0)
 
 
-async def _compare(cid: str, today: dict, today_key: str) -> dict:
+async def _compare(cid: str, today: dict, today_key: str, metas: dict) -> dict:
     """Compara cada KPI vs ontem, 7d, 30d, baseline (meta)."""
     fields = ["clientes_ativos", "mrr", "inadimplencia_brl",
               "tickets_abertos", "embaixadores", "fundadores_aptos"]
@@ -153,9 +169,9 @@ async def _compare(cid: str, today: dict, today_key: str) -> dict:
             then = await _value_at_date(cid, dk, f)
             block[label] = _delta(now_val, then)
         # vs baseline (15/06/2026)
-        if f in METAS_2026:
-            block["baseline"] = _delta(now_val, METAS_2026[f]["baseline"])
-            block["meta"] = METAS_2026[f]["target"]
+        if f in metas:
+            block["baseline"] = _delta(now_val, metas[f]["baseline"])
+            block["meta"] = metas[f]["target"]
         out[f] = block
     return out
 
@@ -191,14 +207,14 @@ def _classify(delta_30d_abs: float, monthly_target: float,
         return "atrasado"
 
 
-def _course_correction(today: dict, compare: dict) -> dict:
+def _course_correction(today: dict, compare: dict, metas: dict) -> dict:
     """Calcula status por KPI com base em delta 30d vs meta mensal necessária.
 
     monthly_target = (target - baseline) / 12.
     Para 'down' ele é negativo (queda esperada por mês).
     """
     out: dict[str, Any] = {}
-    for kpi, meta in METAS_2026.items():
+    for kpi, meta in metas.items():
         block_cmp = compare.get(kpi) or {}
         d30 = (block_cmp.get("30d") or {}).get("abs") or 0.0
         gap_total = meta["target"] - meta["baseline"]  # +ou-
@@ -244,6 +260,7 @@ async def snapshot_today(cid: str, day_iso: str | None = None) -> dict:
     today_key = day_iso or now.date().isoformat()
 
     one_truth = await _one_truth(cid, today_key)
+    metas = await _resolve_metas(cid)
 
     # Para o compare, salvamos PRIMEIRO o one_truth do dia, DEPOIS comparamos
     await db.president_daily.update_one(
@@ -256,8 +273,8 @@ async def snapshot_today(cid: str, day_iso: str | None = None) -> dict:
                             "generated_at": now.isoformat()}},
         upsert=True)
 
-    cmp_block = await _compare(cid, one_truth, today_key)
-    course = _course_correction(one_truth, cmp_block)
+    cmp_block = await _compare(cid, one_truth, today_key, metas)
+    course = _course_correction(one_truth, cmp_block, metas)
     summary = _course_summary(course)
 
     await db.president_daily.update_one(
@@ -265,7 +282,7 @@ async def snapshot_today(cid: str, day_iso: str | None = None) -> dict:
         {"$set": {"compare": cmp_block,
                    "course_correction": course,
                    "course_summary": summary,
-                   "metas_oficiais": METAS_2026,
+                   "metas_oficiais": metas,
                    "_em_added_by": ADDED_BY}})
 
     return {"date_key": today_key, "one_truth": one_truth,

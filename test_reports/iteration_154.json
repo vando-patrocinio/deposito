@@ -1,0 +1,35 @@
+{
+  "summary": "Backend tests for CTO P0 audit (corporate_goals + executive_decisions migration). 16/16 pytest assertions pass against the public preview URL. All review_request scenarios verified including auth, schema, CRUD, OpenAPI, idempotência do auto-seed, e não-regressão em briefing/now + briefing/today + memory.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_ceo_digital_p0.py",
+    "/app/test_reports/pytest/iter_ceo_p0.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "ceo_digital.py is approaching the 700-line limit (702). Considere extrair decisions/goals/metas/cto-inbox endpoints para módulos separados antes de crescer mais.",
+    "Mensagem do create_decision é 'campo decision obrigatório' (mais explícito que o brief 'decision obrigatório') — alinhar com docs se necessário; teste usa substring match e passa.",
+    "/api/ceo/goals (list_goals) não filtra por status='active' (apenas get_metas filtra). Goals 'archived' apareceriam na lista. Considerar aceitar query param ?status= ou filtrar default.",
+    "update_status aceita PATCH em decisão já 'done' sem proteção — re-aplicar status=done sobrescreve completed_at. Geralmente OK mas pode mascarar bug de cliente.",
+    "/api/ceo/goals/{kpi_key} POST faz upsert mas não valida kpi_key contra enum conhecido — qualquer string vira goal. Adicionar whitelist se a UI for confiar nessa lista.",
+    "corporate_goals.get_metas usa filtro {kpi_key:{$exists:true,$ne:null}} para isolar legacy Isabella — ótima defesa. Sugiro adicionar index único {company_id, kpi_key, status} no MongoDB para impedir duplicação concorrente (race no ensure_seeded com múltiplos workers/instâncias)."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_ceo_digital_p0.py (criado)"
+  ],
+  "success_rate": {"backend": "100% (16/16)", "frontend": "n/a (backend only)"},
+  "test_credentials": "CEO_BRIEFING_TOKEN lido de /app/backend/.env. Tenant fixo co-demo.",
+  "seed_data_creation": "Criadas decisões TEST_p0_decision e TEST_p0_minimal payload em executive_decisions. Não foram limpadas (lista cresce indefinidamente entre runs); recomendar adicionar fixture de cleanup ou rota admin de purge TEST_*.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Suite completa em /app/backend/tests/test_ceo_digital_p0.py cobre metas/goals/decisions/openapi/briefing/memory. Idempotência verificada: /api/ceo/goals retorna exatamente 5 docs com kpi_keys canônicos (clientes_ativos, mrr, inadimplencia_brl, embaixadores, fundadores_aptos), tenant co-demo, sem duplicates. /briefing/now contém course_correction dict com 5 KPIs e targets corretos (3500, 450000, 31000, 50, 30). /briefing/today expõe course_status (não course_correction) + targets dentro de briefing_text — é a estrutura atual da API. PATCH em done preenche completed_at conforme spec.",
+  "rca of the issue": "n/a — sem bugs no escopo deste teste. Uma falha inicial no test_briefing_today foi devida a assunção de schema (esperava course_correction key, API expõe course_status + targets dentro de briefing_text); test foi ajustado para validar a estrutura real, que está correta."
+}
