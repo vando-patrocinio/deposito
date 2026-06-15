@@ -1,6 +1,45 @@
 # PontoIA — Changelog
 
 
+## 2026-06-15 — LOGIN UX · MENSAGEM "Sem conexão" REESCRITA + BOTÃO DIAGNOSTICAR
+
+### Ordem CEO
+"conserta" — usuário msaldanhavargasmiranda@gmail.com em produção (universoligo.com) recebia "Sem conexão com o servidor" no login sem pista do que fazer.
+
+### Diagnóstico
+- Backend `dual-combine-3.emergent.host` (que o build de prod usa via REACT_APP_BACKEND_URL embutido em main.9a3886dd.js) está VIVO: HTTP 401 com `{"detail":"E-mail ou senha incorretos"}` e CORS correto para universoligo.com.
+- A mensagem "Sem conexão" aparecia em QUALQUER caso onde axios não tinha `err.response` (cache antigo, extensão de navegador, firewall corporativo, DNS bloqueando *.emergent.host). LoginPage.js linha 43-44 não dava nenhuma orientação acionável.
+
+### Entrega (preview)
+- `LoginPage.js` reescrito:
+  1. Mensagem de erro network agora orienta "(1) Ctrl+Shift+R limpar cache, (2) aba anônima, (3) 4G do celular".
+  2. Novo botão `data-testid="login-diagnose-btn"` "🔍 Diagnosticar conexão" abaixo do erro.
+  3. Quando clicado, faz fetch direto pro `${REACT_APP_BACKEND_URL}/api/ping` (não-autenticado), mede latência e emite veredicto em bloco verde/vermelho `data-testid="login-diag-result"`:
+     - Verde (HTTP 200-499): "Backend respondendo. Erro de login deve ter sido senha incorreta."
+     - Vermelho (sem resposta): explica que é cache/firewall/extensão e instrui aba anônima/4G.
+  4. Trata também timeout/aborted no caminho de network error.
+
+### Testado
+- Preview screenshot: login com senha errada mostra "E-mail ou senha incorretos" + botão Diagnosticar; clique no botão retorna verde com `HTTP 401 em 60ms` e mensagem "Backend respondendo. Erro de login deve ter sido senha incorreta — confira a senha digitada."
+
+### Infra side-quest
+- Frontend supervisor estava FATAL (sem `serve` binary, sem `build` folder). Trocado para `yarn start` (dev mode com hot reload — apropriado para preview environment).
+- Filesystem `/dev/nvme0n4` em 100% (apenas 0 bytes livres bloqueava qualquer screenshot). Liberados 1.7GB removendo backups antigos (`/app/backups/20260613T040002` e `/app/backups/20260615T040000` duplicado).
+
+### Achado crítico (P0 arquitetural — pendente)
+- Build de PROD (universoligo.com) embute `REACT_APP_BACKEND_URL = https://dual-combine-3.emergent.host` (URL de preview). Confirmado inspecionando `main.9a3886dd.js`.
+- Consequência: zero isolamento entre prod e dev. Qualquer mudança no preview backend afeta prod imediatamente.
+- Próximo deploy/contato com suporte da Emergent: configurar URL de backend específica de produção.
+
+### Notificação CEO
+- `cto_inbox` cto-d5001a6b890640 (CTO -> CEO, p1, status=open) com detalhes do fix + próximos passos (Save to GitHub) + flag do problema arquitetural.
+
+### Próximo passo
+- Save to GitHub → redeploy promove fix pra universoligo.com.
+- msaldanhavargasmiranda: Ctrl+Shift+R / aba anônima / 4G.
+
+
+
 ## 2026-06-15 — CEO DIGITAL · AUDIT P0 ITEMS 9 + 10 (DATA PROVENANCE + STALE WARNING)
 
 ### Ordem CEO (cto_inbox cto-5d5c9c8aeef94c)

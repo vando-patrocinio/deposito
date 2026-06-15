@@ -18,16 +18,62 @@ export default function LoginPage({ onBack }) {
   const sessionExpired = typeof window !== "undefined"
     && new URLSearchParams(window.location.search).get("session_expired") === "1";
 
+  // CTO 15/06/2026 — Diagnostico de conexão quando login falha sem resposta
+  const [diag, setDiag] = useState(null);
+  const [diagBusy, setDiagBusy] = useState(false);
+
+  async function runDiagnostic() {
+    setDiagBusy(true);
+    setDiag(null);
+    const out = { backend_url: "", reachable: false, status: null,
+                  hint: "", time_ms: null };
+    try {
+      const base = (process.env.REACT_APP_BACKEND_URL || "").replace(/\/$/, "");
+      out.backend_url = base || "(vazio)";
+      if (!base) {
+        out.hint = "REACT_APP_BACKEND_URL não definido no build. Avise o admin.";
+      } else {
+        const t0 = performance.now();
+        // Faz uma chamada simples; OPTIONS preflight serve pra checar CORS+DNS
+        const r = await fetch(`${base}/api/ping`, { method: "GET" })
+          .catch((e) => ({ ok: false, status: 0, _err: e }));
+        out.time_ms = Math.round(performance.now() - t0);
+        out.reachable = !!r && (r.status || 0) > 0;
+        out.status = r?.status || 0;
+        if (!out.reachable) {
+          out.hint = ("Navegador NÃO conseguiu falar com o backend. "
+                       + "Causas comuns: cache antigo (use Ctrl+Shift+R), "
+                       + "extensão de navegador bloqueando, firewall corporativo "
+                       + "ou DNS bloqueando *.emergent.host. Tente em aba anônima "
+                       + "ou no 4G do celular.");
+        } else if (out.status >= 200 && out.status < 500) {
+          out.hint = "Backend respondendo. Erro de login deve ter sido senha incorreta — confira a senha digitada.";
+        } else {
+          out.hint = `Backend respondeu HTTP ${out.status}. Aguarde ~30s e tente de novo.`;
+        }
+      }
+    } catch (e) {
+      out.hint = `Falha no diagnóstico: ${e?.message || "erro desconhecido"}`;
+    }
+    setDiag(out);
+    setDiagBusy(false);
+  }
+
   async function submit(e) {
     e?.preventDefault?.();
-    setBusy(true); setError("");
+    setBusy(true); setError(""); setDiag(null);
     try {
       await login(email.trim().toLowerCase(), password);
     } catch (err) {
-      // CTO 12/06/2026 — Tratamento explícito de erro de login:
-      // - 401 → "E-mail ou senha incorretos" (vinda do backend)
-      // - sem err.response → erro de rede REAL
-      // - outros statuses → mostra detail se houver
+      // CTO 15/06/2026 — Tratamento explícito de erro de login.
+      // - 401 → mostra "E-mail ou senha incorretos" (detail do backend).
+      // - 429 → rate limit.
+      // - 403 → conta inativa.
+      // - detail string → mostra detail.
+      // - status número → "Erro do servidor (status)".
+      // - sem err.response → erro de REDE REAL (CORS/DNS/firewall/cache).
+      //   Antes mostrava só "Sem conexão"; agora mostra mensagem acionável
+      //   E libera o botão "Diagnosticar conexão" pra o usuário se autoajudar.
       const status = err?.response?.status;
       const detail = err?.response?.data?.detail;
       if (status === 401) {
@@ -39,9 +85,14 @@ export default function LoginPage({ onBack }) {
       } else if (typeof detail === "string") {
         setError(detail);
       } else if (status) {
-        setError(`Erro do servidor (${status}). Tente novamente.`);
-      } else if (err?.message && /network|conex/i.test(err.message)) {
-        setError("Sem conexão com o servidor. Verifique sua internet ou tente em alguns segundos.");
+        setError(`Erro do servidor (${status}). Tente novamente em alguns segundos.`);
+      } else if (err?.message && /network|conex|timeout|aborted/i.test(err.message)) {
+        setError(
+          "Não conseguimos falar com o servidor a partir do seu navegador. "
+          + "Tente: (1) Ctrl+Shift+R para limpar cache, (2) abrir em aba anônima, "
+          + "ou (3) trocar pra 4G do celular. Use 'Diagnosticar conexão' abaixo "
+          + "para identificar a causa exata."
+        );
       } else {
         setError(err?.message || "Erro ao entrar.");
       }
@@ -156,10 +207,43 @@ export default function LoginPage({ onBack }) {
             {error && (
               <div data-testid="login-error" style={{
                 background: "var(--danger-soft)", color: "var(--danger-soft-fg)",
-                padding: "10px 12px", borderRadius: 8, marginBottom: 14, fontSize: 13,
+                padding: "10px 12px", borderRadius: 8, marginBottom: 10, fontSize: 13,
                 border: "1px solid #fecaca",
               }}>
                 {error}
+              </div>
+            )}
+
+            {error && (
+              <div style={{ marginBottom: 14 }}>
+                <button
+                  type="button"
+                  data-testid="login-diagnose-btn"
+                  onClick={runDiagnostic}
+                  disabled={diagBusy}
+                  style={{
+                    background: "transparent", border: "1px solid #cbd5e1",
+                    color: "#475569", padding: "6px 10px", borderRadius: 6,
+                    fontSize: 12, cursor: diagBusy ? "wait" : "pointer", fontWeight: 600,
+                  }}
+                >
+                  {diagBusy ? "Diagnosticando…" : "🔍 Diagnosticar conexão"}
+                </button>
+                {diag && (
+                  <div data-testid="login-diag-result" style={{
+                    marginTop: 8, padding: "10px 12px",
+                    background: diag.reachable ? "#f0fdf4" : "#fef2f2",
+                    border: `1px solid ${diag.reachable ? "#86efac" : "#fca5a5"}`,
+                    borderRadius: 6, fontSize: 12, color: "#1e293b",
+                    lineHeight: 1.55,
+                  }}>
+                    <div><strong>Backend:</strong> <code style={{ fontSize: 11 }}>{diag.backend_url}</code></div>
+                    <div><strong>Resposta:</strong> {diag.reachable
+                      ? `HTTP ${diag.status} em ${diag.time_ms}ms ✅`
+                      : "Sem resposta ❌"}</div>
+                    <div style={{ marginTop: 6 }}>{diag.hint}</div>
+                  </div>
+                )}
               </div>
             )}
 
