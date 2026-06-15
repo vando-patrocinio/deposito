@@ -120,49 +120,108 @@ def _build_text(snap: dict) -> str:
 async def openapi_spec(request_url: str = ""):
     base = os.environ.get("PUBLIC_BACKEND_URL") or os.environ.get("REACT_APP_BACKEND_URL") or ""
     return JSONResponse({
-        "openapi": "3.1.0",
+        "openapi": "3.0.3",
         "info": {
-            "title": "SmartProv · CEO Digital API",
-            "description": "Endpoints somente-leitura para ChatGPT Custom GPT do CEO da Ligo. Briefing executivo, memória 30d e metas oficiais.",
+            "title": "SmartProv CEO Digital API",
+            "description": "Endpoints somente-leitura para ChatGPT Custom GPT do CEO da Ligo. Briefing executivo, memoria 30d e metas oficiais.",
             "version": "1.0.0",
         },
-        "servers": [{"url": base.rstrip("/") if base else "https://EDITAR-AQUI"}],
+        "servers": [{"url": (base.rstrip("/") if base else "https://EDITAR-AQUI")}],
         "paths": {
             "/api/ceo/briefing/today": {
                 "get": {
                     "operationId": "ceoBriefingToday",
-                    "summary": "Briefing executivo do dia (texto + dados estruturados).",
-                    "responses": {"200": {"description": "OK"}},
-                    "security": [{"BearerAuth": []}],
+                    "summary": "Briefing executivo do dia",
+                    "description": "Retorna o snapshot de hoje com KPIs reais (clientes, MRR, inadimplencia, tickets), comparacao vs ontem/7d/30d, course_correction por KPI e texto pronto do briefing.",
+                    "responses": {
+                        "200": {
+                            "description": "Briefing executivo completo",
+                            "content": {
+                                "application/json": {
+                                    "schema": {
+                                        "type": "object",
+                                        "properties": {
+                                            "date_key": {"type": "string"},
+                                            "one_truth": {"type": "object"},
+                                            "compare": {"type": "object"},
+                                            "course_correction": {"type": "object"},
+                                            "course_summary": {"type": "string"},
+                                            "briefing_text": {"type": "string"},
+                                        },
+                                    }
+                                }
+                            },
+                        }
+                    },
                 }
             },
             "/api/ceo/briefing/now": {
                 "post": {
                     "operationId": "ceoBriefingNow",
-                    "summary": "Gera+persiste snapshot do dia AGORA e devolve briefing.",
-                    "responses": {"200": {"description": "OK"}},
-                    "security": [{"BearerAuth": []}],
+                    "summary": "Gera snapshot novo agora",
+                    "description": "Forca recalculo do snapshot do dia e devolve briefing atualizado.",
+                    "responses": {
+                        "200": {
+                            "description": "Snapshot novo gerado",
+                            "content": {
+                                "application/json": {
+                                    "schema": {"type": "object"}
+                                }
+                            },
+                        }
+                    },
                 }
             },
             "/api/ceo/memory": {
                 "get": {
                     "operationId": "ceoMemory",
-                    "summary": "Memória executiva dos últimos N dias.",
+                    "summary": "Memoria executiva 30 dias",
+                    "description": "Retorna array compacto dos snapshots dos ultimos N dias para analise de tendencia.",
                     "parameters": [{
                         "name": "days", "in": "query", "required": False,
+                        "description": "Numero de dias (default 30, max 365)",
                         "schema": {"type": "integer", "default": 30,
                                      "minimum": 1, "maximum": 365},
                     }],
-                    "responses": {"200": {"description": "OK"}},
-                    "security": [{"BearerAuth": []}],
+                    "responses": {
+                        "200": {
+                            "description": "Lista de snapshots",
+                            "content": {
+                                "application/json": {
+                                    "schema": {
+                                        "type": "object",
+                                        "properties": {
+                                            "days_returned": {"type": "integer"},
+                                            "items": {"type": "array", "items": {"type": "object"}},
+                                        },
+                                    }
+                                }
+                            },
+                        }
+                    },
                 }
             },
             "/api/ceo/metas": {
                 "get": {
                     "operationId": "ceoMetas",
-                    "summary": "Metas anuais oficiais da Ligo (2026).",
-                    "responses": {"200": {"description": "OK"}},
-                    "security": [{"BearerAuth": []}],
+                    "summary": "Metas anuais oficiais Ligo 2026",
+                    "description": "Retorna baseline e target de cada KPI (clientes, MRR, inadimplencia, embaixadores, fundadores).",
+                    "responses": {
+                        "200": {
+                            "description": "Metas oficiais",
+                            "content": {
+                                "application/json": {
+                                    "schema": {
+                                        "type": "object",
+                                        "properties": {
+                                            "metas_2026": {"type": "object"},
+                                            "baseline_date": {"type": "string"},
+                                        },
+                                    }
+                                }
+                            },
+                        }
+                    },
                 }
             },
         },
@@ -171,6 +230,7 @@ async def openapi_spec(request_url: str = ""):
                 "BearerAuth": {"type": "http", "scheme": "bearer"}
             }
         },
+        "security": [{"BearerAuth": []}],
     })
 
 
