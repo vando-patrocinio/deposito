@@ -1,6 +1,37 @@
 # PontoIA — Changelog
 
 
+## 2026-06-15 — CEO DIGITAL · P0 AUDIT ACTION 1 + 2 (CORPORATE_GOALS + EXECUTIVE_DECISIONS)
+
+### Ordem CTO
+Executar P0 do audit Isabella+Presidente IA: tirar METAS_2026 do hardcode + criar fluxo "IA propõe → CEO aprova" com rastro auditável. Antes, desbloquear o reply pendente no `cto_inbox` para a pergunta do CEO sobre Isabella.
+
+### Entrega
+- **Reply CEO desbloqueado**: mensagem `cto-04e4cf5ce66747` respondida com dossiê completo Isabella readiness (contexto, pendências, envs, endpoints, collections, regras de negócio, guardrails, dados que faltam, riscos, DoD, próximos passos). Reply id: `cto-13685618ab084e`. Status update extra postado: `cto-5d25beb9e2ff46`.
+- **Module novo** `backend/services/corporate_goals.py`: `SEED_METAS_2026` + `ensure_seeded()` idempotente + `get_metas()` + `list_goals()` + `upsert_goal()`. Filtro `kpi_key` exists isola schema CEO do schema legado da Isabella (que usa `metric/area/target_value`).
+- **Module novo** `backend/services/executive_decisions.py`: `create_decision()` + `list_decisions()` + `update_status()`. Enums validados: priority p0–p3, proposed_by (isabella/presidente_ia/cto/ceo), status (proposed/approved/in_progress/done/cancelled). Auto-preenche `completed_at` em done e `approved_by` em approved.
+- **Refator** `backend/services/executive_memory.py`: `_compare()` e `_course_correction()` agora recebem `metas` por parâmetro. `_resolve_metas(cid)` lê de `corporate_goals` com fallback para `METAS_2026` hardcoded. Snapshot persiste as metas vigentes em `president_daily.metas_oficiais` (não mais o hardcode global).
+- **Endpoints novos** em `/api/ceo/*` (Bearer CEO_BRIEFING_TOKEN):
+  - `GET  /api/ceo/goals`                  → lista goals CEO (5 KPIs default)
+  - `POST /api/ceo/goals/{kpi_key}`        → upsert goal (target/owner/deadline)
+  - `POST /api/ceo/decisions`              → cria decisão (default status=proposed)
+  - `GET  /api/ceo/decisions?status=X`     → lista filtrada
+  - `PATCH /api/ceo/decisions/{id}`        → muda status, aprova, ajusta owner/deadline
+- **OpenAPI 3.1.0** em `/api/ceo/openapi.json` estendido com 4 novas operations (`goalsList`, `decisionsList`, `decisionsCreate`, `decisionsUpdate`) e 5 schemas (`GoalItem`, `GoalsList`, `DecisionItem`, `DecisionsList`, `DecisionResult`). Custom GPT do CEO precisa "Refresh schema" para enxergar.
+- **Hardening**: índice único parcial `{company_id, kpi_key, status}` em `corporate_goals` (com partialFilterExpression `kpi_key exists`) previne race em workers concorrentes durante o auto-seed.
+
+### Testes
+- `testing_agent_v3_fork` iteração 154: **16/16 PASS** (100%) contra preview URL. Verificou auth (401 sem token), schema OpenAPI 3.1.0, CRUD completo decisions, filtro por status, PATCH 404 em id inexistente, validação de priority/status inválidos, idempotência do auto-seed, e zero-regressão em `briefing/today`, `briefing/now`, `memory`. Zero issues críticos ou minor.
+
+### Próximos passos (ordem recomendada, 1 sprint = 22h restantes)
+1. P0 Action 3 (2h) — flag `source=prod|test|mock` + warning stale>24h nos payloads de Isabella.
+2. P1 Action 4 (4h) — `negotiation_rules` collection + `validate_response()` guardrail Isabella.
+3. P1 Action 5 (8h) — `interactions` unificada (subscriber 360°).
+4. P1 Action 6 (6h) — `handoff_log` + endpoint `handoff_to_human()`.
+5. Sprint 1.1 (1d) — backfill `subscribers.atlaz_subscriber_code` via reverse-lookup.
+
+
+
 ## 2026-06-15 — UNIVERSO LIGO · CUSTOMER INTELLIGENCE — ETAPA 2 BACKEND (FECHADA)
 
 ### Ordem CTO
