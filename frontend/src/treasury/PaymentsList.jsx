@@ -204,7 +204,9 @@ export default function PaymentsList({ refreshKey, monthFrom, monthTo }) {
               <thead>
                 <tr style={{ background: C.cardSoft }}>
                   <Th style={{ width: 30 }}/>
-                  <Th>Beneficiário</Th><Th>Forma</Th><Th>Vencimento</Th>
+                  <Th>Beneficiário</Th><Th>Forma</Th>
+                  <Th>Filial</Th>
+                  <Th>Vencimento</Th>
                   <Th style={{ textAlign: "right" }}>Valor</Th>
                   <Th>Status</Th>
                   <Th style={{ textAlign: "center", width: 90 }}>Auto</Th>
@@ -275,6 +277,15 @@ function PaymentRow({ p, busy, onApprove, onSend, onCancel, onReceipt,
           color: "white", padding: "2px 8px", borderRadius: 4,
           fontSize: 10, fontWeight: 700, letterSpacing: .5,
         }}>{(p.method || "pix").toUpperCase()}</span>
+      </Td>
+      <Td data-testid={`pay-filial-${p.payment_id}`}>
+        {p.filial_name
+          ? <span style={{ background: C.cardSoft, color: C.text,
+              padding: "2px 8px", borderRadius: 4, fontSize: 11,
+              fontWeight: 600, border: `1px solid ${C.border}` }}>
+              {p.filial_name}
+            </span>
+          : <span style={{ color: C.muted, fontSize: 11 }}>—</span>}
       </Td>
       <Td>{DateBR(p.scheduled_for || p.due_date)}</Td>
       <Td style={{ textAlign: "right", color: C.text, fontWeight: 700 }}>
@@ -644,8 +655,8 @@ function SendReceiptModal({ payment, onClose }) {
 const Th = ({ children, style }) => <th style={{ padding: "10px 12px",
   textAlign: "left", color: C.muted, fontWeight: 600, fontSize: 11,
   textTransform: "uppercase", letterSpacing: 0.5, ...style }}>{children}</th>;
-const Td = ({ children, style }) => <td style={{ padding: "12px",
-  color: C.text, ...style }}>{children}</td>;
+const Td = ({ children, style, ...rest }) => <td style={{ padding: "12px",
+  color: C.text, ...style }} {...rest}>{children}</td>;
 const Field = ({ label, children }) => (
   <div style={{ marginBottom: 12, flex: 1 }}>
     <div style={{ color: C.muted, fontSize: 11, marginBottom: 4 }}>{label}</div>

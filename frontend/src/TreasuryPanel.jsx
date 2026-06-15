@@ -8,7 +8,7 @@ import React, { useEffect, useState } from "react";
 import {
   Inbox, Banknote, Repeat, Wallet, ShieldCheck, ShieldAlert,
   AlertTriangle, Clock, CheckCircle2, ChevronLeft, ChevronRight,
-  Users, CalendarRange,
+  Users, CalendarRange, Building2,
 } from "lucide-react";
 import InboxDDA from "./treasury/InboxDDA";
 import PaymentsList from "./treasury/PaymentsList";
@@ -31,17 +31,19 @@ export default function TreasuryPanel() {
   const [tab, setTab] = useState("dda");
   const [safety, setSafety] = useState(null);
   const [kpis, setKpis] = useState(null);
+  const [filialKpis, setFilialKpis] = useState(null);
   const [monthFrom, setMonthFrom] = useState(currentMonth());
   const [monthTo, setMonthTo] = useState(currentMonth());
   const [refreshKey, setRefreshKey] = useState(0);
 
   const loadHeader = async () => {
     try {
-      const [s, k] = await Promise.all([
+      const [s, k, fk] = await Promise.all([
         treasuryApi.safety(),
         treasuryApi.kpisByRange(monthFrom, monthTo),
+        treasuryApi.kpisByFilial(monthFrom, monthTo).catch(() => null),
       ]);
-      setSafety(s); setKpis(k);
+      setSafety(s); setKpis(k); setFilialKpis(fk);
     } catch (e) { console.warn("treasury header load:", e); }
   };
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -68,6 +70,8 @@ export default function TreasuryPanel() {
       />
 
       <KPIRow kpis={kpis} safety={safety} />
+
+      <FilialMiniCard data={filialKpis} />
 
       <div data-testid="treasury-tabs"
         style={{ display: "flex", gap: 6, marginTop: 20, marginBottom: 0,
@@ -232,6 +236,83 @@ function KPI({ label, value, sub, icon: Icon, color, testid }) {
       </div>
       <div style={{ color: C.text, fontSize: 20, fontWeight: 800 }}>{value}</div>
       {sub && <div style={{ color: C.muted, fontSize: 11, marginTop: 4 }}>{sub}</div>}
+    </div>
+  );
+}
+
+function FilialMiniCard({ data }) {
+  if (!data || !data.by_filial) return null;
+  const rows = data.by_filial.filter((r) => r.total_committed > 0).slice(0, 6);
+  const totals = data.totals || {};
+  if (rows.length === 0) {
+    return (
+      <div data-testid="treasury-kpi-by-filial" style={{
+        background: C.card, border: `1px solid ${C.border}`,
+        borderRadius: 12, padding: 14, marginTop: 12,
+        color: C.muted, fontSize: 12,
+      }}>
+        <Building2 size={14} style={{ verticalAlign: "middle", marginRight: 6 }} color={C.accent} />
+        Nenhum pagamento atribuído a filial neste período.
+      </div>
+    );
+  }
+  const max = Math.max(...rows.map((r) => r.total_committed || 0), 1);
+  return (
+    <div data-testid="treasury-kpi-by-filial" style={{
+      background: C.card, border: `1px solid ${C.border}`,
+      borderRadius: 12, padding: 14, marginTop: 12,
+    }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8,
+        marginBottom: 10 }}>
+        <Building2 size={16} color={C.accent}/>
+        <strong style={{ color: C.text, fontSize: 14 }}>
+          Total por filial
+        </strong>
+        <span style={{ marginLeft: "auto", color: C.muted, fontSize: 11 }}>
+          {data.filial_count} filiais ·
+          comprometido <strong style={{ color: C.text }}>{BRL(totals.committed || 0)}</strong>
+          {" · "}pago <strong style={{ color: C.green }}>{BRL(totals.paid || 0)}</strong>
+        </span>
+      </div>
+      <div style={{ display: "grid", gap: 6 }}>
+        {rows.map((r) => (
+          <div key={r.filial_id || "__none__"}
+            data-testid={`filial-bar-${r.filial_id || "none"}`}
+            style={{ display: "grid",
+              gridTemplateColumns: "200px 1fr 120px 80px 60px", gap: 10,
+              alignItems: "center", fontSize: 12 }}>
+            <div style={{ color: C.text, fontWeight: 600,
+              overflow: "hidden", textOverflow: "ellipsis",
+              whiteSpace: "nowrap" }} title={r.filial_name}>
+              {r.filial_name}
+            </div>
+            <div style={{ background: "#e2e8f0", borderRadius: 999,
+              height: 10, position: "relative", overflow: "hidden" }}>
+              <div style={{ position: "absolute", left: 0, top: 0,
+                bottom: 0, width: `${(r.total_committed / max * 100).toFixed(1)}%`,
+                background: `linear-gradient(90deg, ${C.accent}, #f97316)`,
+                borderRadius: 999 }}/>
+              {r.total_paid > 0 && (
+                <div style={{ position: "absolute", left: 0, top: 0,
+                  bottom: 0, width: `${(r.total_paid / max * 100).toFixed(1)}%`,
+                  background: C.green, borderRadius: 999, opacity: 0.85 }}/>
+              )}
+            </div>
+            <div style={{ color: C.text, textAlign: "right",
+              fontFamily: "Menlo, monospace", fontWeight: 700 }}>
+              {BRL(r.total_committed)}
+            </div>
+            <div style={{ color: C.green, textAlign: "right",
+              fontSize: 11, fontWeight: 600 }} title="pago no período">
+              {BRL(r.total_paid)}
+            </div>
+            <div style={{ color: C.muted, textAlign: "right",
+              fontSize: 10 }}>
+              {r.count_payments} pgto{r.count_payments === 1 ? "" : "s"}
+            </div>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

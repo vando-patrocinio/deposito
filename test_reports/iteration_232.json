@@ -1,0 +1,41 @@
+{
+  "summary": "P0 CEO Treasury Filial — backend + frontend testing complete. All 7 backend tests pass (kpis-by-filial happy path, default month, invalid period 400, no-auth 401/403, payments?filial_id=<id>, payments?filial_id=__none__, POST invalid filial 404). Frontend: FilialMiniCard rendered above tabs with correct data-testid and seed numbers; Filial column added to A Pagar table in the exact position (between Forma and Vencimento); period change triggers re-fetch.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter_p0_ceo_filial.py",
+    "/app/test_reports/pytest/iter_p0_ceo_filial.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "treasury.py kpis_by_filial (line 1229–1335) — clean; aggregation by (filial_id, status); active filiais included as zero-rows; ordering by total_committed desc; provenance fields present. Note: bucket 'Sem filial' is only created when there is at least one payment without filial_id (no zero placeholder if all payments have filial); acceptable per spec.",
+    "treasury.py create_payment (line 240–308) — filial validation runs AFTER payee lookup but BEFORE pix/method validation. With fake payee_id + fake filial_id, filial 404 fires first; safe order.",
+    "treasury.py list_payments (line 311–334) — filial_id=__none__ correctly maps to $or: [null, missing]; specific filial_id maps to exact match. Confirmed via tests.",
+    "TreasuryPanel.jsx — loadHeader calls 3 endpoints in parallel via Promise.all/catch; FilialMiniCard rendered above tabs (line 74) ✓.",
+    "PaymentsList.jsx — <Td data-testid='pay-filial-${payment_id}'> with badge for filial_name and '—' fallback; column position confirmed: Beneficiário | Forma | Filial | Vencimento | Valor | Status | Auto | Ações ✓.",
+    "Pre-existing React Hook exhaustive-deps warning at PaymentsList.jsx:75 and TreasuryPanel.jsx:53 — confirmed pre-existing (not introduced this iteration). Handoff as P2 (already noted by main agent).",
+    "Console shows 401 errors from unrelated endpoints (not treasury) — out of scope for this task."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter_p0_ceo_filial.py (new)"
+  ],
+  "success_rate": {"backend": "100% (7/7)", "frontend": "100% (3/3 features verified)"},
+  "test_credentials": "admin@empresa.com / 123456 (super admin, co-demo). Backend JWT generated via auth.create_access_token('usr-2100548587','admin@empresa.com','auditor',company_id='co-demo',is_super_admin=True).",
+  "seed_data_creation": "No seed data created. Used existing co-demo payments (12 'Sem filial' + 1 LIGO CACHOEIRAS DE MACACÚ R$10).",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Test file at /app/backend/tests/test_iter_p0_ceo_filial.py uses python-dotenv to load JWT_SECRET from /app/backend/.env before importing auth — pattern reusable. FilialMiniCard data-testid='treasury-kpi-by-filial' present both in loading state and loaded state. A Pagar table has 13 pay-filial-<id> cells in 2026-04..2026-06 window; one of them has filial_name='LIGO CACHOEIRAS DE MACACÚ'. The 'A Pagar' tab is button:has-text('A Pagar') — there are also 'A Pagar (período)' KPI card and 'A pagar / Histórico' heading; use exact text match to disambiguate.",
+  "verified_observations": {
+    "kpis_by_filial_response": "_data_provenance.source=scheduled_payments, company_id=co-demo, filial_field=filial_id, synthetic_filtered=false; totals.committed = paid + pending; by_filial sorted desc by total_committed; 8 active filiais present + 'Sem filial' bucket.",
+    "filial_minicard_text": "Total por filial · 8 filiais · comprometido R$ 1.645,05 · pago R$ 580,00 — Sem filial R$ 1.635,05 / R$ 580,00 / 12 pgtos — LIGO CACHOEIRAS DE MACACÚ R$ 10,00 / R$ 0,00 / 1 pgto",
+    "apagar_table_headers": ["", "Beneficiário", "Forma", "Filial", "Vencimento", "Valor", "Status", "Auto", "Ações"],
+    "period_refresh": "Clicking 'Últimos 3m' triggers loadHeader → kpisByFilial(2026-04, 2026-06); FilialMiniCard remains rendered with updated data."
+  }
+}

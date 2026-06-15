@@ -1226,6 +1226,115 @@ async def kpis_by_month(month: Optional[str] = None,
     }
 
 
+@router.get("/kpis-by-filial")
+async def kpis_by_filial(month: Optional[str] = None,
+                          month_from: Optional[str] = None,
+                          month_to: Optional[str] = None,
+                          user: dict = Depends(require_role("gestor"))):
+    """KPIs de Contas a Pagar agrupados por FILIAL (P0 CEO 2026-02).
+
+    Retorna, por filial e no período pedido:
+      - total_paid: somatório efetivamente pago
+      - total_pending: agendado/aprovado/aguarda CTO/rascunho
+      - total_committed: paid + pending (gasto comprometido com a filial)
+      - count_payments: número de pagamentos no período
+    Inclui também um bucket especial 'Sem filial' para pagamentos legados
+    sem filial_id, e o totalizador geral para o briefing executivo / Custom GPT.
+    """
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+    if not month and not month_from and not month_to:
+        now = datetime.now(timezone.utc)
+        month = f"{now.year:04d}-{now.month:02d}"
+    gte, lt = _month_bounds(month, month_from, month_to)
+    if not gte:
+        raise HTTPException(400, "Período inválido. Use month=YYYY-MM ou month_from+month_to.")
+
+    base_q: Dict[str, Any] = {"company_id": cid,
+                              "scheduled_for": {"$gte": gte, "$lt": lt}}
+    PENDING_STATUSES = ["draft", "pending_human_approval", "approved", "sent_to_bank"]
+
+    # 1) Mapa de filiais ativas (para nomes consistentes)
+    filiais = await db.fin_filiais.find(
+        {"company_id": cid}, {"_id": 0, "id": 1, "name": 1, "active": 1}
+    ).to_list(500)
+    filial_map = {f["id"]: f.get("name") or f["id"] for f in filiais}
+
+    # 2) Agregação por filial × status
+    agg = []
+    async for r in db.scheduled_payments.aggregate([
+        {"$match": base_q},
+        {"$group": {
+            "_id": {"filial_id": "$filial_id", "status": "$status"},
+            "amount": {"$sum": "$amount_brl"},
+            "count": {"$sum": 1},
+        }},
+    ]):
+        agg.append(r)
+
+    # Reduce em (filial_id) → buckets
+    buckets: Dict[str, Dict[str, Any]] = {}
+    for r in agg:
+        fid = (r["_id"] or {}).get("filial_id") or "__none__"
+        status = (r["_id"] or {}).get("status") or "draft"
+        amt = float(r.get("amount") or 0)
+        cnt = int(r.get("count") or 0)
+        b = buckets.setdefault(fid, {
+            "filial_id": fid if fid != "__none__" else None,
+            "filial_name": filial_map.get(fid, "Sem filial") if fid != "__none__" else "Sem filial",
+            "total_paid": 0.0, "total_pending": 0.0,
+            "total_blocked": 0.0, "total_failed": 0.0,
+            "total_committed": 0.0, "count_payments": 0,
+        })
+        b["count_payments"] += cnt
+        if status == "paid":
+            b["total_paid"] += amt
+        elif status in PENDING_STATUSES:
+            b["total_pending"] += amt
+        elif status == "blocked_risk":
+            b["total_blocked"] += amt
+        elif status == "failed":
+            b["total_failed"] += amt
+        b["total_committed"] = b["total_paid"] + b["total_pending"]
+
+    # Inclui filiais ATIVAS sem pagamento (saldo zero) para visibilidade
+    for f in filiais:
+        if f["id"] not in buckets and f.get("active") is not False:
+            buckets[f["id"]] = {
+                "filial_id": f["id"], "filial_name": f.get("name") or f["id"],
+                "total_paid": 0.0, "total_pending": 0.0,
+                "total_blocked": 0.0, "total_failed": 0.0,
+                "total_committed": 0.0, "count_payments": 0,
+            }
+
+    rows = sorted(buckets.values(),
+                  key=lambda x: x["total_committed"], reverse=True)
+
+    totals = {
+        "paid": sum(b["total_paid"] for b in rows),
+        "pending": sum(b["total_pending"] for b in rows),
+        "blocked": sum(b["total_blocked"] for b in rows),
+        "failed": sum(b["total_failed"] for b in rows),
+        "committed": sum(b["total_committed"] for b in rows),
+        "count_payments": sum(b["count_payments"] for b in rows),
+    }
+
+    return {
+        "_data_provenance": {
+            "source": "scheduled_payments",
+            "company_id": cid,
+            "computed_at": now_iso(),
+            "filter": {"scheduled_for_gte": gte, "scheduled_for_lt": lt},
+            "filial_field": "filial_id",
+            "synthetic_filtered": False,
+        },
+        "period": {"gte": gte, "lt": lt, "month": month,
+                   "month_from": month_from, "month_to": month_to},
+        "by_filial": rows,
+        "totals": totals,
+        "filial_count": len([b for b in rows if b["filial_id"] is not None]),
+    }
+
+
 @router.get("/dre-by-period")
 async def dre_by_period(month: Optional[str] = None,
                          month_from: Optional[str] = None,

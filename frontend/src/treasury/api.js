@@ -83,6 +83,8 @@ export const treasuryApi = {
       { params: { month_from: monthFrom, month_to: monthTo } }).then((r) => r.data),
   dreByPeriod: (monthFrom, monthTo) => client.get("/treasury/dre-by-period",
       { params: { month_from: monthFrom, month_to: monthTo } }).then((r) => r.data),
+  kpisByFilial: (monthFrom, monthTo) => client.get("/treasury/kpis-by-filial",
+      { params: { month_from: monthFrom, month_to: monthTo } }).then((r) => r.data),
 
   // comprovante WhatsApp
   receiptPreview: (id) => client.get(`/treasury/payments/${id}/receipt-preview`)
