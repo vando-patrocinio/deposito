@@ -167,6 +167,33 @@ async def create_bill(payload: BillIn,
     period_days = int(data.pop("installments_period_days") or 30)
     recurrent = bool(data.pop("installments_recurrent"))
 
+    # CTO 2026-02 (ordem CEO): herdar filial padrão do fornecedor quando
+    # `filial_id` não foi informado explicitamente. "Gastos são feitos
+    # dentro das filiais" — sem isso, conta a pagar fica órfã e gestor
+    # não consegue ratear por unidade.
+    if not data.get("filial_id") and data.get("supplier_id"):
+        sup = await db.fin_suppliers.find_one(
+            {"company_id": cid, "id": data["supplier_id"]},
+            {"_id": 0, "default_filial_id": 1, "allowed_filiais": 1},
+        )
+        if sup and sup.get("default_filial_id"):
+            data["filial_id"] = sup["default_filial_id"]
+            data["filial_inherited_from_supplier"] = True
+    # Validação opcional: se fornecedor tem `allowed_filiais` definido e o
+    # filial_id informado não está na lista, bloqueia (regra do CEO).
+    if data.get("filial_id") and data.get("supplier_id"):
+        sup = await db.fin_suppliers.find_one(
+            {"company_id": cid, "id": data["supplier_id"]},
+            {"_id": 0, "allowed_filiais": 1},
+        )
+        allowed = sup.get("allowed_filiais") if sup else None
+        if allowed and data["filial_id"] not in allowed:
+            raise HTTPException(
+                400,
+                f"Fornecedor não está autorizado a despesas na filial "
+                f"{data['filial_id']}. Filiais permitidas: {allowed}",
+            )
+
     total = float(data["amount"])
     base_date = datetime.strptime(data["due_date"], "%Y-%m-%d").date()
 

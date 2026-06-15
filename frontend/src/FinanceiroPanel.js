@@ -473,6 +473,27 @@ function CategoriesTab() {
 // FORNECEDORES
 // =========================================================================
 function SuppliersTab() {
+  // CTO 2026-02: gastos são feitos dentro das filiais. Toda compra/conta
+  // criada para esse fornecedor herda `filial_id` do `default_filial_id`
+  // quando o usuário não preencher explicitamente. Sem isso, conta a
+  // pagar fica "orfã" de filial e gestor não consegue ratear.
+  const [filiais, setFiliais] = useState([]);
+  useEffect(() => {
+    api.finFiliaisList().then((list) => {
+      setFiliais((list || []).filter((f) => f.active !== false));
+    }).catch(() => setFiliais([]));
+  }, []);
+
+  const filialOptions = useMemo(() => [
+    { value: "", label: "— Sem filial padrão —" },
+    ...filiais.map((f) => ({ value: f.id, label: f.name })),
+  ], [filiais]);
+  const filialName = useMemo(() => {
+    const m = {};
+    filiais.forEach((f) => { m[f.id] = f.name; });
+    return m;
+  }, [filiais]);
+
   return (
     <CrudTab
       title="Fornecedores"
@@ -480,6 +501,15 @@ function SuppliersTab() {
       columns={[
         { key: "name", label: "Nome" },
         { key: "document", label: "CPF/CNPJ" },
+        { key: "default_filial_id", label: "Filial padrão",
+          render: (r) => r.default_filial_id && filialName[r.default_filial_id]
+            ? <span data-testid={`sup-filial-${r.id}`}
+                    style={{
+                      padding: "2px 8px", borderRadius: 999,
+                      background: "#fef3c7", color: "#92400e",
+                      fontSize: 11, fontWeight: 600,
+                    }}>{filialName[r.default_filial_id]}</span>
+            : <span style={{ color: "#cbd5e1", fontSize: 11 }}>—</span> },
         { key: "phone", label: "Telefone" },
         { key: "email", label: "E-mail" },
         { key: "active", label: "Ativo",
@@ -488,9 +518,35 @@ function SuppliersTab() {
       fields={[
         { key: "name", label: "Nome / Razão Social", required: true },
         { key: "document", label: "CPF / CNPJ" },
+        { key: "category", label: "Categoria",
+          placeholder: "Ex.: RETIRADA, COMBUSTIVEL, ALUGUEL..." },
+        // P0 CEO 2026-02: filial padrão para gastos
+        { key: "default_filial_id", label: "Filial padrão (onde será pago)",
+          type: "select", options: filialOptions,
+          hint: "Toda nova conta a pagar deste fornecedor herda esta filial automaticamente." },
+        { key: "pix_type", label: "Tipo de chave PIX", type: "select",
+          options: [
+            { value: "", label: "—" },
+            { value: "CPF", label: "CPF" },
+            { value: "CNPJ", label: "CNPJ" },
+            { value: "EMAIL", label: "E-mail" },
+            { value: "TELEFONE", label: "Telefone" },
+            { value: "ALEATORIA", label: "Chave aleatória" },
+          ] },
+        { key: "pix_key", label: "Chave PIX" },
         { key: "email", label: "E-mail" },
         { key: "phone", label: "Telefone" },
-        { key: "address", label: "Endereço", type: "textarea" },
+        { key: "whatsapp_phone", label: "WhatsApp (DDD + número)" },
+        { key: "send_receipt_via_wa",
+          label: "Enviar comprovante via WhatsApp após pagamento",
+          type: "boolean", default: false },
+        { key: "address_cep", label: "CEP" },
+        { key: "address_state", label: "Estado (UF)" },
+        { key: "address_street", label: "Rua / Logradouro" },
+        { key: "address_number", label: "Número" },
+        { key: "address_complement", label: "Complemento" },
+        { key: "address_neighborhood", label: "Bairro" },
+        { key: "address_city", label: "Cidade" },
         { key: "notes", label: "Observações", type: "textarea" },
         { key: "active", label: "Ativo", type: "boolean", default: true },
       ]}

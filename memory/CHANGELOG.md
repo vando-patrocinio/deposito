@@ -1,6 +1,48 @@
 # PontoIA — Changelog
 
 
+## 2026-06-15 — FILIAL NO FORNECEDOR + HERANÇA EM CONTAS A PAGAR
+
+**Contexto (ordem CEO):** "Em Contas a Pagar precisamos ter opção de
+escolha de filiais — os gastos são feitos dentro das filiais."
+
+### Backend
+- `SupplierIn` (routes/financeiro.py) estendido com:
+  - `default_filial_id` (string opcional, herança automática)
+  - `allowed_filiais` (lista opcional, restrição de despesa por filial)
+  - `category`, `pix_type`, `pix_key`, `whatsapp_phone`,
+    `send_receipt_via_wa`, endereço completo (`address_cep`/`_state`/
+    `_street`/`_number`/`_complement`/`_neighborhood`/`_city`),
+    `default_cash_account_id`.
+- `create_bill` (routes/financeiro_ops.py):
+  - Quando bill é criada com `supplier_id` SEM `filial_id`, busca
+    `fin_suppliers.default_filial_id` e herda. Flag
+    `filial_inherited_from_supplier=true` para auditoria.
+  - Se `supplier.allowed_filiais` existe e `filial_id` informado não
+    está na lista → HTTP 400 (regra do CEO: gasto só nas filiais do fornecedor).
+
+### Frontend
+- `SuppliersTab` (FinanceiroPanel.js) reescrito:
+  - Carrega filiais via `api.finFiliaisList()`.
+  - Novo campo "Filial padrão (onde será pago)" no formulário.
+  - Coluna "Filial padrão" na listagem com pill amarelo.
+  - Campos adicionais para match com o modal CEO: Categoria, Tipo PIX,
+    Chave PIX, WhatsApp, Email, "Enviar comprovante via WhatsApp",
+    Endereço completo (CEP/UF/Rua/Número/Complemento/Bairro/Cidade).
+  - `data-testid="sup-filial-{id}"` no pill.
+
+### Teste end-to-end validado
+1. Lista 8 filiais existentes em `co-demo`.
+2. Cria fornecedor VANDO com `default_filial_id="fil-d3132f0278"`.
+3. Cria bill sem `filial_id` → bill recebe `filial_id="fil-d3132f0278"`
+   e `filial_inherited_from_supplier=true`. ✓
+
+### Rollback
+- Remover blocos `default_filial_id`/`allowed_filiais` em `SupplierIn`.
+- Remover bloco "herdar filial padrão do fornecedor" em `create_bill`.
+- Reverter `SuppliersTab` no FinanceiroPanel.js (campos novos são aditivos).
+
+
 ## 2026-06-15 — OPERAÇÃO TICKET ARMADO · P0-1 a P0-7 (CTO Mode)
 
 **Contexto:** auditoria `OPERACAO_TICKET_CEGO.md` provou que 90,9% dos
