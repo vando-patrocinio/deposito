@@ -302,7 +302,7 @@ async def openapi_spec(request_url: str = ""):
                         },
                     },
                     "responses": {"200": {"description": "Recado registrado",
-                                            "content": {"application/json": {"schema": {"type": "object"}}}}},
+                                            "content": {"application/json": {"schema": {"$ref": "#/components/schemas/CtoMessageResult"}}}}},
                 }
             },
             "/api/ceo/cto/inbox": {
@@ -320,7 +320,7 @@ async def openapi_spec(request_url: str = ""):
                          "schema": {"type": "integer", "default": 20, "minimum": 1, "maximum": 100}},
                     ],
                     "responses": {"200": {"description": "Mensagens",
-                                            "content": {"application/json": {"schema": {"type": "object"}}}}},
+                                            "content": {"application/json": {"schema": {"$ref": "#/components/schemas/CtoInbox"}}}}},
                 }
             },
         },
@@ -329,6 +329,38 @@ async def openapi_spec(request_url: str = ""):
                 "Briefing": BriefingSchema,
                 "Memory": MemorySchema,
                 "Metas": MetasSchema,
+                "CtoMessageResult": {
+                    "type": "object",
+                    "properties": {
+                        "ok": {"type": "boolean"},
+                        "message_id": {"type": "string"},
+                        "created_at": {"type": "string"},
+                    },
+                },
+                "CtoInbox": {
+                    "type": "object",
+                    "properties": {
+                        "count": {"type": "integer"},
+                        "items": {
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "id": {"type": "string"},
+                                    "from": {"type": "string"},
+                                    "to": {"type": "string"},
+                                    "text": {"type": "string"},
+                                    "priority": {"type": "string"},
+                                    "status": {"type": "string"},
+                                    "in_reply_to": {"type": "string"},
+                                    "action_taken": {"type": "string"},
+                                    "created_at": {"type": "string"},
+                                    "replied_at": {"type": "string"},
+                                },
+                            },
+                        },
+                    },
+                },
             },
             "securitySchemes": {
                 "BearerAuth": {"type": "http", "scheme": "bearer"}
