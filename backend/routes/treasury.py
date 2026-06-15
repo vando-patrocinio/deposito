@@ -149,8 +149,13 @@ class PaymentIn(BaseModel):
     due_date: Optional[str] = None
     category: Optional[str] = None
     description: Optional[str] = None
+    # CTO 2026-02 (ordem CEO): "gastos são feitos dentro das filiais".
+    # O pagamento é apontado para uma filial específica no momento do
+    # registro (não no cadastro do fornecedor). Permite ratear gastos.
+    filial_id: Optional[str] = None
     # ── Pix (default) ──
     pix_key: Optional[str] = None  # se vazio, usa do payee
+    pix_key_type: Optional[str] = None  # sobrescreve tipo do payee se enviado
     # ── Boleto (iter235) ──
     method: str = "pix"  # "pix" | "bill"
     identification_field: Optional[str] = None  # linha digitável boleto
@@ -247,6 +252,21 @@ async def create_payment(p: PaymentIn, user: dict = Depends(require_role("gestor
 
     payee = await db.whitelisted_payees.find_one({"payee_id": p.payee_id, "company_id": cid})
     pix_key = p.pix_key or (payee or {}).get("pix_key")
+    pix_key_type = p.pix_key_type or (payee or {}).get("pix_key_type", "CPF")
+
+    # CTO 2026-02 (ordem CEO): validação da filial (quando informada).
+    # Pagamento sem filial é permitido por compat — mas geramos warning.
+    filial_doc = None
+    if p.filial_id:
+        filial_doc = await db.fin_filiais.find_one(
+            {"id": p.filial_id, "company_id": cid},
+            {"_id": 0, "id": 1, "name": 1, "active": 1},
+        )
+        if not filial_doc:
+            raise HTTPException(404, f"Filial {p.filial_id} não encontrada.")
+        if filial_doc.get("active") is False:
+            raise HTTPException(400,
+                f"Filial '{filial_doc.get('name')}' está inativa.")
 
     # Validação por método
     method = (p.method or "pix").lower()
@@ -266,11 +286,14 @@ async def create_payment(p: PaymentIn, user: dict = Depends(require_role("gestor
         "payee_id": p.payee_id, "payee_name": (payee or {}).get("name"),
         "payee_document": (payee or {}).get("document"),
         "method": method,
-        "pix_key": pix_key, "pix_key_type": (payee or {}).get("pix_key_type", "CPF"),
+        "pix_key": pix_key, "pix_key_type": pix_key_type,
         "identification_field": p.identification_field,
         "bar_code": p.bar_code,
         "amount_brl": p.amount_brl, "scheduled_for": p.scheduled_for,
         "due_date": p.due_date, "category": p.category, "description": p.description,
+        # P0 CEO 2026-02: linkagem com filial onde o gasto é feito.
+        "filial_id": p.filial_id,
+        "filial_name": (filial_doc or {}).get("name") if filial_doc else None,
         "provider": "asaas", "provider_transfer_id": None,
         "provider_bill_id": None,
         "status": "draft",
@@ -290,12 +313,19 @@ async def list_payments(status_eq: Optional[str] = None,
                         month: Optional[str] = None,        # YYYY-MM
                         month_from: Optional[str] = None,   # YYYY-MM
                         month_to: Optional[str] = None,     # YYYY-MM
+                        filial_id: Optional[str] = None,    # P0 CEO 2026-02
                         limit: int = 500,
                         user: dict = Depends(require_role("gestor"))):
     cid = user.get("company_id") or DEMO_COMPANY_ID
     q: Dict[str, Any] = {"company_id": cid}
     if status_eq:
         q["status"] = status_eq
+    if filial_id:
+        # "__none__" filtra pagamentos sem filial atribuída
+        if filial_id == "__none__":
+            q["$or"] = [{"filial_id": None}, {"filial_id": {"$exists": False}}]
+        else:
+            q["filial_id"] = filial_id
     if month or month_from or month_to:
         gte, lt = _month_bounds(month, month_from, month_to)
         if gte and lt:

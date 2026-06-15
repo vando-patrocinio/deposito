@@ -63,25 +63,6 @@ class SupplierIn(BaseModel):
     address: Optional[str] = None
     notes: Optional[str] = None
     active: bool = True
-    # CTO 2026-02: filiação por filial. CEO regra — "gastos são feitos
-    # dentro das filiais". Aceita 1 default + lista de filiais permitidas.
-    default_filial_id: Optional[str] = None
-    allowed_filiais: Optional[List[str]] = None
-    # Campos opcionais do modal CONTAS A PAGAR
-    category: Optional[str] = None
-    pix_type: Optional[str] = Field(
-        None, pattern="^(CPF|CNPJ|EMAIL|TELEFONE|ALEATORIA|CHAVE)?$")
-    pix_key: Optional[str] = None
-    whatsapp_phone: Optional[str] = None
-    send_receipt_via_wa: bool = False
-    address_cep: Optional[str] = None
-    address_state: Optional[str] = None
-    address_street: Optional[str] = None
-    address_number: Optional[str] = None
-    address_complement: Optional[str] = None
-    address_neighborhood: Optional[str] = None
-    address_city: Optional[str] = None
-    default_cash_account_id: Optional[str] = None
 
 
 class PaymentMethodIn(BaseModel):

@@ -1,6 +1,63 @@
 # PontoIA — Changelog
 
 
+## 2026-06-15 — FILIAL NO CARD NOVO PAGAMENTO + AUTO-LOAD PIX DO FORNECEDOR
+
+**Correção da entrega anterior** após esclarecimento do CEO:
+> "A filial é pra ser colocada nesse card, nele é apontado o pagamento,
+> não no cadastro. E nesse card a informação para fazer o PIX é pra ser
+> carregado do cadastro do fornecedor."
+
+### Revert
+- `SupplierIn` (routes/financeiro.py): voltou ao schema minimal.
+- `SuppliersTab` (FinanceiroPanel.js): voltou ao formulário básico.
+- `create_bill` (routes/financeiro_ops.py): herança de filial via supplier
+  REMOVIDA. Não é dali que vem.
+
+### Backend (caminho correto)
+- `PaymentIn` (routes/treasury.py) ganhou:
+  - `filial_id: Optional[str]` — onde o gasto é apontado.
+  - `pix_key_type: Optional[str]` — sobrescreve tipo do payee se enviado.
+- `create_payment`:
+  - Valida `filial_id` em `fin_filiais` (404 se não existe, 400 se inativa).
+  - Persiste `filial_id` + `filial_name` em `scheduled_payments`.
+  - `pix_key_type` do request tem prioridade sobre o do payee.
+- `GET /api/treasury/payments` aceita `?filial_id=` (com `"__none__"` para
+  pagamentos sem filial atribuída).
+
+### Frontend
+- `NewPaymentModal` (treasury/PaymentsList.jsx):
+  - Novo dropdown "Filial (onde o gasto é apontado)" carregado via
+    `api.finFiliaisList()`. `data-testid="pay-filial"`.
+  - **Auto-load PIX do fornecedor**: ao selecionar beneficiário, os campos
+    "Tipo chave Pix" e "Chave Pix" são pré-preenchidos com `pix_key_type`
+    e `pix_key` do payee. Usuário ainda pode sobrescrever no campo
+    "Chave Pix (sobrescreve)".
+  - Initial state usa `payees[0]` se preexistente.
+  - Submit envia `filial_id` + `pix_key_type` no payload.
+
+### Teste end-to-end validado
+```
+1. POST /api/treasury/payments
+   {payee_id:"payee-...VANDO", amount_brl:10, filial_id:"fil-...CACHOEIRAS",
+    method:"pix", pix_key_type:"CPF"}
+   → 200 com:
+     - filial_id: fil-d3132f0278
+     - filial_name: "LIGO CACHOEIRAS DE MACACÚ"  (auto-populado)
+     - pix_key: "09291095702"  (auto do payee)
+     - pix_key_type: "CPF"
+
+2. GET /api/treasury/payments?filial_id=fil-d3132f0278
+   → retorna apenas pagamentos dessa filial.
+```
+
+### Rollback
+- Remover bloco `filial_id`/`pix_key_type` em `PaymentIn`.
+- Remover `filial_id`/`filial_name` em `create_payment` + filtro em
+  `list_payments`.
+- Reverter `NewPaymentModal` (campo Filial + onPayeeChange handler).
+
+
 ## 2026-06-15 — FILIAL NO FORNECEDOR + HERANÇA EM CONTAS A PAGAR
 
 **Contexto (ordem CEO):** "Em Contas a Pagar precisamos ter opção de

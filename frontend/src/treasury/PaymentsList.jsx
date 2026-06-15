@@ -431,14 +431,43 @@ function DreBars({ title, rows, testid, compact }) {
 // ─── Modal Novo Pagamento + Modal Comprovante (mesmos da versão anterior) ───
 function NewPaymentModal({ payees, onClose, onCreated }) {
   const [tab, setTab] = useState("pix");
+  const [filiais, setFiliais] = useState([]);
+  const initialPayee = payees[0] || null;
   const [f, setF] = useState({
-    payee_id: payees[0]?.payee_id || "",
+    payee_id: initialPayee?.payee_id || "",
     amount_brl: "", scheduled_for: "", description: "", category: "",
-    pix_key: "", pix_key_type: "CPF",
+    pix_key: initialPayee?.pix_key || "",
+    pix_key_type: initialPayee?.pix_key_type || "CPF",
     identification_field: "", bar_code: "",
+    filial_id: "",
   });
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState(null);
+
+  // P0 CEO 2026-02 — Carrega filiais para o dropdown (gasto vai pra uma filial)
+  useEffect(() => {
+    (async () => {
+      try {
+        // Reusa endpoint do Financeiro (mesmo cadastro de filiais)
+        const { default: api } = await import("../api");
+        const list = await api.finFiliaisList();
+        setFiliais((list || []).filter((x) => x.active !== false));
+      } catch (e) {
+        console.warn("filiais load:", e);
+      }
+    })();
+  }, []);
+
+  // P0 CEO 2026-02 — Ao trocar beneficiário, AUTO-CARREGA PIX do
+  // cadastro do fornecedor (handler direto, sem useEffect).
+  const onPayeeChange = (payee_id) => {
+    const p = payees.find((x) => x.payee_id === payee_id);
+    setF((s) => ({
+      ...s, payee_id,
+      pix_key: (p && p.pix_key) || "",
+      pix_key_type: (p && p.pix_key_type) || "CPF",
+    }));
+  };
 
   const submit = async () => {
     if (!f.payee_id || !f.amount_brl || !f.scheduled_for) {
@@ -453,7 +482,11 @@ function NewPaymentModal({ payees, onClose, onCreated }) {
         payee_id: f.payee_id, amount_brl: parseFloat(f.amount_brl),
         scheduled_for: f.scheduled_for, description: f.description,
         category: f.category, method: tab,
-        ...(tab === "pix" ? { pix_key: f.pix_key } : {}),
+        filial_id: f.filial_id || null,
+        ...(tab === "pix" ? {
+          pix_key: f.pix_key,
+          pix_key_type: f.pix_key_type,
+        } : {}),
         ...(tab === "bill" ? {
           identification_field: f.identification_field, bar_code: f.bar_code,
         } : {}),
@@ -480,7 +513,7 @@ function NewPaymentModal({ payees, onClose, onCreated }) {
       </div>
       <Field label="Beneficiário*">
         <select data-testid="pay-payee" value={f.payee_id}
-          onChange={(e) => setF({ ...f, payee_id: e.target.value })} style={input}>
+          onChange={(e) => onPayeeChange(e.target.value)} style={input}>
           <option value="">— selecione —</option>
           {payees.map((p) => (
             <option key={p.payee_id} value={p.payee_id}>
@@ -527,6 +560,16 @@ function NewPaymentModal({ payees, onClose, onCreated }) {
         onChange={(e) => setF({ ...f, description: e.target.value })} style={input}/></Field>
       <Field label="Categoria"><input data-testid="pay-category" value={f.category}
         onChange={(e) => setF({ ...f, category: e.target.value })} style={input}/></Field>
+      {/* P0 CEO 2026-02: filial onde o gasto será apontado */}
+      <Field label="Filial (onde o gasto é apontado)">
+        <select data-testid="pay-filial" value={f.filial_id}
+          onChange={(e) => setF({ ...f, filial_id: e.target.value })} style={input}>
+          <option value="">— Sem filial —</option>
+          {filiais.map((flx) => (
+            <option key={flx.id} value={flx.id}>{flx.name}</option>
+          ))}
+        </select>
+      </Field>
       {err && <div style={errBox}>{err}</div>}
       <div style={{ display: "flex", gap: 8, marginTop: 16 }}>
         <button data-testid="btn-create-payment" onClick={submit} disabled={busy}
