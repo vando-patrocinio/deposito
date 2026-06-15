@@ -106,12 +106,20 @@ async def trigger_handoff(p: HandoffIn,
 
 
 @router.get("/handoffs")
-async def list_pending_handoffs(status: str = "aberto",
+async def list_pending_handoffs(status: Optional[str] = None,
                                   limit: int = 100,
                                   user: dict = Depends(require_role("gestor"))):
-    """Lista tickets em fila humana (categoria aguarda_humano)."""
-    q = {"company_id": _cid(user), "category": "aguarda_humano",
-         "status": status}
+    """Lista tickets em fila humana (categoria aguarda_humano).
+
+    Default: status aberto/aberta/pendente (cobre normalização interna
+    do ticket_schema STATUS_ALIASES que mapeia 'aberto'→'aberta').
+    """
+    q: Dict[str, Any] = {"company_id": _cid(user),
+                          "category": "aguarda_humano"}
+    if status:
+        q["status"] = status
+    else:
+        q["status"] = {"$in": ["aberta", "aberto", "pendente"]}
     rows = await db.tickets.find(q, {"_id": 0}).sort(
         "created_at", -1).to_list(min(limit, 500))
     return {"handoffs": rows, "count": len(rows)}

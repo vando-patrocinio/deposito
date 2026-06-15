@@ -2,6 +2,30 @@
 
 > Documento vivo. Atualizado a cada sprint.
 
+## 🤖 P0 CTO — Isabella Guardrails + Interactions 360° (15/02/2026)
+
+**Pedido CTO (ordem 8→7→6):** travar IA antes que invente desconto/promessa/parcelamento, criar canal oficial `handoff_to_human()` auditável, unificar histórico fragmentado em timeline 360°.
+
+**Item 8 — `negotiation_rules` (Guardrails):**
+- Service `services/isabella_negotiation.py`: 4 ações (`promise_payment`, `discount`, `second_invoice`, `installment`). `can_offer()` é chokepoint obrigatório. Default TUDO OFF (failsafe).
+- Rotas `/api/isabella/negotiation-rules` (GET gestor / PUT admin / POST test / GET attempts).
+- Card UI `IsabellaNegotiationRulesCard` em SettingsPanel com toggles + badge MODO FAILSAFE/ATIVA.
+
+**Item 7 — `handoff_to_human()`:**
+- Function em `services/interactions.py` que cria ticket `aguarda_humano`, pausa IA na conversa WA, grava interaction tipo handoff, retorna `{handoff_id, ticket_id, interaction_id}`.
+- Rotas `POST /api/interactions/handoff` + `GET /api/interactions/handoffs`.
+
+**Item 6 — `interactions` (Timeline 360°):**
+- Coleção append-only, 9 canais (whatsapp/ticket/lousa/isabella/phone/email/handoff/cto/note). `record_interaction()` para chokepoints futuros.
+- Rotas `GET /api/interactions/360/{sub_id}` (timeline + counts_by_channel) + `POST /api/interactions`.
+- Drawer UI `SubscriberInteractionsDrawer` em SubscribersPanel (botão MessageCircle por linha).
+
+**Testes:** 18/19 backend OK (`tests/test_iter242_isabella_neg_and_interactions.py`). 1 bug corrigido: `/handoffs` default `status='aberto'` falhava por `STATUS_ALIASES` (normaliza para `'aberta'`). Fix: `$in [aberta, aberto, pendente]`. Drawer validado manualmente.
+
+**Próximo natural:** ligar chokepoints existentes — marker_router `[ROTEAR_HUMANO]` chamar `handoff_to_human()`; whatsapp_baileys gravar `record_interaction()` em inbound/outbound; lousa emitir em criar/finalizar.
+
+---
+
 ## 💰 P0 CEO — Treasury Filial completa (15/02/2026 · CTO)
 
 **Pedido:** (1) Coluna "Filial" na tabela A Pagar, (2) Mini-card KPI "Total por filial" no header do TreasuryPanel, (3) Endpoint backend para Custom GPT do CEO consultar gastos por filial.
