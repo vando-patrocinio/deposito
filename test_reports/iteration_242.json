@@ -1,0 +1,55 @@
+{
+  "summary": "Iter242 — P0 CTO 8→7→6: Isabella negotiation guardrails + handoff_to_human + interactions 360°. Backend 18/19 (1 documenta bug real). Frontend: IsabellaNegotiationRulesCard 100% funcional. Drawer SubscribersPanel não testado em runtime (lista de assinantes não carregou no tempo do click — selector sub-timeline-* não foi encontrado).",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {
+        "endpoint": "GET /api/interactions/handoffs",
+        "issue": "Default status='aberto' SEMPRE retorna count=0. Causa: routes/interactions.py:109 defaulta status='aberto' mas services/interactions.py:153 cria ticket com status='aberto' que é normalizado para 'aberta' por services/ticket_schema.py STATUS_ALIASES (aberto→aberta) via database.py::normalize_ticket_payload. Fix: trocar default em routes/interactions.py para 'aberta', OU mudar handoff_to_human para gravar 'aberta' diretamente, OU adicionar both no $in. Workaround atual: chamar ?status=aberta funciona."
+      }
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [
+      {
+        "flow": "SubscribersPanel → sub-timeline button → drawer",
+        "issue": "No teste E2E, ao clicar em 'Assinantes' na sidebar, nenhum botão data-testid='sub-timeline-*' foi localizado no tempo de espera (4s). Pode ser apenas timing/lazy-load OR coleção subscribers de co-demo não está sendo paginada no painel atual. Sub-timeline button existe no source (SubscribersPanel.js linha ~427-430) — confirmado via grep. RECOMENDAÇÃO: main agent verificar se a listagem está carregando assinantes do co-demo na rota /api/subscribers, e se filtros default (search vazio, paginação) trazem resultados.",
+        "affected_selectors": ["[data-testid^='sub-timeline-']", "[data-testid='interactions-drawer']"]
+      }
+    ],
+    "design_issues": [
+      {
+        "screen": "Console errors (qualquer tela)",
+        "issues": [
+          "Repetido: 'Encountered two children with the same key' — duplicate React keys (não bloqueia funcionalidade mas indica bug de render em alguma listagem. Verificar componentes que mapeiam arrays sem key estável)",
+          "Repetido: 'The width(-1) and height(-1) of chart should be greater than 0' — Recharts containers sem dimensão definida (warning)"
+        ]
+      }
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter242_isabella_neg_and_interactions.py",
+    "/app/test_reports/pytest/iter242_results.xml"
+  ],
+  "action_items": [
+    "FIX backend: /api/interactions/handoffs default status. Opção mais simples: alterar routes/interactions.py:109 de status='aberto' para status='aberta' (alinhar com normalização do ticket_schema). OU usar $in: ['aberto','aberta','pendente'] para robustez.",
+    "VERIFY frontend: confirmar manualmente que SubscribersPanel lista assinantes do co-demo e que botão sub-timeline-<id> abre o drawer. Se OK, o teste falhou apenas por timing.",
+    "OPTIONAL: corrigir duplicate React key warnings (não bloqueante) e Recharts width/height warnings."
+  ],
+  "critical_code_review_comments": [
+    "services/interactions.py::handoff_to_human grava status='aberto' que é normalizado para 'aberta'. Não há documentação inline alertando que rotas downstream devem filtrar por 'aberta'. Adicionar comentário ou usar constante compartilhada com STATUS_CANONICAL.",
+    "routes/isabella_negotiation.py PUT exige 'administrador' — bom, mas no test_can_offer chamado por gestor a função grava attempts no audit log com actor='test:<email>' — pode poluir auditoria se usado em volume. Considerar coleção separada negotiation_simulations conforme docstring sugere (linha 56-58) mas a implementação atual usa negotiation_attempts.",
+    "services/interactions.py: handoff_to_human não é idempotente — múltiplos handoffs para mesmo subscriber em curto intervalo criam múltiplos tickets aguarda_humano. Considerar guard 'já existe ticket aberto desse subscriber nas últimas N horas'."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter242_isabella_neg_and_interactions.py"
+  ],
+  "success_rate": {"backend": "94% (18/19)", "frontend": "50% (Settings card 100%, drawer não validado por timing)"},
+  "test_credentials": "admin@empresa.com / 123456 (PREVIEW super admin). JWT manual via auth.create_access_token com is_super_admin=True.",
+  "seed_data_creation": "Criou 2 tickets aguarda_humano + várias interactions handoff/note no subscriber sub-5a653fc4a747 (co-demo). Negotiation rules deixadas em failsafe (tudo OFF) ao final do teste — fixture autouse garante reset.",
+  "retest_needed": true,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Para retestar drawer: navegar Assinantes na sidebar (collapse Clientes primeiro), aguardar lista renderizar (~5s), depois clicar sub-timeline-<id> de qualquer subscriber. Fluxo backend 100% OK — o pytest cobre tudo (rules CRUD, can_offer 4 ações, audit log, handoff 400s, timeline 360, post note, listagem handoffs com workaround status=aberta).",
+  "rca of the issue": "BUG GET /api/interactions/handoffs?status=aberto retorna 0: handoff_to_human() escreve status='aberto' → normalize_ticket_payload (chamado por insert_one wrapper em database.py) aplica STATUS_ALIASES que mapeia 'aberto'→'aberta' → DB armazena 'aberta' → route default filtra 'aberto' → match vazio. Reprodução: POST /api/interactions/handoff cria ticket, GET /api/interactions/handoffs (sem param) retorna count=0, GET ?status=aberta retorna o ticket. Mitigação imediata: trocar default da rota para 'aberta'."
+}

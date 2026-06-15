@@ -6,6 +6,7 @@ import {
   Filter, Download, Printer, Mail, MessageCircle, RefreshCw, Phone,
 } from "lucide-react";
 import WifiStatusCard from "./WifiStatusCard";
+import SubscriberInteractionsDrawer from "./components/SubscriberInteractionsDrawer";
 
 const STATUS_OPTIONS = [
   "ATIVO", "BLOQUEADO", "SUSPENSO", "CANCELADO",
@@ -43,6 +44,7 @@ export default function SubscribersPanel() {
   const [advOpen, setAdvOpen] = useState(false);
   const [editing, setEditing] = useState(null);
   const [historyOf, setHistoryOf] = useState(null);
+  const [timelineOf, setTimelineOf] = useState(null);
   const [showImport, setShowImport] = useState(false);
   const [showNoPlan, setShowNoPlan] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -422,6 +424,10 @@ export default function SubscribersPanel() {
                       className="btn btn-ghost btn-sm" data-testid={`sub-history-${s.id}`}>
                       <History size={12} />
                     </button>
+                    <button onClick={() => setTimelineOf(s)} title="Histórico 360°"
+                      className="btn btn-ghost btn-sm" data-testid={`sub-timeline-${s.id}`}>
+                      <MessageCircle size={12} />
+                    </button>
                   </div>
                 </td>
               </tr>
@@ -429,6 +435,13 @@ export default function SubscribersPanel() {
           </tbody>
         </table>
       </div>
+
+      {timelineOf && (
+        <SubscriberInteractionsDrawer
+          subscriberId={timelineOf.id}
+          onClose={() => setTimelineOf(null)}
+        />
+      )}
 
       {/* Paginação */}
       {pages > 1 && (

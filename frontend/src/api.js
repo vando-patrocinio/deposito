@@ -1376,6 +1376,25 @@ export const api = {
   subscribersUpdate: (id, d) => client.patch(`/subscribers/${id}`, d).then((r) => r.data),
   subscribersDelete: (id) => client.delete(`/subscribers/${id}`).then((r) => r.data),
   subscribersHistory: (id) => client.get(`/subscribers/${id}/history`).then((r) => r.data),
+
+  // ===== Isabella Negotiation Rules (P0 CTO 2026-02) =====
+  isabellaNegotiationRules: () => client.get(`/isabella/negotiation-rules`).then((r) => r.data),
+  isabellaNegotiationRulesUpdate: (rules) =>
+    client.put(`/isabella/negotiation-rules`, { rules }).then((r) => r.data),
+  isabellaNegotiationTest: (body) =>
+    client.post(`/isabella/negotiation-rules/test`, body).then((r) => r.data),
+  isabellaNegotiationAttempts: (params = {}) =>
+    client.get(`/isabella/negotiation-attempts`, { params }).then((r) => r.data),
+
+  // ===== Interactions 360° (P0 CTO 2026-02) =====
+  interactions360: (subscriberId, params = {}) =>
+    client.get(`/interactions/360/${subscriberId}`, { params }).then((r) => r.data),
+  interactionsCreate: (body) =>
+    client.post(`/interactions`, body).then((r) => r.data),
+  interactionsHandoff: (body) =>
+    client.post(`/interactions/handoff`, body).then((r) => r.data),
+  interactionsHandoffsList: (status = "aberto") =>
+    client.get(`/interactions/handoffs`, { params: { status } }).then((r) => r.data),
   subscribersMatchPhone: (phone) =>
     client.post(`/subscribers/match-phone`, { phone }).then((r) => r.data),
   subscribersConflicts: () => client.get(`/subscribers/conflicts`).then((r) => r.data),

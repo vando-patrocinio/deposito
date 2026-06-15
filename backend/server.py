@@ -167,6 +167,8 @@ from routes import (
     boleto_template as routes_boleto_template,
     projects as routes_projects,
     isabella_prompt as routes_isabella_prompt,
+    isabella_negotiation as routes_isabella_negotiation,
+    interactions as routes_interactions,
     pricing_catalog as routes_pricing_catalog,
     gestao_ia as routes_gestao_ia,
     isabella_kpis as routes_isabella_kpis,
@@ -1377,6 +1379,8 @@ app.include_router(routes_voice.router)
 app.include_router(routes_wa_baileys.router)
 app.include_router(routes_wa_business_hours.router)
 app.include_router(routes_isabella_prompt.router)
+app.include_router(routes_isabella_negotiation.router)
+app.include_router(routes_interactions.router)
 app.include_router(routes_pricing_catalog.router)
 app.include_router(routes_central_ia.router)
 app.include_router(routes_rede_ia.router)

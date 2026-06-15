@@ -14,6 +14,7 @@ import OsValidationTogglesCard from "@/OsValidationTogglesCard";
 import PhotoRequirementsCard from "@/PhotoRequirementsCard";
 import PreventiveOsCard from "@/PreventiveOsCard";
 import WhatsAppTestModeCard from "@/WhatsAppTestModeCard";
+import IsabellaNegotiationRulesCard from "@/components/IsabellaNegotiationRulesCard";
 
 
 function CollabAppFeaturesCard() {
@@ -645,6 +646,7 @@ export default function SettingsPanel() {
 
       <BrandingCard />
       <MotorIaCard />
+      <IsabellaNegotiationRulesCard />
       <WhatsAppTestModeCard />
       <RetiradaTemplateCard />
       <OsValidationTogglesCard />
