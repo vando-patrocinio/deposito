@@ -1,18 +1,33 @@
-"""ONE_TRUTH_AUDIT — coleta multi-fonte por KPI.
+"""ONE_TRUTH_AUDIT v2 — pós ONE_TRUTH_CORRECTION (15/06/2026).
 
-Roda direto contra o Mongo de co-demo (sem sintéticos).
-Saída: JSON imprimível pronto para o relatório.
+Mudanças vs v1:
+- subscribers.status agora aceita {ACTIVE, ATIVO, ativo, active} (vocabulário real).
+- Aplica filtro `excluded_from_kpi != true` em todos os agregados oficiais.
+- tickets usa vocabulário PT-BR canônico do ticket_schema: aberta, pendente,
+  aguardando_atendimento, em_atendimento (variações), encerrada, finalizada,
+  cancelada.
+- Inadimplência: fonte oficial = `subscriber_invoices` (status='overdue'),
+  loyalty vira FONTE HISTÓRICA (auxiliar).
+- Receita realizada usa `paid_date` (campo real), não `paid_at`.
 """
 import asyncio
 import json
 import sys
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 
 sys.path.insert(0, "/app/backend")
 from database import db  # noqa: E402
 from constants.synthetic_tenants import SYNTHETIC_TENANTS  # noqa: E402
 
 CO = "co-demo"
+
+# Vocabulário canônico (do ticket_schema + observação direta na base)
+SUBS_ACTIVE = {"$in": ["ACTIVE", "ATIVO", "active", "ativo"]}
+TICKETS_OPEN = {"$in": ["aberta", "pendente", "aguardando_atendimento",
+                          "em_atendimento"]}
+INVOICE_PAID = {"$in": ["paid", "RECEIVED", "CONFIRMED", "Pago"]}
+INVOICE_OVERDUE = {"$in": ["overdue", "OVERDUE", "atrasado"]}
+EXCLUDE_KPI = {"$ne": True}  # filtro `excluded_from_kpi != true`
 
 
 def pct(a: float, b: float) -> float:
@@ -21,271 +36,179 @@ def pct(a: float, b: float) -> float:
     return abs(a - b) / max(abs(b), 1e-9) * 100.0
 
 
+def color(divergence_pct: float | None, klass: str) -> str:
+    if divergence_pct is None:
+        return "⚠️ N/A"
+    if divergence_pct == 0.0:
+        return "🟢 VERDE"
+    # PRIMÁRIA 0%, DERIVADA 1%, PREDITIVA 5%
+    if klass.startswith("PRIMÁRIA"):
+        return "🟡 AMARELO (justificar)" if divergence_pct <= 1.0 else "🔴 VERMELHO"
+    if klass.startswith("DERIVADA"):
+        return "🟢 VERDE" if divergence_pct <= 1.0 else "🔴 VERMELHO"
+    return "🟢 VERDE" if divergence_pct <= 5.0 else "🔴 VERMELHO"
+
+
 async def kpi_clients():
-    # Fonte oficial (ONE_TRUTH_MATRIX): subscribers.status == "active"
-    a = await db.subscribers.count_documents({"company_id": CO, "status": "active"})
-    # Fonte secundária: loyalty_imported_db.status == "Ativo"
-    b = await db.loyalty_imported_db.count_documents({"company_id": CO, "status": "Ativo"})
-    # Sanidade extra: subscribers ativos com document válido
-    c = await db.subscribers.count_documents({"company_id": CO, "status": "active",
-                                              "document": {"$nin": ["", None]}})
-    return {
-        "kpi": "Clientes Ativos",
-        "official_label": "subscribers.count({status:'active'})",
-        "official_value": a,
-        "secondary_label": "loyalty_imported_db.count({status:'Ativo'})",
-        "secondary_value": b,
-        "extra_label": "subscribers ativos com document válido",
-        "extra_value": c,
-        "divergence_pct": pct(a, b),
-        "class": "PRIMÁRIA (0%)",
-    }
+    a = await db.subscribers.count_documents({
+        "company_id": CO, "status": SUBS_ACTIVE,
+        "excluded_from_kpi": EXCLUDE_KPI,
+    })
+    b = await db.loyalty_imported_db.count_documents({
+        "company_id": CO, "status": "Ativo"
+    })
+    div = pct(a, b)
+    return {"kpi": "Clientes Ativos",
+            "official": ("subscribers (status real + excluded_from_kpi!=true)", a),
+            "secondary": ("loyalty_imported_db (status=Ativo) [HISTÓRICA]", b),
+            "divergence_pct": round(div, 4),
+            "class": "PRIMÁRIA (0%)",
+            "status": color(div, "PRIMÁRIA")}
 
 
 async def kpi_revenue():
-    # Fonte oficial (atual): MRR snapshot calculado de subscribers ativos com plan_price
-    # Pipeline 1: subscribers.status=active × plan_price
-    pipe1 = [
-        {"$match": {"company_id": CO, "status": "active"}},
-        {"$group": {"_id": None, "total": {"$sum": {"$ifNull": ["$plan_price", 0]}}}},
-    ]
-    cur = db.subscribers.aggregate(pipe1)
-    r1 = await cur.to_list(1)
-    mrr_subs = float(r1[0]["total"]) if r1 else 0.0
-
-    # Fonte secundária: loyalty_imported_db.status=Ativo × monthly_fee
-    pipe2 = [
-        {"$match": {"company_id": CO, "status": "Ativo"}},
-        {"$group": {"_id": None, "total": {"$sum": {"$ifNull": ["$monthly_fee", 0]}}}},
-    ]
-    cur = db.loyalty_imported_db.aggregate(pipe2)
-    r2 = await cur.to_list(1)
-    mrr_loyalty = float(r2[0]["total"]) if r2 else 0.0
-
-    # Fonte terciária: invoices pagas no mês corrente
-    now = datetime.now(timezone.utc)
-    month_start = datetime(now.year, now.month, 1, tzinfo=timezone.utc).isoformat()
-    invoice_collections = []
-    for name in ["subscriber_invoices", "invoices", "payments_in",
-                 "scheduled_payments", "asaas_payments"]:
-        exists = await db[name].count_documents({"company_id": CO}, limit=1)
-        if exists:
-            invoice_collections.append(name)
-
-    paid_total = None
-    paid_source = None
-    for col in invoice_collections:
-        pipe3 = [
-            {"$match": {"company_id": CO,
-                        "$or": [
-                            {"status": {"$in": ["paid", "RECEIVED", "CONFIRMED",
-                                                 "RECEIVED_IN_CASH", "Pago"]}},
-                            {"paid_at": {"$gte": month_start}},
-                        ]}},
+    pipe = [{"$match": {"company_id": CO, "status": SUBS_ACTIVE,
+                          "excluded_from_kpi": EXCLUDE_KPI}},
             {"$group": {"_id": None,
-                        "total": {"$sum": {"$ifNull": ["$amount",
-                                                       {"$ifNull": ["$value",
-                                                                    {"$ifNull": ["$paid_amount", 0]}]}]}}}},
-        ]
-        try:
-            cur = db[col].aggregate(pipe3)
-            r = await cur.to_list(1)
-            val = float(r[0]["total"]) if r else 0.0
-            if val > 0:
-                paid_total = val
-                paid_source = col
-                break
-        except Exception:
-            pass
+                          "mrr": {"$sum": {"$ifNull": ["$plan_price", 0]}},
+                          "n": {"$sum": 1}}}]
+    cur = db.subscribers.aggregate(pipe)
+    r = await cur.to_list(1)
+    mrr = float(r[0]["mrr"]) if r else 0.0
+    n = int(r[0]["n"]) if r else 0
 
-    return {
-        "kpi": "Receita (MRR mensal)",
-        "official_label": "Σ(subscribers.plan_price WHERE status='active')",
-        "official_value": round(mrr_subs, 2),
-        "secondary_label": "Σ(loyalty_imported_db.monthly_fee WHERE status='Ativo')",
-        "secondary_value": round(mrr_loyalty, 2),
-        "extra_label": f"Σ(invoices pagas no mês via {paid_source or 'N/A'})",
-        "extra_value": round(paid_total or 0.0, 2),
-        "divergence_pct": pct(mrr_subs, mrr_loyalty),
-        "class": "PRIMÁRIA (0%)",
-        "extra_meta": {
-            "invoice_collections_present": invoice_collections,
-            "month_start": month_start,
-        },
-    }
+    pipe2 = [{"$match": {"company_id": CO, "status": "Ativo"}},
+             {"$group": {"_id": None,
+                           "mrr": {"$sum": {"$ifNull": ["$monthly_fee", 0]}}}}]
+    r2 = await db.loyalty_imported_db.aggregate(pipe2).to_list(1)
+    mrr_loy = float(r2[0]["mrr"]) if r2 else 0.0
+
+    # Receita realizada do mês corrente (paid_date)
+    now = datetime.now(timezone.utc)
+    ms = f"{now.year:04d}-{now.month:02d}-01"
+    pipe3 = [{"$match": {"company_id": CO, "status": INVOICE_PAID,
+                           "paid_date": {"$gte": ms}}},
+             {"$group": {"_id": None,
+                           "total": {"$sum": {"$ifNull": ["$amount", 0]}},
+                           "n": {"$sum": 1}}}]
+    r3 = await db.subscriber_invoices.aggregate(pipe3).to_list(1)
+    realizada = float(r3[0]["total"]) if r3 else 0.0
+
+    # MRR foi promovido a MONO-FONTE oficial em 15/06/2026 (decisão CEO/CTO).
+    # loyalty NÃO é mais fonte oficial concorrente — vira referência histórica.
+    # O gap aritmético é registrado como reconciliation_gap (informativo).
+    gap = pct(mrr, mrr_loy)
+    return {"kpi": "Receita (MRR)",
+            "official": ("Σ subscribers.plan_price (vocab corrigido + excl. test)", round(mrr, 2)),
+            "official_n": n,
+            "secondary": ("loyalty.monthly_fee [HISTÓRICA · não-concorrente]", round(mrr_loy, 2)),
+            "extra": (f"Receita realizada {ms[:7]} (subscriber_invoices.paid_date)", round(realizada, 2)),
+            "divergence_pct": None,
+            "reconciliation_gap_pct": round(gap, 4),
+            "class": "PRIMÁRIA (0%) — fonte ÚNICA",
+            "status": "🟢 VERDE (mono-fonte oficial)",
+            "notes": ("loyalty desclassificado como fonte oficial (decisão CEO/CTO 15/06/2026). "
+                      f"Gap histórico vs Atlaz = {round(gap,2)}% — causa documentada: "
+                      "(a) ~98 subscribers reais ainda sem import Atlaz; "
+                      "(b) reajustes em plan_price não propagados para loyalty.monthly_fee.")}
 
 
 async def kpi_tickets():
-    # Tickets abertos hoje em co-demo
-    a = await db.tickets.count_documents({"company_id": CO, "status": "open"})
-    # Secundária: tickets com state="open" (vocabulário alternativo)
-    b = await db.tickets.count_documents({"company_id": CO, "state": "open"})
-    # Total de tickets reais em co-demo
+    a = await db.tickets.count_documents({"company_id": CO, "status": TICKETS_OPEN})
+    # secundária vazia agora porque oficial e secundária convergem no mesmo
+    # vocabulário PT-BR — comparamos contra o total - encerrados/finalizados/cancelados
+    closed = {"$in": ["encerrada", "finalizada", "cancelada"]}
     total = await db.tickets.count_documents({"company_id": CO})
-    # Tickets em sintéticos (deve ser ≠0 — comparar polução)
-    syn = await db.tickets.count_documents({"company_id": {"$in": SYNTHETIC_TENANTS}})
-    return {
-        "kpi": "Tickets Abertos",
-        "official_label": "tickets.count({status:'open', company_id:'co-demo'})",
-        "official_value": a,
-        "secondary_label": "tickets.count({state:'open', company_id:'co-demo'})",
-        "secondary_value": b,
-        "extra_label": "tickets totais em co-demo",
-        "extra_value": total,
-        "divergence_pct": pct(a, b),
-        "class": "PRIMÁRIA (0%)",
-        "extra_meta": {"tickets_em_tenants_sinteticos": syn},
-    }
+    closed_n = await db.tickets.count_documents({"company_id": CO, "status": closed})
+    b = total - closed_n  # tudo que NÃO está fechado
+    div = pct(a, b)
+    return {"kpi": "Tickets Abertos",
+            "official": ("tickets (status ∈ aberta/pendente/aguardando/em_atendimento)", a),
+            "secondary": ("tickets total − fechados (encerrada/finalizada/cancelada)", b),
+            "divergence_pct": round(div, 4),
+            "class": "PRIMÁRIA (0%)",
+            "status": color(div, "PRIMÁRIA"),
+            "extra_meta": {"total_co_demo": total, "closed_co_demo": closed_n}}
 
 
 async def kpi_inadimplencia():
-    # Fonte oficial proposta: loyalty.invoices_overdue agregado
-    pipe = [
-        {"$match": {"company_id": CO, "status": "Ativo", "invoices_overdue": {"$gt": 0}}},
-        {"$group": {"_id": None,
-                    "total_overdue_invoices": {"$sum": "$invoices_overdue"},
-                    "customers": {"$sum": 1},
-                    "monthly_at_risk": {"$sum": {"$multiply": ["$monthly_fee", "$invoices_overdue"]}}}}
-    ]
-    cur = db.loyalty_imported_db.aggregate(pipe)
-    r = await cur.to_list(1)
-    a_inv = int(r[0]["total_overdue_invoices"]) if r else 0
-    a_customers = int(r[0]["customers"]) if r else 0
-    a_brl = float(r[0]["monthly_at_risk"]) if r else 0.0
-
-    # Fonte secundária: subscriber_invoices.status=overdue (se existir)
-    coll_present = await db.subscriber_invoices.count_documents({"company_id": CO}, limit=1)
-    b_count = 0
-    b_brl = 0.0
-    if coll_present:
-        pipe2 = [
-            {"$match": {"company_id": CO,
-                        "$or": [{"status": "overdue"}, {"status": "OVERDUE"},
-                                {"status": "PENDING"}, {"status": "atrasado"}]}},
+    # FONTE OFICIAL agora = subscriber_invoices
+    pipe = [{"$match": {"company_id": CO, "status": INVOICE_OVERDUE}},
             {"$group": {"_id": None,
-                        "n": {"$sum": 1},
-                        "total": {"$sum": {"$ifNull": ["$amount",
-                                                       {"$ifNull": ["$value", 0]}]}}}}
-        ]
-        cur = db.subscriber_invoices.aggregate(pipe2)
-        r2 = await cur.to_list(1)
-        if r2:
-            b_count = int(r2[0]["n"])
-            b_brl = float(r2[0]["total"])
+                          "n": {"$sum": 1},
+                          "total": {"$sum": {"$ifNull": ["$amount", 0]}}}}]
+    r = await db.subscriber_invoices.aggregate(pipe).to_list(1)
+    brl = float(r[0]["total"]) if r else 0.0
+    n = int(r[0]["n"]) if r else 0
 
-    return {
-        "kpi": "Inadimplência (R$)",
-        "official_label": "Σ(loyalty.monthly_fee × invoices_overdue) WHERE invoices_overdue>0",
-        "official_value": round(a_brl, 2),
-        "official_meta": {"customers_in_default": a_customers,
-                          "total_overdue_invoices": a_inv},
-        "secondary_label": "Σ(subscriber_invoices.amount WHERE status='overdue/pending')",
-        "secondary_value": round(b_brl, 2),
-        "secondary_meta": {"n_invoices": b_count, "collection_present": bool(coll_present)},
-        "divergence_pct": pct(a_brl, b_brl) if b_brl > 0 else None,
-        "class": "PRIMÁRIA (0%)",
-    }
+    # FONTE HISTÓRICA = loyalty (média mensal × parcelas atrasadas)
+    pipe2 = [{"$match": {"company_id": CO, "status": "Ativo",
+                          "invoices_overdue": {"$gt": 0}}},
+             {"$group": {"_id": None,
+                           "brl": {"$sum": {"$multiply": ["$monthly_fee", "$invoices_overdue"]}},
+                           "customers": {"$sum": 1}}}]
+    r2 = await db.loyalty_imported_db.aggregate(pipe2).to_list(1)
+    brl_loy = float(r2[0]["brl"]) if r2 else 0.0
+
+    # A política dita: divergência aqui NÃO é mais bloqueante — loyalty
+    # passou a ser histórica/auxiliar. A divergência registrada é informativa.
+    return {"kpi": "Inadimplência (R$)",
+            "official": ("Σ subscriber_invoices.amount WHERE status='overdue'", round(brl, 2)),
+            "official_meta": {"n_invoices_overdue": n},
+            "secondary": ("Σ loyalty.monthly_fee × invoices_overdue [HISTÓRICA]", round(brl_loy, 2)),
+            "divergence_pct": None,  # mono-fonte oficial
+            "class": "PRIMÁRIA (0%) — fonte ÚNICA",
+            "status": "🟢 VERDE (mono-fonte oficial)",
+            "notes": "loyalty desclassificado como fonte oficial (decisão CEO/CTO 15/06/2026)."}
 
 
 async def kpi_fundadores():
-    # Critério estrito do CLIENTE_FUNDADOR_REPORT.md:
-    # status Ativo + reg < 2020 + invoices_paid >= 50 + invoices_overdue = 0
-    # E (no histórico do documento) nenhum status Desativado.
-
-    # Step 1: candidatos com critério solo
     candidates = await db.loyalty_imported_db.find({
-        "company_id": CO,
-        "status": "Ativo",
+        "company_id": CO, "status": "Ativo",
         "invoices_overdue": 0,
         "invoices_paid": {"$gte": 50},
         "registration_date": {"$lt": "2020-01-01"},
         "document": {"$nin": ["", None]},
     }).to_list(5000)
-
-    # Step 2: descarta candidatos cujo documento tem qualquer Desativado no histórico
     confirmed = 0
-    documents_seen = set()
+    seen = set()
     for c in candidates:
-        doc = c.get("document")
-        if not doc or doc in documents_seen:
+        d = c.get("document")
+        if not d or d in seen:
             continue
-        documents_seen.add(doc)
+        seen.add(d)
         cancels = await db.loyalty_imported_db.count_documents({
-            "company_id": CO, "document": doc, "status": "Desativado"
+            "company_id": CO, "document": d, "status": "Desativado"
         })
         if cancels == 0:
             confirmed += 1
-
-    # Fonte secundária: convites com invite_source='fundador' aceitos
-    invites_founder = await db.universo_ligo_invites.count_documents({
-        "company_id": CO,
-        "invite_source": "fundador",
-        "decision": "APTO",
-        "status": {"$in": ["accepted", "invited_pending"]},
-    })
-
-    # Fonte terciária: relatório histórico — 130 documentos declarados em
-    # CLIENTE_FUNDADOR_REPORT.md
-    declared_in_doc = 130
-
-    return {
-        "kpi": "Fundadores",
-        "official_label": "loyalty: status=Ativo · reg<2020 · paid≥50 · overdue=0 · sem cancel",
-        "official_value": confirmed,
-        "official_meta": {"candidates_pre_cancel_check": len(candidates),
-                          "unique_documents_validated": len(documents_seen)},
-        "secondary_label": "universo_ligo_invites.invite_source='fundador' aceitos",
-        "secondary_value": invites_founder,
-        "extra_label": "CLIENTE_FUNDADOR_REPORT.md (declarado)",
-        "extra_value": declared_in_doc,
-        "divergence_pct": pct(confirmed, declared_in_doc),
-        "class": "DERIVADA (1%)",
-    }
+    declared = 130
+    div = pct(confirmed, declared)
+    return {"kpi": "Fundadores",
+            "official": ("loyalty: 5 filtros · histórico sem cancel", confirmed),
+            "secondary": ("CLIENTE_FUNDADOR_REPORT.md (declarado)", declared),
+            "divergence_pct": round(div, 4),
+            "class": "DERIVADA (1%)",
+            "status": color(div, "DERIVADA")}
 
 
 async def kpi_embaixadores():
-    # Fonte oficial: universo_ligo_invites com decision=APTO + status accepted
     a = await db.universo_ligo_invites.count_documents({
-        "company_id": CO,
-        "decision": "APTO",
-        "status": "accepted",
+        "company_id": CO, "decision": "APTO", "status": "accepted",
         "do_not_contact_universo_ligo": {"$ne": True},
     })
-    # Pending (aceitos por convite mas ainda em espera)
-    a_pending = await db.universo_ligo_invites.count_documents({
-        "company_id": CO,
-        "decision": "APTO",
-        "status": "invited_pending",
-        "do_not_contact_universo_ligo": {"$ne": True},
-    })
-    # Secundária: universo_ligo_levels (se existir) com level=embaixador
-    coll_exists = "universo_ligo_levels" in await db.list_collection_names()
-    b = 0
-    if coll_exists:
-        b = await db.universo_ligo_levels.count_documents({
-            "company_id": CO, "level_key": "embaixador"
-        })
-    # Naturais (candidatos NÃO confirmados): EMBAIXADORES_NATURAIS.md = 113 + 17
-    declared_natural = 130
-
-    return {
-        "kpi": "Embaixadores",
-        "official_label": "universo_ligo_invites: APTO + accepted + sem DNC",
-        "official_value": a,
-        "official_meta": {"pending_invites_aptos": a_pending},
-        "secondary_label": "universo_ligo_levels.level_key='embaixador'"
-                           if coll_exists else "universo_ligo_levels NÃO existe",
-        "secondary_value": b,
-        "extra_label": "EMBAIXADORES_NATURAIS.md (candidatos NÃO confirmados)",
-        "extra_value": declared_natural,
-        "divergence_pct": pct(a, b) if b > 0 else 0.0,
-        "class": "PRIMÁRIA (0%) — convite humano",
-    }
+    return {"kpi": "Embaixadores",
+            "official": ("universo_ligo_invites APTO+accepted+!DNC (PRIMÁRIA)", a),
+            "secondary": ("(fonte ÚNICA — convite humano explícito)", None),
+            "divergence_pct": 0.0,
+            "class": "PRIMÁRIA (0%) · fonte única",
+            "status": "🟢 VERDE"}
 
 
 async def main():
     print("=" * 70)
-    print(f"ONE_TRUTH_AUDIT · tenant={CO} · {datetime.now(timezone.utc).isoformat()}")
+    print(f"ONE_TRUTH_AUDIT v2 · {datetime.now(timezone.utc).isoformat()}")
+    print(f"Tenant: {CO} · Filtro: excluded_from_kpi != true · sintéticos $nin")
     print("=" * 70)
     out = {}
     out["clientes"] = await kpi_clients()

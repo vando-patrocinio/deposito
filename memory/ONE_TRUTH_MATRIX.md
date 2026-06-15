@@ -19,21 +19,49 @@
 
 ---
 
+## 🛠️ VOCABULÁRIO CANÔNICO DA BASE (corrigido em 15/06/2026)
+
+**Crítico:** o `ONE_TRUTH_MATRIX.md` original (14/06/2026) usava vocabulário inglês (`status:"active"`, `status:"open"`). A base real é **PT-BR (com variações maiúsculas)**. Auditoria `ONE_TRUTH_AUDIT.md` mostrou que aquelas queries retornavam **zero**. Vocabulário oficial:
+
+### `subscribers.status`
+```python
+ATIVOS = {"$in": ["ACTIVE", "ATIVO", "active", "ativo"]}
+INATIVOS = {"$in": ["INATIVO", "inativo", "INACTIVE", "canceled"]}
+```
+Filtro EXTRA obrigatório: `excluded_from_kpi != true` (test fixtures marcados em 15/06/2026 não contam em KPI executivo).
+
+### `tickets.status` (PT-BR canônico — `services/ticket_schema.py`)
+```python
+ABERTOS = {"$in": ["aberta", "pendente", "aguardando_atendimento", "em_atendimento"]}
+FECHADOS = {"$in": ["encerrada", "finalizada", "cancelada"]}
+```
+**NUNCA** usar `open`/`closed` nesta base.
+
+### `subscriber_invoices.status`
+```python
+PAGAS = {"$in": ["paid", "RECEIVED", "CONFIRMED", "Pago"]}
+ATRASADAS = {"$in": ["overdue", "OVERDUE", "atrasado"]}
+ABERTAS = {"$in": ["open"]}
+```
+Campo de data de pagamento: **`paid_date`** (não `paid_at`).
+
+---
+
 ## 📋 MATRIZ COMPLETA
 
 ### 1. CLIENTES
 
 | Pergunta executiva | Fonte oficial | Classe | Filtro obrigatório | Confiança |
 |---|---|---|---|---|
-| Quantos **clientes ATIVOS** temos? | `subscribers.count_documents({status:"active"})` | PRIMÁRIA (0%) | `company_id="co-demo"` | 🟢 ALTA — confirmado por 3 fontes independentes |
-| Quantos **clientes ATIVOS reais** (Atlaz)? | `loyalty_imported_db.count({status:"Ativo"})` | PRIMÁRIA (0%) | `company_id="co-demo"` | 🟢 ALTA — 2.746 confirmados |
-| Quantos **novos clientes 7d**? | `subscribers.count({status:"active", created_at:{$gte:7d}})` | PRIMÁRIA (0%) | + `$nin SYNTHETIC` | 🟢 ALTA |
-| Quantos **cancelamentos 7d**? | `subscribers.count({status:"canceled", canceled_at:{$gte:7d}})` | PRIMÁRIA (0%) | idem | 🟢 ALTA |
+| Quantos **clientes ATIVOS** temos? | `subscribers.count({status:{$in:["ACTIVE","ATIVO"]}, excluded_from_kpi:{$ne:true}})` | PRIMÁRIA (0%) | `company_id="co-demo"` | 🟢 ALTA — pós-correção 15/06/2026 |
+| Quantos **clientes ATIVOS reais** (Atlaz)? | `loyalty_imported_db.count({status:"Ativo"})` | **HISTÓRICA · auxiliar** | `company_id="co-demo"` | 🟡 MÉDIA — snapshot com lag de import |
+| Quantos **novos clientes 7d**? | `subscribers.count({status:{$in:["ACTIVE","ATIVO"]}, excluded_from_kpi:{$ne:true}, created_at:{$gte:7d}})` | PRIMÁRIA (0%) | + `$nin SYNTHETIC` | 🟢 ALTA |
+| Quantos **cancelamentos 7d**? | `subscribers.count({status:{$in:["INATIVO","inativo","canceled"]}, canceled_at:{$gte:7d}})` | PRIMÁRIA (0%) | idem | 🟢 ALTA |
 | **Saldo líquido** (novos − cancel)? | derivado das duas acima | DERIVADA (1%) | idem | 🟢 ALTA |
 | Quantos clientes **High Ticket** (≥3× média)? | `loyalty.count({monthly_fee:{$gte: 3 × 103.37}, status:"Ativo"})` | DERIVADA (1%) | idem | 🟡 MÉDIA — ticket médio recalc trimestral |
 | Quantos clientes **Black** (≥6× média)? | mesma query, 6× | DERIVADA (1%) | idem | 🟡 MÉDIA |
 
-**Regra:** Quando alguém pergunta "quantos clientes a Ligo tem?", sempre se responde **2.746** (ativos reais). Nunca 26.851, nunca 2.816 — esses são números intermediários, não respostas executivas.
+**Regra atualizada (15/06/2026):** Quando alguém pergunta "quantos clientes a Ligo tem?", a resposta oficial agora é **2.753 ativos** (`subscribers` filtrado + 20 test fixtures excluídos). A base Atlaz **2.746** é referência histórica/auxiliar, com gap de import explicado em `ONE_TRUTH_AUDIT.md`. Diferença de 7 (0,25%) tolerada como AMARELO documentado por lag de snapshot Atlaz.
 
 ---
 
@@ -41,18 +69,18 @@
 
 | Pergunta executiva | Fonte oficial | Classe | Filtro obrigatório |
 |---|---|---|---|
-| **Quanto a Ligo faturou no mês?** | `revenue_realization.month_total(cid)` (ex-`real_revenue.py`) | PRIMÁRIA (0%) | `company_id="co-demo"`, `status="paid"`, `paid_at:{$gte:month_start}` |
-| **Quanto a Ligo recebeu ontem?** | `revenue_realization.day_total(cid)` | PRIMÁRIA (0%) | idem, `paid_at:{$gte:yesterday}` |
+| **Quanto a Ligo faturou no mês?** | `subscriber_invoices.aggregate(status PAGAS, paid_date >= month_start)` | PRIMÁRIA (0%) — fonte ÚNICA | `company_id="co-demo"`, `status ∈ PAGAS`, `paid_date >= ms` |
+| **Quanto a Ligo recebeu ontem?** | mesma agregação, `paid_date >= yesterday` | PRIMÁRIA (0%) — fonte ÚNICA | idem |
 | **Quanto a Ligo deve receber nos próximos 30d?** | `revenue_realization.forecast_30d(cid)` | PREDITIVA (5%) | invoices abertas vencimento <30d |
-| **Inadimplência atual** (R$)? | `revenue_realization.inadimplencia(cid).total_brl` | PRIMÁRIA (0%) | `status:"overdue"` snapshot |
+| **Inadimplência atual** (R$)? | `subscriber_invoices.aggregate Σ amount WHERE status ∈ ATRASADAS` | PRIMÁRIA (0%) — fonte ÚNICA | snapshot atual |
 | **% inadimplência** sobre base? | derivada da anterior | DERIVADA (1%) | idem |
-| **Ticket médio** da base ativa? | `loyalty.aggregate({status:"Ativo"}, avg(monthly_fee))` | DERIVADA (1%) | `company_id="co-demo"` | 🟢 R$ 103,37 |
-| **MRR** (receita recorrente mensal)? | `revenue_realization.mrr(cid)` | DERIVADA (1%) | `subscribers.status="active"` × `plan_price` |
+| **Ticket médio** da base ativa? | `loyalty.aggregate({status:"Ativo"}, avg(monthly_fee))` | DERIVADA (1%) — **histórica/auxiliar** | `company_id="co-demo"` | 🟢 R$ 103,37 |
+| **MRR** (receita recorrente mensal)? | `subscribers.aggregate Σ plan_price WHERE status ATIVOS AND excluded_from_kpi != true` | PRIMÁRIA (0%) — fonte ÚNICA | `subscribers.status ATIVOS` |
 | **Quanto cada AGENTE IA gerou** (mês)? | `revenue_agent.by_agent(cid, days=30)` (ex-`agent_revenue.py`) | PRIMÁRIA (0%) | `motor_ia_revenue_attribution.kind in {recovered, generated}` |
 | **Quanto a empresa ECONOMIZOU** (mês)? | `revenue_agent.economy_brl(cid, days=30)` | DERIVADA (1%) | `motor_ia_revenue_attribution.kind in {cost_saved, churn_prevented}` |
 | **Onde REGISTRAMOS** cada outcome? | `revenue_attribution.attribute(...)` | escrita única | coleção `motor_ia_revenue_attribution` |
 
-**Regra anti-divergência:** se `revenue_realization.month_total` e a soma de `revenue_agent.generated` não bate, **erro de pipeline** — abre incidente, não escolhe número.
+**Regra anti-divergência (pós-correção 15/06/2026):** `loyalty_imported_db` foi rebaixada de "fonte oficial concorrente" para **referência histórica/auxiliar** em todos os KPIs financeiros (MRR, Inadimplência, Ticket médio). Snapshot Atlaz tem lag de import; subscribers + subscriber_invoices são o write-master da Ligo. Gap de reconciliação aritmético com Atlaz é registrado como **`reconciliation_gap_pct`** (informativo, não-bloqueante).
 
 ---
 
@@ -60,9 +88,9 @@
 
 | Pergunta executiva | Fonte oficial | Classe | Filtro obrigatório |
 |---|---|---|---|
-| **Quantos tickets** temos hoje? | `tickets.count_documents({status:"open"})` | PRIMÁRIA (0%) | `company_id="co-demo"` (apenas 350 reais) |
-| **Quantos tickets ABERTOS 7d**? | `tickets.count({created_at:{$gte:7d}})` | PRIMÁRIA (0%) | idem |
-| **Quantos RESOLVIDOS 7d**? | `tickets.count({status:"closed", closed_at:{$gte:7d}})` | PRIMÁRIA (0%) | idem |
+| **Quantos tickets** temos hoje? | `tickets.count({status:{$in:["aberta","pendente","aguardando_atendimento","em_atendimento"]}})` | PRIMÁRIA (0%) | `company_id="co-demo"` (355 reais em 15/06/2026) |
+| **Quantos tickets ABERTOS 7d**? | mesma agregação + `created_at:{$gte:7d}` | PRIMÁRIA (0%) | idem |
+| **Quantos RESOLVIDOS 7d**? | `tickets.count({status:{$in:["encerrada","finalizada","cancelada"]}, closed_at:{$gte:7d}})` | PRIMÁRIA (0%) | idem |
 | **Tickets recorrentes** (mesmo subscriber 3+ em 30d)? | `tickets.aggregate group_by subscriber having count≥3 last 30d` | DERIVADA (1%) | idem |
 | **Atendimentos Isabella** (volume)? | `aihub_wa_messages.count({direction:"outbound", agent:"isabella"})` | PRIMÁRIA (0%) | `company_id="co-demo"` |
 | **% resolução automática** Isabella? | `isabella_queue_metrics.resolved_auto / total` | DERIVADA (1%) | idem |

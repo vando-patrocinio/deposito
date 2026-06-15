@@ -1,0 +1,1232 @@
+{
+  "generated_at": "2026-06-15T01:08:04.076857+00:00",
+  "total_subs_active": 2773,
+  "total_divergent": 119,
+  "to_mark_count": 21,
+  "to_mark_ids": [
+    "sub-bb2cf01006",
+    "sub-test-62fa195c",
+    "sub-evol2-VIP-d55b7d",
+    "sub-evol2-OK-29c520",
+    "sub-evolfn2-low-a4b9c4",
+    "sub-evolfn2-mid-368e11",
+    "sub-evolfn2-high-a4b4db",
+    "sub-evol2-VIP-d740c8",
+    "sub-evol2-OK-172d49",
+    "sub-evolfn2-low-aabc4b",
+    "sub-evolfn2-mid-6044df",
+    "sub-evolfn2-high-b59b7f",
+    "sub-evol2-VIP-293686",
+    "sub-evol2-OK-08b6e8",
+    "sub-th55-a83483",
+    "sub-th80-5aa291",
+    "sub-r360-75d5929d",
+    "sub-r360-8a235762",
+    "sub-sim-bf492f21",
+    "sub-test-cpf-001",
+    "sub-5a653fc4a747"
+  ],
+  "list": [
+    {
+      "id": "sub-bb2cf01006",
+      "name": "Maria Cliente Ligo",
+      "document": "12345678900",
+      "plan_name": "100 Mega",
+      "plan_price": 99.9,
+      "created_at": "2026-06-04",
+      "status": "ATIVO",
+      "category": "demo_portal"
+    },
+    {
+      "id": "sub-2362a506ecc1",
+      "name": "JOSE ROBERTO DE OLIVEIRA",
+      "document": "04381899814",
+      "plan_name": null,
+      "plan_price": 99.9,
+      "created_at": "2026-06-06",
+      "status": "ATIVO",
+      "category": "real_recent_no_loyalty"
+    },
+    {
+      "id": "sub-3578efc97d6f",
+      "name": "FABIO CARVALHO DA CONCEICAO",
+      "document": "09691166755",
+      "plan_name": null,
+      "plan_price": 99.9,
+      "created_at": "2026-06-09",
+      "status": "ATIVO",
+      "category": "real_recent_no_loyalty"
+    },
+    {
+      "id": "sub-test-62fa195c",
+      "name": "Cliente Teste Evolução Final V2",
+      "document": null,
+      "plan_name": "Fibra 300MB",
+      "plan_price": 99.9,
+      "created_at": "2024-08-01",
+      "status": "ACTIVE",
+      "category": "test_fixture"
+    },
+    {
+      "id": "sub-evol2-VIP-d55b7d",
+      "name": "Teste-VIP",
+      "document": null,
+      "plan_name": "Fibra 300MB",
+      "plan_price": 99.9,
+      "created_at": "2025-01-01",
+      "status": "ACTIVE",
+      "category": "test_fixture"
+    },
+    {
+      "id": "sub-evol2-OK-29c520",
+      "name": "Teste-OK",
+      "document": null,
+      "plan_name": "Fibra 300MB",
+      "plan_price": 99.9,
+      "created_at": "2025-01-01",
+      "status": "ACTIVE",
+      "category": "test_fixture"
+    },
+    {
+      "id": "sub-evolfn2-low-a4b9c4",
+      "name": "evolfn2-low",
+      "document": null,
+      "plan_name": null,
+      "plan_price": 99.9,
+      "created_at": "",
+      "status": "ACTIVE",
+      "category": "test_fixture"
+    },
+    {
+      "id": "sub-evolfn2-mid-368e11",
+      "name": "evolfn2-mid",
+      "document": null,
+      "plan_name": null,
+      "plan_price": 99.9,
+      "created_at": "",
+      "status": "ACTIVE",
+      "category": "test_fixture"
+    },
+    {
+      "id": "sub-evolfn2-high-a4b4db",
+      "name": "evolfn2-high",
+      "document": null,
+      "plan_name": null,
+      "plan_price": 99.9,
+      "created_at": "",
+      "status": "ACTIVE",
+      "category": "test_fixture"
+    },
+    {
+      "id": "sub-evol2-VIP-d740c8",
+      "name": "Teste-VIP",
+      "document": null,
+      "plan_name": "Fibra 300MB",
+      "plan_price": 99.9,
+      "created_at": "2025-01-01",
+      "status": "ACTIVE",
+      "category": "test_fixture"
+    },
+    {
+      "id": "sub-evol2-OK-172d49",
+      "name": "Teste-OK",
+      "document": null,
+      "plan_name": "Fibra 300MB",
+      "plan_price": 99.9,
+      "created_at": "2025-01-01",
+      "status": "ACTIVE",
+      "category": "test_fixture"
+    },
+    {
+      "id": "sub-evolfn2-low-aabc4b",
+      "name": "evolfn2-low",
+      "document": null,
+      "plan_name": null,
+      "plan_price": 99.9,
+      "created_at": "",
+      "status": "ACTIVE",
+      "category": "test_fixture"
+    },
+    {
+      "id": "sub-evolfn2-mid-6044df",
+      "name": "evolfn2-mid",
+      "document": null,
+      "plan_name": null,
+      "plan_price": 99.9,
+      "created_at": "",
+      "status": "ACTIVE",
+      "category": "test_fixture"
+    },
+    {
+      "id": "sub-evolfn2-high-b59b7f",
+      "name": "evolfn2-high",
+      "document": null,
+      "plan_name": null,
+      "plan_price": 99.9,
+      "created_at": "",
+      "status": "ACTIVE",
+      "category": "test_fixture"
+    },
+    {
+      "id": "sub-evol2-VIP-293686",
+      "name": "Teste-VIP",
+      "document": null,
+      "plan_name": "Fibra 300MB",
+      "plan_price": 99.9,
+      "created_at": "2025-01-01",
+      "status": "ACTIVE",
+      "category": "test_fixture"
+    },
+    {
+      "id": "sub-evol2-OK-08b6e8",
+      "name": "Teste-OK",
+      "document": null,
+      "plan_name": "Fibra 300MB",
+      "plan_price": 99.9,
+      "created_at": "2025-01-01",
+      "status": "ACTIVE",
+      "category": "test_fixture"
+    },
+    {
+      "id": "sub-th55-a83483",
+      "name": "sub-th55-a83483",
+      "document": null,
+      "plan_name": null,
+      "plan_price": 99.9,
+      "created_at": "",
+      "status": "ACTIVE",
+      "category": "test_fixture"
+    },
+    {
+      "id": "sub-th80-5aa291",
+      "name": "sub-th80-5aa291",
+      "document": null,
+      "plan_name": null,
+      "plan_price": 99.9,
+      "created_at": "",
+      "status": "ACTIVE",
+      "category": "test_fixture"
+    },
+    {
+      "id": "sub-r360-75d5929d",
+      "name": "João da Silva",
+      "document": null,
+      "plan_name": null,
+      "plan_price": 99.9,
+      "created_at": "2026-03-12",
+      "status": "ATIVO",
+      "category": "test_fixture"
+    },
+    {
+      "id": "sub-r360-8a235762",
+      "name": "João da Silva",
+      "document": null,
+      "plan_name": null,
+      "plan_price": 99.9,
+      "created_at": "2026-03-12",
+      "status": "ATIVO",
+      "category": "test_fixture"
+    },
+    {
+      "id": "sub-sim-bf492f21",
+      "name": "Maria Silva",
+      "document": null,
+      "plan_name": null,
+      "plan_price": 99.9,
+      "created_at": "2025-12-12",
+      "status": "ATIVO",
+      "category": "test_fixture"
+    },
+    {
+      "id": "sub-45ab9cf8ab2e",
+      "name": "ASSOCIAÇÃO LUPERCE MIRANDA / AMLM",
+      "document": "59814890000118",
+      "plan_name": null,
+      "plan_price": 99.9,
+      "created_at": "2026-06-12",
+      "status": "ATIVO",
+      "category": "real_recent_no_loyalty"
+    },
+    {
+      "id": "sub-c5a9f2c58536",
+      "name": "VLADIMIR CORREA MEJIAS",
+      "document": "81687354804",
+      "plan_name": null,
+      "plan_price": 99.9,
+      "created_at": "2026-06-12",
+      "status": "ATIVO",
+      "category": "real_recent_no_loyalty"
+    },
+    {
+      "id": "sub-d8ec848958d5",
+      "name": "PAULO CESAR GUEDES DOS SANTOS",
+      "document": "41676041168",
+      "plan_name": null,
+      "plan_price": 99.9,
+      "created_at": "2026-06-12",
+      "status": "ATIVO",
+      "category": "real_recent_no_loyalty"
+    },
+    {
+      "id": "sub-c93cc2dafbc0",
+      "name": "ASSEMBLEIA DE DEUS UNA",
+      "document": "33768755000190",
+      "plan_name": null,
+      "plan_price": 99.9,
+      "created_at": "2026-06-12",
+      "status": "ATIVO",
+      "category": "real_recent_no_loyalty"
+    },
+    {
+      "id": "sub-d17f0e248577",
+      "name": "WELLERSON JOSÉ FERREIRA LEOPOLD",
+      "document": "14978612764",
+      "plan_name": null,
+      "plan_price": 99.9,
+      "created_at": "2026-06-12",
+      "status": "ATIVO",
+      "category": "real_recent_no_loyalty"
+    },
+    {
+      "id": "sub-37567aad0de8",
+      "name": "RENATA MACEDO SILVA DE SANT ANNA",
+      "document": "09269844706",
+      "plan_name": null,
+      "plan_price": 99.9,
+      "created_at": "2026-06-12",
+      "status": "ATIVO",
+      "category": "real_recent_no_loyalty"
+    },
+    {
+      "id": "sub-0a8ec58ba2df",
+      "name": "ADELINA FRANÇA RAMIREZ",
+      "document": "68909454768",
+      "plan_name": null,
+      "plan_price": 99.9,
+      "created_at": "2026-06-12",
+      "status": "ATIVO",
+      "category": "real_recent_no_loyalty"
+    },
+    {
+      "id": "sub-1fb6d893627b",
+      "name": "ANGELICA DE LIMA",
+      "document": "15963371848",
+      "plan_name": null,
+      "plan_price": 99.9,
+      "created_at": "2026-06-12",
+      "status": "ATIVO",
+      "category": "real_recent_no_loyalty"
+    },
+    {
+      "id": "sub-f382b2e88b7e",
+      "name": "ADILSON  GALDINOadilson",
+      "document": "27073852801",
+      "plan_name": null,
+      "plan_price": 99.9,
+      "created_at": "2026-06-12",
+      "status": "ATIVO",
+      "category": "real_recent_no_loyalty"
+    },
+    {
+      "id": "sub-91c01c46fc",
+      "name": "Maria José Silva",
+      "document": "45907863463",
+      "plan_name": "Fibra 1 Giga",
+      "plan_price": 149.9,
+      "created_at": "2026-05-10",
+      "status": "ATIVO",
+      "category": "real_atlaz_lag"
+    },
+    {
+      "id": "sub-499530788bd1",
+      "name": "VICTOR HUGO SOUSA PEREIRA",
+      "document": "10479935700",
+      "plan_name": null,
+      "plan_price": 87.9,
+      "created_at": "2026-05-14",
+      "status": "ATIVO",
+      "category": "real_atlaz_lag"
+    },
+    {
+      "id": "sub-7b1937a1f927",
+      "name": "RUTH ELENA FONSECA DE SOUSA",
+      "document": "01144808260",
+      "plan_name": null,
+      "plan_price": 114.02,
+      "created_at": "2026-05-14",
+      "status": "ATIVO",
+      "category": "real_atlaz_lag"
+    },
+    {
+      "id": "sub-f3151186261f",
+      "name": "VANESSA DO NASCIMENTO FRANCISCO",
+      "document": "38671756831",
+      "plan_name": null,
+      "plan_price": 105.63,
+      "created_at": "2026-05-14",
+      "status": "ATIVO",
+      "category": "real_atlaz_lag"
+    },
+    {
+      "id": "sub-b95d1666fba9",
+      "name": "ALESSANDRO DOS SANTOS SILVA",
+      "document": "30658278835",
+      "plan_name": null,
+      "plan_price": 135.8,
+      "created_at": "2026-05-14",
+      "status": "ATIVO",
+      "category": "real_atlaz_lag"
+    },
+    {
+      "id": "sub-89c314c0d98f",
+      "name": "PAMELA NERY TESTE LIGO",
+      "document": "09291000000",
+      "plan_name": null,
+      "plan_price": 99.9,
+      "created_at": "2026-05-14",
+      "status": "ATIVO",
+      "category": "real_atlaz_lag"
+    },
+    {
+      "id": "sub-5d459ec0e83b",
+      "name": "JOAO VITOR RABELO DE ARAUJO",
+      "document": "56119883851",
+      "plan_name": null,
+      "plan_price": 138.96,
+      "created_at": "2026-05-14",
+      "status": "ATIVO",
+      "category": "real_atlaz_lag"
+    },
+    {
+      "id": "sub-f103e6084b35",
+      "name": "JOSE EUGENIO DE  HOLANDA MENDES JUNIOR",
+      "document": "06389780842",
+      "plan_name": null,
+      "plan_price": 80.03,
+      "created_at": "2026-05-14",
+      "status": "ATIVO",
+      "category": "real_atlaz_lag"
+    },
+    {
+      "id": "sub-85101fd5d820",
+      "name": "MARINA PATRICIA DA SILVA MARTINS",
+      "document": "11140037781",
+      "plan_name": null,
+      "plan_price": 117.2,
+      "created_at": "2026-05-14",
+      "status": "ATIVO",
+      "category": "real_atlaz_lag"
+    },
+    {
+      "id": "sub-60985486b915",
+      "name": "ROSEMBERG DA VEIGA FERREIRA",
+      "document": "11650212771",
+      "plan_name": null,
+      "plan_price": 99.9,
+      "created_at": "2026-05-14",
+      "status": "ATIVO",
+      "category": "real_atlaz_lag"
+    },
+    {
+      "id": "sub-ca0dd1fff301",
+      "name": "PAOLA CARNEIRO DE OLIVEIRA -2P",
+      "document": "12167949790",
+      "plan_name": null,
+      "plan_price": 88.28,
+      "created_at": "2026-05-14",
+      "status": "ATIVO",
+      "category": "real_atlaz_lag"
+    },
+    {
+      "id": "sub-0103aadd5891",
+      "name": "SANDRA MARA DA SILVA RODRIGUES",
+      "document": "07121770784",
+      "plan_name": null,
+      "plan_price": 122.44,
+      "created_at": "2026-05-14",
+      "status": "ATIVO",
+      "category": "real_atlaz_lag"
+    },
+    {
+      "id": "sub-e70ee5ae0975",
+      "name": "MAURO ELIZIARIO ALVES DA SILVA",
+      "document": "21522748814",
+      "plan_name": null,
+      "plan_price": 165.84,
+      "created_at": "2026-05-14",
+      "status": "ATIVO",
+      "category": "real_atlaz_lag"
+    },
+    {
+      "id": "sub-ac6c34c897f2",
+      "name": "TEREZINHA DE FATIMA MOREIRA DE BARROS PINTO",
+      "document": "32044871807",
+      "plan_name": null,
+      "plan_price": 77.63,
+      "created_at": "2026-05-14",
+      "status": "ATIVO",
+      "category": "real_atlaz_lag"
+    },
+    {
+      "id": "sub-ff6f33413ae2",
+      "name": "JANAINA APARECIDA COTINHO",
+      "document": "37392888846",
+      "plan_name": null,
+      "plan_price": 164.77,
+      "created_at": "2026-05-14",
+      "status": "ATIVO",
+      "category": "real_atlaz_lag"
+    },
+    {
+      "id": "sub-69c0f6e0bce2",
+      "name": "CINTIA SILVEIRA",
+      "document": "10274163730",
+      "plan_name": null,
+      "plan_price": 99.9,
+      "created_at": "2026-05-14",
+      "status": "ATIVO",
+      "category": "real_atlaz_lag"
+    },
+    {
+      "id": "sub-e107143ebf5e",
+      "name": "JUAN FELIPE DOS PASSOS",
+      "document": "35902098874",
+      "plan_name": null,
+      "plan_price": 119.9,
+      "created_at": "2026-05-14",
+      "status": "ATIVO",
+      "category": "real_atlaz_lag"
+    },
+    {
+      "id": "sub-9df73d506176",
+      "name": "GUSTAVO RABELO DE ARAUJO",
+      "document": "56119945806",
+      "plan_name": null,
+      "plan_price": 120.0,
+      "created_at": "2026-05-14",
+      "status": "ATIVO",
+      "category": "real_atlaz_lag"
+    },
+    {
+      "id": "sub-791e1d651abe",
+      "name": "LUIZ PAULO DA CRUZ FERREIRA",
+      "document": "18243858709",
+      "plan_name": null,
+      "plan_price": 104.96,
+      "created_at": "2026-05-14",
+      "status": "ATIVO",
+      "category": "real_atlaz_lag"
+    },
+    {
+      "id": "sub-f84389869c00",
+      "name": "RAFAELLA CHAPETTA  LIMA",
+      "document": "12282394798",
+      "plan_name": null,
+      "plan_price": 115.22,
+      "created_at": "2026-05-14",
+      "status": "ATIVO",
+      "category": "real_atlaz_lag"
+    },
+    {
+      "id": "sub-3de2616675ab",
+      "name": "BRENA ALESSANDRA SIMOES TELLES",
+      "document": "20131824732",
+      "plan_name": null,
+      "plan_price": 93.85,
+      "created_at": "2026-05-14",
+      "status": "ATIVO",
+      "category": "real_atlaz_lag"
+    },
+    {
+      "id": "sub-e86b867c8c74",
+      "name": "JOSUE CESAR JACINTO DOS PASSOS",
+      "document": "37513756864",
+      "plan_name": null,
+      "plan_price": 104.29,
+      "created_at": "2026-05-14",
+      "status": "ATIVO",
+      "category": "real_atlaz_lag"
+    },
+    {
+      "id": "sub-446523204972",
+      "name": "JONAS CAMPOS DO COUTO",
+      "document": "11914141750",
+      "plan_name": null,
+      "plan_price": 104.62,
+      "created_at": "2026-05-14",
+      "status": "ATIVO",
+      "category": "real_atlaz_lag"
+    },
+    {
+      "id": "sub-341f43f4f761",
+      "name": "CLAUDIA DA COSTA FREIRE",
+      "document": "85468746700",
+      "plan_name": null,
+      "plan_price": 104.62,
+      "created_at": "2026-05-14",
+      "status": "ATIVO",
+      "category": "real_atlaz_lag"
+    },
+    {
+      "id": "sub-e3db96fe3408",
+      "name": "MICHELLE MOREIRA RODRIGUES DE PAULA",
+      "document": "44018408870",
+      "plan_name": null,
+      "plan_price": 119.9,
+      "created_at": "2026-05-14",
+      "status": "ATIVO",
+      "category": "real_atlaz_lag"
+    },
+    {
+      "id": "sub-214816b90213",
+      "name": "SEBASTIAO SIMAO",
+      "document": "66501679753",
+      "plan_name": null,
+      "plan_price": 92.61,
+      "created_at": "2026-05-14",
+      "status": "ATIVO",
+      "category": "real_atlaz_lag"
+    },
+    {
+      "id": "sub-8f8d25bc85dc",
+      "name": "WALLACE GOULART DE CASTRO",
+      "document": "17852562701",
+      "plan_name": null,
+      "plan_price": 89.9,
+      "created_at": "2026-05-14",
+      "status": "ATIVO",
+      "category": "real_atlaz_lag"
+    },
+    {
+      "id": "sub-5b0bc720119d",
+      "name": "BRUNO GARCIA TATAGIBA MEDINA",
+      "document": "21369847726",
+      "plan_name": null,
+      "plan_price": 99.9,
+      "created_at": "2026-05-14",
+      "status": "ATIVO",
+      "category": "real_atlaz_lag"
+    },
+    {
+      "id": "sub-bff675ff2eb2",
+      "name": "LETICIA SILVA MACHADO",
+      "document": "10573783721",
+      "plan_name": null,
+      "plan_price": 84.92,
+      "created_at": "2026-05-14",
+      "status": "ATIVO",
+      "category": "real_atlaz_lag"
+    },
+    {
+      "id": "sub-98ffcfd45b07",
+      "name": "EDNA PEREIRA DA SILVA",
+      "document": "10473827760",
+      "plan_name": null,
+      "plan_price": 109.9,
+      "created_at": "2026-05-14",
+      "status": "ATIVO",
+      "category": "real_atlaz_lag"
+    },
+    {
+      "id": "sub-df4eba66b844",
+      "name": "SAMANTA SILVERIO PIMENTA",
+      "document": "59511573829",
+      "plan_name": null,
+      "plan_price": 89.9,
+      "created_at": "2026-05-14",
+      "status": "ATIVO",
+      "category": "real_atlaz_lag"
+    },
+    {
+      "id": "sub-ac795cc394ef",
+      "name": "JUAN CARLOS BENTO DE BARROS",
+      "document": "53800009838",
+      "plan_name": null,
+      "plan_price": 99.9,
+      "created_at": "2026-05-14",
+      "status": "ATIVO",
+      "category": "real_atlaz_lag"
+    },
+    {
+      "id": "sub-e498878a31fc",
+      "name": "BEATRIZ AMARAL FABIANO",
+      "document": "16373951758",
+      "plan_name": null,
+      "plan_price": 148.49,
+      "created_at": "2026-05-14",
+      "status": "ATIVO",
+      "category": "real_atlaz_lag"
+    },
+    {
+      "id": "sub-5257b7fbd15c",
+      "name": "JHONATAN DA CONCEICAO SILVA",
+      "document": "15245088703",
+      "plan_name": null,
+      "plan_price": 99.9,
+      "created_at": "2026-05-14",
+      "status": "ATIVO",
+      "category": "real_atlaz_lag"
+    },
+    {
+      "id": "sub-35be6011290d",
+      "name": "MARIA SUELI TORRES MOTA",
+      "document": "72744375691",
+      "plan_name": null,
+      "plan_price": 99.9,
+      "created_at": "2026-05-14",
+      "status": "ATIVO",
+      "category": "real_atlaz_lag"
+    },
+    {
+      "id": "sub-c1099657de8a",
+      "name": "PATRÍCIA DE JESUS",
+      "document": "31323457844",
+      "plan_name": null,
+      "plan_price": 138.11,
+      "created_at": "2026-05-14",
+      "status": "ATIVO",
+      "category": "real_atlaz_lag"
+    },
+    {
+      "id": "sub-e709c58407da",
+      "name": "ALINE GOMES DE FREITAS",
+      "document": "42566838879",
+      "plan_name": null,
+      "plan_price": 99.9,
+      "created_at": "2026-05-14",
+      "status": "ATIVO",
+      "category": "real_atlaz_lag"
+    },
+    {
+      "id": "sub-216ec5171012",
+      "name": "JONATHAN PRUDENTE DE SOUZA",
+      "document": "15198632767",
+      "plan_name": null,
+      "plan_price": 99.9,
+      "created_at": "2026-05-14",
+      "status": "ATIVO",
+      "category": "real_atlaz_lag"
+    },
+    {
+      "id": "sub-ddf641407082",
+      "name": "COSME LAZARO SANTOS DE OLIVEIRA",
+      "document": "15054690743",
+      "plan_name": null,
+      "plan_price": 159.9,
+      "created_at": "2026-05-14",
+      "status": "ATIVO",
+      "category": "real_atlaz_lag"
+    },
+    {
+      "id": "sub-75cc33b5ece1",
+      "name": "JOABSON AUGUSTO SANTOS OLIVEIRA",
+      "document": "71230252452",
+      "plan_name": null,
+      "plan_price": 110.55,
+      "created_at": "2026-05-14",
+      "status": "ATIVO",
+      "category": "real_atlaz_lag"
+    },
+    {
+      "id": "sub-bbb4d8221844",
+      "name": "ANADIA BENVINDO LEANDRO",
+      "document": "11260232727",
+      "plan_name": null,
+      "plan_price": 99.9,
+      "created_at": "2026-05-14",
+      "status": "ATIVO",
+      "category": "real_atlaz_lag"
+    },
+    {
+      "id": "sub-ea856f63200e",
+      "name": "FABIANO SOUSA COSTA",
+      "document": "05131420377",
+      "plan_name": null,
+      "plan_price": 99.9,
+      "created_at": "2026-05-14",
+      "status": "ATIVO",
+      "category": "real_atlaz_lag"
+    },
+    {
+      "id": "sub-fcc13267ee68",
+      "name": "FERNANDA FONTES SILVA",
+      "document": "21600617867",
+      "plan_name": null,
+      "plan_price": 139.9,
+      "created_at": "2026-05-14",
+      "status": "ATIVO",
+      "category": "real_atlaz_lag"
+    },
+    {
+      "id": "sub-ead8a1436264",
+      "name": "MARIA ESTHER DO NASCIMENTO PEREIRA",
+      "document": "84537400706",
+      "plan_name": null,
+      "plan_price": 99.9,
+      "created_at": "2026-05-14",
+      "status": "ATIVO",
+      "category": "real_atlaz_lag"
+    },
+    {
+      "id": "sub-b6284a296398",
+      "name": "IGREJA EVANGÉLICA ASSEMBLEIA DE DEUS EM BONSUCESSO",
+      "document": "32243834000114",
+      "plan_name": null,
+      "plan_price": 110.44,
+      "created_at": "2026-05-14",
+      "status": "ATIVO",
+      "category": "real_atlaz_lag"
+    },
+    {
+      "id": "sub-69ff3e75a51a",
+      "name": "WAGNER PEREIRA DA SILVA",
+      "document": "31737497824",
+      "plan_name": null,
+      "plan_price": 79.9,
+      "created_at": "2026-05-14",
+      "status": "ATIVO",
+      "category": "real_atlaz_lag"
+    },
+    {
+      "id": "sub-c1eecf1c43fc",
+      "name": "FABIO HENRIQUE GOMES RODRIGUES",
+      "document": "54268351876",
+      "plan_name": null,
+      "plan_price": 139.9,
+      "created_at": "2026-05-14",
+      "status": "ATIVO",
+      "category": "real_atlaz_lag"
+    },
+    {
+      "id": "sub-1afc834665d0",
+      "name": "CAROLINA DA SILVA MENDES FERNANDES",
+      "document": "21713941708",
+      "plan_name": null,
+      "plan_price": 99.9,
+      "created_at": "2026-05-14",
+      "status": "ATIVO",
+      "category": "real_atlaz_lag"
+    },
+    {
+      "id": "sub-defe29d90c1d",
+      "name": "MOISES FLORES CORREIA",
+      "document": "50275911870",
+      "plan_name": null,
+      "plan_price": 89.9,
+      "created_at": "2026-05-14",
+      "status": "ATIVO",
+      "category": "real_atlaz_lag"
+    },
+    {
+      "id": "sub-884660def213",
+      "name": "ANTONIO CARLOS DA SILVA",
+      "document": "29531133808",
+      "plan_name": null,
+      "plan_price": 139.9,
+      "created_at": "2026-05-14",
+      "status": "ATIVO",
+      "category": "real_atlaz_lag"
+    },
+    {
+      "id": "sub-a3393b30e70d",
+      "name": "MOREIRA FRANK DE SOUSA SANTOS",
+      "document": "03847498363",
+      "plan_name": null,
+      "plan_price": 89.9,
+      "created_at": "2026-05-14",
+      "status": "ATIVO",
+      "category": "real_atlaz_lag"
+    },
+    {
+      "id": "sub-6d83660e68e2",
+      "name": "PAULO HENRIQUE RODRIGUES PEREIRA",
+      "document": "13878334729",
+      "plan_name": null,
+      "plan_price": 79.92,
+      "created_at": "2026-05-14",
+      "status": "ATIVO",
+      "category": "real_atlaz_lag"
+    },
+    {
+      "id": "sub-test-cpf-001",
+      "name": "Maria Teste",
+      "document": null,
+      "plan_name": "Fibra 600 Mega",
+      "plan_price": 99.9,
+      "created_at": "",
+      "status": "ATIVO",
+      "category": "test_fixture"
+    },
+    {
+      "id": "sub-77002f792c2b",
+      "name": "DEBORA CRISTINA DE MELLO ALVES",
+      "document": "29379835884",
+      "plan_name": null,
+      "plan_price": 114.02,
+      "created_at": "2026-05-20",
+      "status": "ATIVO",
+      "category": "real_atlaz_lag"
+    },
+    {
+      "id": "sub-b44d37861760",
+      "name": "SAMUEL GUIMARAES DE SOUZA",
+      "document": "06635711708",
+      "plan_name": null,
+      "plan_price": 109.9,
+      "created_at": "2026-05-14",
+      "status": "ATIVO",
+      "category": "real_atlaz_lag"
+    },
+    {
+      "id": "sub-d9ebdbc5ed6f",
+      "name": "PAULA APARECIDA SOARES DA SILVA",
+      "document": "20878003754",
+      "plan_name": null,
+      "plan_price": 99.9,
+      "created_at": "2026-05-14",
+      "status": "ATIVO",
+      "category": "real_atlaz_lag"
+    },
+    {
+      "id": "sub-af541a9fd483",
+      "name": "ROSA CRISTINA NEVES DA SILVA",
+      "document": "03546836758",
+      "plan_name": null,
+      "plan_price": 89.9,
+      "created_at": "2026-05-14",
+      "status": "ATIVO",
+      "category": "real_atlaz_lag"
+    },
+    {
+      "id": "sub-1ddfa76661df",
+      "name": "ANDRESSA FERNANDES NASCIMENTO",
+      "document": "14979905722",
+      "plan_name": null,
+      "plan_price": 109.9,
+      "created_at": "2026-05-14",
+      "status": "ATIVO",
+      "category": "real_atlaz_lag"
+    },
+    {
+      "id": "sub-0451ef48ef53",
+      "name": "ADALGISA MARIA LACROT",
+      "document": "07782320771",
+      "plan_name": null,
+      "plan_price": 126.19,
+      "created_at": "2026-05-14",
+      "status": "ATIVO",
+      "category": "real_atlaz_lag"
+    },
+    {
+      "id": "sub-82575b3d4e1e",
+      "name": "LUZIMAR DA SILVA MONTEIRO",
+      "document": "73933732700",
+      "plan_name": null,
+      "plan_price": 125.41,
+      "created_at": "2026-05-14",
+      "status": "ATIVO",
+      "category": "real_atlaz_lag"
+    },
+    {
+      "id": "sub-a014d6901a8b",
+      "name": "MARCOS CALDAS PESSOA",
+      "document": "07461266705",
+      "plan_name": null,
+      "plan_price": 79.9,
+      "created_at": "2026-05-14",
+      "status": "ATIVO",
+      "category": "real_atlaz_lag"
+    },
+    {
+      "id": "sub-2590193120ec",
+      "name": "THAMIRES DA SILVA PASSOS",
+      "document": "14672736784",
+      "plan_name": null,
+      "plan_price": 104.74,
+      "created_at": "2026-05-14",
+      "status": "ATIVO",
+      "category": "real_atlaz_lag"
+    },
+    {
+      "id": "sub-2551de39ac60",
+      "name": "RAPHAEL DANTAS DA SILVA",
+      "document": "13994876710",
+      "plan_name": null,
+      "plan_price": 161.87,
+      "created_at": "2026-05-14",
+      "status": "ATIVO",
+      "category": "real_atlaz_lag"
+    },
+    {
+      "id": "sub-c0b9ea24982d",
+      "name": "ALLAN MIGUEL FERREIRA BERTINE",
+      "document": "10176533729",
+      "plan_name": null,
+      "plan_price": 88.4,
+      "created_at": "2026-05-14",
+      "status": "ATIVO",
+      "category": "real_atlaz_lag"
+    },
+    {
+      "id": "sub-1181a0576392",
+      "name": "LUIS FRANCISCO AZEVEDO DOS SANTOS",
+      "document": "22784644774",
+      "plan_name": null,
+      "plan_price": 99.9,
+      "created_at": "2026-05-14",
+      "status": "ATIVO",
+      "category": "real_atlaz_lag"
+    },
+    {
+      "id": "sub-60fe168267ae",
+      "name": "JOSERLEY LUIS SEVERINO ARRUDA",
+      "document": "18434208725",
+      "plan_name": null,
+      "plan_price": 115.68,
+      "created_at": "2026-05-14",
+      "status": "ATIVO",
+      "category": "real_atlaz_lag"
+    },
+    {
+      "id": "sub-fff3bb52f012",
+      "name": "JUCIARA LARISSA PINTO DAS DORES",
+      "document": "18244924721",
+      "plan_name": null,
+      "plan_price": 131.15,
+      "created_at": "2026-05-14",
+      "status": "ATIVO",
+      "category": "real_atlaz_lag"
+    },
+    {
+      "id": "sub-4cc79dbcf31f",
+      "name": "ROBERTA FONSECA DE OLIVEIRA DE FARIA",
+      "document": "19886443723",
+      "plan_name": null,
+      "plan_price": 109.9,
+      "created_at": "2026-05-14",
+      "status": "ATIVO",
+      "category": "real_atlaz_lag"
+    },
+    {
+      "id": "sub-49d9659f2793",
+      "name": "PEDRO CARLOS MOREIRA TEIXEIRA",
+      "document": "82618577787",
+      "plan_name": null,
+      "plan_price": 192.48,
+      "created_at": "2026-05-14",
+      "status": "ATIVO",
+      "category": "real_atlaz_lag"
+    },
+    {
+      "id": "sub-480040ec82fe",
+      "name": "MARCUS PAULO MACHADO FERREIRA",
+      "document": "07788586773",
+      "plan_name": null,
+      "plan_price": 109.72,
+      "created_at": "2026-05-14",
+      "status": "ATIVO",
+      "category": "real_atlaz_lag"
+    },
+    {
+      "id": "sub-0c3e273c40cd",
+      "name": "ROSANGELA JOAQUIM",
+      "document": "05472848709",
+      "plan_name": null,
+      "plan_price": 99.9,
+      "created_at": "2026-05-14",
+      "status": "ATIVO",
+      "category": "real_atlaz_lag"
+    },
+    {
+      "id": "sub-cc52fe5aca33",
+      "name": "ANA CAROLINE DIAS ROCHA",
+      "document": "14226764714",
+      "plan_name": null,
+      "plan_price": 138.29,
+      "created_at": "2026-05-14",
+      "status": "ATIVO",
+      "category": "real_atlaz_lag"
+    },
+    {
+      "id": "sub-fd71a679a089",
+      "name": "QUEZIA MARTINS PEREIRA DE PAULA",
+      "document": "22582165751",
+      "plan_name": null,
+      "plan_price": 99.9,
+      "created_at": "2026-05-14",
+      "status": "ATIVO",
+      "category": "real_atlaz_lag"
+    },
+    {
+      "id": "sub-257a4a3e7528",
+      "name": "KAROLINE VICTORINO DE OLIVEIRA",
+      "document": "17418515723",
+      "plan_name": null,
+      "plan_price": 100.16,
+      "created_at": "2026-05-14",
+      "status": "ATIVO",
+      "category": "real_atlaz_lag"
+    },
+    {
+      "id": "sub-cd58fcadc4ed",
+      "name": "PAULO HENRIQUE MARQUES REIS",
+      "document": "12959442784",
+      "plan_name": null,
+      "plan_price": 109.9,
+      "created_at": "2026-05-14",
+      "status": "ATIVO",
+      "category": "real_atlaz_lag"
+    },
+    {
+      "id": "sub-ee9bb90b41b6",
+      "name": "CARLA VILLARINHO DO NASCIMENTO",
+      "document": "02539145744",
+      "plan_name": null,
+      "plan_price": 99.9,
+      "created_at": "2026-06-06",
+      "status": "ATIVO",
+      "category": "real_recent_no_loyalty"
+    },
+    {
+      "id": "sub-10532c5c45e2",
+      "name": "EDUARDA  GARCIA PINTO CAVALCANTE",
+      "document": "15393188773",
+      "plan_name": null,
+      "plan_price": 105.53,
+      "created_at": "2026-05-14",
+      "status": "ATIVO",
+      "category": "real_atlaz_lag"
+    },
+    {
+      "id": "sub-efc16805efe4",
+      "name": "RICARDO BATISTA JUNIOR",
+      "document": "15236260701",
+      "plan_name": null,
+      "plan_price": 121.39,
+      "created_at": "2026-05-14",
+      "status": "ATIVO",
+      "category": "real_atlaz_lag"
+    },
+    {
+      "id": "sub-e07f2c3c2564",
+      "name": "VIVIANE FERREIRA",
+      "document": "09272987750",
+      "plan_name": null,
+      "plan_price": 207.26,
+      "created_at": "2026-05-14",
+      "status": "ATIVO",
+      "category": "real_atlaz_lag"
+    },
+    {
+      "id": "sub-9d2d8ef8b4db",
+      "name": "ANALLY DE PAULA DA SILVA",
+      "document": "18887999783",
+      "plan_name": null,
+      "plan_price": 99.9,
+      "created_at": "2026-05-14",
+      "status": "ATIVO",
+      "category": "real_atlaz_lag"
+    },
+    {
+      "id": "sub-c8ccfa793360",
+      "name": "JOAQUIM PESSANHA SANTOS",
+      "document": "05274332765",
+      "plan_name": null,
+      "plan_price": 104.29,
+      "created_at": "2026-05-14",
+      "status": "ATIVO",
+      "category": "real_atlaz_lag"
+    },
+    {
+      "id": "sub-c1a6d684e0",
+      "name": "Vando Patrocinio",
+      "document": null,
+      "plan_name": "Fibra 500 Mega",
+      "plan_price": 104.29,
+      "created_at": "2026-05-10",
+      "status": "ATIVO",
+      "category": "real_no_doc"
+    },
+    {
+      "id": "sub-395bbe00014e",
+      "name": "DEBORA CARDOSO DOS SANTOS",
+      "document": "12303566738",
+      "plan_name": null,
+      "plan_price": 156.02,
+      "created_at": "2026-05-14",
+      "status": "ATIVO",
+      "category": "real_atlaz_lag"
+    },
+    {
+      "id": "sub-34b18faa8d80",
+      "name": "MARCIA MARQUES DO VALE",
+      "document": "07298156764",
+      "plan_name": null,
+      "plan_price": 150.78,
+      "created_at": "2026-05-14",
+      "status": "ATIVO",
+      "category": "real_atlaz_lag"
+    },
+    {
+      "id": "sub-840de6129527",
+      "name": "JONATHAS DOS SANTOS OLIVEIRA",
+      "document": "10611861720",
+      "plan_name": null,
+      "plan_price": 115.18,
+      "created_at": "2026-05-14",
+      "status": "ATIVO",
+      "category": "real_atlaz_lag"
+    },
+    {
+      "id": "sub-eff2da9d8c70",
+      "name": "LUCAS FERREIRA CARDOSO DOS SANTOS",
+      "document": "16267063798",
+      "plan_name": null,
+      "plan_price": 99.9,
+      "created_at": "2026-05-14",
+      "status": "ATIVO",
+      "category": "real_atlaz_lag"
+    },
+    {
+      "id": "sub-44324dee62f7",
+      "name": "CRISTIANE LEITAO FONTANA",
+      "document": "04760246762",
+      "plan_name": null,
+      "plan_price": 115.58,
+      "created_at": "2026-05-14",
+      "status": "ATIVO",
+      "category": "real_atlaz_lag"
+    },
+    {
+      "id": "sub-24b6c26d4879",
+      "name": "BRENDA LUDMILA FERNANDES RODARTE",
+      "document": "85451207534",
+      "plan_name": null,
+      "plan_price": 99.9,
+      "created_at": "2026-05-14",
+      "status": "ATIVO",
+      "category": "real_atlaz_lag"
+    },
+    {
+      "id": "sub-eae13a8a651a",
+      "name": "LARISSA DA SILVA LIMA",
+      "document": "21776025725",
+      "plan_name": null,
+      "plan_price": 105.53,
+      "created_at": "2026-05-14",
+      "status": "ATIVO",
+      "category": "real_atlaz_lag"
+    },
+    {
+      "id": "sub-5a653fc4a747",
+      "name": "LUAN MIGUEL ALVES SIQUEIRA",
+      "document": "18445531751",
+      "plan_name": "TEST_Dup_985042",
+      "plan_price": 79.9,
+      "created_at": "2026-05-30",
+      "status": "ATIVO",
+      "category": "test_plan_name_only (resto OK)",
+      "note": "Sub real (LUAN MIGUEL) mas plan_name=TEST_Dup_985042. Marcar plan_name como teste, NÃO excluir do KPI."
+    }
+  ]
+}
