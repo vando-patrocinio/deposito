@@ -123,25 +123,25 @@ async def openapi_spec(request_url: str = ""):
     BriefingSchema = {
         "type": "object",
         "properties": {
-            "date_key": {"type": "string"},
-            "one_truth": {
+            "date": {"type": "string"},
+            "clientes_ativos": {"type": "integer"},
+            "mrr_brl": {"type": "number"},
+            "inadimplencia_brl": {"type": "number"},
+            "inadimplencia_n_faturas": {"type": "integer"},
+            "tickets_abertos": {"type": "integer"},
+            "fundadores_aptos": {"type": "integer"},
+            "embaixadores": {"type": "integer"},
+            "course_summary": {"type": "string"},
+            "course_status": {
                 "type": "object",
                 "properties": {
-                    "clientes_ativos": {"type": "integer"},
-                    "mrr": {"type": "number"},
-                    "inadimplencia_brl": {"type": "number"},
-                    "inadimplencia_n_faturas": {"type": "integer"},
-                    "tickets_abertos": {"type": "integer"},
-                    "tickets_fechados_no_dia": {"type": "integer"},
-                    "novos_clientes_no_dia": {"type": "integer"},
-                    "cancelamentos_no_dia": {"type": "integer"},
-                    "fundadores_aptos": {"type": "integer"},
-                    "embaixadores": {"type": "integer"},
+                    "clientes_ativos": {"type": "string"},
+                    "mrr": {"type": "string"},
+                    "inadimplencia_brl": {"type": "string"},
+                    "embaixadores": {"type": "string"},
+                    "fundadores_aptos": {"type": "string"},
                 },
             },
-            "compare": {"type": "object", "additionalProperties": True},
-            "course_correction": {"type": "object", "additionalProperties": True},
-            "course_summary": {"type": "string"},
             "briefing_text": {"type": "string"},
         },
     }
@@ -305,7 +305,6 @@ async def briefing_today():
         {"company_id": CO, "date_key": today, "one_truth": {"$exists": True}},
         {"_id": 0})
     if not doc:
-        # Sem snapshot do dia ainda — gera agora.
         snap = await em.snapshot_today(CO)
     else:
         snap = {"date_key": today,
@@ -313,8 +312,23 @@ async def briefing_today():
                 "compare": doc.get("compare"),
                 "course_correction": doc.get("course_correction"),
                 "course_summary": doc.get("course_summary")}
-    snap["briefing_text"] = _build_text(snap)
-    return snap
+    text = _build_text(snap)
+    ot = snap.get("one_truth") or {}
+    course = snap.get("course_correction") or {}
+    # Payload enxuto: só o que o LLM precisa pra narrar.
+    return {
+        "date": snap.get("date_key"),
+        "clientes_ativos": ot.get("clientes_ativos"),
+        "mrr_brl": ot.get("mrr"),
+        "inadimplencia_brl": ot.get("inadimplencia_brl"),
+        "inadimplencia_n_faturas": ot.get("inadimplencia_n_faturas"),
+        "tickets_abertos": ot.get("tickets_abertos"),
+        "fundadores_aptos": ot.get("fundadores_aptos"),
+        "embaixadores": ot.get("embaixadores"),
+        "course_summary": snap.get("course_summary"),
+        "course_status": {k: v.get("status") for k, v in course.items()},
+        "briefing_text": text,
+    }
 
 
 @router.get("/memory", dependencies=[Depends(require_token)])
