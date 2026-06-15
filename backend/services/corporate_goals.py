@@ -66,6 +66,18 @@ async def ensure_seeded(cid: str) -> dict:
     """Idempotente. Insere SEED_METAS_2026 se ainda não houver doc CEO ativo
     para o tenant. Retorna {seeded: int, skipped: int}.
     """
+    # Hardening: índice composto previne race em workers concorrentes.
+    # partialFilterExpression isola do schema legado Isabella (sem kpi_key).
+    try:
+        await db.corporate_goals.create_index(
+            [("company_id", 1), ("kpi_key", 1), ("status", 1)],
+            unique=True,
+            partialFilterExpression={"kpi_key": {"$exists": True}},
+            name="uniq_ceo_goal_per_kpi_status",
+        )
+    except Exception:
+        logger.exception("não foi possível criar índice corporate_goals (não-fatal)")
+
     now = datetime.now(timezone.utc).isoformat()
     seeded = 0
     skipped = 0
