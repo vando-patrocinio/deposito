@@ -1913,7 +1913,8 @@ async def resolve_signal_for_ticket(ticket: dict) -> Optional[dict]:
         return None
 
 
-def _live_signal_summary(onu: dict) -> dict:
+def _live_signal_summary(onu: dict, *,
+                           ticket_relato: Optional[str] = None) -> dict:
     """Resumo compacto pro pill/UI da Lousa (não expõe campos pesados).
 
     iter182 — Sensibilidade aumentada:
@@ -1921,8 +1922,18 @@ def _live_signal_summary(onu: dict) -> dict:
       que o cliente experimenta). Não cai pra 1310nm (que é upstream e
       mascara leituras quando 1490 está vazio).
     - 5 faixas de qualidade (excelente / bom / atenção / crítico /
-      falha) seguindo best practices FTTH 2026 — alerta antes do
-      cliente reclamar.
+      falha) seguindo best practices FTTH 2026.
+
+    P0-3/P0-4/P0-5 (OPERAÇÃO TICKET ARMADO 2026-02):
+    - Calcula `cache_age_seconds` e `cache_label` ("LIVE · agora",
+      "CACHE · há Xmin", "SEM LEITURA · última tentativa há Xmin").
+    - Auto-classifica `classification` quando há relato:
+        - "LOS_FISICO": ONU offline real
+        - "ATENUACAO_CRITICA": Online + Rx entre -25 e -28 dBm
+        - "SINAL_CRITICO": Online + Rx entre -28 e -30 dBm
+        - "PROVAVEL_ROMPIMENTO": Rx < -30 dBm
+        - "SAUDAVEL": Online + Rx > -25 dBm
+    - Flag `generic_profile_alert` quando ONU usa profile "Generic_X".
     """
     rx = onu.get("signal_1490")  # só 1490nm; sem fallback p/ 1310
     rxf = None
@@ -1930,6 +1941,15 @@ def _live_signal_summary(onu: dict) -> dict:
         rxf = float(rx) if rx is not None else None
     except (TypeError, ValueError):
         rxf = None
+    # P0-3: fallback para 1310 SOMENTE para classificar (não para badge UI)
+    rx_secondary = None
+    try:
+        rx_secondary = (float(onu.get("signal_1310"))
+                          if onu.get("signal_1310") is not None else None)
+    except (TypeError, ValueError):
+        rx_secondary = None
+    rx_for_class = rxf if rxf is not None else rx_secondary
+
     quality = "unknown"
     if rxf is not None:
         if rxf >= -20:
@@ -1998,10 +2018,105 @@ def _live_signal_summary(onu: dict) -> dict:
                     uptime_human = f"{m}m"
         except (ValueError, TypeError):
             pass
+    # P0-3/P0-5 (OPERAÇÃO TICKET ARMADO): timestamp e idade do cache
+    from datetime import datetime, timezone
+    sync_ts = onu.get("signal_synced_at") or onu.get("synced_at")
+    cache_age_seconds = None
+    cache_label = "SEM LEITURA"
+    cache_freshness = "unknown"  # live | fresh | stale | very_stale | none
+    if sync_ts:
+        try:
+            ts = str(sync_ts).strip().replace("Z", "+00:00")
+            if " " in ts and "T" not in ts:
+                ts = ts.replace(" ", "T", 1)
+            dt = datetime.fromisoformat(ts)
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            cache_age_seconds = int(
+                (datetime.now(timezone.utc) - dt).total_seconds())
+        except (ValueError, TypeError):
+            cache_age_seconds = None
+    if cache_age_seconds is not None:
+        if cache_age_seconds < 60:
+            cache_label = "LIVE · agora"
+            cache_freshness = "live"
+        elif cache_age_seconds < 300:
+            cache_label = f"LIVE · há {cache_age_seconds // 60}min"
+            cache_freshness = "live"
+        elif cache_age_seconds < 3600:
+            cache_label = f"CACHE · há {cache_age_seconds // 60}min"
+            cache_freshness = "fresh"
+        elif cache_age_seconds < 6 * 3600:
+            cache_label = f"CACHE · há {cache_age_seconds // 3600}h"
+            cache_freshness = "stale"
+        elif cache_age_seconds < 86400:
+            cache_label = f"CACHE · há {cache_age_seconds // 3600}h"
+            cache_freshness = "very_stale"
+        else:
+            cache_label = f"CACHE · há {cache_age_seconds // 86400}d"
+            cache_freshness = "very_stale"
+    elif onu.get("live_cleared_at"):
+        # Tentamos Live mas SmartOLT retornou nada
+        try:
+            ts = str(onu["live_cleared_at"]).replace("Z", "+00:00")
+            dt = datetime.fromisoformat(ts)
+            age = int((datetime.now(timezone.utc) - dt).total_seconds())
+            cache_label = (f"SEM LEITURA · última tentativa "
+                            f"há {age // 60}min" if age >= 60
+                            else "SEM LEITURA · acabou de tentar")
+            cache_freshness = "none"
+        except (ValueError, TypeError):
+            pass
+
+    # P0-4 (OPERAÇÃO TICKET ARMADO): auto-classificação de Atenuação Crítica
+    classification = None
+    classification_reason = None
+    status_norm = (onu.get("status") or "").upper()
+    relato_los = False
+    if ticket_relato:
+        import re as _re
+        relato_los = bool(_re.search(
+            r"\b(LOS|sem\s+conex|sem\s+sinal|sem\s+internet|sem\s+net|caiu|offline)\b",
+            ticket_relato, _re.IGNORECASE))
+    if status_norm == "LOS" or "OFFLINE" in status_norm or "POWER" in status_norm:
+        classification = "LOS_FISICO"
+        classification_reason = f"ONU em estado {onu.get('status')} no SmartOLT."
+    elif status_norm == "ONLINE" and rx_for_class is not None:
+        if rx_for_class < -30:
+            classification = "PROVAVEL_ROMPIMENTO"
+            classification_reason = (
+                f"Rx {rx_for_class:.2f} dBm < -30 dBm. "
+                f"Provável rompimento, conector queimado ou alta perda.")
+        elif rx_for_class <= -28:
+            classification = "SINAL_CRITICO"
+            classification_reason = (
+                f"Rx {rx_for_class:.2f} dBm entre -28 e -30 dBm "
+                f"com ONU online. Sinal crítico.")
+        elif rx_for_class <= -25:
+            classification = ("ATENUACAO_CRITICA" if relato_los
+                              else "ATENUACAO_MARGINAL")
+            classification_reason = (
+                f"Rx {rx_for_class:.2f} dBm entre -25 e -28 dBm "
+                f"com ONU online. "
+                + ("Relato menciona LOS — não é LOS físico, é atenuação."
+                   if relato_los
+                   else "Atenuação marginal — risco de degradação."))
+        else:
+            classification = "SAUDAVEL"
+            classification_reason = (
+                f"Rx {rx_for_class:.2f} dBm com ONU online — saudável.")
+
+    # P0-6: flag de profile genérico
+    profile_name = (onu.get("onu_type_name") or "")
+    generic_profile_alert = False
+    if "GENERIC" in profile_name.upper() or "GENÉRICO" in profile_name.upper():
+        generic_profile_alert = True
+
     return {
         "external_id": onu.get("unique_external_id"),
         "name": onu.get("name"),
         "rx_dbm": rxf,
+        "rx_secondary_1310": rx_secondary,
         "signal_text": onu.get("signal_text"),
         "status": onu.get("status"),
         "quality": quality,
@@ -2017,6 +2132,16 @@ def _live_signal_summary(onu: dict) -> dict:
         "uptime_seconds": uptime_seconds,
         "last_status_change": last_change,
         "synced_at": onu.get("synced_at"),
+        # P0-3/P0-5 — Operação Ticket Armado
+        "cache_age_seconds": cache_age_seconds,
+        "cache_label": cache_label,
+        "cache_freshness": cache_freshness,  # live|fresh|stale|very_stale|none|unknown
+        # P0-4
+        "classification": classification,
+        "classification_reason": classification_reason,
+        # P0-6
+        "onu_profile": profile_name or None,
+        "generic_profile_alert": generic_profile_alert,
     }
 
 
@@ -2052,7 +2177,12 @@ async def enrich_tickets_with_live_signal(tickets: List[dict], company_id: str) 
         for i, np_, nn_ in per_ticket:
             onu = (idx.get(np_) if np_ else None) or (idx.get(nn_) if nn_ else None)
             if onu:
-                tickets[i]["live_signal"] = _live_signal_summary(onu)
+                # P0-4: passar relato pra auto-classificar atenuação
+                _snap = tickets[i].get("client_snapshot") or {}
+                _relato = (_snap.get("relato") or tickets[i].get("relato")
+                            or tickets[i].get("admin_notes") or "")
+                tickets[i]["live_signal"] = _live_signal_summary(
+                    onu, ticket_relato=_relato)
         # iter182 — Fallback via Base de Portas: para os tickets que NÃO
         # casaram com SmartOLT (live_signal == null), busca a porta CTO
         # vinculada ao subscriber e cria um live_signal sintético a
@@ -2092,8 +2222,56 @@ async def enrich_tickets_with_live_signal(tickets: List[dict], company_id: str) 
         # iter180 — adiciona a média de sinal da VLAN do cliente
         # (mesmo OLT, mesma VLAN) para o gestor comparar individual vs rede.
         await _enrich_vlan_avg_for_tickets(tickets, company_id)
+        # P0-6 (OPERAÇÃO TICKET ARMADO 2026-02): anexa alertas de
+        # degradação ativos para cada ticket que tem live_signal.
+        await _enrich_degradation_alerts(tickets, company_id)
     except Exception as e:
         logger.warning("[smartolt] enrich_tickets_with_live_signal falhou: %s", e)
+
+
+async def _enrich_degradation_alerts(tickets: List[dict],
+                                       company_id: str) -> None:
+    """P0-6: anexa `degradation_alert` quando há queda detectada nos últimos
+    72h para o `unique_external_id` da ONU do ticket.
+    """
+    from datetime import datetime, timezone, timedelta
+    try:
+        ext_ids: List[str] = []
+        for t in tickets:
+            ls = t.get("live_signal") or {}
+            if ls.get("external_id"):
+                ext_ids.append(ls["external_id"])
+        if not ext_ids:
+            return
+        cutoff_72h = (datetime.now(timezone.utc) - timedelta(hours=72)
+                       ).isoformat()
+        idx: Dict[str, dict] = {}
+        async for a in db.signal_degradation_alerts.find(
+                {"company_id": company_id,
+                 "unique_external_id": {"$in": ext_ids},
+                 "detected_at": {"$gte": cutoff_72h}},
+                {"_id": 0}).sort("detected_at", -1):
+            ext = a.get("unique_external_id")
+            if ext and ext not in idx:
+                idx[ext] = a
+        for t in tickets:
+            ls = t.get("live_signal") or {}
+            ext = ls.get("external_id")
+            if not ext or ext not in idx:
+                continue
+            a = idx[ext]
+            t["degradation_alert"] = {
+                "detected_at": a.get("detected_at"),
+                "avg_24h_rx_dbm": a.get("avg_24h_rx_dbm"),
+                "current_rx_dbm": a.get("current_rx_dbm"),
+                "delta_dbm": a.get("delta_dbm"),
+                "samples_count": a.get("samples_count"),
+                "status": a.get("status"),
+                "resolved_at": a.get("resolved_at"),
+                "resolved_delta_dbm": a.get("resolved_delta_dbm"),
+            }
+    except Exception as e:
+        logger.warning("[smartolt] _enrich_degradation_alerts falhou: %s", e)
 
 
 async def _enrich_vlan_avg_for_tickets(tickets: List[dict],

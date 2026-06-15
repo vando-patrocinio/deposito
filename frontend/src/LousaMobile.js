@@ -1408,6 +1408,75 @@ function Bubble({ ticket, onClick, disabled, reorderMode, isFirst, isLast, locke
         </div>
       )}
 
+      {/* OPERAÇÃO TICKET ARMADO (CTO 2026-02): badge timestamp + classificação */}
+      {ticket.live_signal && (ticket.live_signal.cache_label || ticket.live_signal.classification) && (
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginTop: 4 }}>
+          {ticket.live_signal.cache_label && (
+            <span
+              data-testid={`signal-cache-label-${ticket.id}`}
+              style={{
+                fontSize: 9, fontWeight: 700, padding: "2px 6px",
+                borderRadius: 4, fontFamily: "monospace",
+                background: ticket.live_signal.cache_freshness === "live" ? "#dcfce7"
+                  : ticket.live_signal.cache_freshness === "fresh" ? "#fef9c3"
+                  : ticket.live_signal.cache_freshness === "none" ? "#fee2e2"
+                  : "#fed7aa",
+                color: ticket.live_signal.cache_freshness === "live" ? "#166534"
+                  : ticket.live_signal.cache_freshness === "fresh" ? "#854d0e"
+                  : ticket.live_signal.cache_freshness === "none" ? "#991b1b"
+                  : "#9a3412",
+              }}
+            >
+              {ticket.live_signal.cache_label}
+            </span>
+          )}
+          {ticket.live_signal.classification && (
+            <span
+              data-testid={`signal-classification-${ticket.id}`}
+              title={ticket.live_signal.classification_reason || ""}
+              style={{
+                fontSize: 9, fontWeight: 800, padding: "2px 6px",
+                borderRadius: 4, textTransform: "uppercase",
+                background:
+                  ticket.live_signal.classification === "LOS_FISICO" ? "#fecaca"
+                  : ticket.live_signal.classification === "PROVAVEL_ROMPIMENTO" ? "#fca5a5"
+                  : ticket.live_signal.classification === "SINAL_CRITICO" ? "#fdba74"
+                  : ticket.live_signal.classification === "ATENUACAO_CRITICA" ? "#fed7aa"
+                  : ticket.live_signal.classification === "ATENUACAO_MARGINAL" ? "#fef08a"
+                  : "#bbf7d0",
+                color: "#1f2937",
+              }}
+            >
+              {ticket.live_signal.classification.replace(/_/g, " ")}
+            </span>
+          )}
+          {ticket.live_signal.generic_profile_alert && (
+            <span
+              data-testid={`signal-generic-profile-${ticket.id}`}
+              style={{
+                fontSize: 9, fontWeight: 700, padding: "2px 6px",
+                borderRadius: 4, background: "#fef9c3", color: "#854d0e",
+              }}
+              title="Profile genérico detectado. Validar provisionamento."
+            >
+              ⚠ PROFILE GENÉRICO
+            </span>
+          )}
+          {ticket.degradation_alert && (
+            <span
+              data-testid={`signal-degradation-${ticket.id}`}
+              style={{
+                fontSize: 9, fontWeight: 700, padding: "2px 6px",
+                borderRadius: 4, background: "#fee2e2", color: "#991b1b",
+              }}
+              title={`Queda detectada: ${ticket.degradation_alert.delta_dbm} dBm em ${ticket.degradation_alert.samples_count || 0} amostras`}
+            >
+              📉 QUEDA {ticket.degradation_alert.delta_dbm != null ? `${ticket.degradation_alert.delta_dbm} dBm` : ""}
+            </span>
+          )}
+        </div>
+      )}
+
       {/* Relato em footer separado — toque para copiar texto completo */}
       {csRelato && (
         <button

@@ -360,14 +360,47 @@ async def _execute_action(decision: Dict[str, Any]) -> Dict[str, Any]:
     if kind == "preventive_ticket":
         # cria ticket técnico real (não depende de transporte WA)
         sid = decision["action_payload"]["subscriber_id"]
+
+        # ╭───────────────────────────────────────────────────────────────╮
+        # │ P0-1 (OPERAÇÃO TICKET ARMADO 2026-02): GUARDRAIL anti-duplica  │
+        # │ Causa raiz: 5 clientes com 48 tickets/30d cada (240 lixos/mês) │
+        # │ Regra: não criar novo preventivo se já existe um aberto OU se  │
+        # │ houver >= 1 preventivo criado nas últimas 24h para o mesmo SID.│
+        # ╰───────────────────────────────────────────────────────────────╯
+        from datetime import (datetime as _dt, timezone as _tz,
+                                timedelta as _td)
+        _now = _dt.now(_tz.utc)
+        _cutoff_24h = (_now - _td(hours=24)).isoformat()
+        existing_open = await db.tickets.find_one(
+            {"company_id": decision["company_id"], "client_id": sid,
+             "type": "preventiva",
+             "status": {"$in": ["aberta", "pendente"]}},
+            {"_id": 0, "id": 1},
+        )
+        existing_recent = await db.tickets.count_documents(
+            {"company_id": decision["company_id"], "client_id": sid,
+             "type": "preventiva",
+             "created_at": {"$gte": _cutoff_24h}},
+        )
+        if existing_open or existing_recent >= 1:
+            action["status"] = "blocked_duplicate"
+            action["result"] = {
+                "reason": "anti_duplicate_guardrail",
+                "subscriber_id": sid,
+                "existing_open_ticket": (existing_open or {}).get("id"),
+                "preventive_in_last_24h": existing_recent,
+            }
+            await db.motor_ia_actions.insert_one(dict(action))
+            return action
         ticket_id = _uid("tk")
         # CTO 11/06/2026: enriquecer com client_snapshot + scheduled_time
         # para evitar "fantasmas" sem cliente nem data na SALA.
-        from datetime import datetime as _dt, timezone as _tz
         sub = await db.subscribers.find_one(
             {"id": sid, "company_id": decision["company_id"]},
             {"_id": 0, "name": 1, "phone": 1, "address": 1,
-             "neighborhood": 1, "document": 1, "email": 1},
+             "neighborhood": 1, "document": 1, "email": 1,
+             "pppoe_login": 1, "pppoe_user": 1, "atlaz_id_ponto": 1,
+             "atlaz_id_assinante": 1, "atlaz_pppoe_user": 1},
         ) or {}
         client_snapshot = {
             "subscriber_id": sid,
@@ -377,6 +410,18 @@ async def _execute_action(decision: Dict[str, Any]) -> Dict[str, Any]:
             "neighborhood": sub.get("neighborhood") or "",
             "document": sub.get("document") or "",
             "email": sub.get("email") or "",
+            # P0-2 (OPERAÇÃO TICKET ARMADO 2026-02): preencher PPPoE no snapshot
+            # para destravar linkage SmartOLT (94% dos tickets estavam órfãos).
+            "pppoe_user": (sub.get("pppoe_login")
+                             or sub.get("pppoe_user")
+                             or sub.get("atlaz_pppoe_user") or ""),
+            "pppoe_source": ("subscribers.pppoe_login"
+                              if sub.get("pppoe_login")
+                              else "subscribers.atlaz_pppoe_user"
+                                if sub.get("atlaz_pppoe_user") else None),
+            "pppoe_confidence": "high" if (sub.get("pppoe_login")
+                                              or sub.get("atlaz_pppoe_user"))
+                                  else "low",
             "relato": (
                 f"Gerado por SmartProv AutonomousEngine. "
                 f"Causa: {decision.get('cause','—')}. "

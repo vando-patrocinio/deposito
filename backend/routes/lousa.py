@@ -982,6 +982,165 @@ async def list_ticket_logs(
     return {"items": items}
 
 
+# ╭───────────────────────────────────────────────────────────────────────╮
+# │ OPERAÇÃO TICKET ARMADO (CTO 2026-02)                                   │
+# │ P0-3 + P0-4 + P0-5 + P0-6 + P0-7 — endpoint único que entrega ao     │
+# │ frontend tudo que o técnico precisa pra não ir cego pra campo:        │
+# │   - live_signal já classificado (LOS / ATENUACAO / SAUDAVEL)          │
+# │   - cache_label com timestamp ("CACHE · há Xmin")                     │
+# │   - degradation_alert (queda detectada nas últimas 72h)               │
+# │   - Profile alert (Generic_X)                                         │
+# │   - Botão Live: passar ?force=true invalida cache e refaz SmartOLT    │
+# ╰───────────────────────────────────────────────────────────────────────╯
+@router.get("/tickets/{ticket_id}/armed-signal")
+async def ticket_armed_signal(
+    ticket_id: str,
+    force: bool = False,
+    max_age_seconds: int = 300,
+    user: dict = Depends(require_role("gestor", "tecnico", "supervisor",
+                                       "administrador", "auditor")),
+):
+    """Retorna o pacote completo de sinal para tornar o ticket ARMADO.
+
+    Args:
+        force: se True, invalida o cache do SmartOLT e refaz consulta live.
+               Usado pelo botão "Live" no front (P0-7).
+        max_age_seconds: P0-3 — quando cache > este valor e ticket está
+                          aberto, auto-bypass cache (sem precisar force).
+
+    Returns:
+      live_signal, degradation_alert, classification, cache_label, ...
+    """
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+    t = await db.tickets.find_one(
+        {"id": ticket_id, "company_id": cid}, {"_id": 0},
+    )
+    if not t:
+        # Tenant-bypass para admin
+        if user.get("role") in ("administrador", "auditor"):
+            t = await db.tickets.find_one({"id": ticket_id}, {"_id": 0})
+        if not t:
+            raise HTTPException(404, "ticket não encontrado")
+
+    company_id = t.get("company_id") or cid
+    snap = t.get("client_snapshot") or {}
+    relato = (snap.get("relato") or t.get("admin_notes")
+               or t.get("description") or "")
+    is_open = (t.get("status") or "").lower() in ("aberta", "pendente",
+                                                     "em_andamento",
+                                                     "em andamento")
+
+    from routes.smartolt import (resolve_signal_for_ticket,
+                                    get_onu_signal_live,
+                                    _live_signal_summary)
+    onu = await resolve_signal_for_ticket(t)
+    refresh_attempted = False
+    refresh_result = None
+    refresh_error = None
+
+    # P0-3: auto-bypass do cache se ticket aberto e cache velho
+    needs_refresh = force
+    if onu and is_open and not force:
+        from datetime import datetime, timezone
+        sync_ts = onu.get("signal_synced_at") or onu.get("synced_at")
+        if sync_ts:
+            try:
+                ts = str(sync_ts).strip().replace("Z", "+00:00")
+                if " " in ts and "T" not in ts:
+                    ts = ts.replace(" ", "T", 1)
+                dt = datetime.fromisoformat(ts)
+                if dt.tzinfo is None:
+                    dt = dt.replace(tzinfo=timezone.utc)
+                age = (datetime.now(timezone.utc) - dt).total_seconds()
+                if age > max_age_seconds:
+                    needs_refresh = True
+            except (ValueError, TypeError):
+                needs_refresh = True
+
+    if needs_refresh and onu:
+        ext_id = onu.get("unique_external_id")
+        try:
+            # Reusa o endpoint live (com force=True) — invalida + busca
+            # Não passamos pelo Depends; chamamos diretamente o handler
+            # com objeto user montado.
+            refresh_attempted = True
+            res = await get_onu_signal_live(ext_id, force=True, user=user)
+            refresh_result = "ok" if (res and res.get("onu")) else "no_data"
+            if isinstance(res, dict) and res.get("onu"):
+                onu = res["onu"]
+        except HTTPException as he:
+            refresh_result = "error"
+            refresh_error = f"{he.status_code}: {he.detail}"
+        except Exception as e:
+            refresh_result = "error"
+            refresh_error = str(e)[:200]
+
+    # P0-7: log da tentativa Live
+    if refresh_attempted:
+        try:
+            from datetime import datetime, timezone
+            await db.lousa_logs.insert_one({
+                "id": f"ll-{uuid.uuid4().hex[:10]}",
+                "company_id": company_id,
+                "ticket_id": ticket_id,
+                "action": "live_signal_refresh",
+                "result": refresh_result,
+                "error": refresh_error,
+                "force": force,
+                "actor_id": user.get("id") or user.get("sub"),
+                "at": datetime.now(timezone.utc).isoformat(),
+            })
+        except Exception:
+            pass
+
+    live = _live_signal_summary(onu, ticket_relato=relato) if onu else None
+
+    # P0-6: anexa degradation_alert se houver
+    degradation = None
+    if onu and onu.get("unique_external_id"):
+        from datetime import datetime, timezone, timedelta
+        cutoff = (datetime.now(timezone.utc) - timedelta(hours=72)).isoformat()
+        a = await db.signal_degradation_alerts.find_one(
+            {"company_id": company_id,
+             "unique_external_id": onu["unique_external_id"],
+             "detected_at": {"$gte": cutoff}},
+            {"_id": 0},
+            sort=[("detected_at", -1)],
+        )
+        if a:
+            degradation = {
+                "detected_at": a.get("detected_at"),
+                "avg_24h_rx_dbm": a.get("avg_24h_rx_dbm"),
+                "current_rx_dbm": a.get("current_rx_dbm"),
+                "delta_dbm": a.get("delta_dbm"),
+                "samples_count": a.get("samples_count"),
+                "status": a.get("status"),
+                "resolved_at": a.get("resolved_at"),
+            }
+
+    return {
+        "ticket_id": ticket_id,
+        "live_signal": live,
+        "degradation_alert": degradation,
+        "refresh": {
+            "attempted": refresh_attempted,
+            "result": refresh_result,
+            "error": refresh_error,
+            "forced_by_user": force,
+            "auto_bypass_cache": needs_refresh and not force,
+        },
+        "match": {
+            "found_onu": bool(onu),
+            "via_pppoe": bool((snap.get("pppoe_user") or "").strip()),
+            "pppoe_confidence": snap.get("pppoe_confidence"),
+            "pppoe_source": snap.get("pppoe_source"),
+        },
+        "ticket_status": t.get("status"),
+        "ticket_type": t.get("type"),
+        "client_name": snap.get("name"),
+    }
+
+
 @router.get("/lousa/grid")
 async def lousa_grid(
     user: dict = Depends(require_role("gestor")),

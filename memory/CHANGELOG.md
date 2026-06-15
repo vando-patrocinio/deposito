@@ -1,6 +1,90 @@
 # PontoIA — Changelog
 
 
+## 2026-06-15 — OPERAÇÃO TICKET ARMADO · P0-1 a P0-7 (CTO Mode)
+
+**Contexto:** auditoria `OPERACAO_TICKET_CEGO.md` provou que 90,9% dos
+tickets LOS-matched tinham ONU online no SmartOLT, 87% sem PPPoE no snapshot,
+240 tickets/mês fantasmas do scheduler. **Ordem CEO: implementar P0-1 a P0-7
+em sequência.**
+
+### P0-1 — Guardrail anti-duplicata no AutonomousEngine
+- `services/autonomous_engine.py` (`_dispatch`): preventive_ticket agora
+  bloqueia criação se existe ticket aberto OU se já houve preventive nas
+  últimas 24h para o mesmo SID. Status `blocked_duplicate`.
+
+### P0-2 — Backfill `pppoe_user` em tickets ativos
+- Script `scripts/backfill_ticket_pppoe.py` (idempotente, reversível,
+  confidence-driven). Fontes: `subscribers.pppoe_login`,
+  `subscribers.atlaz_pppoe_user`, `smartolt_onus.name_norm`.
+- **Execução real `co-demo`: 301/322 tickets ativos (93,5%) com
+  confidence=HIGH**, 21 marcados `pppoe_confidence=low`.
+
+### P0-3 — Cache SmartOLT inteligente em contexto de ticket
+- Endpoint novo `GET /api/tickets/{id}/armed-signal` (lousa.py).
+- Auto-bypass de cache quando ticket aberto + cache > `max_age_seconds`
+  (default 300s).
+- Reusa `get_onu_signal_live(force=True)` para invalidar + buscar SmartOLT.
+
+### P0-4 — Auto-classificação de Atenuação Crítica
+- `_live_signal_summary` (smartolt.py) agora classifica:
+  - `LOS_FISICO` (ONU offline/LOS no SmartOLT)
+  - `PROVAVEL_ROMPIMENTO` (Rx < -30 dBm)
+  - `SINAL_CRITICO` (Rx -28 a -30)
+  - `ATENUACAO_CRITICA` (Rx -25 a -28 + relato LOS)
+  - `ATENUACAO_MARGINAL` (Rx -25 a -28 sem relato LOS)
+  - `SAUDAVEL` (Rx > -25)
+- `classification_reason` humanizado.
+
+### P0-5 — Badge com timestamp
+- `cache_label`: "LIVE · agora" / "CACHE · há Xmin" / "CACHE · há Xh" /
+  "SEM LEITURA · última tentativa há Xmin".
+- `cache_freshness`: live | fresh | stale | very_stale | none | unknown.
+- `LousaMobile.js`: novo bloco visual com badges de cache_label,
+  classification, generic_profile, degradation_alert.
+
+### P0-6 — `signal_degradation_alerts` na view do ticket
+- Função `_enrich_degradation_alerts` (smartolt.py) anexa
+  `degradation_alert` aos tickets que têm ONU resolvida.
+- Banner `⚠ PROFILE GENÉRICO` quando `onu_type_name` contém "Generic".
+- Badge `📉 QUEDA -X dBm` quando há `signal_degradation_alerts` ativo.
+
+### P0-7 — Botão Live real
+- `armed-signal?force=true` invalida cache + busca SmartOLT live.
+- Log gravado em `lousa_logs` com action=`live_signal_refresh`,
+  result=`ok|no_data|error`, error message.
+
+### Testes (`scripts/test_ticket_armado.py`)
+- **10/10 critérios obrigatórios passaram** (cache_label, classification
+  ATENUACAO_CRITICA, LOS_FISICO, profile genérico, degradation,
+  anti-duplicata, backfill confidence, log refresh).
+
+### Caso Marcio Carneiro — antes/depois
+| Campo | Antes | Depois |
+|---|---|---|
+| pppoe_user | "AntJoao1429_MarcioCarneiro" | idem |
+| cache_label | (não exibido) | "LIVE · agora" |
+| classification | (não existia) | LOS_FISICO (cache) → null após Live |
+| onu_profile | (não exibido) | F601 |
+| match.found_onu | false (badge "sem leitura") | true |
+| refresh.attempted | (não existia) | true / auto_bypass_cache |
+
+### Files de referência
+- `/app/backend/routes/lousa.py` — endpoint `/tickets/{id}/armed-signal`
+- `/app/backend/routes/smartolt.py` — `_live_signal_summary` estendido +
+  `_enrich_degradation_alerts`
+- `/app/backend/services/autonomous_engine.py` — guardrail anti-duplicata
+- `/app/backend/scripts/backfill_ticket_pppoe.py` — backfill P0-2
+- `/app/backend/scripts/test_ticket_armado.py` — bateria 10/10
+- `/app/frontend/src/LousaMobile.js` — badges visuais
+
+### Rollback
+- P0-1: remover bloco "GUARDRAIL anti-duplica" em autonomous_engine.py.
+- P0-2: `db.tickets.updateMany({"client_snapshot.pppoe_backfilled_at":{"$exists":true}}, {"$unset":{"client_snapshot.pppoe_user":1,"client_snapshot.pppoe_source":1,"client_snapshot.pppoe_confidence":1,"client_snapshot.pppoe_backfilled_at":1}})`
+- P0-3 a P0-7: campos novos no `_live_signal_summary` são aditivos — UI
+  faz fallback gracioso quando ausentes.
+
+
 ## 2026-06-15 — ATLAZ AUDIT · 4 ações P0 internas + Webhook Inbound receiver
 
 **Contexto CTO Mode:** Auditoria do OpenAPI v2 oficial da Atlaz
