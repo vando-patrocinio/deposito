@@ -656,6 +656,13 @@ async def goals_upsert(kpi_key: str, payload: dict):
     return res
 
 
+@router.put("/goals/{kpi_key}", dependencies=[Depends(require_token)])
+async def goals_upsert_put(kpi_key: str, payload: dict):
+    """Alias PUT do POST para conformidade com spec REST."""
+    res = await cg.upsert_goal(CO, kpi_key, payload or {})
+    return res
+
+
 # ─────────────── EXECUTIVE DECISIONS (IA propõe -> CEO aprova) ───────────────
 @router.post("/decisions", dependencies=[Depends(require_token)])
 async def decisions_create(payload: dict):

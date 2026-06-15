@@ -37,26 +37,27 @@ logger = logging.getLogger(__name__)
 
 # Seed canônico (15/06/2026). Usado APENAS se a collection estiver vazia
 # para o tenant — caso contrário, MongoDB é a fonte de verdade.
+# Mapping owner conforme spec CEO 15/06/2026:
 SEED_METAS_2026 = {
     "clientes_ativos": {
         "baseline": 2753, "target": 3500, "direction": "up",
-        "owner": "ceo", "deadline": "2026-12-31",
+        "owner": "diretor_comercial", "deadline": "2026-12-31",
     },
     "mrr": {
         "baseline": 325241.59, "target": 450000.0, "direction": "up",
-        "owner": "ceo", "deadline": "2026-12-31",
+        "owner": "diretor_comercial", "deadline": "2026-12-31",
     },
     "inadimplencia_brl": {
         "baseline": 62485.08, "target": 31000.0, "direction": "down",
-        "owner": "cfo", "deadline": "2026-12-31",
+        "owner": "CFO", "deadline": "2026-12-31",
     },
     "embaixadores": {
         "baseline": 1, "target": 50, "direction": "up",
-        "owner": "ceo", "deadline": "2026-12-31",
+        "owner": "marketing_growth", "deadline": "2026-12-31",
     },
     "fundadores_aptos": {
         "baseline": 2, "target": 30, "direction": "up",
-        "owner": "ceo", "deadline": "2026-12-31",
+        "owner": "CEO", "deadline": "2026-12-31",
     },
 }
 BASELINE_DATE = "2026-06-15"
