@@ -68,6 +68,18 @@ class ChannelProviderPayload(BaseModel):
     evolution_instance_name: Optional[str] = None
 
 
+class ChannelMigratePayload(BaseModel):
+    """Migração atômica de provider (CTO 15/06/2026): troca provider e
+    opcionalmente desloga o provider anterior pra liberar a sessão.
+    Histórico de conversas no Mongo NÃO é tocado (são keyed por phone, não provider).
+    """
+    target_provider: str = Field(..., description="baileys | evolution")
+    evolution_url: Optional[str] = None
+    evolution_api_key: Optional[str] = None
+    evolution_instance_name: Optional[str] = None
+    auto_logout_previous: bool = True
+
+
 # --------------------------------------------------------------------------- #
 # Provider-aware adapter
 # --------------------------------------------------------------------------- #
@@ -214,12 +226,87 @@ async def patch_provider(
         raise HTTPException(400, str(e))
     if not updated:
         raise HTTPException(404, "Canal não encontrado")
-    # Não retorna api_key em claro (defesa de log)
     safe = dict(updated)
     if safe.get("evolution_api_key"):
         safe["evolution_api_key_masked"] = "***" + (safe["evolution_api_key"][-4:] or "")
         safe.pop("evolution_api_key", None)
     return safe
+
+
+@router.post("/{channel_id}/migrate")
+async def migrate_provider(
+    channel_id: str,
+    payload: ChannelMigratePayload,
+    user=Depends(require_role("administrador", "gestor", "auditor")),
+):
+    """Migração atômica de provider: opcionalmente desloga o provider antigo
+    (libera sessão Baileys ou instance Evolution) ANTES de aplicar o novo.
+
+    Histórico de conversas NÃO é tocado (é keyed por phone, não por provider).
+    Retorna {ok, old_provider, new_provider, previous_logout, channel}.
+    """
+    _validate_channel_id(channel_id)
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+    ch = await get_channel(db, cid, channel_id)
+    if not ch:
+        raise HTTPException(404, "Canal não encontrado")
+
+    old_provider = ch.get("provider") or "baileys"
+    if payload.target_provider == old_provider:
+        raise HTTPException(400, f"Canal já está em provider='{old_provider}'")
+
+    # Step 1: logout do provider antigo (best-effort, não falha a migration)
+    previous_logout: dict = {"attempted": False}
+    if payload.auto_logout_previous:
+        previous_logout["attempted"] = True
+        try:
+            if _is_evolution(ch):
+                evo = _evolution_client(ch)
+                previous_logout["result"] = await evo.logout()
+            else:
+                previous_logout["result"] = await _proxy_post(channel_id, "/logout", {})
+            previous_logout["ok"] = True
+        except (httpx.HTTPError, HTTPException) as e:
+            previous_logout["ok"] = False
+            previous_logout["error"] = str(e)[:200]
+
+    # Step 2: aplica nova config (validada por set_provider_config)
+    try:
+        updated = await set_provider_config(
+            db, cid, channel_id,
+            provider=payload.target_provider,
+            evolution_url=payload.evolution_url,
+            evolution_api_key=payload.evolution_api_key,
+            evolution_instance_name=payload.evolution_instance_name,
+        )
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+
+    # Step 3: limpa cache de phone/status (canal precisa reconectar)
+    await update_channel_runtime(
+        db, cid, channel_id,
+        phone_number=None, status="migrated",
+    )
+    await db["whatsapp_channels"].update_one(
+        {"company_id": cid, "id": channel_id},
+        {"$set": {"phone_number": None}},
+    )
+
+    # Mascara api_key na resposta
+    safe = dict(updated or {})
+    if safe.get("evolution_api_key"):
+        safe["evolution_api_key_masked"] = "***" + (safe["evolution_api_key"][-4:] or "")
+        safe.pop("evolution_api_key", None)
+
+    return {
+        "ok": True,
+        "old_provider": old_provider,
+        "new_provider": payload.target_provider,
+        "previous_logout": previous_logout,
+        "channel": safe,
+        "note": ("Histórico de conversas preservado. Conecte o novo provider "
+                 "via QR (canal-1 /qr) pra restaurar a sessão."),
+    }
 
 
 @router.get("/{channel_id}/qr")

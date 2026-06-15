@@ -1,6 +1,27 @@
 # PontoIA — Changelog
 
 
+## 2026-06-15 — WHATSAPP · ENDPOINT MIGRATE (A/B test entre provedores sem perda)
+
+### Ordem CEO
+"sim" — autorizou o enhancement do migrate endpoint que eu sugeri ao final da entrega Evolution.
+
+### Entrega
+- **NOVO** `POST /api/whatsapp-channels/{id}/migrate` em `routes/whatsapp_channels.py`.
+- Payload: `{target_provider, evolution_url?, evolution_api_key?, evolution_instance_name?, auto_logout_previous=true}`.
+- Lógica: (1) valida target ≠ atual, (2) logout best-effort no provider antigo (não falha a migration se logout der erro), (3) aplica nova config via `set_provider_config` (limpa credenciais se voltar pra Baileys), (4) limpa cache phone/status (precisa reconectar).
+- Histórico de conversas preservado (collections são keyed por phone, não por provider).
+- `evolution_api_key` mascarado na resposta (`***ABCD`).
+- NOVO no api.js: `waChannelMigrate(channelId, payload)`.
+
+### Testes (curl admin)
+- 5/5 PASS: state inicial; evolution sem creds → 400; baileys→evolution fake creds → 200 mascarado; mesmo provider → 400; evolution→baileys com auto_logout best-effort → 200 + credenciais limpas.
+
+### Notificação CEO
+- `cto_inbox` cto-a770c214f79e4a (CTO→CEO, p2, status=open).
+
+
+
 ## 2026-06-15 — WHATSAPP MULTI-PROVIDER · EVOLUTION API COMO OPÇÃO
 
 ### Ordem CEO
