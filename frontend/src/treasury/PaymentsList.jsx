@@ -523,6 +523,47 @@ function NewPaymentModal({ payees, onClose, onCreated }) {
     } finally { setValidating(false); }
   };
 
+  // P0 CEO 2026-02 — Cadastrar PIX inline (payee sem chave). Salva no
+  // cadastro do fornecedor + valida em sequência (1 clique).
+  const [pixDraft, setPixDraft] = useState({ pix_key: "", pix_key_type: "CPF" });
+  const [saving, setSaving] = useState(false);
+  const cadastrarPixInline = async () => {
+    const sel = localPayees.find((x) => x.payee_id === f.payee_id);
+    if (!sel) return;
+    if (!pixDraft.pix_key.trim()) {
+      setErr("Digite a chave PIX antes de salvar."); return;
+    }
+    setSaving(true); setErr(null);
+    try {
+      await treasuryApi.updatePayee(sel.payee_id, {
+        pix_key: pixDraft.pix_key.trim(),
+        pix_key_type: pixDraft.pix_key_type,
+      });
+      await treasuryApi.validatePayeePix(sel.payee_id, {
+        pix_key: pixDraft.pix_key.trim(),
+        pix_key_type: pixDraft.pix_key_type,
+      });
+      setLocalPayees((arr) => arr.map((p) =>
+        p.payee_id === sel.payee_id
+          ? { ...p,
+              pix_key: pixDraft.pix_key.trim(),
+              pix_key_type: pixDraft.pix_key_type,
+              validacao_chave_pix: {
+                validated_at: new Date().toISOString(),
+                by: "you", pix_key: pixDraft.pix_key.trim(),
+                pix_key_type: pixDraft.pix_key_type,
+              },
+            }
+          : p,
+      ));
+      setF((s) => ({ ...s, pix_key: pixDraft.pix_key.trim(),
+                     pix_key_type: pixDraft.pix_key_type }));
+      setPixDraft({ pix_key: "", pix_key_type: "CPF" });
+    } catch (e) {
+      setErr(e?.response?.data?.detail || e.message);
+    } finally { setSaving(false); }
+  };
+
   const submit = async () => {
     if (!f.payee_id || !f.amount_brl || !f.scheduled_for) {
       setErr("Preencha beneficiário, valor e data."); return;
@@ -579,6 +620,7 @@ function NewPaymentModal({ payees, onClose, onCreated }) {
       {tab === "pix" && f.payee_id && (() => {
         const sel = localPayees.find((x) => x.payee_id === f.payee_id);
         if (!sel) return null;
+        const hasPix = !!(sel.pix_key && String(sel.pix_key).trim());
         const pixOk = !!sel?.validacao_chave_pix?.validated_at;
         const iaOk = !!sel.ia_autorizada;
         return (
@@ -593,7 +635,7 @@ function NewPaymentModal({ payees, onClose, onCreated }) {
                 fontWeight: 700 }}>
                 Cadastro do beneficiário
               </span>
-              {!pixOk && sel.pix_key && (
+              {hasPix && !pixOk && (
                 <button type="button"
                   data-testid="btn-validate-pix-inline"
                   onClick={validatePixInline} disabled={validating}
@@ -615,9 +657,10 @@ function NewPaymentModal({ payees, onClose, onCreated }) {
               </div>
               <div>
                 <div style={{ color: C.muted, fontSize: 10 }}>Chave PIX</div>
-                <div style={{ color: C.text, fontWeight: 600,
-                  fontFamily: "monospace", wordBreak: "break-all" }}>
-                  {sel.pix_key || "—"}
+                <div style={{ color: hasPix ? C.text : "#dc2626",
+                  fontWeight: 600, fontFamily: "monospace",
+                  wordBreak: "break-all" }}>
+                  {sel.pix_key || "— SEM CADASTRO —"}
                 </div>
               </div>
               <div>
@@ -630,10 +673,64 @@ function NewPaymentModal({ payees, onClose, onCreated }) {
                   fontWeight: 700, fontSize: 11 }}>
                   {iaOk ? "✓ AUTORIZADA" : "TRAVADO (failsafe)"}
                   {" · "}
-                  {pixOk ? "PIX validado" : "PIX a validar"}
+                  {pixOk ? "PIX validado" : (hasPix ? "PIX a validar" : "Sem PIX")}
                 </div>
               </div>
             </div>
+            {!hasPix && (
+              <div data-testid="cadastrar-pix-inline" style={{
+                marginTop: 10, paddingTop: 10,
+                borderTop: `1px dashed ${C.border}`,
+              }}>
+                <div style={{ color: "#7c2d12", fontSize: 11, fontWeight: 700,
+                  marginBottom: 6 }}>
+                  Fornecedor sem chave PIX cadastrada — cadastre agora:
+                </div>
+                <div style={{ display: "flex", gap: 6, alignItems: "flex-end" }}>
+                  <div style={{ width: 110 }}>
+                    <div style={{ color: C.muted, fontSize: 10,
+                      marginBottom: 3 }}>Tipo</div>
+                    <select data-testid="cadastrar-pix-type"
+                      value={pixDraft.pix_key_type}
+                      onChange={(e) => setPixDraft((d) =>
+                        ({ ...d, pix_key_type: e.target.value }))}
+                      style={input}>
+                      <option value="CPF">CPF</option>
+                      <option value="CNPJ">CNPJ</option>
+                      <option value="EMAIL">Email</option>
+                      <option value="PHONE">Telefone</option>
+                      <option value="EVP">EVP</option>
+                    </select>
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ color: C.muted, fontSize: 10,
+                      marginBottom: 3 }}>Chave PIX</div>
+                    <input data-testid="cadastrar-pix-key"
+                      value={pixDraft.pix_key}
+                      onChange={(e) => setPixDraft((d) =>
+                        ({ ...d, pix_key: e.target.value }))}
+                      placeholder={pixDraft.pix_key_type === "PHONE"
+                        ? "+5511999999999"
+                        : pixDraft.pix_key_type === "EMAIL"
+                          ? "fornecedor@dominio.com" : ""}
+                      style={input}/>
+                  </div>
+                  <button type="button"
+                    data-testid="btn-cadastrar-pix-inline"
+                    onClick={cadastrarPixInline} disabled={saving}
+                    style={{ background: C.accent, color: "white", border: 0,
+                      borderRadius: 6, padding: "8px 12px", fontWeight: 700,
+                      fontSize: 11, cursor: saving ? "wait" : "pointer",
+                      opacity: saving ? 0.6 : 1, whiteSpace: "nowrap" }}>
+                    {saving ? "Salvando..." : "Salvar e validar"}
+                  </button>
+                </div>
+                <div style={{ color: "#92400e", fontSize: 10, marginTop: 4 }}>
+                  Salva no cadastro do fornecedor e marca PIX validado em um
+                  clique — depois você ainda pode autorizar a IA na aba IA Tesoureira.
+                </div>
+              </div>
+            )}
           </div>
         );
       })()}
