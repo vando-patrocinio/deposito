@@ -2348,11 +2348,25 @@ async def auto_close_service_from_ticket(
 
     # Validações em try-block: qualquer erro vira "erro_estoque" sem derrubar
     shortages: List[Dict[str, Any]] = []
+    # CTO 2026-02 — Gate anti-dupla-movimentação. Se a OS já passou pelo
+    # `os_inventory_guardrail`, o ONT já foi movido. Aqui só processamos
+    # consumíveis (cabos/conectores), evitando dupla baixa.
+    skip_ont_movement = False
+    try:
+        tk = await db.tickets.find_one(
+            {"id": ticket_id, "company_id": company_id},
+            {"_id": 0, "os_inventory_guardrail": 1})
+        if tk and tk.get("os_inventory_guardrail", {}).get("movements"):
+            skip_ont_movement = True
+            parts.append(
+                "ONT já movimentada pelo guardrail global — pulo aqui.")
+    except Exception as e:  # pragma: no cover
+        logger.warning("[stok] gate guardrail lookup falhou: %s", e)
     try:
         _validate_used_items(used_items)
         shortages = await _check_tech_has_stock(
             company_id, technician_id, technician_name, used_items)
-        if service["type"] in ("instalacao", "troca"):
+        if service["type"] in ("instalacao", "troca") and not skip_ont_movement:
             # iter197 — SN prevalente: Instalação/Troca aceita SN OU MAC.
             # Quando só SN é informado, `_move_ont_for_install` busca por SN
             # e herda o MAC da ONT existente no estoque do técnico.
@@ -2366,7 +2380,7 @@ async def auto_close_service_from_ticket(
                 company_id, service, ont_mac,
                 installer_name=technician_name,
                 installer_email=completion_data.get("closed_by_email")))
-        elif service["type"] == "retirada":
+        elif service["type"] == "retirada" and not skip_ont_movement:
             # iter174 — Retirada aceita MAC OU SN (qualquer um dos dois valida)
             if not ont_mac and not ont_sn:
                 raise HTTPException(400, "Para retirada, informe o MAC OU o SN da ONT retirada.")
