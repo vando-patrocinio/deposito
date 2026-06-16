@@ -4625,3 +4625,26 @@ DEPOIS purga:  16 aguardando triagem (todos válidos ou recuperáveis)
 ### Próximo
 - testing_agent_v3_fork cobrindo as 7 rotas refatoradas com fixtures isoladas.
 - R1 Valuation Schema (em paralelo, posicionado após testing_agent).
+
+---
+## [2026-02-16 — adendo 6] Onda 1 Validação E2E HTTP
+
+**Testing agent v3 iteration_244 + 245 — Onda 1 ratificada em produção.**
+
+### Bugs descobertos e corrigidos
+1. **CRITICAL** `rbac_policy.py:100` — middleware bloqueava `auditor` em `/api/purchases` antes do handler. **Fix:** tuple atualizada para `{financeiro, gestor, auditor}`.
+2. **MINOR** `DefectiveOntReasonIn.code` era `str` (não-Optional) → Pydantic retornava 422 antes do handler 400. **Fix:** `code: Optional[str] = None`.
+
+### Resultado final
+- 16/17 testes E2E HTTP verdes (94%).
+- 6 happy paths confirmados gravando `destructive_actions_audit` com `before_snapshot.docs` completo, `after_snapshot.verified_at`, `audit_hash` SHA-256, cross-reference em logs legados.
+- Trilha reversa `ticket_reopen_revert` em `inventory_os_movements_audit` confirmada após wipe.
+- 1 falha residual: fixture do testing agent usou `location_type='colaborador'` em vez do canônico `'tecnico'` — não é bug do código (validado pelo smoke test interno 1.2).
+
+### Recomendação arquitetural registrada (não-bloqueante)
+- Considerar single source of truth entre `rbac_policy.py` e per-handler `require_role()`. Hoje o policy é checado primeiro no middleware; handlers que pedem role não listada no policy ficam dead-code silencioso.
+
+### Suite total da Onda 1
+- 26/26 smoke internos verdes
+- 16/17 HTTP E2E verdes (1 fixture mismatch)
+- **Onda 1 ENCERRADA com sucesso. ✅**
