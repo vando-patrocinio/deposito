@@ -4544,3 +4544,51 @@ DEPOIS purga:  16 aguardando triagem (todos válidos ou recuperáveis)
 - Nenhum código de produção alterado.
 - Nenhuma migração.
 - Nenhum delete.
+
+---
+## [2026-02-16 — adendo 3] Estoque OS V2 — Operação Valuation Audit
+
+**Decisão CEO:** auditoria específica antes da implementação da Onda 1.
+
+### Entregáveis criados
+- `/app/memory/INVENTORY_VALUATION_AUDIT.md` — auditoria de valor financeiro do patrimônio (10 perguntas respondidas).
+- `/app/memory/INVENTORY_VALUATION_MATRIX.md` — matriz operacional + tabela MODEL_CANONICAL + queries mongo.
+- `/app/backend/scripts/valuation_audit.py` — script reproduzível em produção.
+
+### Achados centrais
+- **0% das ONTs têm valor financeiro no doc** (campo `unit_price`, `valor`, `cost`, etc. → INEXISTENTES).
+- **35,7% têm bridge para NF** via `purchase_id → purchases.items[].unit_price` (já existe).
+- **64,3% são fantasmas patrimoniais** (sem purchase_id).
+- **412% de incerteza relativa** sobre o valuation.
+- Range REAL auditável (1.828 ONTs): **R$ 273.675 a R$ 351.675**.
+- Range possível com especulação: R$ 91k a R$ 731k.
+- Preço NF real observado: HG6145D a **R$ 300/un** (não R$ 85 como estimado).
+
+### Recomendações em paralelo
+- R1: Adicionar 6 campos additivos em `stok_onts` (valor_nf, valor_medio_ponderado, valor_referencia, valuation_grade, valuation_source, valuation_calculated_at).
+- R2: Tabela MODEL_CANONICAL (8 famílias mapeadas em draft).
+- R3: Job `valuation_backfill_dry_run` antes de qualquer write.
+- R4: Não bloquear Onda 1 — valuation é ortogonal.
+
+### Decisões CEO pendentes
+- A) Aprovar schema additivo (R1).
+- B) Validar/fornecer MODEL_CANONICAL oficial Ligo.
+- C) Aprovar política para os 64,3% fantasmas (manter / bloquear / inferir).
+- D) Confirmar R4: Onda 1 segue independente.
+
+---
+## [2026-02-16 — adendo 4] Estoque OS V2 — Onda 1.1 (Helper canônico destructive_audit)
+
+**Decisão CEO confirmada:** 1c (motivos hardcoded) · 2a (snapshot completo sempre) · 3a (sequencial 1.1 → 1.4).
+
+### PR 1.1 entregue (zero impacto em rotas existentes)
+- `services/destructive_audit.py` — contrato canônico com 8 `ACTION_TYPES`, 9 `DESTRUCTIVE_REASONS`, validação de `reason`/`executed_by`, hash SHA-256 determinístico, API `record_destructive_action()` + `attach_after_snapshot()`.
+- Collection física nova: `destructive_actions_audit` (separada, sobrevive a qualquer reset).
+- `MIN_REASON_DETAILS_LENGTH = 20` para reason="Outro".
+- `scripts/test_onda1_destructive_audit.py` — 11/11 smoke tests verdes.
+
+### Característica chave (CEO decisão 2a)
+- `before_snapshot.docs` aceita dump COMPLETO dos documentos. Sem sample, sem checksum, sem amostragem. Patrimônio não economiza evidência.
+- Hash inclui apenas `doc_ids` (não o snapshot inteiro), mantendo determinístico mesmo com dump volumoso.
+
+### Próximo: PR 1.2 (refatorar `stok_admin_reset` + `stok_admin_reset_granular`)
