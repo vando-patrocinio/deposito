@@ -22,7 +22,7 @@
  * Ao publicar uma versão NOVA, basta bumpar o CACHE_NAME abaixo. O
  * `activate` deleta caches antigos automaticamente.
  */
-const CACHE_NAME = "smartprov-v5-2026-06-09";
+const CACHE_NAME = "smartprov-v6-2026-06-16-qr-fix";
 const TILE_CACHE = "smartprov-tiles-v1";
 // Hosts considerados "tiles de mapa" (cache long-term)
 const TILE_HOSTS = [
