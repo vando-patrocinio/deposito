@@ -469,6 +469,18 @@ function NewPaymentModal({ payees, onClose, onCreated }) {
     })();
   }, []);
 
+  // P0 CEO 2026-02 — Se payees chegar async DEPOIS do mount, sincroniza
+  // pix_key/pix_key_type com o primeiro payee da lista (auto-fill seguro).
+  useEffect(() => {
+    if (!f.payee_id && payees.length > 0) {
+      const p = payees[0];
+      setF((s) => ({
+        ...s, payee_id: p.payee_id,
+        pix_key: p.pix_key || "", pix_key_type: p.pix_key_type || "CPF",
+      }));
+    }
+  }, [payees, f.payee_id]);
+
   // P0 CEO 2026-02 — Ao trocar beneficiário, AUTO-CARREGA PIX do
   // cadastro do fornecedor (handler direto, sem useEffect).
   const onPayeeChange = (payee_id) => {
@@ -533,6 +545,53 @@ function NewPaymentModal({ payees, onClose, onCreated }) {
           ))}
         </select>
       </Field>
+      {tab === "pix" && f.payee_id && (() => {
+        const sel = payees.find((x) => x.payee_id === f.payee_id);
+        if (!sel) return null;
+        const pixOk = !!sel?.validacao_chave_pix?.validated_at;
+        const iaOk = !!sel.ia_autorizada;
+        return (
+          <div data-testid="pay-payee-cadastro" style={{
+            background: C.cardSoft, border: `1px solid ${C.border}`,
+            borderRadius: 10, padding: 10, marginBottom: 10, fontSize: 12,
+          }}>
+            <div style={{ color: C.muted, fontSize: 10,
+              textTransform: "uppercase", letterSpacing: 0.5,
+              fontWeight: 700, marginBottom: 4 }}>
+              Cadastro do beneficiário
+            </div>
+            <div style={{ display: "grid",
+              gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+              <div>
+                <div style={{ color: C.muted, fontSize: 10 }}>Tipo</div>
+                <div style={{ color: C.text, fontWeight: 600 }}>
+                  {sel.pix_key_type || "—"}
+                </div>
+              </div>
+              <div>
+                <div style={{ color: C.muted, fontSize: 10 }}>Chave PIX</div>
+                <div style={{ color: C.text, fontWeight: 600,
+                  fontFamily: "monospace", wordBreak: "break-all" }}>
+                  {sel.pix_key || "—"}
+                </div>
+              </div>
+              <div>
+                <div style={{ color: C.muted, fontSize: 10 }}>Documento</div>
+                <div style={{ color: C.text }}>{sel.document || "—"}</div>
+              </div>
+              <div>
+                <div style={{ color: C.muted, fontSize: 10 }}>Status IA</div>
+                <div style={{ color: iaOk ? "#059669" : "#92400e",
+                  fontWeight: 700, fontSize: 11 }}>
+                  {iaOk ? "✓ AUTORIZADA" : "TRAVADO (failsafe)"}
+                  {" · "}
+                  {pixOk ? "PIX validado" : "PIX a validar"}
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
       <div style={{ display: "flex", gap: 10 }}>
         <Field label="Valor (R$)*"><input type="number" step="0.01"
           data-testid="pay-amount" value={f.amount_brl}
@@ -542,19 +601,7 @@ function NewPaymentModal({ payees, onClose, onCreated }) {
           onChange={(e) => setF({ ...f, scheduled_for: e.target.value })} style={input}/></Field>
       </div>
       {tab === "pix" && (
-        <div style={{ display: "flex", gap: 10 }}>
-          <Field label="Tipo chave Pix">
-            <select data-testid="pay-pix-type" value={f.pix_key_type}
-              onChange={(e) => setF({ ...f, pix_key_type: e.target.value })} style={input}>
-              <option value="CPF">CPF</option><option value="CNPJ">CNPJ</option>
-              <option value="EMAIL">Email</option><option value="PHONE">Telefone</option>
-              <option value="EVP">EVP (aleatória)</option>
-            </select></Field>
-          <Field label="Chave Pix (sobrescreve)">
-            <input data-testid="pay-pix-key" value={f.pix_key}
-              onChange={(e) => setF({ ...f, pix_key: e.target.value })} style={input}
-              placeholder={f.pix_key_type === "PHONE" ? "+5511999999999" : ""}/></Field>
-        </div>
+        <PixOverrideToggle f={f} setF={setF}/>
       )}
       {tab === "bill" && (
         <>
@@ -696,4 +743,59 @@ function Overlay({ children, onClose, title, testid }) {
         {children}
       </div>
     </div>);
+}
+
+
+// P0 CEO 2026-02 — Override só visível se o operador marcar.
+// Por padrão a PIX vem do cadastro (modal mostra block read-only acima).
+function PixOverrideToggle({ f, setF }) {
+  const [show, setShow] = React.useState(false);
+  if (!show) {
+    return (
+      <button data-testid="pay-show-override" type="button"
+        onClick={() => setShow(true)}
+        style={{ background: "transparent", border: 0, color: C.accent,
+          fontSize: 11, fontWeight: 600, cursor: "pointer", padding: 0,
+          marginBottom: 12, textDecoration: "underline" }}>
+        Sobrescrever chave PIX deste pagamento?
+      </button>);
+  }
+  return (
+    <div style={{ background: "#fff7ed", border: "1px solid #fed7aa",
+      borderRadius: 8, padding: 10, marginBottom: 12 }}>
+      <div style={{ color: "#7c2d12", fontSize: 11, fontWeight: 700,
+        marginBottom: 6, display: "flex", justifyContent: "space-between" }}>
+        <span>Sobrescrever chave PIX (somente este pagamento)</span>
+        <button type="button" onClick={() => {
+            setShow(false);
+            setF((s) => ({ ...s, pix_key: "", pix_key_type: s.pix_key_type }));
+          }}
+          style={{ background: "transparent", border: 0, color: "#7c2d12",
+            cursor: "pointer", fontSize: 11, textDecoration: "underline" }}>
+          Cancelar override
+        </button>
+      </div>
+      <div style={{ display: "flex", gap: 10 }}>
+        <Field label="Tipo chave PIX">
+          <select data-testid="pay-pix-type" value={f.pix_key_type}
+            onChange={(e) => setF((s) => ({ ...s, pix_key_type: e.target.value }))}
+            style={input}>
+            <option value="CPF">CPF</option><option value="CNPJ">CNPJ</option>
+            <option value="EMAIL">Email</option><option value="PHONE">Telefone</option>
+            <option value="EVP">EVP (aleatória)</option>
+          </select>
+        </Field>
+        <Field label="Chave PIX nova">
+          <input data-testid="pay-pix-key" value={f.pix_key}
+            onChange={(e) => setF((s) => ({ ...s, pix_key: e.target.value }))}
+            style={input}
+            placeholder={f.pix_key_type === "PHONE" ? "+5511999999999" : ""}/>
+        </Field>
+      </div>
+      <div style={{ color: "#92400e", fontSize: 10, marginTop: 4 }}>
+        ⚠ A IA Tesoureira BLOQUEIA o envio se a chave divergir do cadastro
+        (regra 4). Use apenas com motivo registrado.
+      </div>
+    </div>
+  );
 }
