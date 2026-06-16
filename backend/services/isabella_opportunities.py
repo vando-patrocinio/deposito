@@ -139,7 +139,6 @@ async def upsert_opportunity(*,
                 "source": source,
             }})
         try:
-            from services.event_bus import emit_event
             await emit_event(
                 "opportunity.updated",
                 company_id=(existing or {}).get("company_id"),
@@ -227,7 +226,6 @@ async def update_status(opp_id: str, company_id: str, *,
     r = await db.isabella_commander_opportunities.update_one(
         {"id": opp_id, "company_id": company_id}, {"$set": patch})
     try:
-        from services.event_bus import emit_event
         await emit_event(
             "opportunity.updated",
             company_id=company_id,
