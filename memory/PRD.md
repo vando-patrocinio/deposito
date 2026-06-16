@@ -4648,3 +4648,36 @@ DEPOIS purga:  16 aguardando triagem (todos válidos ou recuperáveis)
 - 26/26 smoke internos verdes
 - 16/17 HTTP E2E verdes (1 fixture mismatch)
 - **Onda 1 ENCERRADA com sucesso. ✅**
+
+---
+## [2026-02-16 — adendo 7] Estoque OS V2 — R1.1 + R1.2 (Valuation Schema)
+
+**Decisões CEO aplicadas:** Q1=c (híbrido) · Q2=a (needs_human_review em Grade F) · Q3=a (co-demo only).
+
+### R1.1 entregue
+- `services/inventory_valuation.py` — motor + `MODEL_CANONICAL` (10 famílias) + `resolve_valuation()` + `effective_value()` + `ensure_indexes()` (3 índices Mongo: 2 para `destructive_actions_audit` + 1 para `stok_onts.valuation_grade`).
+- `scripts/test_r1_1_valuation.py` — 9/9 smoke tests verdes (lixo, lookup greedy, Grades A/B/C/D/F, prioridade, idempotência).
+
+### R1.2 entregue
+- `scripts/valuation_backfill.py` — CLI `--dry-run` / `--apply`. Apply bloqueado.
+- Relatório gerado em co-demo: 28 ONTs, R$ 3.529 calculado, 35,71% confiança.
+
+### Resultados Dry-Run (co-demo, 28 ONTs)
+| Grade | Qtd | % | Patrimônio |
+|-------|-----|---|------------|
+| A (NF) | 10 | 35,7% | R$ 1.904 |
+| B (weighted_avg) | 0 | 0% | R$ 0 |
+| C (model_canonical) | 8 | 28,6% | R$ 775 |
+| D (reference) | 0 | 0% | R$ 0 |
+| F (revisão humana) | 10 | 35,7% | R$ 850 |
+| **TOTAL** | **28** | 100% | **R$ 3.529** |
+
+- Auditável (A+B): R$ 1.904
+- Especulativo (C+D+F): R$ 1.625
+- Range mínimo possível: R$ 1.400 (28 × R$ 50)
+- Range máximo possível: R$ 11.200 (28 × R$ 400)
+- Weighted avg detectado: R$ 200,36
+- Modelo top: `FIBERHOME ONT AC1200 GPON 2GE WIFI HG8145D` (7 unidades)
+
+### R1.3 + R1.4
+- BLOQUEADAS aguardando autorização CEO após análise do relatório.
