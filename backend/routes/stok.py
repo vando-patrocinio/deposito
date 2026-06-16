@@ -2287,6 +2287,7 @@ _COMPLETION_FIELD_TO_CONSUMABLE = {
 async def auto_close_service_from_ticket(
     ticket_id: str, company_id: str, completion_data: dict,
     technician_id: str, technician_name: str,
+    *, caller: Optional[str] = None,
 ) -> dict:
     """Quando técnico finaliza bolha, auto-fecha a OS associada e baixa estoque.
 
@@ -2295,9 +2296,45 @@ async def auto_close_service_from_ticket(
     `status="erro_estoque"` com notas pro gestor, mas **não derruba o finalize
     da Lousa** (best-effort).
     Retorna `{ok, service_id?, reason?, used_items?}` para logging.
+
+    Onda 0b (CTO 16/02/2026) — LEGADO em sunset observado.
+    Flag env `AUTO_CLOSE_LEGACY_DEPRECATED` ativa log estruturado em
+    `auto_close_legacy_observability` para mapear callers em produção.
+    Nada é desligado nesta fase. Após 7 dias com tráfego zero → remoção.
     """
     if not ticket_id or not company_id:
         return {"ok": False, "reason": "missing_ids"}
+
+    # ─── Onda 0b — Observabilidade obrigatória do legado ──────────────────
+    try:
+        import os as _os
+        if _os.environ.get("AUTO_CLOSE_LEGACY_DEPRECATED", "true").lower() in (
+                "1", "true", "yes", "on"):
+            logger.warning(
+                "[stok][LEGACY][auto_close_service_from_ticket] caller=%s "
+                "ticket=%s company=%s tech=%s/%s cd_keys=%s",
+                caller or "unknown", ticket_id, company_id,
+                technician_id, technician_name,
+                sorted(list((completion_data or {}).keys()))[:20],
+            )
+            await db.auto_close_legacy_observability.insert_one({
+                "id": f"acl-{ticket_id}-{int(datetime.now(timezone.utc).timestamp()*1000)}",
+                "ticket_id": ticket_id,
+                "company_id": company_id,
+                "caller": caller or "unknown",
+                "technician_id": technician_id,
+                "technician_name": technician_name,
+                "completion_data_keys": sorted(
+                    list((completion_data or {}).keys()))[:50],
+                "has_ont": bool((completion_data or {}).get("ont")),
+                "has_ont_sn": bool((completion_data or {}).get("ont_sn")),
+                "called_at": datetime.now(timezone.utc).isoformat(),
+            })
+    except Exception as _obs_err:  # pragma: no cover — observabilidade nunca quebra
+        logger.warning("[stok] auto_close legacy observability falhou: %s",
+                       _obs_err)
+    # ──────────────────────────────────────────────────────────────────────
+
     service = await db.stok_services.find_one(
         {"ticket_id": ticket_id, "company_id": company_id, "status": "ativo"},
         {"_id": 0},
@@ -3069,6 +3106,7 @@ async def reprocess_erro_estoque(
             completion_data=cd,
             technician_id=svc.get("technician_id"),
             technician_name=tech.get("name") or "Técnico",
+            caller="stok.retry_erro_estoque",
         )
         if result.get("ok"):
             succeeded += 1

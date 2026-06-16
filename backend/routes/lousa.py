@@ -2977,6 +2977,42 @@ async def _revert_ticket_side_effects(ticket: dict, actor: dict) -> Dict[str, An
                            or (service or {}).get("technician_id")
                            or ticket.get("assigned_collaborator_id"))
                 if tech_id:
+                    # ─── Onda 0d — Trilha reversa ANTES de mutar stok_onts ───
+                    try:
+                        from services.inventory_movements import write_movement
+                        import hashlib as _hl
+                        import json as _json
+                        _rec = {
+                            "os_id": ticket_id,
+                            "ticket_id": ticket_id,
+                            "company_id": company_id,
+                            "movement_type": "ticket_reopen_revert",
+                            "origin_type": "cliente",
+                            "destination_type": "tecnico",
+                            "origin_owner": "cliente",
+                            "destination_owner": "tecnico",
+                            "origin_id": cs.get("id"),
+                            "destination_id": tech_id,
+                            "client_id": cs.get("id"),
+                            "technician_id": tech_id,
+                            "equipment_id": ont.get("id"),
+                            "sn": ont.get("scan_sn"),
+                            "mac": ont.get("mac"),
+                            "actor_id": actor.get("id"),
+                            "actor_name": actor.get("name") or actor.get("email"),
+                            "actor_email": actor.get("email"),
+                            "reason": "ticket_reopen_undo_install",
+                            "previous_ttype": ttype,
+                        }
+                        _canon = _json.dumps({k: _rec.get(k) for k in (
+                            "os_id", "ticket_id", "client_id", "technician_id",
+                            "equipment_id", "sn", "mac", "movement_type",
+                            "origin_owner", "destination_owner", "actor_id",
+                        )}, sort_keys=True, default=str)
+                        _rec["audit_hash"] = _hl.sha256(_canon.encode()).hexdigest()
+                        await write_movement(_rec)
+                    except Exception as _re:
+                        summary["errors"].append(f"reopen revert trail (install): {_re}")
                     await db.stok_onts.update_one(
                         {"company_id": company_id, "mac": ont["mac"]},
                         {"$set": {
@@ -3033,6 +3069,44 @@ async def _revert_ticket_side_effects(ticket: dict, actor: dict) -> Dict[str, An
                             or (service or {}).get("client_name")
                             or cs.get("name"))
                 if cli_id:
+                    # ─── Onda 0d — Trilha reversa ANTES de mutar stok_onts ───
+                    try:
+                        from services.inventory_movements import write_movement
+                        import hashlib as _hl
+                        import json as _json
+                        _rec = {
+                            "os_id": ticket_id,
+                            "ticket_id": ticket_id,
+                            "company_id": company_id,
+                            "movement_type": "ticket_reopen_revert",
+                            "origin_type": "tecnico",
+                            "destination_type": "cliente",
+                            "origin_owner": "tecnico",
+                            "destination_owner": "cliente",
+                            "origin_id": ((service or {}).get("technician_id")
+                                          or ticket.get("assigned_collaborator_id")),
+                            "destination_id": cli_id,
+                            "client_id": cli_id,
+                            "technician_id": ((service or {}).get("technician_id")
+                                              or ticket.get("assigned_collaborator_id")),
+                            "equipment_id": ont.get("id"),
+                            "sn": ont.get("scan_sn"),
+                            "mac": ont.get("mac"),
+                            "actor_id": actor.get("id"),
+                            "actor_name": actor.get("name") or actor.get("email"),
+                            "actor_email": actor.get("email"),
+                            "reason": "ticket_reopen_undo_withdraw",
+                            "previous_ttype": ttype,
+                        }
+                        _canon = _json.dumps({k: _rec.get(k) for k in (
+                            "os_id", "ticket_id", "client_id", "technician_id",
+                            "equipment_id", "sn", "mac", "movement_type",
+                            "origin_owner", "destination_owner", "actor_id",
+                        )}, sort_keys=True, default=str)
+                        _rec["audit_hash"] = _hl.sha256(_canon.encode()).hexdigest()
+                        await write_movement(_rec)
+                    except Exception as _re:
+                        summary["errors"].append(f"reopen revert trail (withdraw): {_re}")
                     await db.stok_onts.update_one(
                         {"company_id": company_id, "mac": ont["mac"]},
                         {"$set": {
@@ -4667,6 +4741,7 @@ async def public_finalize_ticket(ticket_id: str, payload: PublicFinalizeIn,
             completion_data=cd.model_dump(),
             technician_id=cid,
             technician_name=coll_name,
+            caller="lousa.public_finalize_ticket",
         )
     except Exception as e:
         logger.warning("[lousa] auto_close_service_from_ticket falhou: %s", e)
@@ -4960,6 +5035,50 @@ async def finalize_ticket(ticket_id: str, payload: FinalizeIn, user: dict = Depe
         cd_dump["new_ont_mac"] = equipment_swap.get("new_mac")
         cd_dump["new_ont_sn"]  = equipment_swap.get("new_sn")
 
+    # ════════════════════════════════════════════════════════════════════
+    # CTO 16/02/2026 — ONDA 0a — Chokepoint no handler JWT autenticado.
+    # Espelha o chokepoint do public_finalize_ticket (linhas ~4456-4496).
+    # Aplica-se apenas a outcome="sucesso". Sem is_admin_test aqui porque
+    # esta rota é privada para role=colaborador (já validado acima).
+    # Antes desta linha, este handler permitia finalização SEM gravar
+    # trilha em inventory_movements — bypass total da Fase 2.
+    # ════════════════════════════════════════════════════════════════════
+    guardrail_result = None
+    if payload.outcome == "sucesso":
+        from services.os_inventory_guardrail import (
+            enforce_os_inventory_movement, explain_block,
+        )
+        comp_g = dict(cd_dump)
+        comp_g["physical_attendance"] = True
+        if equipment_swap:
+            comp_g.setdefault("old_ont_mac",
+                              equipment_swap.get("old_mac"))
+            comp_g.setdefault("old_ont_sn",
+                              equipment_swap.get("old_sn"))
+            comp_g.setdefault("new_ont_mac",
+                              equipment_swap.get("new_mac"))
+            comp_g.setdefault("new_ont_sn",
+                              equipment_swap.get("new_sn"))
+        actor_g = {
+            "id": cid, "role": "colaborador",
+            "email": user.get("email"),
+            "name": (t.get("assigned_collaborator_name")
+                     or user.get("name") or "Técnico"),
+            "origin": "tecnico_app_jwt",
+            "is_super_admin": False,
+        }
+        guardrail_result = await enforce_os_inventory_movement(
+            t, comp_g, actor_g)
+        if not guardrail_result["allowed"]:
+            raise HTTPException(403, {
+                "error": "os_inventory_guardrail_bloqueou",
+                "blocked_reasons": guardrail_result["blocked_reasons"],
+                "human_reason": explain_block(
+                    guardrail_result["blocked_reasons"]),
+                "classification": guardrail_result["classification"],
+                "audit_ids": guardrail_result["audit_ids"],
+            })
+
     await db.tickets.update_one(
         {"id": ticket_id},
         {"$set": {
@@ -4976,6 +5095,8 @@ async def finalize_ticket(ticket_id: str, payload: FinalizeIn, user: dict = Depe
             "resolution_kind": cd_dump.get("resolution_kind"),
             "asset_recovered": cd_dump.get("asset_recovered"),
             "signed_receipt": cd_dump.get("signed_receipt"),
+            # Onda 0a — snapshot da trilha gerada pelo guardrail
+            "os_inventory_guardrail": (guardrail_result or None),
         }},
     )
     try:
@@ -5491,6 +5612,7 @@ async def admin_close_ticket(ticket_id: str, payload: AdminCloseIn,
                     completion_data=cd,
                     technician_id=tech_id,
                     technician_name=tech_name,
+                    caller="lousa.admin_close_ticket.retirada",
                 )
                 logger.info("[lousa] admin retirada auto-close: %s",
                             close_result)
@@ -5553,6 +5675,7 @@ async def admin_close_ticket(ticket_id: str, payload: AdminCloseIn,
                     completion_data=cd,
                     technician_id=tech_id,
                     technician_name=tech_name,
+                    caller="lousa.admin_close_ticket.instalacao_troca",
                 )
                 logger.info("[lousa] admin instalacao auto-close: %s",
                             close_result)

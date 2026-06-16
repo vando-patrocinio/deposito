@@ -4472,3 +4472,32 @@ DEPOIS purga:  16 aguardando triagem (todos válidos ou recuperáveis)
 - Prompts canônicos vigentes: `isabella_v13.md` (V13_CICLO_COMPLETO), `alvaro_v2.md` (V2), `pamela_v2.md` (V2) — todos via prompt_loader, zero preços hardcoded.
 - Nova fonte única de preços: coleção `pricing_catalog` + UI "Tabela de Preços" (Gestão da Isabella). Bloco `=== PREÇOS E VALORES (TABELA OFICIAL) ===` injetado em runtime.
 - Detalhes completos: CHANGELOG.md (entrada 2026-06-12).
+
+---
+## [2026-02-16] Estoque OS V2 — Onda 0 (Blindagem do Fluxo Diário)
+
+**Decisão CEO:** Opção C aprovada — Onda 0a + 0d + iniciar 0b. Regra: **nenhum código legado removido nesta fase**. Apenas observabilidade.
+
+### Patches aplicados
+- **Onda 0a** (`routes/lousa.py:finalize_ticket`): chokepoint `enforce_os_inventory_movement` espelhando o handler público. Cobertura: 0% → 100% no handler JWT.
+- **Onda 0d** (`routes/lousa.py:_revert_ticket_side_effects`): novo `movement_type="ticket_reopen_revert"` gravado em `inventory_movements` ANTES de mutar `stok_onts` (em ambos os ramos: undo_install e undo_withdraw).
+- **Onda 0b** (`routes/stok.py:auto_close_service_from_ticket`): flag env `AUTO_CLOSE_LEGACY_DEPRECATED=true` (default ON), log estruturado em collection `auto_close_legacy_observability` capturando `caller`, `ticket_id`, `company_id`, `technician`, `completion_data_keys`, `called_at`. Callers instrumentados: `lousa.public_finalize_ticket`, `lousa.admin_close_ticket.retirada`, `lousa.admin_close_ticket.instalacao_troca`, `stok.retry_erro_estoque`.
+
+### Schema canônico atualizado
+- `services/inventory_movements.py` MOVEMENT_TYPES += `"ticket_reopen_revert"`.
+
+### Validação
+- 6/6 smoke tests passaram (`/app/backend/scripts/test_onda0_patches.py`).
+- Lint Python limpo (lousa.py, stok.py, inventory_movements.py).
+- Backend reload sem stacktrace.
+- Critério de aceite (medido em produção 7d): cobertura guardrail = 1.0, zero `caller=unknown`, zero ticket sem trilha.
+
+### Doc operacional
+- `/app/memory/ONDA0_PRODUCTION_OBSERVABILITY.md` — janela 7d, meta por métrica, queries mongo, critério de passagem para Onda 1.
+
+### NÃO feito nesta fase (por decisão CEO)
+- Remoção de `auto_close_service_from_ticket`.
+- Remoção de `/api/stok/services/{id}/close`.
+- Fase 3 (Owner & Location).
+- Migração de schema / migração das 1.828 ONTs.
+- Refatoração de `_move_ont_for_*`.

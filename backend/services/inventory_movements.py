@@ -52,6 +52,8 @@ MOVEMENT_TYPES = {
     "manual_transfer_tecnico_empresa",
     "defect_returned_to_empresa",
     "disposal",
+    # ───── Reabertura de OS (Onda 0d) — reverte fechamento anterior ─────
+    "ticket_reopen_revert",
 }
 
 # Tipos de owner permitidos.
