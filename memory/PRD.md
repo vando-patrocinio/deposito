@@ -2,6 +2,43 @@
 
 > Documento vivo. Atualizado a cada sprint.
 
+## ✅ P1 CEO — SPRINT 1 WATCHTOWER ESTOQUE + SPRINT 2 STOK_UPDATE_AUDIT (16/02/2026 · ENTREGUE)
+
+**Aprovação CEO 16/02/2026**: Maturidade Estoque OS subiu 8,8 → 9,2/10. Sprint 1 (Watchtower) + Sprint 2 (Audit final de bypass) entregues em paralelo.
+
+### Sprint 2 — STOK_UPDATE_AUDIT (Certidão de Encerramento Onda 2)
+**Arquivo:** `/app/memory/STOK_UPDATE_AUDIT.md`
+- `git grep "stok_onts.update*"` rodado completo (`update_one`/`update_many`/`find_one_and_update`/`bulk_write`).
+- **27 ocorrências auditadas e classificadas:** 5 canônicas (engine/guardrail), 8 aceitáveis (metadata), 5 pendentes refactor (Sprint 3), 9 scripts/tests.
+- **Bypass crítico não justificado: ZERO.**
+- Itens pendentes refactor (Sprint 3): `ai_scan_install` (stok.py:1614), `ai_scan_retirada` (stok.py:1810, 1846), `ai_review_decision` (stok.py:4660), validação `lousa.py:3016/3110`.
+
+### Sprint 1 — Watchtower Estoque (Dashboard Patrimonial Executivo)
+**Backend:** `backend/routes/watchtower_estoque.py` — `GET /api/watchtower/estoque/summary` retorna pacote único cacheado 60s.
+- **Card 1 Hero — Patrimônio**: Total, Auditável (Grade A+B), Especulativo (C+D+F), Confiança%, delta MoM, sparkline 12m cumulativo.
+- **Card 2 — Operação**: ONTs por local (empresa/técnico/cliente/defeito/descarte) com barras de proporção.
+- **Card 3 — Qualidade**: Contagem Grade A-F + total auditável.
+- **Card 4 — Alertas**: AUTOSN, Needs Review, Sem Trilha (ONTs pré-R1.4), Reconciliações SmartOLT 30d, Duplicadas.
+- **Decisão CEO aplicada**: Auditável = Grades A+B; Especulativo = C+D+F; janela 12m. Cache 60s (botão "Forçar refresh").
+
+**Frontend:** `frontend/src/WatchtowerEstoque.jsx` — UI minimalista, dark sober (slate-950), gradient esmeralda no hero, layout responsivo 3 cards.
+- Novo grupo no sidebar: **"Dashboard Executivo"** como primeira categoria (acima de "Operação"). Watchtower Estoque é o primeiro item.
+- Tag de acesso: `watchtower-estoque` adicionada em `backend/access_tags.py` (categoria "Dashboard Executivo"); concedida automaticamente para gestor/administrador/auditor.
+
+**Validação executiva em produção `co-demo`:**
+- Patrimônio R$ 3.869 (10 Grade A + 22 Especulativo). Confiança 49.2%.
+- 32 ONTs (19 empresa, 13 técnico).
+- 51 alertas (11 AUTOSN, 12 Needs Review, 28 Sem Trilha pré-R1.4, 0 reconciliação 30d, 0 duplicada).
+- Screenshot validado, todos os data-testids presentes.
+
+**Próximas Sprints (ordem CEO):**
+- **Sprint 3** — Backfill sintético dos 11 órfãos + refactor dos 5 pendentes do STOK_UPDATE_AUDIT.
+- **Sprint 4** — Endpoint Sankey Executivo (`GET /api/estoque/patrimonio/sankey`).
+- **Sprint 5** — Fase 3 Owner & Location normalization.
+- Reserva: aplicar `ConfigDict(extra='forbid')` em request models transfer-related (defesa anti-regressão).
+
+---
+
 ## ✅ P0 CEO — ESTOQUE OS V2 / ONDA 2 + R1.4 + DECORATOR (16/02/2026 · ENTREGUE)
 
 **Pedido CEO:** Fechar a Onda 2 (transferências), destravar R1.4 (hook valuation no genesis) e selar a arquitetura com decorator `@requires_transfer_audit`.

@@ -1488,6 +1488,9 @@ from routes import kpi_churn as routes_kpi_churn  # noqa: E402
 app.include_router(routes_kpi_churn.router)
 from routes import ligo_maps as routes_ligo_maps  # noqa: E402
 app.include_router(routes_ligo_maps.router)
+# Sprint 1 (CEO 16/02/2026) — Watchtower Estoque (Dashboard Patrimonial Executivo)
+from routes import watchtower_estoque as routes_watchtower_estoque  # noqa: E402
+app.include_router(routes_watchtower_estoque.router)
 
 
 # ============================================================

@@ -82,6 +82,7 @@ import UsersPanel from "@/UsersPanel";
 import AccessProfilesPanel from "@/AccessProfilesPanel";
 import OSHealthDashboard from "@/OSHealthDashboard";
 import DashboardPanel from "@/DashboardPanel";
+import WatchtowerEstoque from "@/WatchtowerEstoque";
 import PracasPanel from "@/PracasPanel";
 import LogsPanel from "@/LogsPanel";
 import ClientErrorsPanel from "@/ClientErrorsPanel";
@@ -207,6 +208,17 @@ function userHasTag(userTags, requiredTag) {
 }
 
 const NAV_GROUPS = [
+  {
+    // Sprint 1 (CEO 16/02/2026) — Dashboard Executivo: visão patrimonial
+    // e estratégica em um só lugar. Watchtower Estoque é o primeiro item;
+    // outras visões (Financeiro, IA Presidente, Patrimônio consolidado)
+    // entram nas próximas sprints.
+    label: "Dashboard Executivo",
+    items: [
+      { id: "watchtower-estoque", icon: BarChart3, label: "Watchtower Estoque",
+        roles: ["gestor", "administrador", "auditor"] },
+    ],
+  },
   {
     label: "Operação",
     items: [
@@ -1258,6 +1270,7 @@ function AppContent() {
         <ErrorBoundary key={view} name={view || "view"} variant="fullscreen">
           <>
           {view === "dashboard" && <DashboardPanel />}
+          {view === "watchtower-estoque" && <WatchtowerEstoque />}
           {view === "lousa" && <LousaAdminPanel systemStatus={systemStatus} currentUser={user} />}
           {view === "field-ops" && <FieldOpsManagerPanel />}
           {view === "isabella-console" && <IsabellaConsole />}

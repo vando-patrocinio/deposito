@@ -33,6 +33,9 @@ from typing import Dict, List
 
 
 TAGS: List[Dict] = [
+    # ====================== Dashboard Executivo ============================
+    {"key": "watchtower-estoque", "label": "Watchtower Estoque",       "icon": "🔭", "category": "Dashboard Executivo"},
+
     # ============================== Operação ==============================
     {"key": "dashboard",         "label": "Painel Executivo",         "icon": "🏠", "category": "Operação"},
     {"key": "lousa",             "label": "Chamados (Lousa)",         "icon": "📋", "category": "Operação"},
@@ -133,6 +136,8 @@ DEFAULT_TAGS_BY_ROLE: Dict[str, List[str]] = {
     "auditor":       list(ALL_TAG_KEYS),
     "administrador": list(ALL_TAG_KEYS),
     "gestor": [
+        # Dashboard Executivo (Sprint 1 — CEO 16/02/2026)
+        "watchtower-estoque",
         # Operação (gestor padrão)
         "dashboard", "lousa", "field-ops", "estoque", "projects", "central-compras",
         "radius", "contracts", "payments", "site", "balanco",
