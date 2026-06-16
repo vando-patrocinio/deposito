@@ -443,7 +443,11 @@ function DreBars({ title, rows, testid, compact }) {
 function NewPaymentModal({ payees, onClose, onCreated }) {
   const [tab, setTab] = useState("pix");
   const [filiais, setFiliais] = useState([]);
-  const initialPayee = payees[0] || null;
+  // Local mirror — permite refletir mudanças (ex: validar PIX inline)
+  // sem precisar fechar o modal.
+  const [localPayees, setLocalPayees] = useState(payees);
+  useEffect(() => { setLocalPayees(payees); }, [payees]);
+  const initialPayee = localPayees[0] || null;
   const [f, setF] = useState({
     payee_id: initialPayee?.payee_id || "",
     amount_brl: "", scheduled_for: "", description: "", category: "",
@@ -454,6 +458,7 @@ function NewPaymentModal({ payees, onClose, onCreated }) {
   });
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState(null);
+  const [validating, setValidating] = useState(false);
 
   // P0 CEO 2026-02 — Carrega filiais para o dropdown (gasto vai pra uma filial)
   useEffect(() => {
@@ -472,24 +477,50 @@ function NewPaymentModal({ payees, onClose, onCreated }) {
   // P0 CEO 2026-02 — Se payees chegar async DEPOIS do mount, sincroniza
   // pix_key/pix_key_type com o primeiro payee da lista (auto-fill seguro).
   useEffect(() => {
-    if (!f.payee_id && payees.length > 0) {
-      const p = payees[0];
+    if (!f.payee_id && localPayees.length > 0) {
+      const p = localPayees[0];
       setF((s) => ({
         ...s, payee_id: p.payee_id,
         pix_key: p.pix_key || "", pix_key_type: p.pix_key_type || "CPF",
       }));
     }
-  }, [payees, f.payee_id]);
+  }, [localPayees, f.payee_id]);
 
   // P0 CEO 2026-02 — Ao trocar beneficiário, AUTO-CARREGA PIX do
   // cadastro do fornecedor (handler direto, sem useEffect).
   const onPayeeChange = (payee_id) => {
-    const p = payees.find((x) => x.payee_id === payee_id);
+    const p = localPayees.find((x) => x.payee_id === payee_id);
     setF((s) => ({
       ...s, payee_id,
       pix_key: (p && p.pix_key) || "",
       pix_key_type: (p && p.pix_key_type) || "CPF",
     }));
+  };
+
+  // P0 CEO 2026-02 — Validar PIX inline (Regra 1 do guardrail).
+  // Atualiza somente o payee selecionado no espelho local.
+  const validatePixInline = async () => {
+    const sel = localPayees.find((x) => x.payee_id === f.payee_id);
+    if (!sel) return;
+    if (!window.confirm(
+      `Confirma que a chave PIX abaixo está correta?\n\n` +
+      `Tipo: ${sel.pix_key_type}\nChave: ${sel.pix_key}\n\n` +
+      "Esta ação fica registrada no audit_log do fornecedor.")) return;
+    setValidating(true); setErr(null);
+    try {
+      await treasuryApi.validatePayeePix(sel.payee_id, {});
+      setLocalPayees((arr) => arr.map((p) =>
+        p.payee_id === sel.payee_id
+          ? { ...p, validacao_chave_pix: {
+              validated_at: new Date().toISOString(),
+              by: "you", pix_key: sel.pix_key,
+              pix_key_type: sel.pix_key_type,
+            } }
+          : p,
+      ));
+    } catch (e) {
+      setErr(e?.response?.data?.detail || e.message);
+    } finally { setValidating(false); }
   };
 
   const submit = async () => {
@@ -538,7 +569,7 @@ function NewPaymentModal({ payees, onClose, onCreated }) {
         <select data-testid="pay-payee" value={f.payee_id}
           onChange={(e) => onPayeeChange(e.target.value)} style={input}>
           <option value="">— selecione —</option>
-          {payees.map((p) => (
+          {localPayees.map((p) => (
             <option key={p.payee_id} value={p.payee_id}>
               {p.name} {p.pix_key ? `(${p.pix_key})` : ""}
             </option>
@@ -546,7 +577,7 @@ function NewPaymentModal({ payees, onClose, onCreated }) {
         </select>
       </Field>
       {tab === "pix" && f.payee_id && (() => {
-        const sel = payees.find((x) => x.payee_id === f.payee_id);
+        const sel = localPayees.find((x) => x.payee_id === f.payee_id);
         if (!sel) return null;
         const pixOk = !!sel?.validacao_chave_pix?.validated_at;
         const iaOk = !!sel.ia_autorizada;
@@ -555,10 +586,24 @@ function NewPaymentModal({ payees, onClose, onCreated }) {
             background: C.cardSoft, border: `1px solid ${C.border}`,
             borderRadius: 10, padding: 10, marginBottom: 10, fontSize: 12,
           }}>
-            <div style={{ color: C.muted, fontSize: 10,
-              textTransform: "uppercase", letterSpacing: 0.5,
-              fontWeight: 700, marginBottom: 4 }}>
-              Cadastro do beneficiário
+            <div style={{ display: "flex", justifyContent: "space-between",
+              alignItems: "center", marginBottom: 4 }}>
+              <span style={{ color: C.muted, fontSize: 10,
+                textTransform: "uppercase", letterSpacing: 0.5,
+                fontWeight: 700 }}>
+                Cadastro do beneficiário
+              </span>
+              {!pixOk && sel.pix_key && (
+                <button type="button"
+                  data-testid="btn-validate-pix-inline"
+                  onClick={validatePixInline} disabled={validating}
+                  style={{ background: C.accent, color: "white", border: 0,
+                    borderRadius: 6, padding: "4px 10px", fontWeight: 700,
+                    fontSize: 10, cursor: validating ? "wait" : "pointer",
+                    opacity: validating ? 0.6 : 1 }}>
+                  {validating ? "Validando..." : "Validar PIX agora"}
+                </button>
+              )}
             </div>
             <div style={{ display: "grid",
               gridTemplateColumns: "1fr 1fr", gap: 8 }}>
