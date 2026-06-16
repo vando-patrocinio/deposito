@@ -1,0 +1,42 @@
+{
+  "summary": "Tested Onda 2 (PRs 2.4/2.6/2.8/2.9) + R1.4 genesis valuation hook + @requires_transfer_audit decorator on co-demo via public BASE_URL. 9/11 tests passed. Found 1 CRITICAL bug blocking PR Onda 2.4 entirely (ManualWithdrawIn missing `reason` field → 500 AttributeError). PRs 2.6 / 2.9 e2e not testable via admin@empresa.com because /api/field/equipment/return + /api/stok/retirada/scan-batch-commit require a logged-in tecnico colaborator binding (admin is auditor superuser, not linked). Architectural pieces validated end-to-end: R1.4 hook writes valuation_grade+genesis_via on /onts/bulk genesis; decorator raises 400 transfer_audit_missing on bare wrapped async fn; decorator respects transfer_audit_skipped=True; reconcile-with-olt skip semantics; transfer-to-tech engine pre-block returns 400 transfer_blocked; bulk+reconcile skip path returns 200; regression on Ondas 2.2/2.3/2.5 reason-required guards intact.",
+  "backend_issues": {
+    "critical": [
+      {
+        "endpoint": "POST /api/stok/clientes/manual-withdraw",
+        "issue": "Returns HTTP 500 (AttributeError: 'ManualWithdrawIn' object has no attribute 'reason') for EVERY call. Root cause: routes/stok.py:2968 declares ManualWithdrawIn without a `reason` field, but the handler at line 3006 does `payload.reason.get('code')`. In Pydantic v2 default mode, unknown payload fields are silently dropped, so .reason raises AttributeError before any validation. PR Onda 2.4 is fully broken — route cannot return transfer_audit_id/hash because it never reaches execute_transfer.",
+        "priority": "CRITICAL"
+      }
+    ],
+    "minor": [
+      {
+        "endpoint": "POST /api/field/equipment/return",
+        "issue": "Review request mentions path '/api/field-ops/equipment/return', but the real router prefix in routes/field_ops.py is '/api/field' (router = APIRouter(prefix='/api/field')). Not a bug but documentation mismatch — main agent should align."
+      }
+    ]
+  },
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_onda2_iter246.py",
+    "/app/test_reports/pytest/onda2_iter246.xml"
+  ],
+  "action_items": [
+    "FIX: Add `reason: Optional[Dict[str, Any]] = None` field to ManualWithdrawIn (routes/stok.py:2968). Single-line surgical change. After fix, retest: with reason → 200 + transfer_audit_id/hash; without reason → 400 transfer_reason_required (no more 500).",
+    "VERIFY PR 2.6 + 2.9 e2e: either (a) provision a tecnico user vinculado para co-demo no seed (memory/test_credentials.md), or (b) main agent self-tests these flows. Routes ARE wired (verified via code inspection — transfer_audit_id/hash present in response objects at field_ops.py:1249-1250 and stok.py manual-withdraw 3196-3197).",
+    "DOC FIX: Update README/PRD path from /api/field-ops/* to /api/field/* (real router prefix)."
+  ],
+  "critical_code_review_comments": [
+    "CRITICAL: routes/stok.py:2968 ManualWithdrawIn missing `reason` field — handler at 3006 (`payload.reason.get('code')`) will ALWAYS crash. This is a Pydantic schema/handler contract violation. The route was apparently never smoke-tested with any payload after PR 2.4 added the reason guard. Suggest a contract test fixture that POSTs at least an empty-body smoke to every refactored route.",
+    "Decorator @requires_transfer_audit signature-resolution fix (transfer_engine.py:541-554) works correctly — both /transfer-to-tech (Pydantic body) and /transfer-to-tech/bulk parse payloads as body, not query. Confirmed by 400 transfer_reason_required path returning as expected (not 422 from query-parsing failure).",
+    "reconcile-with-olt response shape is asymmetric: when reconciled_count==0 the decorator skip is set on the OUTER response, but reconciled items individually carry transfer_audit_id/hash — this duality is fine but should be documented in the route docstring so consumers don't expect a uniform contract.",
+    "Architectural recommendation: enforce Pydantic `extra='forbid'` on transfer-related request models so silent field drops (like the ManualWithdrawIn `reason` bug) surface as 422 rather than 500 AttributeError at handler time."
+  ],
+  "updated_files": ["/app/backend/tests/test_onda2_iter246.py"],
+  "success_rate": {"backend": "82% (9/11 — 1 critical fail, 1 environment skip)"},
+  "test_credentials": "admin@empresa.com / 123456 (co-demo super admin auditor). JWT obtained via POST /api/auth/login → access_token. Sufficient for Ondas 2.2/2.3/2.5/2.8 + R1.4 + decorator. INSUFFICIENT for 2.6 (/api/field/equipment/return) and 2.9 (/api/stok/retirada/scan-batch-commit) — those require a tecnico colaborator binding which admin lacks.",
+  "seed_data_creation": "Created 1 ONT in co-demo stok_onts via POST /api/stok/onts/bulk with SN prefix 'TEST-IT246-BULK-*' (random hex), model 'TEST IT246 Model', location=empresa. NON-DESTRUCTIVE. ONT has valuation_grade populated by R1.4 hook. Safe to leave (or main agent may purge by SN prefix later).",
+  "retest_needed": true,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Run `cd /app/backend && python -m pytest tests/test_onda2_iter246.py -v --tb=short`. After main agent adds `reason: Optional[Dict[str, Any]] = None` to ManualWithdrawIn, the TestManualWithdraw test should pass — but the response will then go through the genesis branch (ONT not found in co-demo) creating a new doc. To get a fully positive test (existing-ONT path with transfer_audit_id/hash), use the SN created here (TEST-IT246-BULK-*) — but it's at location=empresa not cliente, so manual-withdraw cliente→tecnico will still hit the genesis branch. For full e2e of 2.4 happy path, you need either a pre-existing ONT in stok_onts with location_type='cliente' OR a fixture that seeds one. PR 2.6+2.9 need a tecnico-bound user — coordinate with main agent on test_credentials.md.",
+  "rca of the issue": "BUG: /api/stok/clientes/manual-withdraw returns HTTP 500.\n\nReproduction:\n  POST /api/stok/clientes/manual-withdraw\n  Bearer <admin@empresa.com JWT>\n  Body: {\"technician_id\":\"<any>\", \"client_name\":\"X\", \"ont_mac\":\"AA:BB:CC:DD:EE:FF\", \"reason\":{\"code\":\"Outro\"}}\n  → 500 Internal Server Error\n\nBackend log:\n  File routes/stok.py line 3006:\n    if not payload.reason or not (payload.reason.get('code') or '').strip():\n           ^^^^^^^^^^^^^^\n  AttributeError: 'ManualWithdrawIn' object has no attribute 'reason'\n\nRoot cause: ManualWithdrawIn (routes/stok.py:2968) was not updated when PR Onda 2.4 added the mandatory `reason` field guard at line 3006. The Pydantic v2 model declares only {technician_id, client_name, client_id, ont_mac, ont_sn, notes, is_defective, defective_reason} — no `reason`. Incoming JSON `reason` is silently dropped (Pydantic v2 default extra='ignore'). Attribute access on the model then raises AttributeError, which FastAPI's default exception handler converts to 500 (since AttributeError ≠ HTTPException).\n\nMitigation: add to ManualWithdrawIn:\n    reason: Optional[Dict[str, Any]] = None  # {\"code\": ..., \"details\": ...}\n\nAfter fix:\n  - request with reason → handler validates code, proceeds to execute_transfer (if ONT exists) or genesis branch\n  - request without reason → 400 transfer_reason_required (canonical path)\n  - response always includes transfer_audit_id + transfer_audit_hash keys (None on genesis branch)\n\nDefense-in-depth: enforce `model_config = ConfigDict(extra='forbid')` on all transfer-related request models so future field omissions surface as Pydantic 422 instead of 500 AttributeError."
+}

@@ -35,12 +35,25 @@ import hashlib
 import json
 import logging
 import uuid
+from contextvars import ContextVar
 from datetime import datetime, timezone
+from functools import wraps
 from typing import Any, Dict, List, Literal, Optional, Tuple
+
+from fastapi import HTTPException
 
 from database import db
 
 logger = logging.getLogger("transfer_engine")
+
+
+# ═══════════ ContextVar — rastreia chamadas de execute_transfer ════════════
+# Garantia arquitetural: o decorator @requires_transfer_audit valida que a
+# rota chamou execute_transfer() ao menos 1x durante o request. Caso
+# contrário, retorna HTTP 400. Isolado por request via ContextVar.
+_transfer_audit_calls: ContextVar[Optional[List[Dict[str, Any]]]] = ContextVar(
+    "_transfer_audit_calls", default=None,
+)
 
 
 # ═══════════ Constantes canônicas ════════════════════════════════════════════
@@ -98,6 +111,18 @@ MANUAL_TRANSITIONS: Dict[Tuple[str, str], str] = {
     ("tecnico", "empresa"):  "manual_transfer_tecnico_empresa",
 }
 
+# Reconciliação SmartOLT (Onda 2.8 — decisão CEO 16/02/2026).
+# Exceção controlada: o equipamento está fisicamente no cliente conforme OLT,
+# mas o banco mostra estoque (empresa/tecnico). NÃO é instalação real — é
+# correção de verdade cadastral. Não conta produtividade. Source obrigatório
+# = "smartolt_reconcile". Snapshot SmartOLT obrigatório.
+RECONCILIATION_TRANSITIONS: Dict[Tuple[str, str], str] = {
+    ("empresa", "cliente"):  "reconciliation_smartolt_sync",
+    ("tecnico", "cliente"):  "reconciliation_smartolt_sync",
+}
+RECONCILIATION_REASON_CODE = "Reconciliação SmartOLT"
+RECONCILIATION_SOURCE = "smartolt_reconcile"
+
 # Collection separada para backfill sintético (decisão B do CEO).
 # JAMAIS escrever na collection real `inventory_os_movements_audit` por engano.
 SYNTHETIC_BACKFILL_COLLECTION = "inventory_movements_synthetic_backfill"
@@ -144,10 +169,19 @@ def _validate_actor(actor: Optional[Dict[str, Any]]) -> None:
 
 def _resolve_movement_type(
     origin_type: str, destination_type: str,
-    manual: bool = False,
+    manual: bool = False, is_reconciliation: bool = False,
 ) -> str:
     """Retorna movement_type canônico. Bloqueia transições proibidas."""
     key = (origin_type, destination_type)
+    if is_reconciliation:
+        if key not in RECONCILIATION_TRANSITIONS:
+            raise TransferEngineError(
+                f"Transição de reconciliação não permitida: "
+                f"{origin_type} → {destination_type}. "
+                f"Reconciliação permite apenas: "
+                f"{sorted(RECONCILIATION_TRANSITIONS.keys())}"
+            )
+        return RECONCILIATION_TRANSITIONS[key]
     if key not in ALLOWED_TRANSITIONS:
         raise TransferEngineError(
             f"Transição não permitida: {origin_type} → {destination_type}. "
@@ -214,6 +248,8 @@ async def execute_transfer(
     sn: Optional[str] = None,
     ticket_id: Optional[str] = None,
     manual: bool = False,
+    is_reconciliation: bool = False,
+    smartolt_snapshot: Optional[Dict[str, Any]] = None,
     extra_set_fields: Optional[Dict[str, Any]] = None,
     extra_unset_fields: Optional[List[str]] = None,
 ) -> Dict[str, Any]:
@@ -226,6 +262,12 @@ async def execute_transfer(
       4. Update_one em `stok_onts` (location_type/id/status).
       5. Retorna {movement_id, audit_hash, before, after}.
 
+    Modo `is_reconciliation=True` (Onda 2.8 — exceção SmartOLT):
+      - reason.code DEVE ser "Reconciliação SmartOLT".
+      - smartolt_snapshot OBRIGATÓRIO (dict com pelo menos `pppoe_user` ou `olt_name`).
+      - Marca o movimento com `is_reconciliation=True`, `source="smartolt_reconcile"`.
+      - NÃO conta como instalação/produtividade do técnico (flag explícita).
+
     Idempotente: re-chamadas com mesmo (sn, mac, movement_type, actor_id,
     ticket_id) produzem mesmo audit_hash → write_movement rejeita duplicata.
 
@@ -235,7 +277,25 @@ async def execute_transfer(
     # 1. Validações
     _validate_reason(reason)
     _validate_actor(actor)
-    movement_type = _resolve_movement_type(origin_type, destination_type, manual=manual)
+    if is_reconciliation:
+        rcode = (reason.get("code") or "").strip()
+        if rcode != RECONCILIATION_REASON_CODE:
+            raise TransferEngineError(
+                f"is_reconciliation=True exige reason.code="
+                f"{RECONCILIATION_REASON_CODE!r}. Got {rcode!r}.")
+        if not smartolt_snapshot or not isinstance(smartolt_snapshot, dict):
+            raise TransferEngineError(
+                "is_reconciliation=True exige smartolt_snapshot (dict) "
+                "com pelo menos pppoe_user OU olt_name.")
+        if not (smartolt_snapshot.get("pppoe_user")
+                or smartolt_snapshot.get("olt_name")):
+            raise TransferEngineError(
+                "smartolt_snapshot deve conter pppoe_user OU olt_name "
+                "(prova de que a ONT está ativa na OLT).")
+    movement_type = _resolve_movement_type(
+        origin_type, destination_type,
+        manual=manual, is_reconciliation=is_reconciliation,
+    )
 
     if not mac and not sn:
         raise TransferEngineError("Informe `mac` ou `sn` para identificar a ONT")
@@ -292,6 +352,12 @@ async def execute_transfer(
         "performed_at": performed_at,
         "physical_attendance": bool(actor.get("physical_attendance", False)),
     }
+    if is_reconciliation:
+        record["is_reconciliation"] = True
+        record["source"] = RECONCILIATION_SOURCE
+        record["counts_as_install"] = False
+        record["counts_for_tech_productivity"] = False
+        record["smartolt_snapshot"] = dict(smartolt_snapshot or {})
     record["audit_hash"] = _compute_audit_hash(record)
 
     # 5. Persistir trilha (write_movement faz validação extra: D3=a AUTOSN_*)
@@ -340,7 +406,7 @@ async def execute_transfer(
     await db.stok_onts.update_one(filt, update_doc)
 
     after = {**before, **set_fields}
-    return {
+    result = {
         "movement_id": movement_id,
         "audit_hash": record["audit_hash"],
         "movement_type": movement_type,
@@ -349,6 +415,15 @@ async def execute_transfer(
                    ("location_type", "location_id", "status", "client_name")},
         "performed_at": performed_at,
     }
+    # Registra na ContextVar (consumida pelo decorator @requires_transfer_audit)
+    _slot = _transfer_audit_calls.get()
+    if _slot is not None:
+        _slot.append({
+            "movement_id": movement_id,
+            "audit_hash": record["audit_hash"],
+            "movement_type": movement_type,
+        })
+    return result
 
 
 # ═══════════ Backfill sintético (decisão B = B1) ═════════════════════════════
@@ -402,3 +477,79 @@ async def record_synthetic_backfill(
 async def count_synthetic_backfill(company_id: str) -> int:
     return await db[SYNTHETIC_BACKFILL_COLLECTION].count_documents(
         {"company_id": company_id})
+
+
+# ═══════════ Decorator @requires_transfer_audit (Onda 2 — fechamento) ═══════
+
+def requires_transfer_audit(func):
+    """Decorator arquitetural — Onda 2 lockdown.
+
+    Garante que a rota chame `execute_transfer(...)` ao menos 1x. Caso a
+    rota retorne sem registrar nenhuma trilha no `transfer_engine`, levanta
+    HTTP 400 com `error="transfer_audit_missing"`.
+
+    Uso:
+        @router.post("/onts/transfer-to-tech")
+        @requires_transfer_audit
+        async def transfer_to_tech(...):
+            ...
+            await execute_transfer(...)
+            return {...}
+
+    Observações:
+      - Não interfere em rotas que SKIPam tudo (ex: no-op idempotente).
+        Para esses casos, marque o response com `transfer_audit_skipped=True`
+        explicitamente — o decorator respeita.
+      - Implementação via ContextVar (thread-safe + async-safe).
+      - Preserva signature com tipos JÁ RESOLVIDOS pra FastAPI poder
+        parsear `payload: PydanticModel` como body (sem isso, ForwardRef
+        falha resolução no __globals__ do wrapper e cai pra query).
+    """
+    import inspect as _inspect
+    import typing as _typing
+
+    @wraps(func)
+    async def wrapper(*args, **kwargs):
+        token = _transfer_audit_calls.set([])
+        try:
+            result = await func(*args, **kwargs)
+        finally:
+            calls = _transfer_audit_calls.get() or []
+            _transfer_audit_calls.reset(token)
+        # Permite skip explícito no response
+        skipped = False
+        if isinstance(result, dict):
+            skipped = bool(result.get("transfer_audit_skipped"))
+        if not calls and not skipped:
+            raise HTTPException(
+                400,
+                {
+                    "error": "transfer_audit_missing",
+                    "message": (
+                        f"Rota {func.__name__} retornou sem chamar "
+                        f"transfer_engine.execute_transfer(). Toda "
+                        f"mutação de ownership de ONT exige trilha "
+                        f"canônica (Onda 2 — decisão CEO 16/02/2026)."
+                    ),
+                },
+            )
+        # Enriquece response com os audits coletados (best-effort)
+        if isinstance(result, dict) and calls:
+            result.setdefault("_transfer_audits", calls)
+        return result
+
+    # Reconstrói signature com tipos RESOLVIDOS (não ForwardRef) pra que
+    # FastAPI consiga ver Pydantic models como body parameters.
+    try:
+        original_sig = _inspect.signature(func)
+        resolved_hints = _typing.get_type_hints(func)
+        new_params = []
+        for name, param in original_sig.parameters.items():
+            ann = resolved_hints.get(name, param.annotation)
+            new_params.append(param.replace(annotation=ann))
+        wrapper.__signature__ = original_sig.replace(parameters=new_params)
+        wrapper.__annotations__ = resolved_hints
+    except (ValueError, TypeError, NameError) as e:  # pragma: no cover
+        logger.warning("[requires_transfer_audit] sig copy fail %s: %s",
+                       func.__name__, e)
+    return wrapper

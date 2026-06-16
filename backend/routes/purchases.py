@@ -898,6 +898,13 @@ async def confirm_purchase(
                     "created_at": now_iso(),
                 })
             if docs:
+                # R1.4 — Hook valuation no genesis via Central de Compras
+                from services.inventory_valuation import (
+                    apply_valuation_to_batch,
+                )
+                await apply_valuation_to_batch(
+                    docs, company_id=cid,
+                    genesis_source="purchase_confirm")
                 await db.stok_onts.insert_many([dict(d) for d in docs])
             items_imported = len(docs)
             macs_imported = [d["mac"] for d in docs]
@@ -1119,6 +1126,11 @@ async def reprocess_from_image(
             "created_by": user.get("email", "?"),
             "created_at": now_iso(),
         })
+    # R1.4 — Hook valuation no genesis via reprocess-from-image
+    from services.inventory_valuation import apply_valuation_to_batch
+    await apply_valuation_to_batch(
+        docs, company_id=cid,
+        genesis_source="purchase_reprocess_image")
     await db.stok_onts.insert_many([dict(d) for d in docs])
     cur_sns = list(item.get("sns") or [])
     for sn in new_sns:
@@ -1246,6 +1258,11 @@ async def reprocess_purchase_sns(
             "created_by": user.get("email", "?"),
             "created_at": now_iso(),
         })
+    # R1.4 — Hook valuation no genesis via reprocess-sns
+    from services.inventory_valuation import apply_valuation_to_batch
+    await apply_valuation_to_batch(
+        docs, company_id=cid,
+        genesis_source="purchase_reprocess_sns")
     await db.stok_onts.insert_many([dict(d) for d in docs])
 
     # Atualiza a purchase com os SNs anexados

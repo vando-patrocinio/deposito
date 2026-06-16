@@ -317,6 +317,85 @@ def effective_value(valuation: Dict[str, Any]) -> float:
     return float(valuation.get("valor_referencia") or DEFAULT_REFERENCE_PRICE)
 
 
+# ═══════════ R1.4 — Hooks automáticos (genesis + purchase confirm) ═══════════
+
+async def apply_valuation_to_genesis_doc(
+    doc: Dict[str, Any],
+    *,
+    weighted_avg_cache: Optional[float] = None,
+    genesis_source: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Hook R1.4 — enriquece um doc de ONT pré-insert com os 7 campos de
+    valuation. Idempotente: se o doc já tem `valuation_grade`, retorna sem
+    recalcular.
+
+    Args:
+      doc: dict da ONT pronto pra insert (precisa ter `company_id`).
+      weighted_avg_cache: opcional — média ponderada já calculada (lote).
+      genesis_source: rótulo livre que vai pra `valuation_genesis_via`
+                       (ex: "purchase_confirm", "register_ont_bulk",
+                       "scan_batch_commit", "manual_withdraw_zero").
+
+    Returns:
+      O MESMO dict (mutado in-place) já com os campos de valuation
+      + `valuation_genesis_at` + `valuation_genesis_via`.
+    """
+    if doc.get("valuation_grade"):
+        return doc  # idempotente
+    try:
+        val = await resolve_valuation(
+            doc, weighted_avg_cache=weighted_avg_cache)
+    except Exception as e:
+        logger.warning(
+            "[valuation_hook] resolve_valuation falhou genesis_source=%s "
+            "mac=%s sn=%s err=%s",
+            genesis_source, doc.get("mac"), doc.get("scan_sn"), e,
+        )
+        # Falha silenciosa NÃO bloqueia genesis. Marca Grade F + needs review.
+        val = {
+            "valor_nf": None,
+            "valor_medio_ponderado": None,
+            "valor_referencia": DEFAULT_REFERENCE_PRICE,
+            "valuation_grade": "F",
+            "valuation_source": "unknown",
+            "valuation_calculated_at": _now_iso(),
+            "valuation_needs_human_review": True,
+            "valuation_hook_error": str(e)[:200],
+        }
+    doc.update(val)
+    doc["valuation_genesis_at"] = _now_iso()
+    if genesis_source:
+        doc["valuation_genesis_via"] = genesis_source
+    return doc
+
+
+async def apply_valuation_to_batch(
+    docs: List[Dict[str, Any]],
+    *,
+    company_id: Optional[str] = None,
+    genesis_source: Optional[str] = None,
+) -> List[Dict[str, Any]]:
+    """Hook R1.4 batch — aplica valuation em lote de docs.
+
+    Otimização: pré-calcula `compute_weighted_avg(company_id)` 1x e reutiliza.
+
+    Returns: a mesma lista (mutada in-place).
+    """
+    if not docs:
+        return docs
+    cid = company_id or (docs[0].get("company_id") if docs else None)
+    wa: Optional[float] = None
+    if cid:
+        try:
+            wa = await compute_weighted_avg(company_id=cid)
+        except Exception as e:
+            logger.warning("[valuation_hook] weighted_avg pre-calc err: %s", e)
+    for d in docs:
+        await apply_valuation_to_genesis_doc(
+            d, weighted_avg_cache=wa, genesis_source=genesis_source)
+    return docs
+
+
 # ═══════════ Bootstrap de índices (R1.1) ═════════════════════════════════════
 
 async def ensure_indexes() -> Dict[str, bool]:

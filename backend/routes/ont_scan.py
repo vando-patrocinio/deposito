@@ -207,7 +207,16 @@ async def scan_batch_commit(payload: BatchIn,
 
     Idempotente por MAC: se o MAC já existe, faz move (preservando histórico).
     Se MAC vazio mas SN preenchido, usa SN como chave única.
+
+    Onda 2.9 — para cada ONT já cadastrada, a movimentação para o estoque
+    do técnico passa OBRIGATORIAMENTE por `transfer_engine.execute_transfer`
+    (chokepoint canônico). ONTs novas (genesis) ainda entram via
+    `insert_one` direto — coberto pelo hook R1.4 (valuation genesis).
     """
+    from services.transfer_engine import (
+        execute_transfer, TransferEngineError,
+    )
+
     cid = user.get("company_id") or DEMO_COMPANY_ID
     tech_id = payload.technician_id or user.get("collaborator_id") or user.get("id")
     if not tech_id:
@@ -230,31 +239,108 @@ async def scan_batch_commit(payload: BatchIn,
             existing = await db.stok_onts.find_one(
                 {"company_id": cid, "scan_sn": sn}, {"_id": 0})
 
-        doc_set = {
-            "location_type": "tecnico",
-            "location_id": tech_id,
-            "client_name": None,
-            "status": "retirada_com_tecnico",
-            "source": "ai_scan_batch",
-            "scan_confidence": float(it.confidence or 0),
-            "scan_sn": sn or existing.get("scan_sn") if existing else sn,
-            "batch_reason": (payload.reason or "")[:120],
-            "batch_committed_at": now_iso(),
-            "batch_committed_by": user.get("email"),
-        }
-
         if existing:
-            await db.stok_onts.update_one(
-                {"company_id": cid, "mac": existing.get("mac")},
-                {"$set": doc_set,
-                  "$push": {"history": {
-                      "at": now_iso(),
-                      "action": "batch_retirada",
-                      "by": user.get("email"),
-                  }}},
-            )
-            moved.append({"mac": existing.get("mac"), "sn": existing.get("scan_sn") or sn})
+            prev_loc = existing.get("location_type")
+            prev_id = existing.get("location_id")
+
+            # Determina origin canônico. Bypass se já está com este técnico
+            # (no-op idempotente).
+            if prev_loc == "tecnico" and prev_id == tech_id:
+                skipped.append({"mac": existing.get("mac"),
+                                 "reason": "já está com este técnico (no-op)"})
+                continue
+
+            # Determina origin_type compatível com o grafo de transferências.
+            if prev_loc in ("empresa", "cliente"):
+                origin_type = prev_loc
+                # Reason canônico do scan IA — quando vem do cliente é
+                # "Retirada OS" (scan da etiqueta no local) / quando vem
+                # da empresa é "Saída pra campo".
+                reason_code = ("Retirada OS" if origin_type == "cliente"
+                                else "Saída pra campo")
+            elif prev_loc == "tecnico":
+                # Transferência intra-técnico não está no grafo. Skip
+                # com warning — gestor deve usar return-to-company antes.
+                skipped.append({
+                    "mac": existing.get("mac"),
+                    "reason": (f"transição não permitida tecnico→tecnico "
+                                f"(prev={prev_id}). Use return-to-company "
+                                f"antes de re-atribuir."),
+                })
+                continue
+            elif prev_loc == "defeito":
+                skipped.append({
+                    "mac": existing.get("mac"),
+                    "reason": "ONT em defeito não pode ir direto pro técnico",
+                })
+                continue
+            else:
+                skipped.append({
+                    "mac": existing.get("mac"),
+                    "reason": f"location_type desconhecido: {prev_loc!r}",
+                })
+                continue
+
+            try:
+                tr = await execute_transfer(
+                    company_id=cid,
+                    origin_type=origin_type,
+                    origin_id=prev_id,
+                    destination_type="tecnico",
+                    destination_id=tech_id,
+                    actor={"id": user.get("id"),
+                            "email": user.get("email"),
+                            "name": user.get("name") or user.get("email"),
+                            "role": user.get("role"),
+                            "origin": "ai_scan_batch",
+                            "physical_attendance": True},
+                    reason={
+                        "code": reason_code,
+                        "details": (
+                            (payload.reason or "Retirada via Scan IA")[:200]
+                            + f" · OCR conf={float(it.confidence or 0):.2f}"
+                        ),
+                    },
+                    mac=existing.get("mac"),
+                    sn=sn or existing.get("scan_sn"),
+                    manual=(origin_type == "empresa"),
+                    extra_set_fields={
+                        "status": "retirada_com_tecnico",
+                        "source": "ai_scan_batch",
+                        "scan_confidence": float(it.confidence or 0),
+                        "scan_sn": sn or existing.get("scan_sn") or sn,
+                        "batch_reason": (payload.reason or "")[:120],
+                        "batch_committed_at": now_iso(),
+                        "batch_committed_by": user.get("email"),
+                    },
+                )
+                # Empilha history humano (audit auxiliar)
+                await db.stok_onts.update_one(
+                    {"company_id": cid, "mac": existing.get("mac")},
+                    {"$push": {"history": {
+                        "at": now_iso(),
+                        "action": "batch_retirada",
+                        "by": user.get("email"),
+                        "transfer_audit_id": tr["movement_id"],
+                    }}},
+                )
+                moved.append({
+                    "mac": existing.get("mac"),
+                    "sn": existing.get("scan_sn") or sn,
+                    "transfer_audit_id": tr["movement_id"],
+                    "transfer_audit_hash": tr["audit_hash"],
+                    "from": {"type": prev_loc, "id": prev_id},
+                })
+            except TransferEngineError as e:
+                skipped.append({
+                    "mac": existing.get("mac"),
+                    "reason": f"transfer_blocked: {e}",
+                })
+                logger.warning("[scan-batch-commit] transfer_engine bloqueou "
+                                "%s: %s", existing.get("mac"), e)
         else:
+            # Genesis — ONT nova, sem trilha anterior. Mantém insert direto
+            # (será coberto por R1.4 valuation_genesis hook).
             new_doc = {
                 "company_id": cid,
                 "mac": mac or f"AUTOSN_{sn[:12]}",
@@ -264,8 +350,24 @@ async def scan_batch_commit(payload: BatchIn,
                 "purchase_id": None,
                 "created_by": "ai_scan_batch",
                 "created_at": now_iso(),
-                **doc_set,
+                "location_type": "tecnico",
+                "location_id": tech_id,
+                "client_name": None,
+                "status": "retirada_com_tecnico",
+                "source": "ai_scan_batch",
+                "scan_confidence": float(it.confidence or 0),
+                "scan_sn": sn,
+                "batch_reason": (payload.reason or "")[:120],
+                "batch_committed_at": now_iso(),
+                "batch_committed_by": user.get("email"),
+                "genesis_via": "ai_scan_batch",
             }
+            # R1.4 — Hook valuation no genesis via scan_batch
+            from services.inventory_valuation import (
+                apply_valuation_to_genesis_doc,
+            )
+            await apply_valuation_to_genesis_doc(
+                new_doc, genesis_source="scan_batch_commit")
             await db.stok_onts.insert_one(new_doc)
             created.append({"mac": new_doc["mac"], "sn": sn})
 
@@ -274,7 +376,8 @@ async def scan_batch_commit(payload: BatchIn,
     batch_id = f"batch-{uuid.uuid4().hex[:12]}"
     onts_log = (
         [{"mac": x.get("mac"), "sn": x.get("sn"), "op": "created"} for x in created]
-        + [{"mac": x.get("mac"), "sn": x.get("sn"), "op": "moved"} for x in moved]
+        + [{"mac": x.get("mac"), "sn": x.get("sn"), "op": "moved",
+            "transfer_audit_id": x.get("transfer_audit_id")} for x in moved]
     )
     await db.stok_batch_log.insert_one({
         "id": batch_id,
@@ -298,6 +401,7 @@ async def scan_batch_commit(payload: BatchIn,
         "moved": moved,
         "skipped": skipped,
         "total": len(created) + len(moved),
+        "batch_id": batch_id,
     }
 
 

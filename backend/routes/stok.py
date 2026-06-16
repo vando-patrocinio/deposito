@@ -36,6 +36,9 @@ from core import DEMO_COMPANY_ID, now_iso, require_role
 from database import db
 from services import client_equipment_history as ceh
 from services import ont_duplicate_detector as ont_dup
+from services.transfer_engine import (
+    requires_transfer_audit as _transfer_audit_decorator_lazy,
+)
 
 logger = logging.getLogger("ponto.stok")
 
@@ -666,6 +669,10 @@ async def create_onts_bulk(payload: OntBulkIn, user: dict = Depends(require_role
             "client_name": None, "status": status,
             "created_by": user.get("email", "?"), "created_at": now_iso(),
         })
+    # R1.4 — Hook valuation no genesis via /onts/bulk
+    from services.inventory_valuation import apply_valuation_to_batch
+    await apply_valuation_to_batch(
+        docs, company_id=cid, genesis_source="register_ont_bulk")
     await db.stok_onts.insert_many([dict(d) for d in docs])
     if tech_target:
         await _add_history(
@@ -802,6 +809,7 @@ async def migrate_fill_sn(user: dict = Depends(require_role("administrador"))):
 
 
 @router.post("/onts/transfer-to-tech")
+@_transfer_audit_decorator_lazy
 async def transfer_ont_to_tech(payload: OntTransferIn, user: dict = Depends(require_role("gestor"))):
     """Onda 2.2 (CTO 16/02/2026): refatorado para passar por `transfer_engine`.
 
@@ -929,6 +937,7 @@ async def praca_summary(user: dict = Depends(require_role("gestor"))):
 
 
 @router.post("/onts/transfer-to-tech/bulk")
+@_transfer_audit_decorator_lazy
 async def transfer_onts_bulk(payload: OntBulkTransferReasonIn,
                                user: dict = Depends(require_role("gestor"))):
     """Onda 2.2: bulk via `transfer_engine`. `reason` obrigatório uma vez para o lote.
@@ -976,10 +985,14 @@ async def transfer_onts_bulk(payload: OntBulkTransferReasonIn,
         "transferred_count": len(transferred),
         "transferred": transferred,
         "skipped": skipped,
+        # Quando 0 transferências reais, sinaliza skip pro decorator
+        # (todos os MACs falharam validação — não é bug arquitetural).
+        "transfer_audit_skipped": len(transferred) == 0,
     }
 
 
 @router.post("/onts/{mac}/return-to-company")
+@_transfer_audit_decorator_lazy
 async def return_ont_to_company(mac: str, payload: Optional[Dict[str, Any]] = None,
                                   user: dict = Depends(require_role("gestor"))):
     """Onda 2.3: refatorado para passar por `transfer_engine`. `reason` OBRIGATÓRIO.
@@ -1022,6 +1035,7 @@ async def return_ont_to_company(mac: str, payload: Optional[Dict[str, Any]] = No
 # instalada em cliente, faz a baixa do técnico/empresa e transfere pro cliente.
 # ---------------------------------------------------------------------------
 @router.post("/onts/reconcile-with-olt")
+@_transfer_audit_decorator_lazy
 async def reconcile_onts_with_olt(user: dict = Depends(require_role("gestor"))):
     """Varre todas as ONTs do estoque (location_type=empresa|tecnico) e cruza
     com SmartOLT live. Para cada ONT cujo SN/MAC aparecer ativa em algum
@@ -1124,7 +1138,77 @@ async def reconcile_onts_with_olt(user: dict = Depends(require_role("gestor"))):
                 {"id": prev_loc_id}, {"_id": 0, "name": 1})
             prev_tech_name = (tech or {}).get("name")
 
-        # Passo 4a: se estava com técnico → registra evento de saída (withdraw)
+        # ─── Onda 2.8 — execute_transfer com is_reconciliation=True ────────
+        # Exceção controlada: prev_loc_type (empresa OU tecnico) → cliente.
+        # NÃO conta como instalação real. NÃO entra em produtividade do técnico.
+        # Source canônico: "smartolt_reconcile". Snapshot SmartOLT obrigatório.
+        smartolt_snapshot = {
+            "pppoe_user": pppoe or None,
+            "olt_name": olt_hit.get("olt_name"),
+            "status": olt_hit.get("status"),
+            "name": olt_hit.get("name"),
+            "unique_external_id": olt_hit.get("unique_external_id"),
+            "captured_at": now_iso(),
+        }
+        try:
+            from services.transfer_engine import (
+                execute_transfer, TransferEngineError,
+            )
+            tr = await execute_transfer(
+                company_id=cid,
+                origin_type=prev_loc_type,
+                origin_id=prev_loc_id,
+                destination_type="cliente",
+                destination_id=client_id,
+                actor={"id": user.get("id"), "email": actor_email,
+                       "name": actor_name, "role": user.get("role"),
+                       "origin": "gestor_ui_reconcile_with_olt",
+                       "client_name": client_name},
+                reason={
+                    "code": "Reconciliação SmartOLT",
+                    "details": (f"OLT ativa indica ONT no cliente "
+                                f"'{client_name}' mas banco mostrava "
+                                f"{prev_loc_type}/"
+                                f"{prev_tech_name or prev_loc_id}. "
+                                f"Vínculo corrigido."),
+                },
+                mac=ont["mac"],
+                ticket_id=None,
+                is_reconciliation=True,
+                smartolt_snapshot=smartolt_snapshot,
+                extra_set_fields={
+                    "installed_at": now_iso(),
+                    "installed_by_id": user.get("id"),
+                    "installed_by_name": actor_name,
+                    "installed_by_email": actor_email,
+                    "installed_via_ticket": None,
+                    "installed_via_service": None,
+                    "reconciled_at": now_iso(),
+                    "reconciled_from_location_type": prev_loc_type,
+                    "reconciled_from_location_id": prev_loc_id,
+                    "reconciled_from_tech_name": prev_tech_name,
+                    "reconciled_source": "smartolt_live",
+                    "reconciled_by_email": actor_email,
+                    "source": "smartolt_reconcile",
+                    "is_reconciliation": True,
+                },
+            )
+            transfer_audit_id = tr["movement_id"]
+            transfer_audit_hash = tr["audit_hash"]
+        except TransferEngineError as e:
+            errors.append({"mac": ont_mac, "sn": ont_sn,
+                           "error": f"transfer_blocked: {e}"})
+            logger.warning("[reconcile] transfer_engine bloqueou %s: %s",
+                           ont_mac, e)
+            continue
+        except Exception as e:  # noqa: BLE001
+            errors.append({"mac": ont_mac, "sn": ont_sn, "error": str(e)})
+            logger.exception("[reconcile] execute_transfer falhou %s", ont_mac)
+            continue
+
+        # História de equipamento (mantém log_event como sinal operacional
+        # auxiliar — NÃO é fonte de trilha. A trilha canônica é o movimento
+        # acima. Estes eventos são para o histórico humano por cliente).
         try:
             if prev_loc_type == "tecnico":
                 await ceh.log_event(
@@ -1139,12 +1223,12 @@ async def reconcile_onts_with_olt(user: dict = Depends(require_role("gestor"))):
                     actor_email=actor_email,
                     notes=(f"reconcile-with-olt: saída automática do técnico "
                            f"{prev_tech_name or prev_loc_id} (ONT estava "
-                           f"instalada no cliente conforme OLT)"),
+                           f"instalada no cliente conforme OLT) · "
+                           f"transfer={transfer_audit_id}"),
                 )
         except Exception as e:  # noqa: BLE001
             logger.warning("[reconcile] withdraw ceh falhou %s: %s", ont_mac, e)
 
-        # Passo 4b: registra install no cliente real
         try:
             await ceh.log_event(
                 company_id=cid,
@@ -1158,40 +1242,21 @@ async def reconcile_onts_with_olt(user: dict = Depends(require_role("gestor"))):
                 actor_email=actor_email,
                 notes=(f"reconcile-with-olt: ONT estava em estoque "
                        f"({prev_loc_type}/{prev_tech_name or prev_loc_id}) "
-                       f"mas a OLT mostra instalada — vínculo corrigido"),
+                       f"mas a OLT mostra instalada — vínculo corrigido · "
+                       f"transfer={transfer_audit_id}"),
             )
         except Exception as e:  # noqa: BLE001
             logger.warning("[reconcile] install ceh falhou %s: %s", ont_mac, e)
 
-        # Passo 4c: atualiza stok_onts para cliente
+        # Histórico stok (texto livre) — auditoria adicional
         try:
-            await db.stok_onts.update_one(
-                {"company_id": cid, "mac": ont["mac"]},
-                {"$set": {
-                    "location_type": "cliente",
-                    "location_id": client_id,
-                    "client_name": client_name,
-                    "status": "instalada",
-                    "installed_at": now_iso(),
-                    "installed_by_id": user.get("id"),
-                    "installed_by_name": actor_name,
-                    "installed_by_email": actor_email,
-                    "installed_via_ticket": None,
-                    "installed_via_service": None,
-                    "reconciled_at": now_iso(),
-                    "reconciled_from_location_type": prev_loc_type,
-                    "reconciled_from_location_id": prev_loc_id,
-                    "reconciled_from_tech_name": prev_tech_name,
-                    "reconciled_source": "smartolt_live",
-                    "reconciled_by_email": actor_email,
-                }},
-            )
             await _add_history(
                 "reconcile",
                 (f"ONT {ont_mac or ont_sn} reconciliada: estava em "
                  f"{prev_loc_type}/{prev_tech_name or prev_loc_id}, "
                  f"mas a OLT mostrou instalada no cliente "
-                 f"'{client_name}'. Vínculo corrigido automaticamente."),
+                 f"'{client_name}'. Vínculo corrigido automaticamente. "
+                 f"transfer_audit_id={transfer_audit_id}"),
                 actor_name, "reconcile_with_olt", cid,
             )
             reconciled.append({
@@ -1203,10 +1268,12 @@ async def reconcile_onts_with_olt(user: dict = Depends(require_role("gestor"))):
                         "client_name": client_name},
                 "olt_status": olt_hit.get("status"),
                 "olt_name": olt_hit.get("olt_name"),
+                "transfer_audit_id": transfer_audit_id,
+                "transfer_audit_hash": transfer_audit_hash,
             })
         except Exception as e:  # noqa: BLE001
             errors.append({"mac": ont_mac, "sn": ont_sn, "error": str(e)})
-            logger.exception("[reconcile] update stok_onts falhou %s", ont_mac)
+            logger.exception("[reconcile] history append falhou %s", ont_mac)
 
     return {
         "checked": len(stock_onts),
@@ -1219,6 +1286,9 @@ async def reconcile_onts_with_olt(user: dict = Depends(require_role("gestor"))):
         "errors": errors,
         "ran_at": now_iso(),
         "ran_by": actor_email,
+        # Decorator skip — quando nenhum ONT precisou reconciliar (todos
+        # já consistentes), não é violação arquitetural.
+        "transfer_audit_skipped": len(reconciled) == 0,
     }
 
 
@@ -1704,7 +1774,7 @@ async def _move_ont_for_withdraw(company_id: str, service: dict, tech_name: str,
         # com origem `ai_scan_retirada` (técnico fotografou e IA leu).
         # iter174 — se não tem MAC mas tem SN, gera um placeholder único
         ont_mac_final = mac_n or f"SN-{sn_input}"
-        await db.stok_onts.insert_one({
+        new_doc = {
             "company_id": company_id,
             "mac": ont_mac_final,
             "model": (service.get("ont_model") or "Desconhecido")[:120],
@@ -1720,7 +1790,14 @@ async def _move_ont_for_withdraw(company_id: str, service: dict, tech_name: str,
             "source": "ai_scan_retirada",
             "scan_sn": sn_input,
             **extra_fields,
-        })
+        }
+        # R1.4 — Hook valuation no genesis via ai_scan_retirada
+        from services.inventory_valuation import (
+            apply_valuation_to_genesis_doc,
+        )
+        await apply_valuation_to_genesis_doc(
+            new_doc, genesis_source="ai_scan_retirada")
+        await db.stok_onts.insert_one(new_doc)
         suffix = " — marcada como DEFEITUOSA (devolver à empresa)" if is_defective else ""
         return (f"ONT {ident} (não cadastrada) registrada via scan IA "
                 f"e entrou no estoque de {tech_name}{suffix}")
@@ -3034,7 +3111,7 @@ async def manual_withdraw(payload: ManualWithdrawIn,
     else:
         # Cria ONT do zero — útil quando o equipamento não estava no estoque
         new_mac = mac_n or f"MANUAL-{uuid.uuid4().hex[:10].upper()}"
-        await db.stok_onts.insert_one({
+        new_doc = {
             "id": f"ont-{uuid.uuid4().hex[:12]}",
             "company_id": cid,
             "mac": new_mac,
@@ -3053,7 +3130,14 @@ async def manual_withdraw(payload: ManualWithdrawIn,
             "withdraw_notes": notes_full,
             "created_at": now_iso(),
             **extra_fields,
-        })
+        }
+        # R1.4 — Hook valuation no genesis via manual-withdraw zero
+        from services.inventory_valuation import (
+            apply_valuation_to_genesis_doc,
+        )
+        await apply_valuation_to_genesis_doc(
+            new_doc, genesis_source="manual_withdraw_zero")
+        await db.stok_onts.insert_one(new_doc)
         ont_id_msg = new_mac
 
     # Libera porta CTO vinculada
