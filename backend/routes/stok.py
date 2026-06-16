@@ -28,7 +28,7 @@ import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
@@ -1985,8 +1985,51 @@ async def _decrement_tech_stock(company_id: str, technician_id: str,
 
 @router.post("/services/{service_id}/close")
 async def close_service(service_id: str, payload: ServiceCloseIn,
+                         request: Request,
                          user: dict = Depends(require_role("gestor"))):
     cid = user.get("company_id") or DEMO_COMPANY_ID
+
+    # ─── Onda 0c — Observabilidade obrigatória (ROTA LEGADA) ─────────────
+    # Esta rota direta de fechamento de service é candidata a sunset.
+    # Logamos QUEM, QUANDO e DE ONDE chama para mapear callers em 7 dias.
+    # Nenhuma alteração funcional. Janela de observação definida pelo CEO.
+    try:
+        import os as _os
+        if _os.environ.get("STOK_CLOSE_LEGACY_DEPRECATED", "true").lower() in (
+                "1", "true", "yes", "on"):
+            headers = request.headers if request else {}
+            referer = headers.get("referer") or headers.get("referrer")
+            ua = headers.get("user-agent")
+            xff = headers.get("x-forwarded-for")
+            origin = headers.get("origin")
+            logger.warning(
+                "[stok][LEGACY][close_service] service=%s company=%s "
+                "gestor=%s/%s referer=%s ua=%s",
+                service_id, cid, user.get("id"), user.get("email"),
+                referer, (ua or "")[:120],
+            )
+            await db.stok_close_legacy_observability.insert_one({
+                "id": f"sclo-{service_id}-{int(datetime.now(timezone.utc).timestamp()*1000)}",
+                "service_id": service_id,
+                "company_id": cid,
+                "gestor_id": user.get("id"),
+                "gestor_email": user.get("email"),
+                "gestor_name": user.get("name"),
+                "referer": referer,
+                "origin": origin,
+                "user_agent": (ua or "")[:255],
+                "x_forwarded_for": xff,
+                "payload_keys": sorted(list(
+                    payload.model_dump().keys()))[:50],
+                "ont_mac": payload.ont_mac,
+                "ont_sn": payload.ont_sn,
+                "called_at": datetime.now(timezone.utc).isoformat(),
+            })
+    except Exception as _obs_err:  # pragma: no cover — observabilidade nunca quebra
+        logger.warning("[stok] close_service legacy observability falhou: %s",
+                       _obs_err)
+    # ──────────────────────────────────────────────────────────────────────
+
     service = await db.stok_services.find_one(
         {"id": service_id, "company_id": cid,
          "status": {"$in": ["ativo", "erro_estoque"]}}, {"_id": 0},

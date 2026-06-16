@@ -115,6 +115,21 @@ def test_revert_writes_movement():
     print(f"✅ test_revert_writes_movement (occorrências={count})")
 
 
+def test_close_service_has_observability():
+    # Onda 0c — rota direta /api/stok/services/{id}/close instrumentada
+    src = (ROOT / "routes" / "stok.py").read_text(encoding="utf-8")
+    assert "Onda 0c — Observabilidade obrigatória (ROTA LEGADA)" in src, \
+        "instrumentação Onda 0c ausente em stok.py"
+    assert "stok_close_legacy_observability" in src, \
+        "collection stok_close_legacy_observability não referenciada"
+    assert "STOK_CLOSE_LEGACY_DEPRECATED" in src, \
+        "flag STOK_CLOSE_LEGACY_DEPRECATED ausente"
+    # Verifica que captura referer/user-agent
+    assert 'headers.get("referer")' in src, "referer não capturado"
+    assert 'headers.get("user-agent")' in src, "user-agent não capturado"
+    print("✅ test_close_service_has_observability")
+
+
 async def main():
     test_movement_type_registered()
     test_validate_revert_payload_ok()
@@ -122,6 +137,7 @@ async def main():
     test_auto_close_accepts_caller_kwarg()
     test_finalize_ticket_has_guardrail()
     test_revert_writes_movement()
+    test_close_service_has_observability()
     print("\n🟢 TODOS OS SMOKE TESTS DA ONDA 0 PASSARAM")
 
 

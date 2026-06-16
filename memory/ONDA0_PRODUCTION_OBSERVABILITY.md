@@ -14,20 +14,23 @@
 | **0a** | `routes/lousa.py` | `finalize_ticket` (JWT privado) | ✅ Chokepoint ativo |
 | **0d** | `routes/lousa.py` | `_revert_ticket_side_effects` (reopen) | ✅ Movimento reverso `ticket_reopen_revert` gravado antes de mutar `stok_onts` |
 | **0b** | `routes/stok.py` | `auto_close_service_from_ticket` | ✅ Observabilidade ativa; legado NÃO removido |
+| **0c** | `routes/stok.py` | `POST /api/stok/services/{id}/close` | ✅ Observabilidade ativa (referer/UA/IP); rota NÃO removida |
 
 Novo `movement_type` registrado na whitelist canônica (`services/inventory_movements.py`):
 - `ticket_reopen_revert` — emitido sempre que `_revert_ticket_side_effects` reverte `stok_onts`.
 
 ---
 
-## §2. FLAG DE AMBIENTE
+## §2. FLAGS DE AMBIENTE
 
 ```bash
-AUTO_CLOSE_LEGACY_DEPRECATED=true   # default ON
+AUTO_CLOSE_LEGACY_DEPRECATED=true   # default ON — bridge legada Lousa↔Estoque
+STOK_CLOSE_LEGACY_DEPRECATED=true   # default ON — rota direta /services/{id}/close
 ```
 
-Quando `true`, toda chamada a `auto_close_service_from_ticket(...)` grava 1 doc em
-`db.auto_close_legacy_observability` com:
+### 2.1 `auto_close_legacy_observability`
+
+Quando `AUTO_CLOSE_LEGACY_DEPRECATED=true`, toda chamada a `auto_close_service_from_ticket(...)` grava 1 doc com:
 
 | Campo | Significado |
 |-------|-------------|
@@ -39,11 +42,30 @@ Quando `true`, toda chamada a `auto_close_service_from_ticket(...)` grava 1 doc 
 | `has_ont` / `has_ont_sn` | Indicadores de movimento físico |
 | `called_at` | Timestamp ISO UTC |
 
-Para desligar a observabilidade (não recomendado durante a janela): `AUTO_CLOSE_LEGACY_DEPRECATED=false`.
+### 2.2 `stok_close_legacy_observability`
+
+Quando `STOK_CLOSE_LEGACY_DEPRECATED=true`, toda chamada a `POST /api/stok/services/{id}/close` grava 1 doc com:
+
+| Campo | Significado |
+|-------|-------------|
+| `service_id` | Service fechado |
+| `company_id` | Empresa |
+| `gestor_id` / `gestor_email` / `gestor_name` | Quem chamou (sempre role=gestor) |
+| `referer` / `origin` | URL chamadora (identifica tela legada) |
+| `user_agent` | UA truncado (255 chars) — distingue browser vs script |
+| `x_forwarded_for` | IP origem (proxy chain) |
+| `payload_keys` | Chaves do payload (até 50) |
+| `ont_mac` / `ont_sn` | Identificadores físicos |
+| `called_at` | Timestamp ISO UTC |
+
+Para desligar a observabilidade (não recomendado): flag = `false`.
 
 ---
 
 ## §3. MAPA DE CALLERS CONHECIDOS (após este deploy)
+
+### 3.1 Bridge legada `auto_close_service_from_ticket`
+Collection: `auto_close_legacy_observability` · Flag: `AUTO_CLOSE_LEGACY_DEPRECATED`
 
 | Caller string | Onde está | Tipo de OS | Frequência esperada (30d) |
 |---------------|-----------|------------|---------------------------|
@@ -54,6 +76,20 @@ Para desligar a observabilidade (não recomendado durante a janela): `AUTO_CLOSE
 | `unknown` | Qualquer outro caller não-instrumentado | Auditar! | **Deve ser 0** |
 
 > Se aparecer `caller=unknown` na collection, **temos chamador escondido**. Investigar imediatamente.
+
+### 3.2 Rota direta legada `POST /api/stok/services/{id}/close`
+Collection: `stok_close_legacy_observability` · Flag: `STOK_CLOSE_LEGACY_DEPRECATED`
+
+Esta rota é **HTTP**, não tem callers internos Python — todo invoker é externo (UI, script, integração).
+Por isso a instrumentação captura `referer`, `origin`, `user_agent`, `x_forwarded_for`, `gestor_id`/`gestor_email`.
+
+| Origem esperada | Evidência | Ação |
+|-----------------|-----------|------|
+| Telas legadas do Estoque (frontend antigo) | `referer` aponta para `/stok/...` | Mapear UI e migrar para fluxo via OS |
+| Scripts/integrações externas | sem `referer`, UA não-browser | Identificar dono → migrar ou desativar |
+| **Zero callers em 7 dias** | Nenhum doc na collection | ✅ Rota pode ser deletada |
+
+Critério Onda 0c: `stok_close_legacy_observability.count_documents({...}) == 0` por 7 dias seguidos → autorização de deleção.
 
 ---
 

@@ -4501,3 +4501,19 @@ DEPOIS purga:  16 aguardando triagem (todos válidos ou recuperáveis)
 - Fase 3 (Owner & Location).
 - Migração de schema / migração das 1.828 ONTs.
 - Refatoração de `_move_ont_for_*`.
+
+---
+## [2026-02-16 — adendo] Estoque OS V2 — Onda 0c (Observabilidade da Rota Direta)
+
+**Decisão CEO:** Após Onda 0a/0b/0d, autorizada Onda 0c **imediata** — apenas observação, sem alterar funcionalidade.
+
+### Patch aplicado
+- **0c** `routes/stok.py:close_service` (`POST /api/stok/services/{service_id}/close`): adicionado `Request` ao handler para capturar `referer`, `origin`, `user-agent`, `x-forwarded-for`. Flag env `STOK_CLOSE_LEGACY_DEPRECATED=true` (default ON). Cada chamada gera 1 doc em `db.stok_close_legacy_observability` com `gestor_id/email/name`, payload keys, IP e UA.
+
+### Critério de aceite Onda 0c (CEO)
+> `stok_close_legacy_observability.count == 0` por 7 dias seguidos → autorização de deleção.
+> Se aparecerem callers: mapear `referer`/`user_agent` → migrar tela/script → depois deletar.
+
+### Validação
+- 7/7 smoke tests passando (incluindo o novo `test_close_service_has_observability`).
+- Lint limpo, backend reload sem stacktrace.
