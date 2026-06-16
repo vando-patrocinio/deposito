@@ -97,7 +97,7 @@ ROLE_RULES: List[Tuple[str, Set[str]]] = [
     ("/api/holerites",           {"financeiro", "gestor", "auditor"}),
     ("/api/holerite",            {"financeiro", "gestor", "auditor"}),
     ("/api/bank-import",         {"financeiro", "gestor"}),
-    ("/api/purchases",           {"financeiro", "gestor"}),
+    ("/api/purchases",           {"financeiro", "gestor", "auditor"}),
     ("/api/contracts",           {"financeiro", "gestor"}),
     ("/api/saas",                {"gestor", "auditor"}),
     ("/api/boleto",              {"financeiro", "gestor"}),

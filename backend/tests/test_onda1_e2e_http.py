@@ -64,11 +64,12 @@ def _run(coro):
 
 
 async def _seed():
-    # Wipe fixtures
+    # Wipe fixtures (NOTE: DA_COLLECTION NOT wiped here so it accumulates
+    # across the test session; module-level fixture wipes it once at start)
     for c in ("users", "stok_onts", "stok_consumables", "stok_history",
               "stok_stock", "stok_admin_log", "purchases",
               "purchases_deletion_audit", "tickets", "lousa_logs",
-              "inventory_os_movements_audit", DA_COLLECTION):
+              "inventory_os_movements_audit"):
         await db[c].delete_many({"company_id": TEST_CID})
     # Insert users (no password_hash needed; auth path only checks active)
     await db.users.delete_many({"id": {"$in": [AUDITOR["id"], GESTOR["id"]]}})
@@ -88,6 +89,15 @@ async def _seed():
 
 
 async def _seed_granular():
+    await db.stok_onts.delete_many({"company_id": TEST_CID,
+                                     "mac": {"$regex": r"^AA:BB:DD:"}})
+    # Seed colaborador required by reset-granular route validation
+    await db.collaborators.delete_many({"id": "u-tec-1"})
+    await db.collaborators.insert_one({
+        "id": "u-tec-1", "company_id": TEST_CID,
+        "name": "Tecnico Granular Test", "role": "tecnico",
+        "active": True, "email": "tec.granular@test.local",
+    })
     await db.stok_onts.insert_many([
         {"id": f"ont-gr-{i}", "company_id": TEST_CID,
          "mac": f"AA:BB:DD:0{i}:00:00", "scan_sn": f"SN-GR-{i}",
@@ -151,6 +161,8 @@ async def _audit_doc(audit_id: str):
 # ─── pytest fixtures ────────────────────────────────────────────────────────
 @pytest.fixture(scope="module", autouse=True)
 def seed_module():
+    # Wipe DA collection once at session start so this run starts clean
+    _run(db[DA_COLLECTION].delete_many({"company_id": TEST_CID}))
     _run(_seed())
     yield
     # leave fixtures for inspection

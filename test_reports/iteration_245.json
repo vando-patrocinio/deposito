@@ -1,0 +1,30 @@
+{
+  "summary": "RE-TEST Onda 1 after 2 fixes from iteration_244: (1) auditor added to /api/purchases RBAC tuple in rbac_policy.py:100; (2) DefectiveOntReasonIn.code made Optional[str]=None in routes/stok_transfers.py. BOTH FIXES CONFIRMED. 16/17 tests pass (was 9/17). Final failure is a non-fix-related fixture/semantics issue with reset-granular (route returns 200 with empty before_snapshot.docs — scope filter doesn't pick up seeded colaborador ONTs).",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/stok/admin/reset-granular", "issue": "Route returns HTTP 200 with empty `before_snapshot.docs` ([]) when called with scope=collaborator/target_id=u-tec-1 even though stok_onts has 2 ONTs with location_type='colaborador' + location_id='u-tec-1' for the company. Either (a) the route filters by a different key (location_type='tecnico'?) or (b) it expects ONTs in a different state. Investigation needed: confirm whether 'colaborador' vs 'tecnico' is the canonical location_type for granular reset, and that the route is dumping before-state docs correctly."}
+    ]
+  },
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_onda1_e2e_http.py",
+    "/app/test_reports/pytest/onda1_e2e_retest.xml"
+  ],
+  "action_items": [
+    "Investigate reset-granular route: why does before_snapshot.docs come back empty when ONTs are seeded with location_type='colaborador' + location_id matching scope's target_id? Check if route expects location_type='tecnico' for the collaborator scope (mismatch between fixture and route)."
+  ],
+  "critical_code_review_comments": [
+    "Both fixes are 1-line surgical and correct: (a) adding 'auditor' to ROLE_RULES tuple for /api/purchases unblocks the destructive-route handler's require_role('auditor') without weakening other tenants; (b) making DefectiveOntReasonIn.code Optional[str]=None correctly defers validation to the handler which returns the canonical 400 {error:'destructive_reason_required'} payload instead of Pydantic 422.",
+    "Confirmed: 6 distinct happy-path destructive routes write audit docs to destructive_actions_audit with full before_snapshot.docs, after_snapshot.verified_at, audit_hash (SHA-256 64hex), and cross-references in legacy logs (stok_admin_log, purchases_deletion_audit, lousa_logs, inventory_os_movements_audit with movement_type=ticket_reopen_revert + reason=ticket_wipe_compensation).",
+    "Architectural recommendation: consider a single source of truth between rbac_policy.py and per-handler require_role() to avoid silent 403s when handler permits a role the policy blocks. Today the policy is checked FIRST in middleware, so handler-level allows are dead code unless the policy also allows."
+  ],
+  "updated_files": ["/app/backend/tests/test_onda1_e2e_http.py"],
+  "success_rate": {"backend": "94% (16/17)"},
+  "test_credentials": "JWTs minted in-process via auth.create_access_token for synthetic users (auditor.onda1@test.local / gestor.onda1@test.local) inserted into db.users. Tenant: co-onda1-testing-agent (isolated, does NOT touch co-demo).",
+  "seed_data_creation": "Same as iteration_244: 2 test users (auditor + gestor), per-test fixtures (ONTs in defeito_em_analise for scrap/revert; disponivel for reset; ONTs+purchases for delete; tickets for wipe; collaborator u-tec-1 newly added for granular test). All under company_id='co-onda1-testing-agent'.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Onda 1 contract validation now at 16/17. The 2 critical RBAC + Pydantic bugs from iteration_244 are RESOLVED. The lone remaining failure (test_granular_happy_path) is a route-semantics question — when calling /api/stok/admin/reset-granular with scope=collaborator/target_id=u-tec-1, the route returns 200 with `before_snapshot.docs=[]` even though stok_onts contains 2 ONTs with location_type='colaborador' + location_id='u-tec-1'. Likely the route uses location_type='tecnico' or filters by some other key. Main agent should grep routes/stok.py for 'reset_granular' or reset-granular handler to confirm the filter. Test runs via: `cd /app/backend && python -m pytest tests/test_onda1_e2e_http.py -v --tb=short`.",
+  "rca of the issue": "FIX 1 VALIDATED: DELETE /api/purchases/{id} with auditor JWT now returns 200 (was 403 from RBAC middleware). batch-delete also returns 200. Both write canonical destructive_actions_audit doc with before_snapshot.docs containing purchase + linked ONTs (3 docs total for delete_purchase) and cross-reference in purchases_deletion_audit. FIX 2 VALIDATED: POST /api/stok/defective-onts/{mac}/scrap with empty body now returns HTTP 400 with {error:'destructive_reason_required'} (was 422 from Pydantic). Same for /revert. Happy paths with valid code return 200 with audit_id+audit_hash. Side improvements applied to test fixture: (a) _seed_granular now deletes pre-existing AA:BB:DD:* MACs before re-insert (was crashing on dup-key in retest); (b) _seed no longer wipes DA_COLLECTION on mid-test re-seeds (was zeroing the destructive_actions_audit count for the isolated-collection assertion); (c) module fixture wipes DA_COLLECTION once at session start; (d) added u-tec-1 collaborator seed to unblock granular happy-path route 404."
+}

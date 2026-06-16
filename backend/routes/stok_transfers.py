@@ -225,8 +225,12 @@ class DefectiveOntReasonIn(BaseModel):
 
     `code` ∈ services.destructive_audit.DESTRUCTIVE_REASONS.
     `details` ≥ 20 chars se code='Outro'.
+
+    NOTA: `code` é Optional[str] aqui para permitir que a validação real
+    aconteça no handler (HTTPException 400 com payload canônico
+    `destructive_reason_required`), em vez do Pydantic 422 genérico.
     """
-    code: str
+    code: Optional[str] = None
     details: Optional[str] = None
 
 
