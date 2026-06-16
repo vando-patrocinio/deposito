@@ -2996,11 +2996,11 @@ async def manual_withdraw(payload: ManualWithdrawIn,
         if defective_reason:
             extra_fields["defective_reason"] = defective_reason
 
+    transfer_audit_id = None
+    transfer_audit_hash = None
     if ont:
         # ─── Onda 2.4 — Grava trilha canônica ANTES do update ─────────────
         # Transição: cliente → tecnico (manual, sem OS).
-        transfer_audit_id = None
-        transfer_audit_hash = None
         try:
             tr = await execute_transfer(
                 company_id=cid,
@@ -3109,6 +3109,8 @@ async def manual_withdraw(payload: ManualWithdrawIn,
         "status": ont_status,
         "performed_by": gestor_name,
         "port_msg": port_msg,
+        "transfer_audit_id": transfer_audit_id,
+        "transfer_audit_hash": transfer_audit_hash,
     }
 
 

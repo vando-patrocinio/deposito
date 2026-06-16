@@ -1245,7 +1245,9 @@ async def field_equipment_return(request: Request,
     return {"ok": True, "return_id": ret_id,
             "value_recovered": value_recovered, "value_lost": value_lost,
             "freed_port": freed_port,
-            "equipment_in_stock": payload.recovered}
+            "equipment_in_stock": payload.recovered,
+            "transfer_audit_id": transfer_audit_id,
+            "transfer_audit_hash": transfer_audit_hash}
 
 
 # ---------------------------------------------------------------------------
