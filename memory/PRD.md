@@ -4736,3 +4736,23 @@ DEPOIS purga:  16 aguardando triagem (todos válidos ou recuperáveis)
 - B) Política para 11 órfãos (B1 backfill sintético / B2 deixar / B3 bloquear).
 - C) `reason` opcional ou obrigatório em transfer_engine.
 - D) Confirmar Etapa 2.4 como backlog separado.
+
+---
+## [2026-02-16 — adendo 10] Estoque OS V2 — Onda 2.1 (transfer_engine.py)
+
+**Decisões CEO aplicadas:** A=plano §5 · B=B1 backfill em collection separada · C=reason obrigatório · D=cleanup stok_history backlog.
+
+### PR 2.1 entregue
+- `services/transfer_engine.py` (348 linhas):
+  - `execute_transfer(...)` — chokepoint canônico para todas as transferências.
+  - 11 `TRANSFER_REASONS` operacionais (Instalação OS, Saída pra campo, etc.).
+  - 6 transições permitidas + 2 manuais (gestor sem OS).
+  - `reason` OBRIGATÓRIO (decisão C). "Outro"/"Regularização manual" exigem `details ≥ 20`.
+  - Grafo bloqueia `cliente↔empresa` (sem caminho direto — só via técnico).
+  - Reutiliza `inventory_movements.write_movement` (zero duplicação).
+  - Gera `os_id` virtual `mantr-<uuid>` quando ticket_id ausente (mantém schema canônico).
+  - `record_synthetic_backfill(...)` em collection SEPARADA `inventory_movements_synthetic_backfill` (decisão B1).
+- `scripts/test_onda2_1_transfer_engine.py` — 9/9 smoke tests verdes.
+
+### Próximo (PR 2.2 — refatorar `transfer-to-tech` + `transfer-to-tech/bulk`)
+Mesmo padrão da Onda 1: chamar `execute_transfer` ANTES de tocar stok_onts. Continua sequencial.
