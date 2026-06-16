@@ -131,6 +131,28 @@ export const treasuryApi = {
       .then((r) => r.data),
   previewReceiptConfig: () => client.get("/treasury/config/receipt/preview")
       .then((r) => r.data),
+
+  // REGRA GLOBAL — IA Tesoureira (CTO 2026-02)
+  authorizePayeeIa: (id, body) =>
+    client.post(`/treasury/payees/${id}/authorize-ia`, body).then((r) => r.data),
+  revokePayeeIa: (id, motivo) =>
+    client.post(`/treasury/payees/${id}/revoke-ia`,
+      null, { params: motivo ? { motivo } : {} }).then((r) => r.data),
+  validatePayeePix: (id, body) =>
+    client.post(`/treasury/payees/${id}/validate-pix`, body || {}).then((r) => r.data),
+  validatePayeeConta: (id, body) =>
+    client.post(`/treasury/payees/${id}/validate-conta`, body).then((r) => r.data),
+  listGuardrailAudit: (params) =>
+    client.get("/treasury/guardrail/audit",
+      { params: params || {} }).then((r) => r.data),
+  migrateGuardrailPayees: () =>
+    client.post("/treasury/guardrail/migrate-payees").then((r) => r.data),
+  sendPaymentWithOverride: (id, motivo, confirmedTwice) =>
+    client.post(`/treasury/payments/${id}/send`, null, {
+      params: motivo
+        ? { ceo_override_motivo: motivo, ceo_override_confirmed_twice: !!confirmedTwice }
+        : {},
+    }).then((r) => r.data),
 };
 
 export const C = {

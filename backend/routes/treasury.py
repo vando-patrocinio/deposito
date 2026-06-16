@@ -33,6 +33,9 @@ from services import asaas_client
 from services.treasurer_ai import (
     DECISION_APPROVE_AUTO, DECISION_BLOCK, DECISION_REQUIRE_HUMAN, review_payment,
 )
+from services.treasurer_global_guardrail import (
+    enforce_global_rules, explain_block,
+)
 
 log = logging.getLogger("treasury")
 router = APIRouter(prefix="/api/treasury", tags=["treasury"])
@@ -122,6 +125,9 @@ class PayeeIn(BaseModel):
     email: Optional[str] = None
     notes: Optional[str] = None
     auto_send_receipt: bool = True  # após pagar, dispara comprovante WA automaticamente
+    # CTO 2026-02 (Regra Global IA Tesoureira) — failsafe: nasce TRAVADO.
+    ia_autorizada: bool = False
+    bloqueado: bool = False
 
 
 class PayeeUpdate(BaseModel):
@@ -172,8 +178,16 @@ async def create_payee(p: PayeeIn, user: dict = Depends(require_role("gestor")))
     _check_sandbox_guard()
     cid = user.get("company_id") or DEMO_COMPANY_ID
     pid = f"payee-{uuid.uuid4().hex[:12]}"
+    payload = p.model_dump()
+    # REGRA GLOBAL IA TESOUREIRA — failsafe: novo fornecedor NASCE TRAVADO.
+    # ia_autorizada só pode ser ligada via POST /payees/{id}/authorize-ia
+    # com confirmação dupla.
+    payload["ia_autorizada"] = False
+    payload["bloqueado"] = bool(payload.get("bloqueado", False))
+    payload["validacao_chave_pix"] = {"validated_at": None, "by": None}
+    payload["validacao_conta"] = {"validated_at": None, "by": None}
     doc = {
-        "company_id": cid, "payee_id": pid, "active": True, **p.model_dump(),
+        "company_id": cid, "payee_id": pid, "active": True, **payload,
         "created_at": now_iso(), "created_by": user.get("email"),
     }
     await db.whitelisted_payees.insert_one(doc)
@@ -199,6 +213,8 @@ async def update_payee(payee_id: str, p: PayeeUpdate,
     if not existing:
         raise HTTPException(404, "Fornecedor não encontrado")
     update = {k: v for k, v in p.model_dump(exclude_none=True).items()}
+    # REGRA GLOBAL — PATCH não pode ligar ia_autorizada. Use endpoint dedicado.
+    update.pop("ia_autorizada", None)
     if "address" in update and update["address"] is not None:
         # mantém dict puro
         if hasattr(update["address"], "model_dump"):
@@ -420,6 +436,23 @@ async def ai_review(payment_id: str, user: dict = Depends(require_role("gestor")
         raise HTTPException(404, "Pagamento não encontrado")
 
     decision = await review_payment(doc)
+    # ─── REGRA GLOBAL IA TESOUREIRA — guardrail GLOBAL (Q1=b universal) ────
+    # Aplica o chokepoint ANTES de qualquer aprovação automática. Se a IA
+    # tentar AUTO-APROVAR, todas as 7 regras precisam passar.
+    payee_doc = await db.whitelisted_payees.find_one(
+        {"payee_id": doc.get("payee_id"), "company_id": cid})
+    gr = await enforce_global_rules(
+        doc, payee_doc, actor="IA_TESOUREIRA", origin="scheduler",
+    )
+    if not gr["allowed"]:
+        # Se a IA falhou no guardrail mas decidiu AUTO_APPROVE, downgrade pra HUMAN
+        if decision["decision"] == DECISION_APPROVE_AUTO:
+            decision["decision"] = DECISION_REQUIRE_HUMAN
+            decision["reason"] = (
+                f"GUARDRAIL_GLOBAL bloqueou auto-aprovação: "
+                f"{explain_block(gr['blocked_reasons'])}"
+            )
+            decision["guardrail_audit_id"] = gr["audit_id"]
     decision_doc = {
         "id": f"aidec-{uuid.uuid4().hex[:12]}",
         "company_id": cid, "payment_id": payment_id,
@@ -506,8 +539,15 @@ async def cancel_payment(payment_id: str, user: dict = Depends(require_role("ges
 
 
 @router.post("/payments/{payment_id}/send")
-async def send_payment(payment_id: str, user: dict = Depends(require_role("gestor"))):
-    """Envia ao Asaas. Idempotente. Ramifica entre Pix e Boleto."""
+async def send_payment(payment_id: str, user: dict = Depends(require_role("gestor")),
+                       ceo_override_motivo: Optional[str] = None,
+                       ceo_override_confirmed_twice: bool = False):
+    """Envia ao Asaas. Idempotente. Ramifica entre Pix e Boleto.
+
+    CHOKEPOINT GLOBAL: aplica `enforce_global_rules` antes de despachar.
+    Se bloqueado, somente super_admin com motivo>=20 + confirmed_twice
+    pode aplicar override (e só para regras 2/3/5; nunca 1/4/6/7).
+    """
     _check_sandbox_guard()
     cid = user.get("company_id") or DEMO_COMPANY_ID
     doc = await db.scheduled_payments.find_one({"payment_id": payment_id, "company_id": cid})
@@ -522,6 +562,49 @@ async def send_payment(payment_id: str, user: dict = Depends(require_role("gesto
     if doc.get("provider_bill_id"):
         return {"ok": True, "already_sent": True, "method": "bill",
                 "bill_id": doc["provider_bill_id"]}
+
+    # ─── REGRA GLOBAL IA TESOUREIRA — CHOKEPOINT ABSOLUTO ──────────────────
+    payee_doc = await db.whitelisted_payees.find_one(
+        {"payee_id": doc.get("payee_id"), "company_id": cid})
+    actor_email = user.get("email") or "?"
+    is_human = True  # /send sempre vem de um humano logado (gestor+)
+    # Origem: scheduler se o pagamento foi auto-aprovado, manual_human caso contrário
+    origin = "scheduler" if doc.get("approval_kind") == "auto" else "manual_human"
+    ceo_override = None
+    if ceo_override_motivo and is_super_admin(user):
+        ceo_override = {
+            "super_admin": True,
+            "confirmed_twice": bool(ceo_override_confirmed_twice),
+            "motivo": ceo_override_motivo,
+            "by_email": actor_email,
+        }
+    gr = await enforce_global_rules(
+        doc, payee_doc,
+        actor=f"human:{actor_email}" if is_human else "IA_TESOUREIRA",
+        origin=origin, ceo_override=ceo_override,
+    )
+    if not gr["allowed"]:
+        # Bloqueia o envio + atualiza status + auditoria
+        await db.scheduled_payments.update_one(
+            {"payment_id": payment_id},
+            {"$set": {"status": "blocked_risk",
+                      "last_block_reason": explain_block(gr["blocked_reasons"]),
+                      "last_guardrail_audit_id": gr["audit_id"],
+                      "updated_at": now_iso()}},
+        )
+        await _audit("payment_blocked_guardrail", payment_id, actor_email, cid,
+                     {"blocked_reasons": gr["blocked_reasons"],
+                      "guardrail_audit_id": gr["audit_id"]})
+        await _emit_event("treasury.payment_blocked", cid,
+                          {"payment_id": payment_id,
+                           "reasons": gr["blocked_reasons"]})
+        raise HTTPException(403, {
+            "error": "guardrail_global_bloqueou",
+            "blocked_reasons": gr["blocked_reasons"],
+            "human_reason": explain_block(gr["blocked_reasons"]),
+            "guardrail_audit_id": gr["audit_id"],
+            "ceo_override_applied": gr["ceo_override_applied"],
+        })
 
     method = (doc.get("method") or "pix").lower()
 
@@ -1542,3 +1625,224 @@ async def preview_receipt_template(user: dict = Depends(require_role("gestor")))
             "has_pdf": bool(tpl.get("pdf_b64")),
             "pdf_filename": tpl.get("pdf_filename")}
 
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# REGRA GLOBAL — IA TESOUREIRA (CTO 2026-02)
+# Endpoints exclusivos para autorização/revogação da IA + auditoria.
+# ════════════════════════════════════════════════════════════════════════════
+
+class AuthorizeIaIn(BaseModel):
+    confirm_authorization: bool  # checkbox 1 (UI)
+    confirm_text: str = ""       # checkbox 2: precisa bater com texto canônico
+    max_amount_auto: Optional[float] = None
+    motivo: Optional[str] = None
+
+
+AUTHORIZE_CANON = (
+    "Estou autorizando a IA Tesoureira a pagar automaticamente este "
+    "fornecedor dentro das regras globais."
+)
+
+
+@router.post("/payees/{payee_id}/authorize-ia")
+async def authorize_payee_ia(payee_id: str, p: AuthorizeIaIn,
+                              user: dict = Depends(require_role("gestor"))):
+    """Liga `ia_autorizada=True` exigindo dupla confirmação explícita.
+    Tanto Q3 (default false) quanto Q4 (override não cria fornecedor)
+    dependem deste endpoint ser a ÚNICA via de autorização.
+    """
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+    payee = await db.whitelisted_payees.find_one(
+        {"payee_id": payee_id, "company_id": cid})
+    if not payee:
+        raise HTTPException(404, "Fornecedor não encontrado")
+    if not p.confirm_authorization:
+        raise HTTPException(400, "Confirmação 1 ausente.")
+    canon = AUTHORIZE_CANON.strip().lower()
+    if (p.confirm_text or "").strip().lower() != canon:
+        raise HTTPException(400,
+            {"error": "confirm_text_invalido", "esperado": AUTHORIZE_CANON})
+    # PIX precisa estar validado (Regra 1)
+    if not payee.get("validacao_chave_pix", {}).get("validated_at"):
+        raise HTTPException(409,
+            "Antes de autorizar IA é necessário validar a chave PIX do fornecedor.")
+    upd: Dict[str, Any] = {
+        "ia_autorizada": True,
+        "ia_autorizada_at": now_iso(),
+        "ia_autorizada_by": user.get("email") or "?",
+        "ia_autorizada_motivo": p.motivo,
+        "updated_at": now_iso(),
+    }
+    if p.max_amount_auto is not None:
+        upd["max_amount_auto"] = float(p.max_amount_auto)
+    await db.whitelisted_payees.update_one(
+        {"payee_id": payee_id, "company_id": cid}, {"$set": upd})
+    await _audit("payee_ia_authorized", payee_id, user.get("email") or "?", cid,
+                 {"motivo": p.motivo, "max_amount_auto": p.max_amount_auto})
+    return {"ok": True, "ia_autorizada": True}
+
+
+@router.post("/payees/{payee_id}/revoke-ia")
+async def revoke_payee_ia(payee_id: str, motivo: Optional[str] = None,
+                           user: dict = Depends(require_role("gestor"))):
+    """Desliga ia_autorizada imediatamente. Não exige confirmação dupla
+    (revogar é sempre seguro)."""
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+    payee = await db.whitelisted_payees.find_one(
+        {"payee_id": payee_id, "company_id": cid})
+    if not payee:
+        raise HTTPException(404, "Fornecedor não encontrado")
+    await db.whitelisted_payees.update_one(
+        {"payee_id": payee_id, "company_id": cid},
+        {"$set": {"ia_autorizada": False,
+                  "ia_autorizada_revoked_at": now_iso(),
+                  "ia_autorizada_revoked_by": user.get("email") or "?",
+                  "ia_autorizada_revoked_motivo": motivo,
+                  "updated_at": now_iso()}},
+    )
+    await _audit("payee_ia_revoked", payee_id, user.get("email") or "?", cid,
+                 {"motivo": motivo})
+    return {"ok": True, "ia_autorizada": False}
+
+
+class ValidatePixIn(BaseModel):
+    pix_key: Optional[str] = None
+    pix_key_type: Optional[str] = None
+
+
+@router.post("/payees/{payee_id}/validate-pix")
+async def validate_payee_pix(payee_id: str, p: ValidatePixIn,
+                              user: dict = Depends(require_role("gestor"))):
+    """Marca PIX como validado. Em produção isto roda uma consulta Asaas
+    de DICT pra confirmar dono da chave; aqui assumimos validação humana
+    + registro (Regra 1)."""
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+    payee = await db.whitelisted_payees.find_one(
+        {"payee_id": payee_id, "company_id": cid})
+    if not payee:
+        raise HTTPException(404, "Fornecedor não encontrado")
+    pix = (p.pix_key or payee.get("pix_key") or "").strip()
+    if not pix:
+        raise HTTPException(400, "PIX ausente no payee. Cadastre antes de validar.")
+    upd = {
+        "validacao_chave_pix": {
+            "validated_at": now_iso(),
+            "by": user.get("email") or "?",
+            "pix_key": pix,
+            "pix_key_type": p.pix_key_type or payee.get("pix_key_type") or "CPF",
+        },
+        "updated_at": now_iso(),
+    }
+    if p.pix_key:
+        upd["pix_key"] = pix
+    if p.pix_key_type:
+        upd["pix_key_type"] = p.pix_key_type
+    await db.whitelisted_payees.update_one(
+        {"payee_id": payee_id, "company_id": cid}, {"$set": upd})
+    await _audit("payee_pix_validated", payee_id, user.get("email") or "?", cid)
+    return {"ok": True}
+
+
+class ValidateContaIn(BaseModel):
+    bank: str
+    agency: str
+    account: str
+    holder_document: Optional[str] = None
+
+
+@router.post("/payees/{payee_id}/validate-conta")
+async def validate_payee_conta(payee_id: str, p: ValidateContaIn,
+                                user: dict = Depends(require_role("gestor"))):
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+    payee = await db.whitelisted_payees.find_one(
+        {"payee_id": payee_id, "company_id": cid})
+    if not payee:
+        raise HTTPException(404, "Fornecedor não encontrado")
+    await db.whitelisted_payees.update_one(
+        {"payee_id": payee_id, "company_id": cid},
+        {"$set": {"validacao_conta": {
+                      "validated_at": now_iso(),
+                      "by": user.get("email") or "?",
+                      "bank": p.bank, "agency": p.agency, "account": p.account,
+                      "holder_document": p.holder_document,
+                  },
+                  "updated_at": now_iso()}},
+    )
+    await _audit("payee_conta_validated", payee_id, user.get("email") or "?", cid)
+    return {"ok": True}
+
+
+@router.get("/guardrail/audit")
+async def list_guardrail_audit(limit: int = 200,
+                                 allowed_eq: Optional[bool] = None,
+                                 payee_id: Optional[str] = None,
+                                 user: dict = Depends(require_role("gestor"))):
+    """Lista entradas do log SHA256 do guardrail global.
+    Cada documento já foi gravado pelo `enforce_global_rules` com hash."""
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+    q: Dict[str, Any] = {"company_id": cid}
+    if allowed_eq is not None:
+        q["allowed"] = allowed_eq
+    if payee_id:
+        q["payee_id"] = payee_id
+    rows = await db.treasury_guardrail_audit.find(
+        q, {"_id": 0}
+    ).sort("data_hora_brasilia", -1).to_list(limit)
+    counts = {
+        "total": await db.treasury_guardrail_audit.count_documents({"company_id": cid}),
+        "blocked": await db.treasury_guardrail_audit.count_documents(
+            {"company_id": cid, "allowed": False}),
+        "allowed": await db.treasury_guardrail_audit.count_documents(
+            {"company_id": cid, "allowed": True}),
+        "ceo_override": await db.treasury_guardrail_audit.count_documents(
+            {"company_id": cid, "ceo_override_applied": True}),
+    }
+    return {"audit": rows, "counts": counts}
+
+
+@router.post("/guardrail/migrate-payees")
+async def migrate_payees_failsafe(user: dict = Depends(require_role("gestor"))):
+    """Migração defensiva (Q3=a):
+       - Seta ia_autorizada=False em TODOS os payees existentes.
+       - Adiciona campos default validacao_chave_pix/validacao_conta/bloqueado.
+    Idempotente. Só super_admin.
+    """
+    if not is_super_admin(user):
+        raise HTTPException(403, "Apenas super_admin pode executar a migração.")
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+    # set defaults somente se ainda não existem
+    r1 = await db.whitelisted_payees.update_many(
+        {"company_id": cid, "ia_autorizada": {"$exists": False}},
+        {"$set": {"ia_autorizada": False,
+                  "ia_autorizada_migrated_at": now_iso()}},
+    )
+    # força failsafe global: nenhum payee migrado começa autorizado
+    r2 = await db.whitelisted_payees.update_many(
+        {"company_id": cid, "ia_autorizada": True,
+         "ia_autorizada_at": {"$exists": False}},
+        {"$set": {"ia_autorizada": False,
+                  "ia_autorizada_migrated_at": now_iso(),
+                  "ia_autorizada_migration_reason":
+                      "failsafe Q3=a — todos os fornecedores nasceram travados"}},
+    )
+    r3 = await db.whitelisted_payees.update_many(
+        {"company_id": cid, "validacao_chave_pix": {"$exists": False}},
+        {"$set": {"validacao_chave_pix": {"validated_at": None, "by": None}}},
+    )
+    r4 = await db.whitelisted_payees.update_many(
+        {"company_id": cid, "validacao_conta": {"$exists": False}},
+        {"$set": {"validacao_conta": {"validated_at": None, "by": None}}},
+    )
+    r5 = await db.whitelisted_payees.update_many(
+        {"company_id": cid, "bloqueado": {"$exists": False}},
+        {"$set": {"bloqueado": False}},
+    )
+    return {
+        "ok": True,
+        "added_ia_autorizada_default": r1.modified_count,
+        "forced_failsafe_to_false": r2.modified_count,
+        "added_validacao_chave_pix": r3.modified_count,
+        "added_validacao_conta": r4.modified_count,
+        "added_bloqueado": r5.modified_count,
+    }

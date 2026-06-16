@@ -24,7 +24,7 @@ NERVOUS_METADATA = {
 
 import os
 from datetime import datetime, timedelta, timezone
-from typing import Optional
+from typing import Optional, Dict, Any
 
 from fastapi import APIRouter, Depends, Header, HTTPException
 from fastapi.responses import JSONResponse
@@ -883,3 +883,35 @@ async def cto_digest():
         "source": dp.current_source(),
         "_data_provenance": dp.freshness_block(ot.get("_collected_at")),
     }
+
+
+# ────────────────────────── GUARDRAIL AUDIT (Custom GPT) ──────────────────────
+@router.get("/treasury-guardrail-audit", dependencies=[Depends(require_token)])
+async def ceo_treasury_guardrail_audit(limit: int = 50,
+                                         allowed_eq: Optional[bool] = None):
+    """Retorna últimas entradas da auditoria SHA256 do guardrail global da IA
+    Tesoureira. Endpoint exposto ao Custom GPT do CEO.
+
+    Query:
+      - limit: máx 200 (default 50)
+      - allowed_eq: filtra true/false
+    """
+    from core import DEMO_COMPANY_ID  # local import — evita ciclo
+    cid = DEMO_COMPANY_ID
+    q: Dict[str, Any] = {"company_id": cid}
+    if allowed_eq is not None:
+        q["allowed"] = allowed_eq
+    limit = max(1, min(200, int(limit)))
+    cur = db.treasury_guardrail_audit.find(q, {"_id": 0})\
+                                     .sort("data_hora_brasilia", -1).limit(limit)
+    rows = await cur.to_list(limit)
+    counts = {
+        "total": await db.treasury_guardrail_audit.count_documents({"company_id": cid}),
+        "blocked": await db.treasury_guardrail_audit.count_documents(
+            {"company_id": cid, "allowed": False}),
+        "allowed": await db.treasury_guardrail_audit.count_documents(
+            {"company_id": cid, "allowed": True}),
+        "ceo_override": await db.treasury_guardrail_audit.count_documents(
+            {"company_id": cid, "ceo_override_applied": True}),
+    }
+    return {"audit": rows, "counts": counts}

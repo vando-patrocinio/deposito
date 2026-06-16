@@ -2,7 +2,48 @@
 
 > Documento vivo. Atualizado a cada sprint.
 
-## 🤖 P0 CTO — Isabella Guardrails + Interactions 360° (15/02/2026)
+## 🔒 P0 CTO — REGRA GLOBAL IA TESOUREIRA (15/02/2026 · ENTREGUE)
+
+**Pedido CTO:** A IA Tesoureira NÃO tem autonomia. Sete regras absolutas + Regra de Ouro (na dúvida, bloqueia). Falha em qualquer uma = BLOCK. Super Admin override permitido para frequência/janela/valor, mas NUNCA para pagar fornecedor não autorizado.
+
+**Parâmetros aceitos do CEO:** Q1=b (universal 1 pgto/30d), Q2=b (08:00-18:00 BRT), Q3=a (failsafe — existing payees default false), Q4=b (override ok, mas não cria/paga não autorizado).
+
+**Backend entregue:**
+- `services/treasurer_global_guardrail.py` (já existia da sessão anterior — 295 linhas, 7 regras + override + auditoria SHA-256).
+- `routes/treasury.py` — chokepoint instalado em **2 pontos críticos**:
+  - `POST /payments/{id}/ai-review` — downgrade auto→human quando guardrail falha.
+  - `POST /payments/{id}/send` — BLOQUEIA envio se `allowed=False`. Aceita `?ceo_override_motivo=...&ceo_override_confirmed_twice=true` (super_admin).
+- Failsafe Q3: `POST /payees` força `ia_autorizada=False`, `validacao_chave_pix={validated_at: null}`. `PATCH` não pode setar ia_autorizada.
+- 5 endpoints novos:
+  - `POST /payees/{id}/authorize-ia` (dupla confirmação + texto canônico + exige PIX validado)
+  - `POST /payees/{id}/revoke-ia` (revoga imediato)
+  - `POST /payees/{id}/validate-pix`
+  - `POST /payees/{id}/validate-conta`
+  - `GET  /guardrail/audit` (lista auditoria SHA-256)
+  - `POST /guardrail/migrate-payees` (super_admin · idempotente · seta ia_autorizada=false em todos)
+- `routes/ceo_digital.py`: `GET /api/ceo/treasury-guardrail-audit` (Custom GPT do CEO).
+
+**Frontend entregue:**
+- Nova sub-aba `IA Tesoureira` em `TreasuryPanel.jsx` (`treasury-tab-guardrail`).
+- `treasury/GuardrailIaPanel.jsx`: banner com as 7 regras + 4 stat cards (Autorizados / Travados / Bloqueios / Overrides) + lista por fornecedor com badges IA AUTORIZADA / TRAVADO + PIX validado / a validar + botões Validar PIX / Autorizar IA (modal com dupla confirmação) / Revogar.
+- Tabela de auditoria SHA-256 com filtros (Todos / Bloqueados / Liberados / CEO Override) — mostra timestamp BRT, ator, origem, motivo, valor, hash.
+
+**Validação curl E2E em DB real (7 cenários):**
+1. `migrate-payees` → 7 fornecedores migrados, todos `ia_autorizada=false` (failsafe).
+2. `authorize-ia` SEM PIX validado → 409.
+3. `authorize-ia` confirm_text errado → 400 com texto esperado.
+4. `validate-pix` + `authorize-ia` OK → `ia_autorizada=True`.
+5. Pagamento p/ fornecedor não autorizado: `send` → 403 com `regra_1_fornecedor_nao_autorizado` + auditoria gravada.
+6. CEO override válido em fornecedor autorizado fora da janela → `allowed=true`, `ceo_override_applied=true`, override_by gravado.
+7. CEO override TENTANDO liberar fornecedor não autorizado → BLOQUEADO (`ceo_override_applied=false`, regra 1 não-overridable).
+
+**Auditoria SHA-256** gravada em `treasury_guardrail_audit` (hash inclui payment_id, payee_id, valor, pix_key, timestamp BRT, todas as validações).
+
+**Crítico — produção compartilhada**: frontend universoligo.com aponta para preview backend; mudanças no DB de preview afetam PROD em tempo real. Migração feita com `$exists: false` (idempotente, defensiva).
+
+---
+
+
 
 **Pedido CTO (ordem 8→7→6):** travar IA antes que invente desconto/promessa/parcelamento, criar canal oficial `handoff_to_human()` auditável, unificar histórico fragmentado em timeline 360°.
 

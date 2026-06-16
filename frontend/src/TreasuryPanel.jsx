@@ -8,13 +8,14 @@ import React, { useEffect, useState } from "react";
 import {
   Inbox, Banknote, Repeat, Wallet, ShieldCheck, ShieldAlert,
   AlertTriangle, Clock, CheckCircle2, ChevronLeft, ChevronRight,
-  Users, CalendarRange, Building2,
+  Users, CalendarRange, Building2, ShieldOff,
 } from "lucide-react";
 import InboxDDA from "./treasury/InboxDDA";
 import PaymentsList from "./treasury/PaymentsList";
 import RecurringList from "./treasury/RecurringList";
 import AccountsList from "./treasury/AccountsList";
 import FornecedoresIA from "./treasury/FornecedoresIA";
+import GuardrailIaPanel from "./treasury/GuardrailIaPanel";
 import {
   treasuryApi, C, BRL, monthLabel, currentMonth, addMonths,
 } from "./treasury/api";
@@ -24,6 +25,7 @@ const TABS = [
   { id: "payments", label: "A Pagar", icon: Banknote },
   { id: "recurring", label: "Recorrências", icon: Repeat },
   { id: "fornecedores", label: "Fornecedores IA", icon: Users },
+  { id: "guardrail", label: "IA Tesoureira", icon: ShieldOff },
   { id: "accounts", label: "Contas", icon: Wallet },
 ];
 
@@ -103,6 +105,7 @@ export default function TreasuryPanel() {
           monthFrom={monthFrom} monthTo={monthTo} />}
         {tab === "recurring" && <RecurringList />}
         {tab === "fornecedores" && <FornecedoresIA />}
+        {tab === "guardrail" && <GuardrailIaPanel />}
         {tab === "accounts" && <AccountsList />}
       </div>
     </div>
