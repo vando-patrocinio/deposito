@@ -2974,6 +2974,9 @@ class ManualWithdrawIn(BaseModel):
     notes: Optional[str] = None
     is_defective: bool = False
     defective_reason: Optional[str] = None
+    # Onda 2.4 — reason canônico obrigatório (decisão CEO 16/02/2026).
+    # Iter246 — campo estava faltando, causando AttributeError em runtime.
+    reason: Optional[Dict[str, Any]] = None
 
 
 @router.post("/clientes/manual-withdraw")

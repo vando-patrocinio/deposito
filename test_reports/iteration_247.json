@@ -1,0 +1,38 @@
+{
+  "summary": "Iter247 — Re-test PR Onda 2.4 manual-withdraw após fix do campo `reason: Optional[Dict[str, Any]] = None` em ManualWithdrawIn (routes/stok.py:2979). TODOS os 4 cenários (a/b/c/d) PASSARAM. CRITICAL bug do iter246 está RESOLVIDO. Caminho genesis (c) confirma R1.4 hook escrevendo valuation_grade + valuation_genesis_via='manual_withdraw_zero' no doc criado. Caminho transfer (d) confirma trilha canônica em inventory_os_movements_audit (movement_id uuid + audit_hash sha256 64 chars).",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {
+        "endpoint": "POST /api/stok/clientes/manual-withdraw",
+        "issue": "Engine TransferEngine impõe regra reason.code='Outro' exige reason.details com ≥20 chars. Mensagem clara — não é bug, mas vale documentar no openapi/schema do endpoint para clientes UI (frontend deve validar antes de enviar)."
+      }
+    ]
+  },
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_onda2_4_manual_withdraw_iter247.py",
+    "/app/test_reports/pytest/onda2_4_iter247.xml"
+  ],
+  "action_items": [
+    "Nenhuma ação obrigatória — PR Onda 2.4 manual-withdraw está plenamente funcional (a/b/c/d todos OK).",
+    "NICE-TO-HAVE: validar reason.details min-length no schema Pydantic (ou expor via OpenAPI extra metadata) para frontend prevenir 400 transfer_blocked tardio.",
+    "NICE-TO-HAVE arquitetural já recomendado no iter246: aplicar Pydantic ConfigDict(extra='forbid') em todos request models transfer-related para evitar regressão silenciosa do bug iter246."
+  ],
+  "critical_code_review_comments": [
+    "FIX iter246 CONFIRMADO em routes/stok.py:2979 — ManualWithdrawIn agora declara `reason: Optional[Dict[str, Any]] = None`. Nenhum AttributeError observado em qualquer payload exercitado.",
+    "R1.4 hook apply_valuation_to_genesis_doc(genesis_source='manual_withdraw_zero') validado: doc inserido em stok_onts via caminho else: tem valuation_grade != None e valuation_genesis_via=='manual_withdraw_zero'.",
+    "Caminho transfer (if ont:) chama execute_transfer corretamente: movement_id=uuid + audit_hash=sha256(64) presentes no response E persistidos em inventory_os_movements_audit. Trilha canônica íntegra.",
+    "Engine pre-flight rule (reason.details ≥20 chars para reason.code='Outro') está hardcoded — documentar ou tornar configurável via env/policy se o produto precisar flexibilizar."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_onda2_4_manual_withdraw_iter247.py (novo arquivo)"
+  ],
+  "success_rate": {"backend": "100% (4/4 — a/b/c/d todos OK)"},
+  "test_credentials": "admin@empresa.com / 123456 — super admin co-demo, login via POST /api/auth/login → access_token (JWT)",
+  "seed_data_creation": "test_c criou 1 ONT em co-demo.stok_onts com SN prefixado 'TEST-IT247-MW-{uniq}' (8 hex chars). location_type=tecnico, source=retirada_manual. NON-DESTRUCTIVE — pode ser removido pelo prefixo TEST-IT247-MW-* a qualquer momento.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "PR Onda 2.4 manual-withdraw está completamente validado e estável. Rodar `python -m pytest tests/test_onda2_4_manual_withdraw_iter247.py -v` para regressão. Co-demo tem 1 ONT em location_type=cliente (SN ITBS32697D69, MAC AA:BB:CC:DD:EE:01) que serve para validar caminho transfer (d). Demais PRs Onda 2.6/2.8/2.9/R1.4/decorator já validados no iter246 e NÃO foram re-rodadas conforme requested.",
+  "rca of the issue": "Bug iter246 era 500 AttributeError em /api/stok/clientes/manual-withdraw porque ManualWithdrawIn não declarava campo `reason`, mas handler em routes/stok.py:3009 fazia payload.reason.get('code'). Pydantic v2 silenciosamente droppa campos extras (extra='ignore' default), então payload.reason → AttributeError → 500. FIX aplicado em routes/stok.py:2979 adicionando `reason: Optional[Dict[str, Any]] = None`. Validação iter247: (a) sem reason → 400 transfer_reason_required (clean); (b) com reason sem ont_mac/sn → 400 'Informe ont_mac ou ont_sn'; (c) genesis path cria doc com valuation_grade via R1.4 hook + transfer_audit_id/hash=null; (d) transfer path (ONT em location='cliente') chama execute_transfer e retorna movement_id+audit_hash persistidos em inventory_os_movements_audit. Nenhum 500 em qualquer caminho."
+}
