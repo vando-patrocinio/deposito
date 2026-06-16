@@ -564,6 +564,48 @@ function NewPaymentModal({ payees, onClose, onCreated }) {
     } finally { setSaving(false); }
   };
 
+  // P0 CEO 2026-02 — Autorizar IA inline (fecha o ciclo cadastro→validar→IA).
+  const AUTH_IA_CANON = (
+    "Estou autorizando a IA Tesoureira a pagar automaticamente este " +
+    "fornecedor dentro das regras globais."
+  );
+  const [showAuthIa, setShowAuthIa] = useState(false);
+  const [authIa, setAuthIa] = useState({
+    cb1: false, cb2: "", max_amount_auto: "500", motivo: "",
+  });
+  const [authIaBusy, setAuthIaBusy] = useState(false);
+  const authorizeIaInline = async () => {
+    const sel = localPayees.find((x) => x.payee_id === f.payee_id);
+    if (!sel) return;
+    if (!authIa.cb1 || authIa.cb2.trim() !== AUTH_IA_CANON.trim()) {
+      setErr("Marque o checkbox e copie o texto exato de autorização.");
+      return;
+    }
+    setAuthIaBusy(true); setErr(null);
+    try {
+      await treasuryApi.authorizePayeeIa(sel.payee_id, {
+        confirm_authorization: authIa.cb1,
+        confirm_text: authIa.cb2,
+        max_amount_auto: Number(authIa.max_amount_auto) || undefined,
+        motivo: authIa.motivo || null,
+      });
+      setLocalPayees((arr) => arr.map((p) =>
+        p.payee_id === sel.payee_id
+          ? { ...p, ia_autorizada: true,
+              ia_autorizada_at: new Date().toISOString(),
+              max_amount_auto: Number(authIa.max_amount_auto)
+                || p.max_amount_auto,
+            }
+          : p,
+      ));
+      setShowAuthIa(false);
+      setAuthIa({ cb1: false, cb2: "", max_amount_auto: "500", motivo: "" });
+    } catch (e) {
+      const d = e?.response?.data?.detail;
+      setErr(typeof d === "string" ? d : (d?.error || e.message));
+    } finally { setAuthIaBusy(false); }
+  };
+
   const submit = async () => {
     if (!f.payee_id || !f.amount_brl || !f.scheduled_for) {
       setErr("Preencha beneficiário, valor e data."); return;
@@ -644,6 +686,16 @@ function NewPaymentModal({ payees, onClose, onCreated }) {
                     fontSize: 10, cursor: validating ? "wait" : "pointer",
                     opacity: validating ? 0.6 : 1 }}>
                   {validating ? "Validando..." : "Validar PIX agora"}
+                </button>
+              )}
+              {hasPix && pixOk && !iaOk && !showAuthIa && (
+                <button type="button"
+                  data-testid="btn-authorize-ia-inline"
+                  onClick={() => setShowAuthIa(true)}
+                  style={{ background: "#059669", color: "white", border: 0,
+                    borderRadius: 6, padding: "4px 10px", fontWeight: 700,
+                    fontSize: 10, cursor: "pointer" }}>
+                  Autorizar IA
                 </button>
               )}
             </div>
@@ -729,6 +781,83 @@ function NewPaymentModal({ payees, onClose, onCreated }) {
                   Salva no cadastro do fornecedor e marca PIX validado em um
                   clique — depois você ainda pode autorizar a IA na aba IA Tesoureira.
                 </div>
+              </div>
+            )}
+            {hasPix && pixOk && !iaOk && showAuthIa && (
+              <div data-testid="authorize-ia-inline-form" style={{
+                marginTop: 10, paddingTop: 10,
+                borderTop: `1px dashed ${C.border}`,
+              }}>
+                <div style={{ display: "flex", justifyContent: "space-between",
+                  alignItems: "center", marginBottom: 6 }}>
+                  <span style={{ color: "#065f46", fontSize: 11,
+                    fontWeight: 700 }}>
+                    Autorizar IA Tesoureira a pagar este fornecedor
+                  </span>
+                  <button type="button" onClick={() => setShowAuthIa(false)}
+                    style={{ background: "transparent", border: 0,
+                      color: C.muted, cursor: "pointer", fontSize: 11,
+                      textDecoration: "underline" }}>
+                    Cancelar
+                  </button>
+                </div>
+                <div style={{ display: "flex", gap: 6,
+                  alignItems: "flex-end", marginBottom: 6 }}>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ color: C.muted, fontSize: 10,
+                      marginBottom: 3 }}>Valor máximo automático (R$)</div>
+                    <input type="number" step="0.01"
+                      data-testid="auth-ia-max-amount"
+                      value={authIa.max_amount_auto}
+                      onChange={(e) => setAuthIa((d) =>
+                        ({ ...d, max_amount_auto: e.target.value }))}
+                      style={input}/>
+                  </div>
+                  <div style={{ flex: 2 }}>
+                    <div style={{ color: C.muted, fontSize: 10,
+                      marginBottom: 3 }}>Motivo (opcional)</div>
+                    <input data-testid="auth-ia-motivo"
+                      value={authIa.motivo}
+                      onChange={(e) => setAuthIa((d) =>
+                        ({ ...d, motivo: e.target.value }))}
+                      placeholder="Contas de energia mensais"
+                      style={input}/>
+                  </div>
+                </div>
+                <label style={{ display: "flex", gap: 6, alignItems: "flex-start",
+                  fontSize: 11, color: C.text, marginBottom: 6 }}>
+                  <input type="checkbox" data-testid="auth-ia-cb1"
+                    checked={authIa.cb1}
+                    onChange={(e) => setAuthIa((d) =>
+                      ({ ...d, cb1: e.target.checked }))}
+                    style={{ marginTop: 3 }}/>
+                  <span>Sim, autorizo este fornecedor a receber pagamentos
+                    automáticos da IA, respeitando as regras globais
+                    (frequência, janela, valor máximo).</span>
+                </label>
+                <div style={{ color: C.muted, fontSize: 10, marginBottom: 3 }}>
+                  Cole/digite o texto canônico:
+                </div>
+                <div style={{ color: C.text, fontSize: 10, padding: "6px 8px",
+                  background: "#f1f5f9", border: `1px solid ${C.border}`,
+                  borderRadius: 6, fontFamily: "monospace",
+                  marginBottom: 6 }}>{AUTH_IA_CANON}</div>
+                <textarea data-testid="auth-ia-confirm-text"
+                  value={authIa.cb2} rows={2}
+                  onChange={(e) => setAuthIa((d) =>
+                    ({ ...d, cb2: e.target.value }))}
+                  style={{ ...input, fontFamily: "monospace", fontSize: 11 }}
+                  placeholder="Cole o texto acima exatamente"/>
+                <button type="button"
+                  data-testid="btn-confirm-authorize-ia-inline"
+                  onClick={authorizeIaInline} disabled={authIaBusy}
+                  style={{ background: "#059669", color: "white", border: 0,
+                    borderRadius: 6, padding: "8px 12px", fontWeight: 700,
+                    fontSize: 11, cursor: authIaBusy ? "wait" : "pointer",
+                    opacity: authIaBusy ? 0.6 : 1, marginTop: 6,
+                    width: "100%" }}>
+                  {authIaBusy ? "Autorizando..." : "Autorizar IA para este fornecedor"}
+                </button>
               </div>
             )}
           </div>
