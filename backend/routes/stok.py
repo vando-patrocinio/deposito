@@ -93,6 +93,14 @@ class OntEditIn(BaseModel):
 class OntTransferIn(BaseModel):
     mac: str
     technician_id: str  # = collaborator.id
+    # Onda 2 (16/02/2026) — `reason` obrigatório no handler.
+    reason: Optional[Dict[str, Any]] = None  # {"code": ..., "details": ...}
+
+
+class OntBulkTransferReasonIn(BaseModel):
+    macs: List[str]
+    technician_id: str
+    reason: Optional[Dict[str, Any]] = None
 
 
 class ConsumablePurchaseIn(BaseModel):
@@ -795,24 +803,50 @@ async def migrate_fill_sn(user: dict = Depends(require_role("administrador"))):
 
 @router.post("/onts/transfer-to-tech")
 async def transfer_ont_to_tech(payload: OntTransferIn, user: dict = Depends(require_role("gestor"))):
+    """Onda 2.2 (CTO 16/02/2026): refatorado para passar por `transfer_engine`.
+
+    Comportamento legado preservado: validações de pré-condição + history.
+    Mudanças:
+    - `reason` é OBRIGATÓRIO no payload (decisão CEO C).
+    - Update em stok_onts agora acontece DENTRO de execute_transfer (chokepoint único).
+    - Trilha em inventory_movements gravada automaticamente.
+
+    Rollback: idempotente por audit_hash. Revert manual = `transfer_engine.execute_transfer`
+    direção contrária (tecnico→empresa) com reason="Outro" + details apontando o audit_id.
+    """
+    from services.transfer_engine import execute_transfer, TransferEngineError
     cid = user.get("company_id") or DEMO_COMPANY_ID
+    if not getattr(payload, "reason", None):
+        raise HTTPException(400, {
+            "error": "transfer_reason_required",
+            "message": "Onda 2: transfer-to-tech exige payload.reason "
+                       "({code, details?}). Vide TRANSFER_REASONS.",
+        })
     mac_n = normalize_mac(payload.mac)
-    ont = await db.stok_onts.find_one({"company_id": cid, "mac": mac_n}, {"_id": 0})
-    if not ont:
-        raise HTTPException(404, "MAC não encontrado.")
-    if ont["location_type"] != "empresa":
-        raise HTTPException(400, "ONT precisa estar no estoque da empresa para ser transferida.")
     tech = await _get_collab(payload.technician_id, cid)
-    await db.stok_onts.update_one(
-        {"company_id": cid, "mac": mac_n},
-        {"$set": {"location_type": "tecnico", "location_id": payload.technician_id, "status": "com_tecnico"}},
-    )
-    await _add_history("transferencia", f"ONT {mac_n} transferida da empresa para {tech['name']}",
-                       user.get("name", "?"), "transferencia", cid)
-    return {"ok": True}
+    try:
+        result = await execute_transfer(
+            company_id=cid,
+            origin_type="empresa", origin_id=None,
+            destination_type="tecnico", destination_id=payload.technician_id,
+            actor={"id": user.get("id"), "email": user.get("email"),
+                    "name": user.get("name"), "role": user.get("role"),
+                    "origin": "gestor_ui"},
+            reason=(payload.reason.model_dump()
+                     if hasattr(payload.reason, "model_dump")
+                     else dict(payload.reason)),
+            mac=mac_n,
+        )
+    except TransferEngineError as e:
+        raise HTTPException(400, {"error": "transfer_blocked", "message": str(e)})
+    await _add_history("transferencia",
+                        f"ONT {mac_n} transferida da empresa para {tech['name']}",
+                        user.get("name", "?"), "transferencia", cid)
+    return {"ok": True, **result}
 
 
 class OntBulkTransferIn(BaseModel):
+    """Legado mantido pra compat — não usado mais pelo handler bulk."""
     macs: List[str]
     technician_id: str
 
@@ -895,45 +929,46 @@ async def praca_summary(user: dict = Depends(require_role("gestor"))):
 
 
 @router.post("/onts/transfer-to-tech/bulk")
-async def transfer_onts_bulk(payload: OntBulkTransferIn,
+async def transfer_onts_bulk(payload: OntBulkTransferReasonIn,
                                user: dict = Depends(require_role("gestor"))):
-    """Transfere várias ONTs de uma vez (UX simple recomendada).
+    """Onda 2.2: bulk via `transfer_engine`. `reason` obrigatório uma vez para o lote.
 
-    Aceita lista de MACs e o técnico destino. Retorna detalhes do que
-    foi/não foi transferido (ex: MAC não encontrado, MAC já com técnico).
+    Cada MAC vira 1 movimento individual em inventory_movements (idempotente
+    por audit_hash, performed_at único). MACs falhos retornam em `skipped`.
     """
+    from services.transfer_engine import execute_transfer, TransferEngineError
     cid = user.get("company_id") or DEMO_COMPANY_ID
+    if not payload.reason or not (payload.reason.get("code") or "").strip():
+        raise HTTPException(400, {
+            "error": "transfer_reason_required",
+            "message": "Bulk transfer exige reason ({code,details?}).",
+        })
     macs_norm = list(dict.fromkeys(normalize_mac(m) for m in payload.macs if m))
     if not macs_norm:
         raise HTTPException(400, "Informe pelo menos um MAC.")
     tech = await _get_collab(payload.technician_id, cid)
-    docs = await db.stok_onts.find(
-        {"company_id": cid, "mac": {"$in": macs_norm}},
-        {"_id": 0, "mac": 1, "location_type": 1, "location_id": 1},
-    ).to_list(2000)
-    by_mac = {d["mac"]: d for d in docs}
-    transferred: List[str] = []
+    transferred: List[Dict[str, Any]] = []
     skipped: List[Dict[str, str]] = []
     for m in macs_norm:
-        d = by_mac.get(m)
-        if not d:
-            skipped.append({"mac": m, "reason": "não encontrado"})
-            continue
-        if d["location_type"] != "empresa":
-            skipped.append({"mac": m, "reason":
-                              f"está em {d['location_type']}"})
-            continue
-        transferred.append(m)
+        try:
+            result = await execute_transfer(
+                company_id=cid,
+                origin_type="empresa", origin_id=None,
+                destination_type="tecnico", destination_id=payload.technician_id,
+                actor={"id": user.get("id"), "email": user.get("email"),
+                        "name": user.get("name"), "role": user.get("role"),
+                        "origin": "gestor_ui_bulk"},
+                reason=payload.reason,
+                mac=m,
+            )
+            transferred.append({"mac": m, "movement_id": result["movement_id"],
+                                "audit_hash": result["audit_hash"]})
+        except TransferEngineError as e:
+            skipped.append({"mac": m, "reason": str(e)[:200]})
     if transferred:
-        await db.stok_onts.update_many(
-            {"company_id": cid, "mac": {"$in": transferred}},
-            {"$set": {"location_type": "tecnico",
-                       "location_id": payload.technician_id,
-                       "status": "com_tecnico"}},
-        )
         await _add_history(
             "transferencia",
-            f"BULK: {len(transferred)} ONT(s) transferidas para {tech['name']}",
+            f"BULK Onda2: {len(transferred)} ONT(s) → {tech['name']}",
             user.get("name", "?"), "transferencia", cid,
         )
     return {
@@ -945,23 +980,39 @@ async def transfer_onts_bulk(payload: OntBulkTransferIn,
 
 
 @router.post("/onts/{mac}/return-to-company")
-async def return_ont_to_company(mac: str, user: dict = Depends(require_role("gestor"))):
+async def return_ont_to_company(mac: str, payload: Optional[Dict[str, Any]] = None,
+                                  user: dict = Depends(require_role("gestor"))):
+    """Onda 2.3: refatorado para passar por `transfer_engine`. `reason` OBRIGATÓRIO.
+
+    Rollback: idempotente por audit_hash. Reverter = transfer-to-tech com mesma ONT.
+    """
+    from services.transfer_engine import execute_transfer, TransferEngineError
     cid = user.get("company_id") or DEMO_COMPANY_ID
+    reason = (payload or {}).get("reason")
+    if not reason or not (reason.get("code") if isinstance(reason, dict) else "").strip():
+        raise HTTPException(400, {
+            "error": "transfer_reason_required",
+            "message": "Onda 2: return-to-company exige reason ({code,details?}).",
+        })
     mac_n = normalize_mac(mac)
-    ont = await db.stok_onts.find_one({"company_id": cid, "mac": mac_n}, {"_id": 0})
-    if not ont:
-        raise HTTPException(404, "MAC não encontrado.")
-    if ont["location_type"] != "tecnico":
-        raise HTTPException(400, "ONT precisa estar com técnico para retornar à empresa.")
-    tech = await db.collaborators.find_one({"id": ont["location_id"]}, {"_id": 0, "name": 1})
-    await db.stok_onts.update_one(
-        {"company_id": cid, "mac": mac_n},
-        {"$set": {"location_type": "empresa", "location_id": "empresa",
-                  "status": "retornada_empresa", "client_name": None}},
-    )
-    await _add_history("devolucao", f"ONT {mac_n} devolvida por {(tech or {}).get('name', 'técnico')} ao estoque da empresa",
-                       user.get("name", "?"), "retorno_empresa", cid)
-    return {"ok": True}
+    try:
+        result = await execute_transfer(
+            company_id=cid,
+            origin_type="tecnico", origin_id=None,  # location_id atual da ONT
+            destination_type="empresa", destination_id=None,
+            actor={"id": user.get("id"), "email": user.get("email"),
+                    "name": user.get("name"), "role": user.get("role"),
+                    "origin": "gestor_ui"},
+            reason=dict(reason),
+            mac=mac_n,
+            manual=True,  # tecnico→empresa não tem fluxo via OS direto
+        )
+    except TransferEngineError as e:
+        raise HTTPException(400, {"error": "transfer_blocked", "message": str(e)})
+    await _add_history("devolucao",
+                        f"ONT {mac_n} devolvida ao estoque da empresa",
+                        user.get("name", "?"), "retorno_empresa", cid)
+    return {"ok": True, **result}
 
 
 # ---------------------------------------------------------------------------

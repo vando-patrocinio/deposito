@@ -124,6 +124,8 @@ async def list_client_onts(client_id: str,
 class DefectiveReturnIn(BaseModel):
     """Confirmação de devolução de ONT defeituosa ao estoque da empresa."""
     notes: Optional[str] = None
+    # Onda 2.7 — reason obrigatório (decisão CEO).
+    reason: Optional[Dict[str, Any]] = None
 
 
 @router.get("/defective-onts")
@@ -187,17 +189,22 @@ async def list_defective_onts(user: dict = Depends(require_role("gestor"))):
 @router.post("/defective-onts/{mac}/confirm-return")
 async def confirm_defective_return(mac: str, payload: DefectiveReturnIn,
                                        user: dict = Depends(require_role("gestor"))):
-    """Confirma a devolução física da ONT defeituosa ao estoque da empresa.
+    """Onda 2.7: refatorado para passar por `transfer_engine`.
 
-    Move o registro de `location_type=tecnico` para `empresa` e troca o
-    status para `defeito_em_analise` — fica visível no panel mas fora
-    da lista de "pendente de devolução".
+    Movimento: defeito → empresa (via grafo). `reason` obrigatório (decisão CEO).
     """
+    from services.transfer_engine import execute_transfer, TransferEngineError
     cid = _cid(user)
     from routes.stok import normalize_mac
     mac_n = normalize_mac(mac or "")
     if not mac_n:
         raise HTTPException(400, "MAC inválido")
+    reason = getattr(payload, "reason", None)
+    if not reason or not (reason.get("code") if isinstance(reason, dict) else "").strip():
+        raise HTTPException(400, {
+            "error": "transfer_reason_required",
+            "message": "confirm-return exige payload.reason ({code,details?}).",
+        })
     ont = await db.stok_onts.find_one({"company_id": cid, "mac": mac_n}, {"_id": 0})
     if not ont:
         raise HTTPException(404, "ONT não encontrada")
@@ -206,18 +213,26 @@ async def confirm_defective_return(mac: str, payload: DefectiveReturnIn,
             f"ONT {mac_n} não está pendente de devolução (status atual: "
             f"{ont.get('status') or 'desconhecido'})")
     actor_email = (user.get("email") or "").strip() or None
-    await db.stok_onts.update_one(
-        {"company_id": cid, "mac": mac_n},
-        {"$set": {
-            "location_type": "empresa",
-            "location_id": None,
-            "status": "defeito_em_analise",
-            "returned_to_company_at": now_iso(),
-            "returned_to_company_by": actor_email,
-            "returned_notes": (payload.notes or "").strip()[:300] or None,
-        }},
-    )
-    return {"ok": True, "mac": mac_n, "new_status": "defeito_em_analise"}
+    try:
+        result = await execute_transfer(
+            company_id=cid,
+            origin_type="defeito", origin_id=ont.get("location_id"),
+            destination_type="empresa", destination_id=None,
+            actor={"id": user.get("id"), "email": actor_email,
+                    "name": user.get("name"), "role": user.get("role"),
+                    "origin": "gestor_ui_defeito"},
+            reason=dict(reason),
+            mac=mac_n,
+            extra_set_fields={
+                "status": "defeito_em_analise",
+                "returned_to_company_at": now_iso(),
+                "returned_to_company_by": actor_email,
+                "returned_notes": (payload.notes or "").strip()[:300] or None,
+            },
+        )
+    except TransferEngineError as e:
+        raise HTTPException(400, {"error": "transfer_blocked", "message": str(e)})
+    return {"ok": True, "mac": mac_n, "new_status": "defeito_em_analise", **result}
 
 
 class DefectiveOntReasonIn(BaseModel):
@@ -516,13 +531,25 @@ async def list_pending(status: str = "pending",
 
 class TransferDecisionIn(BaseModel):
     note: Optional[str] = None
+    # Onda 2.5 — obrigatório no handler.
+    reason: Optional[Dict[str, Any]] = None
 
 
 @router.post("/pending-transfers/{pt_id}/approve")
 async def approve_pending(pt_id: str, payload: TransferDecisionIn,
                             user: dict = Depends(require_role("gestor"))):
-    """Aprova a transferência pendente: move a ONT do técnico para o cliente."""
+    """Onda 2.5: refatorado para passar por `transfer_engine`. tecnico→cliente.
+
+    `payload.reason` ainda não existia — vem agora obrigatório (decisão CEO C).
+    """
+    from services.transfer_engine import execute_transfer, TransferEngineError
     cid = _cid(user)
+    reason = getattr(payload, "reason", None)
+    if not reason or not (reason.get("code") if isinstance(reason, dict) else "").strip():
+        raise HTTPException(400, {
+            "error": "transfer_reason_required",
+            "message": "approve pending exige payload.reason ({code,details?}).",
+        })
     pt = await db.stok_pending_transfers.find_one(
         {"id": pt_id, "company_id": cid, "status": "pending"}, {"_id": 0})
     if not pt:
@@ -530,41 +557,57 @@ async def approve_pending(pt_id: str, payload: TransferDecisionIn,
     mac_n = pt.get("stock_mac")
     if not mac_n:
         raise HTTPException(400, "Pendência sem MAC")
-    # Move a ONT
-    await db.stok_onts.update_one(
-        {"company_id": cid, "mac": mac_n},
-        {"$set": {"location_type": "cliente",
-                   "location_id": pt["client_id"],
-                   "client_name": pt.get("client_name"),
-                   "status": "instalada",
-                   "installed_at": now_iso(),
-                   "approved_by_email": user.get("email"),
-                   "approved_at": now_iso()},
-          "$unset": {"pending_install_to_client": "",
-                     "pending_install_service_id": "",
-                     "pending_transfer_id": ""}},
-    )
+    try:
+        result = await execute_transfer(
+            company_id=cid,
+            origin_type="tecnico", origin_id=pt.get("technician_id"),
+            destination_type="cliente",
+            destination_id=pt["client_id"],
+            actor={"id": user.get("id"), "email": user.get("email"),
+                    "name": user.get("name"), "role": user.get("role"),
+                    "origin": "gestor_ui_approve", "client_name":
+                    pt.get("client_name")},
+            reason=dict(reason),
+            mac=mac_n,
+            ticket_id=pt.get("pending_install_service_id"),
+            extra_unset_fields=["pending_install_to_client",
+                                  "pending_install_service_id",
+                                  "pending_transfer_id"],
+        )
+    except TransferEngineError as e:
+        raise HTTPException(400, {"error": "transfer_blocked", "message": str(e)})
     await db.stok_pending_transfers.update_one(
         {"id": pt_id, "company_id": cid},
         {"$set": {"status": "approved",
                    "decided_at": now_iso(),
                    "decided_by_email": user.get("email"),
-                   "decision_note": (payload.note or "")[:200]}},
+                   "decision_note": (payload.note or "")[:200],
+                   "transfer_movement_id": result["movement_id"],
+                   "transfer_audit_hash": result["audit_hash"]}},
     )
-    return {"ok": True, "status": "approved"}
+    return {"ok": True, "status": "approved", **result}
 
 
 @router.post("/pending-transfers/{pt_id}/reject")
 async def reject_pending(pt_id: str, payload: TransferDecisionIn,
                            user: dict = Depends(require_role("gestor"))):
-    """Rejeita: devolve a ONT pro estoque do técnico (limpa flags pendentes)."""
+    """Onda 2.5: rejeição NÃO chama transfer_engine (não há movimento de
+    owner — só limpa flags). Apenas confirma que reason está presente para
+    auditoria do gestor.
+    """
     cid = _cid(user)
+    reason = getattr(payload, "reason", None)
+    if not reason or not (reason.get("code") if isinstance(reason, dict) else "").strip():
+        raise HTTPException(400, {
+            "error": "transfer_reason_required",
+            "message": "reject pending exige payload.reason ({code,details?}).",
+        })
     pt = await db.stok_pending_transfers.find_one(
         {"id": pt_id, "company_id": cid, "status": "pending"}, {"_id": 0})
     if not pt:
         raise HTTPException(404, "Pendência não encontrada ou já decidida")
     mac_n = pt.get("stock_mac")
-    # Restaura status original
+    # Sem mudança de owner (continua com técnico). Apenas restaura status.
     await db.stok_onts.update_one(
         {"company_id": cid, "mac": mac_n},
         {"$set": {"status": "no_estoque"},
@@ -577,7 +620,8 @@ async def reject_pending(pt_id: str, payload: TransferDecisionIn,
         {"$set": {"status": "rejected",
                    "decided_at": now_iso(),
                    "decided_by_email": user.get("email"),
-                   "decision_note": (payload.note or "")[:200]}},
+                   "decision_note": (payload.note or "")[:200],
+                   "rejection_reason": dict(reason)}},
     )
     return {"ok": True, "status": "rejected"}
 

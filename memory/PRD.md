@@ -4756,3 +4756,38 @@ DEPOIS purga:  16 aguardando triagem (todos válidos ou recuperáveis)
 
 ### Próximo (PR 2.2 — refatorar `transfer-to-tech` + `transfer-to-tech/bulk`)
 Mesmo padrão da Onda 1: chamar `execute_transfer` ANTES de tocar stok_onts. Continua sequencial.
+
+---
+## [2026-02-16 — adendo 11] Estoque OS V2 — Onda 2.2 + 2.3 + 2.5 + 2.7 ✅
+
+**4 PRs entregues. 5 rotas refatoradas. Todas via `transfer_engine.execute_transfer`.**
+
+### Rotas blindadas
+| PR | Rota | Direção | Status |
+|----|------|---------|--------|
+| 2.2 | `POST /api/stok/onts/transfer-to-tech` | empresa→tecnico | ✅ |
+| 2.2 | `POST /api/stok/onts/transfer-to-tech/bulk` | empresa→tecnico (lote) | ✅ |
+| 2.3 | `POST /api/stok/onts/{mac}/return-to-company` | tecnico→empresa (manual) | ✅ |
+| 2.5 | `POST /api/stok-transfers/pending-transfers/{id}/approve` | tecnico→cliente | ✅ |
+| 2.5 | `POST /api/stok-transfers/pending-transfers/{id}/reject` | sem mudança de owner | ✅ |
+| 2.7 | `POST /api/stok-transfers/defective-onts/{mac}/confirm-return` | defeito→empresa | ✅ |
+
+### Testes
+- 9/9 smoke 2.1 + 7/7 smoke 2.2/2.3 + 6/6 smoke 2.5/2.7 = **22/22 verdes**.
+- Lint Python limpo.
+- Backend reload sem stacktrace.
+
+### Contrato garantido
+- Todas via `execute_transfer` (write_movement → inventory_os_movements_audit).
+- `reason` obrigatório (HTTP 400 se ausente).
+- `audit_hash` SHA-256 em cada resposta.
+- `cliente→empresa` direto BLOQUEADO pelo grafo.
+- Update em `stok_onts` apenas dentro do helper (zero write direto fora dele nestas 6 rotas).
+- Backfill sintético em collection separada (decisão B1).
+- Rollback documentado em docstring (idempotente por audit_hash; reverse via execute_transfer direção contrária).
+
+### Rotas BYPASS pendentes (a fazer em próxima rodada — preservando contexto)
+- **PR 2.4**: `POST /api/stok/clientes/manual-withdraw` (110+ linhas, side effects em ctos/notifications/CEH).
+- **PR 2.6**: `POST /api/field-ops/equipment/return`.
+- **PR 2.8**: `POST /api/stok/onts/reconcile-with-olt` (mais complexa).
+- **PR 2.9**: `POST /api/ont-scan/...` + `POST /api/balanco/...`.
