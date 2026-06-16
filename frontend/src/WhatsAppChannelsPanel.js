@@ -624,9 +624,134 @@ function ProviderModal({ channel, onClose, onSaved }) {
   );
 }
 
+/* ──────────────────────────────────────────────────────────────────
+   ExternalChannelCard — Card para providers externos (Evolution API).
+   Renderizado em seção própria, fora do grid Baileys.
+   CTO 16/02/2026.
+─────────────────────────────────────────────────────────────────── */
+function ExternalChannelCard({ ch, busy, onConfigProvider, onLogout, onRefresh }) {
+  const isAuthRequired = ch.live_state === "auth_required";
+  const isConfigInvalid = ch.live_state === "config_invalid";
+  const isUnreachable = ch.live_state === "unreachable";
+  const isConnected = ch.live_state === "open" || ch.live_connected;
+
+  const badge = isConnected
+    ? { c: "#16a34a", bg: "#dcfce7", b: "#86efac", label: "Conectado" }
+    : isAuthRequired
+    ? { c: "#b45309", bg: "#fef3c7", b: "#fcd34d", label: "Auth Required" }
+    : isConfigInvalid
+    ? { c: "#dc2626", bg: "#fee2e2", b: "#fca5a5", label: "Config Inválida" }
+    : isUnreachable
+    ? { c: "#64748b", bg: "#f1f5f9", b: "#cbd5e1", label: "Inacessível" }
+    : { c: "#ca8a04", bg: "#fef9c3", b: "#fde047", label: ch.live_state || "—" };
+
+  return (
+    <div
+      data-testid={`external-channel-${ch.id}`}
+      style={{
+        background: "white",
+        border: `1px solid ${isConnected ? "#86efac" : "#e2e8f0"}`,
+        borderRadius: 12,
+        padding: 18,
+        boxShadow: "0 1px 2px rgba(0,0,0,.04)",
+      }}
+    >
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+            <strong style={{ fontSize: 15, color: "#0f172a" }}>
+              {ch.name || ch.channel_name || ch.id}
+            </strong>
+            <span style={{
+              fontSize: 10, fontWeight: 700, padding: "2px 7px",
+              background: "#eef2ff", color: "#4338ca", borderRadius: 4,
+              letterSpacing: 0.5,
+            }}>{(ch.provider || "external").toUpperCase()}</span>
+          </div>
+          <div style={{ marginTop: 4, fontSize: 12, color: "#64748b" }}>
+            {ch.evolution_url && <span>URL: {ch.evolution_url}</span>}
+          </div>
+          {ch.evolution_instance && (
+            <div style={{ marginTop: 2, fontSize: 11, color: "#94a3b8" }}>
+              Instância: <code>{ch.evolution_instance}</code>
+            </div>
+          )}
+          {ch.phone_number && (
+            <div style={{ marginTop: 6, fontSize: 13, color: "#0f172a", fontWeight: 600 }}>
+              📱 {ch.phone_number}
+            </div>
+          )}
+        </div>
+        <span style={{
+          padding: "3px 10px", borderRadius: 999, fontSize: 11, fontWeight: 700,
+          background: badge.bg, color: badge.c, border: `1px solid ${badge.b}`,
+          whiteSpace: "nowrap",
+        }}>{badge.label}</span>
+      </div>
+
+      {ch.live_error && (
+        <div style={{
+          marginTop: 12, padding: 10,
+          background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 8,
+          fontSize: 12, color: "#991b1b", lineHeight: 1.45,
+        }} data-testid={`external-channel-${ch.id}-error`}>
+          <AlertTriangle size={13} style={{ verticalAlign: "-2px", marginRight: 4 }}/>
+          {ch.live_error}
+        </div>
+      )}
+
+      <div style={{ marginTop: 14, display: "flex", gap: 8, flexWrap: "wrap" }}>
+        <button
+          data-testid={`external-channel-${ch.id}-config`}
+          onClick={() => onConfigProvider && onConfigProvider(ch)}
+          disabled={busy}
+          style={{
+            padding: "7px 12px", background: "#0f766e", color: "white",
+            border: "none", borderRadius: 6, fontWeight: 600, fontSize: 12,
+            cursor: busy ? "not-allowed" : "pointer",
+            display: "inline-flex", alignItems: "center", gap: 6,
+          }}
+        >
+          <Settings size={13}/> Configurar
+        </button>
+        <button
+          data-testid={`external-channel-${ch.id}-refresh`}
+          onClick={onRefresh}
+          disabled={busy}
+          style={{
+            padding: "7px 12px", background: "white", color: "#0f766e",
+            border: "1px solid #99f6e4", borderRadius: 6, fontWeight: 600, fontSize: 12,
+            cursor: busy ? "not-allowed" : "pointer",
+            display: "inline-flex", alignItems: "center", gap: 6,
+          }}
+        >
+          <RefreshCw size={13}/> Atualizar
+        </button>
+        {isConnected && (
+          <button
+            data-testid={`external-channel-${ch.id}-logout`}
+            onClick={onLogout}
+            disabled={busy}
+            style={{
+              padding: "7px 12px", background: "white", color: "#dc2626",
+              border: "1px solid #fecaca", borderRadius: 6, fontWeight: 600, fontSize: 12,
+              cursor: busy ? "not-allowed" : "pointer",
+              display: "inline-flex", alignItems: "center", gap: 6,
+            }}
+          >
+            <LogOut size={13}/> Desconectar
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+
 
 export default function WhatsAppChannelsPanel() {
   const [channels, setChannels] = useState([]);
+  const [externals, setExternals] = useState([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [qrFor, setQrFor] = useState(null);
@@ -637,6 +762,7 @@ export default function WhatsAppChannelsPanel() {
     try {
       const data = await api.waChannelsList();
       setChannels(data?.channels || []);
+      setExternals(data?.external_channels || []);
       setErr(null);
     } catch (e) {
       setErr(e?.message || "Falha ao carregar canais");
@@ -728,6 +854,47 @@ export default function WhatsAppChannelsPanel() {
               onConfigProvider={(c) => setProviderFor(c)}
             />
           ))}
+        </div>
+      )}
+
+      {/* ───── Provedores externos (Evolution API, etc) ─────
+         CTO 16/02/2026 — Isolados do grid Baileys: falha aqui NÃO bloqueia
+         os 4 canais Baileys. UI separada visualmente. */}
+      {externals.length > 0 && (
+        <div data-testid="external-channels-section" style={{ marginTop: 32 }}>
+          <h3 style={{ margin: "0 0 6px", fontSize: 15, fontWeight: 700, color: "#0f172a" }}>
+            Provedores externos
+          </h3>
+          <p style={{ margin: "0 0 14px", color: "#64748b", fontSize: 12 }}>
+            Canais via APIs de terceiros (Evolution API, etc). Operam independente
+            dos 4 sidecars Baileys — falhas aqui não afetam os canais acima.
+          </p>
+          <div style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fit, minmax(380px, 1fr))",
+            gap: 16,
+          }}>
+            {externals.map((ch) => (
+              <ExternalChannelCard
+                key={ch.id}
+                ch={ch}
+                busy={busy}
+                onConfigProvider={(c) => setProviderFor(c)}
+                onLogout={async () => {
+                  if (!window.confirm(`Desconectar ${ch.name || ch.channel_name}?`)) return;
+                  setBusy(true);
+                  try {
+                    const r = await api.waChannelLogout(ch.id);
+                    if (r?.ok === false && r?.error) {
+                      alert(`Não consegui desconectar: ${r.error}`);
+                    }
+                    await load();
+                  } finally { setBusy(false); }
+                }}
+                onRefresh={load}
+              />
+            ))}
+          </div>
         </div>
       )}
 

@@ -155,12 +155,23 @@ async def _proxy_post(channel_id: str, path: str, payload: dict) -> dict:
 async def list_all_channels(user=Depends(require_role(
     "administrador", "gestor", "auditor",
 ))):
-    """Lista os 4 canais com status atualizado em paralelo (live polling)."""
-    cid = user.get("company_id") or DEMO_COMPANY_ID
-    channels = await list_channels(db, cid)
+    """Lista os canais com status em paralelo.
 
-    # Faz status check paralelo em todos os sidecars
-    async def _fetch_status(ch: dict) -> dict:
+    Resposta:
+      - `channels`: SOMENTE os 4 slots Baileys (channel-1..4).
+                    Esses são o grid principal da UI. Falhas em outros
+                    providers NÃO contaminam essa lista.
+      - `external_channels`: canais externos (Evolution API, futuros
+                              providers). Renderizados separadamente.
+
+    CTO 16/02/2026 — separação física entre Baileys e Evolution pra que
+    um provider quebrado nunca trave/polua a UI do outro.
+    """
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+    all_chs = await list_channels(db, cid)
+
+    # ----- Status Baileys (sidecar) — isolado -----
+    async def _fetch_baileys_status(ch: dict) -> dict:
         ch = dict(ch)
         try:
             url = base_url_for(ch["id"]) + "/status"
@@ -188,15 +199,74 @@ async def list_all_channels(user=Depends(require_role(
             ch["live_error"] = str(e)[:120]
         return ch
 
+    # ----- Status Evolution — isolado, NUNCA bloqueia Baileys -----
+    async def _fetch_evolution_status(ch: dict) -> dict:
+        ch = dict(ch)
+        try:
+            evo = _evolution_client(ch)
+            async with httpx.AsyncClient(timeout=4.0) as cli:
+                r = await cli.get(
+                    f"{evo.base_url}/instance/connectionState/{evo.instance_name}",
+                    headers=evo.headers,
+                )
+                if r.status_code == 200:
+                    try:
+                        data = r.json()
+                        inst = data.get("instance") or data
+                        ch["live_state"] = inst.get("state")
+                        ch["live_connected"] = inst.get("state") == "open"
+                    except Exception:
+                        ch["live_state"] = "unreachable"
+                        ch["live_connected"] = False
+                        ch["live_error"] = "Evolution devolveu non-JSON"
+                elif r.status_code == 401:
+                    ch["live_state"] = "auth_required"
+                    ch["live_connected"] = False
+                    ch["live_error"] = (
+                        "Proxy externo exige Basic Auth — configure "
+                        "evolution_basic_auth no canal"
+                    )
+                else:
+                    ch["live_state"] = "unreachable"
+                    ch["live_connected"] = False
+                    ch["live_error"] = f"HTTP {r.status_code}"
+        except HTTPException as he:
+            ch["live_state"] = "config_invalid"
+            ch["live_connected"] = False
+            ch["live_error"] = str(he.detail)[:140]
+        except Exception as e:
+            ch["live_state"] = "unreachable"
+            ch["live_connected"] = False
+            ch["live_error"] = str(e)[:140]
+        return ch
+
+    # Separa os docs pelo provider
+    baileys_docs = [c for c in all_chs if c.get("provider") != "evolution"
+                    and str(c.get("id") or "").startswith("channel-")]
+    evolution_docs = [c for c in all_chs if c.get("provider") == "evolution"]
+
     import asyncio
-    enriched = await asyncio.gather(*[_fetch_status(c) for c in channels])
-    # CTO 15/06/2026 — Mascara api_key Evolution na listagem (segurança)
-    for ch in enriched:
-        if ch.get("evolution_api_key"):
-            tail = ch["evolution_api_key"][-4:] if len(ch["evolution_api_key"]) >= 4 else ""
-            ch["evolution_api_key_masked"] = f"***{tail}"
-            ch.pop("evolution_api_key", None)
-    return {"channels": enriched}
+    baileys_enriched, evolution_enriched = await asyncio.gather(
+        asyncio.gather(*[_fetch_baileys_status(c) for c in baileys_docs]) if baileys_docs else asyncio.sleep(0, result=[]),
+        asyncio.gather(*[_fetch_evolution_status(c) for c in evolution_docs]) if evolution_docs else asyncio.sleep(0, result=[]),
+    )
+
+    def _mask(arr):
+        for ch in arr:
+            if ch.get("evolution_api_key"):
+                tail = ch["evolution_api_key"][-4:] if len(ch["evolution_api_key"]) >= 4 else ""
+                ch["evolution_api_key_masked"] = f"***{tail}"
+                ch.pop("evolution_api_key", None)
+            # Nunca vaza basic_auth no GET
+            if ch.get("evolution_basic_auth"):
+                ch["evolution_basic_auth_configured"] = True
+                ch.pop("evolution_basic_auth", None)
+        return arr
+
+    return {
+        "channels": _mask(list(baileys_enriched)),
+        "external_channels": _mask(list(evolution_enriched)),
+    }
 
 
 @router.patch("/{channel_id}")
