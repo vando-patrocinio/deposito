@@ -2,6 +2,24 @@
 
 > Documento vivo. Atualizado a cada sprint.
 
+## ✅ P0 CTO — WHATSAPP BAILEYS QR VISÍVEL (16/02/2026 · ENTREGUE)
+
+**Pedido CTO:** "COLOCA O WhatsApp Baileys PRA FUNCIONAR" — usuário não encontrava o QR Code.
+
+**Root cause encontrado (2 bugs):**
+1. `routes/integrations.py::_check_baileys` chamava o sidecar SEM o `WA_SIDECAR_TOKEN` → sidecar respondia 401 → painel reportava `status: unknown` falsamente.
+2. `frontend/src/WhatsAppQRPanel.js` (tab principal "Atendimento IA → Ligo") quando desconectado mostrava SÓ texto orientando ir em "Configuração". O QR ficava enterrado embaixo de 6+ cards.
+
+**Fix entregue:**
+- Backend: `_check_baileys` agora usa `_sidecar_headers()` + `/status` (mais barato que `/qr`); reporta `state` real (`connecting`/`connected`/`disconnected`) e `me`.
+- Frontend: `WhatsAppQRPanel.js` embute `<WhatsAppInstancePanel/>` direto na tela de desconectado. Estado inicial renomeado `connecting → checking` pra não conflitar com o `status:"connecting"` que o sidecar usa pra "QR pronto, aguardando scan".
+- Resultado validado por screenshot: ao abrir Atendimento IA → Ligo, o usuário vê IMEDIATAMENTE o QR Code (340×340) + countdown 60s + botões "Gerar novo QR" / "Ampliar" sem precisar navegar nada.
+
+**Sidecars locais (porta 3002/3003/3004/3005):** RODANDO. Token `WA_SIDECAR_TOKEN` no `.env`. Status atual: `state: connecting` aguardando scan.
+
+---
+
+
 ## 🔒 P0 CTO — REGRA GLOBAL IA TESOUREIRA (15/02/2026 · ENTREGUE)
 
 **Pedido CTO:** A IA Tesoureira NÃO tem autonomia. Sete regras absolutas + Regra de Ouro (na dúvida, bloqueia). Falha em qualquer uma = BLOCK. Super Admin override permitido para frequência/janela/valor, mas NUNCA para pagar fornecedor não autorizado.

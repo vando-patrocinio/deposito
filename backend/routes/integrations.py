@@ -34,20 +34,34 @@ router = APIRouter(prefix="/api/integrations", tags=["integrations"])
 
 
 SIDECAR_BASE = os.environ.get("WA_SIDECAR_URL", "http://127.0.0.1:3002")
+# Token Bearer exigido pelo sidecar Baileys (CTO 2026-02). Sem ele o
+# sidecar responde 401 e o health-check reporta `unknown`/`disconnected`
+# mesmo quando o estado real é OK.
+from services.wa.sidecar import _sidecar_headers  # noqa: E402
 
 
 async def _check_baileys() -> Dict[str, Any]:
+    """Health real do sidecar Baileys local (porta 3002).
+
+    Usa `/status` (mais barato que `/qr`) e SEMPRE envia o Bearer do
+    sidecar — caso contrário o sidecar devolve 401 e o painel mostra
+    `disconnected` falsamente.
+    """
     try:
-        async with httpx.AsyncClient(timeout=6.0) as cli:
-            r = await cli.get(f"{SIDECAR_BASE}/qr")
+        async with httpx.AsyncClient(
+            timeout=6.0, headers=_sidecar_headers(),
+        ) as cli:
+            r = await cli.get(f"{SIDECAR_BASE}/status")
             d = r.json() if r.status_code < 400 else {}
-            connected = (d.get("status") or "").lower() == "connected"
+            state = (d.get("state") or "").lower()
+            connected = bool(d.get("connected")) or state == "connected"
             return {
                 "channel": "baileys",
                 "label": "WhatsApp Baileys (não-oficial)",
                 "available": True,
                 "connected": connected,
-                "status": d.get("status") or "unknown",
+                "status": state or "unknown",
+                "me": d.get("me"),
                 "needs_action": (not connected),
             }
     except Exception as e:
