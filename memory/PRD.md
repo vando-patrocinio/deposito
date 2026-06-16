@@ -2,6 +2,61 @@
 
 > Documento vivo. Atualizado a cada sprint.
 
+## ✅ P0 CEO — ESTOQUE OS V2 / ONDA 2 + R1.4 + DECORATOR (16/02/2026 · ENTREGUE)
+
+**Pedido CEO:** Fechar a Onda 2 (transferências), destravar R1.4 (hook valuation no genesis) e selar a arquitetura com decorator `@requires_transfer_audit`.
+
+**Entregue iter246+247 (100% testado):**
+
+1. **Fix lint F841** — `routes/stok.py` (manual-withdraw) e `routes/field_ops.py` (equipment-return) agora expõem `transfer_audit_id` + `transfer_audit_hash` no response. Lint zerado.
+
+2. **PR Onda 2.8 — `reconcile-with-olt`** (Exceção SmartOLT)
+   - Novo grafo `RECONCILIATION_TRANSITIONS` em `transfer_engine.py` permite `empresa→cliente` e `tecnico→cliente` **apenas** quando `reason.code=="Reconciliação SmartOLT"` E `smartolt_snapshot` (com pppoe_user ou olt_name) presente.
+   - Movement_type canônico: `reconciliation_smartolt_sync`. Source: `smartolt_reconcile`.
+   - Flags no movimento: `is_reconciliation=True`, `counts_as_install=False`, `counts_for_tech_productivity=False` → NÃO polui ranking técnico nem aparece como instalação real.
+   - Validado: 27 ONTs checadas em co-demo, 0 reconciliadas (banco já consistente), skip semântico OK.
+
+3. **PR Onda 2.9 — `scan-batch-commit`** — Retirada via Scan IA agora passa por `execute_transfer` quando ONT já existe (empresa/cliente→tecnico). ONT inexistente cai no genesis path (coberto por R1.4 hook). Intra-tech/defeito→tecnico: skip explícito com motivo. Bypass do scan IA fechado.
+
+4. **PR R1.4 — Hook automático Valuation no genesis** (`services/inventory_valuation.py`)
+   - Novo helper `apply_valuation_to_genesis_doc(doc, genesis_source=...)` (idempotente).
+   - Helper batch `apply_valuation_to_batch(docs, company_id, ...)` (pré-calcula weighted_avg 1x).
+   - Plugado em 7 pontos de genesis: `purchase_confirm`, `purchase_reprocess_image`, `purchase_reprocess_sns`, `register_ont_bulk`, `ai_scan_retirada`, `manual_withdraw_zero`, `scan_batch_commit`.
+   - Toda ONT recém-criada já entra com `valuation_grade`, `valuation_source`, `valuation_calculated_at`, `valuation_needs_human_review`, `valuation_genesis_at`, `valuation_genesis_via`. Falha de cálculo NÃO bloqueia genesis (degrada graceful para Grade F + needs_review).
+
+5. **Decorator `@requires_transfer_audit`** (`services/transfer_engine.py`)
+   - ContextVar `_transfer_audit_calls` registra cada chamada de `execute_transfer` no escopo do request.
+   - Decorator levanta `HTTPException(400, error="transfer_audit_missing")` se a rota retornar sem chamar `execute_transfer`.
+   - Respeita opt-out explícito `response["transfer_audit_skipped"]=True` (rotas com skip legítimo, ex: bulk sem ONTs válidas, reconcile sem discrepâncias).
+   - **Fix sutil**: signature do wrapper é reconstruída com tipos resolvidos via `typing.get_type_hints` — sem isso, FastAPI 0.x falhava resolver `ForwardRef('OntTransferIn')` no `__globals__` do wrapper e mandava body como query (422). Documentado no docstring.
+   - Aplicado em 4 rotas: `transfer-to-tech`, `transfer-to-tech/bulk`, `return-to-company`, `reconcile-with-olt`.
+
+6. **Fix CRITICAL iter246** — `ManualWithdrawIn` (routes/stok.py) faltava campo `reason: Optional[Dict[str, Any]] = None` → handler crashava com 500 AttributeError. Corrigido em iter247. Recomendação arquitetural pendente: aplicar `ConfigDict(extra='forbid')` em todos request models de transfer pra erros surgirem como Pydantic 422 ao invés de AttributeError 500.
+
+**Testing status:**
+- `/app/test_reports/iteration_246.json` — 9/11 (1 CRITICAL agora resolvido, 1 ambiente skip)
+- `/app/test_reports/iteration_247.json` — 4/4 (100%, PR 2.4 plenamente OK)
+- Test suites: `/app/backend/tests/test_onda2_iter246.py`, `test_onda2_4_manual_withdraw_iter247.py`
+
+**Próximos passos imediatos (P0/P1):**
+- P1: Watchtower Estoque (dashboard executivo KPIs patrimônio + alertas valuation_needs_human_review).
+- P1: Fase 3 — Owner & Location normalization.
+- P1: Aplicar `ConfigDict(extra='forbid')` nos request models transfer-related (defesa contra regressão estilo iter246).
+- P2: Hardening dos endpoints restantes que ainda fazem `stok_onts.update_one` sem passar pelo engine (auditoria recorrente — buscar `git grep stok_onts.update_one`).
+- P2: Limpeza ghost tickets "SmartProv Auto".
+- P2: IAM v2 Migration.
+
+**Decisões arquiteturais consolidadas:**
+- `transfer_engine.execute_transfer` é o **único** chokepoint para mutação de ownership de ONT.
+- `reason` é obrigatório em toda transferência (validado pelo engine).
+- Reconciliação SmartOLT é exceção controlada com grafo separado — NÃO conta produtividade.
+- Genesis (criação de ONT) carrega valuation auto via R1.4 hook. Falha → graceful Grade F.
+- Decorator selar arquitetura: rotas que esquecem de chamar engine → 400 automático.
+
+**Nota documental:** o prefixo real do router de field_ops é `/api/field` (não `/api/field-ops`). PRD e docs internas corrigidas.
+
+---
+
 ## ✅ P0 CTO — WHATSAPP BAILEYS QR VISÍVEL (16/02/2026 · ENTREGUE)
 
 **Pedido CTO:** "COLOCA O WhatsApp Baileys PRA FUNCIONAR" — usuário não encontrava o QR Code.
