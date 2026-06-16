@@ -49,6 +49,7 @@ BLOCK_REASONS_NON_OVERRIDABLE = {
     "regra_4_equipamento_bloqueado",
     "regra_4_equipamento_defeituoso",
     "regra_2_retirada_equipamento_nao_pertence_cliente",
+    "regra_d3_sn_nao_confiavel_requer_rescan",
 }
 
 
@@ -78,15 +79,32 @@ def _audit_hash(record: Dict[str, Any]) -> str:
 
 
 async def _persist_audit(records: List[Dict[str, Any]]) -> List[str]:
-    """Persiste a lista de movimentações em `inventory_os_movements_audit`.
-    Retorna os hashes (já gravados em `hash_auditoria`)."""
+    """Persiste movimentações via contrato canônico `inventory_movements`.
+
+    CTO 16/02/2026 — Fase 2: toda escrita passa pelo helper canônico
+    (`services.inventory_movements.write_movement`), que valida schema,
+    blocklist (D3=a: AUTOSN_*) e duplica nomes canonical↔legacy. A
+    collection física permanece `inventory_os_movements_audit` (D1=b).
+    """
+    from services.inventory_movements import write_movement, InventoryMovementError  # noqa: E402
     hashes: List[str] = []
     for r in records:
-        r.setdefault("id", f"invaud-{uuid.uuid4().hex[:14]}")
         r.setdefault("created_at", _now_iso())
-        r["hash_auditoria"] = _audit_hash(r)
-        hashes.append(r["hash_auditoria"])
-        await db.inventory_os_movements_audit.insert_one(dict(r))
+        r["audit_hash"] = _audit_hash(r)
+        # Compat: campos canonical para o helper validar.
+        if "origin_owner" in r and "origin_type" not in r:
+            r["origin_type"] = r["origin_owner"]
+        if "destination_owner" in r and "destination_type" not in r:
+            r["destination_type"] = r["destination_owner"]
+        try:
+            await write_movement(r)
+        except InventoryMovementError:
+            # Validação falhou — grava como `blocked_attempt` ao invés de
+            # silenciar. Preserva trilha.
+            raise
+        hashes.append(r["audit_hash"])
+        # Mantém compat com leituras que usam `hash_auditoria`
+        r["hash_auditoria"] = r["audit_hash"]
     return hashes
 
 
@@ -113,13 +131,31 @@ async def _find_equipment(company_id: str, *, sn: Optional[str] = None,
     # Se múltiplos achados com mesmo SN/MAC → conflito. Bloqueia.
     if len(candidates) > 1:
         return {"_conflict": True, "matches": candidates}
-    return candidates[0]
+    # D3=a (CTO 16/02/2026) — se a ONT no estoque tem SN auto-gerado
+    # (AUTOSN_*) OU sn_auto_generated=True, ela precisa ser re-scaneada
+    # antes de qualquer movimento. Sinaliza no doc retornado.
+    from services.inventory_movements import is_sn_blocked  # noqa: E402
+    eq = candidates[0]
+    eq_sn = eq.get("scan_sn") or eq.get("sn")
+    auto_flag = str(eq.get("sn_auto_generated", "")).lower() in ("true", "1", "yes")
+    if is_sn_blocked(eq_sn) or auto_flag:
+        eq = dict(eq)
+        eq["_sn_not_trusted"] = True
+        eq["_sn_not_trusted_reason"] = (
+            f"SN do estoque é {eq_sn!r}, auto_gen={auto_flag}. Re-scan obrigatório."
+        )
+    return eq
 
 
 # ═══════════ Validation hooks ════════════════════════════════════════════════
 def _validate_sn_or_mac(sn: Optional[str], mac: Optional[str],
                           reasons: List[str]) -> bool:
-    """Regra absoluta: precisa SN OU MAC confiável (≥4 chars)."""
+    """Regra absoluta: precisa SN OU MAC confiável (≥4 chars).
+
+    D3=a (CTO 16/02/2026): se o SN informado bate com a blocklist de
+    SN auto-gerado (AUTOSN_*, REAL-LABEL-*-FIXED), bloqueia. Exige re-scan.
+    """
+    from services.inventory_movements import is_sn_blocked  # noqa: E402
     norm_sn = _norm_id(sn)
     norm_mac = _norm_id(mac)
     if not norm_sn and not norm_mac:
@@ -130,6 +166,10 @@ def _validate_sn_or_mac(sn: Optional[str], mac: Optional[str],
         return False
     if norm_mac and len(norm_mac) < 6:
         reasons.append("regra_absoluta_mac_invalido")
+        return False
+    # D3=a — SN não-confiável (AUTOSN_*, REAL-LABEL-*-FIXED)
+    if sn and is_sn_blocked(sn):
+        reasons.append("regra_d3_sn_nao_confiavel_requer_rescan")
         return False
     return True
 
@@ -333,6 +373,8 @@ async def enforce_os_inventory_movement(
                 reasons.append("regra_4_equipamento_nao_existe")
             elif equip.get("_conflict"):
                 reasons.append("regra_4_equipamento_conflito_sn_mac")
+            elif equip.get("_sn_not_trusted"):
+                reasons.append("regra_d3_sn_nao_confiavel_requer_rescan")
             else:
                 # Estado precisa permitir
                 if equip.get("status") == STATUS_DEFECTIVE:
@@ -436,6 +478,8 @@ async def enforce_os_inventory_movement(
                 reasons.append("regra_4_equipamento_nao_existe")
             elif equip_old.get("_conflict"):
                 reasons.append("regra_4_equipamento_conflito_sn_mac")
+            elif equip_old.get("_sn_not_trusted"):
+                reasons.append("regra_d3_sn_nao_confiavel_requer_rescan")
             else:
                 # Precisa pertencer ao cliente
                 if equip_old.get("location_type") != OWNER_CLIENTE or \
@@ -535,5 +579,8 @@ def explain_block(reasons: List[str]) -> str:
             "SmartOLT mostra MAC diferente do informado.",
         "admin_close_motivo_obrigatorio":
             "Motivo do fechamento administrativo é obrigatório (≥5 chars).",
+        "regra_d3_sn_nao_confiavel_requer_rescan":
+            "Equipamento sem SN confiável. Re-scan obrigatório antes da "
+            "movimentação.",
     }
     return " | ".join(mapping.get(r, r) for r in reasons)
