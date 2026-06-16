@@ -220,48 +220,153 @@ async def confirm_defective_return(mac: str, payload: DefectiveReturnIn,
     return {"ok": True, "mac": mac_n, "new_status": "defeito_em_analise"}
 
 
+class DefectiveOntReasonIn(BaseModel):
+    """Onda 1 — payload obrigatório p/ scrap/revert de defeituosa.
+
+    `code` ∈ services.destructive_audit.DESTRUCTIVE_REASONS.
+    `details` ≥ 20 chars se code='Outro'.
+    """
+    code: str
+    details: Optional[str] = None
+
+
 @router.post("/defective-onts/{mac}/scrap")
 async def scrap_defective_ont(mac: str,
+                                  payload: Optional[DefectiveOntReasonIn] = None,
                                   user: dict = Depends(require_role("gestor"))):
     """Marca a ONT defeituosa como sucateada (descarte definitivo).
 
-    Útil quando o defeito é irreparável e a empresa decidiu descartar.
+    Onda 1 (CTO 16/02/2026): exige `payload.reason` (`code`+`details` se "Outro")
+    + auditoria patrimonial via `destructive_audit`.
     """
     cid = _cid(user)
     from routes.stok import normalize_mac
     mac_n = normalize_mac(mac or "")
+    # ─── Onda 1 — reason obrigatório ──────────────────────────────────────
+    from services.destructive_audit import (
+        record_destructive_action, attach_after_snapshot,
+        DestructiveAuditError,
+    )
+    if not payload or not (payload.code or "").strip():
+        raise HTTPException(400, {
+            "error": "destructive_reason_required",
+            "message": "Sucatear ONT exige `code` (e `details` ≥ 20 chars se "
+                       "code='Outro').",
+        })
+    reason_payload = {"code": payload.code.strip(),
+                      "details": (payload.details or "").strip() or None}
+
     ont = await db.stok_onts.find_one({"company_id": cid, "mac": mac_n}, {"_id": 0})
     if not ont:
         raise HTTPException(404, "ONT não encontrada")
     if ont.get("status") not in ("defeito_devolver_empresa", "defeito_em_analise"):
         raise HTTPException(400, "Só é possível sucatear ONTs em estado de defeito")
+
+    try:
+        audit_doc = await record_destructive_action(
+            company_id=cid,
+            action_type="scrap_ont",
+            reason=reason_payload,
+            executed_by={
+                "id": user.get("id"),
+                "email": user.get("email"),
+                "name": user.get("name"),
+                "role": user.get("role"),
+            },
+            before_snapshot={
+                "docs": [ont],
+                "counts": {"onts": 1},
+                "previous_status": ont.get("status"),
+            },
+            scope={"mac": mac_n},
+        )
+    except DestructiveAuditError as e:
+        raise HTTPException(400, {
+            "error": "destructive_audit_validation",
+            "message": str(e),
+        })
+
     await db.stok_onts.update_one(
         {"company_id": cid, "mac": mac_n},
         {"$set": {"status": "sucateada",
                     "scrapped_at": now_iso(),
-                    "scrapped_by": (user.get("email") or "").strip() or None}},
+                    "scrapped_by": (user.get("email") or "").strip() or None,
+                    "destructive_audit_id": audit_doc["audit_id"],
+                    "destructive_audit_hash": audit_doc["audit_hash"]}},
     )
-    return {"ok": True, "mac": mac_n, "new_status": "sucateada"}
+
+    after_ont = await db.stok_onts.find_one(
+        {"company_id": cid, "mac": mac_n}, {"_id": 0})
+    try:
+        await attach_after_snapshot(audit_doc["audit_id"], {
+            "counts": {"onts": 1},
+            "new_status": (after_ont or {}).get("status"),
+        })
+    except Exception as _e:
+        logger.warning("[scrap_defective_ont] attach_after falhou: %s", _e)
+
+    return {"ok": True, "mac": mac_n, "new_status": "sucateada",
+            "audit_id": audit_doc["audit_id"],
+            "audit_hash": audit_doc["audit_hash"]}
 
 
 @router.post("/defective-onts/{mac}/revert")
 async def revert_defective_ont(mac: str,
+                                  payload: Optional[DefectiveOntReasonIn] = None,
                                   user: dict = Depends(require_role("gestor"))):
     """iter162 — Reverte uma ONT que foi marcada como defeituosa.
 
-    Após análise, se o gestor concluir que NÃO era defeito (falso positivo),
-    move a ONT de volta para o estoque da empresa com status `disponivel`,
-    limpando os flags de defeito.
+    Onda 1 (CTO 16/02/2026): exige `payload.reason` + auditoria via
+    `destructive_audit`. Operação é idempotente mas a trilha é obrigatória.
     """
     cid = _cid(user)
     from routes.stok import normalize_mac
     mac_n = normalize_mac(mac or "")
+
+    from services.destructive_audit import (
+        record_destructive_action, attach_after_snapshot,
+        DestructiveAuditError,
+    )
+    if not payload or not (payload.code or "").strip():
+        raise HTTPException(400, {
+            "error": "destructive_reason_required",
+            "message": "Reverter defeituosa exige `code` (e `details` ≥ 20 "
+                       "chars se code='Outro').",
+        })
+    reason_payload = {"code": payload.code.strip(),
+                      "details": (payload.details or "").strip() or None}
+
     ont = await db.stok_onts.find_one({"company_id": cid, "mac": mac_n}, {"_id": 0})
     if not ont:
         raise HTTPException(404, "ONT não encontrada")
     if ont.get("status") not in ("defeito_devolver_empresa", "defeito_em_analise"):
         raise HTTPException(400,
             "Só é possível reverter ONTs marcadas como defeito")
+
+    try:
+        audit_doc = await record_destructive_action(
+            company_id=cid,
+            action_type="revert_defective_ont",
+            reason=reason_payload,
+            executed_by={
+                "id": user.get("id"),
+                "email": user.get("email"),
+                "name": user.get("name"),
+                "role": user.get("role"),
+            },
+            before_snapshot={
+                "docs": [ont],
+                "counts": {"onts": 1},
+                "previous_status": ont.get("status"),
+            },
+            scope={"mac": mac_n},
+        )
+    except DestructiveAuditError as e:
+        raise HTTPException(400, {
+            "error": "destructive_audit_validation",
+            "message": str(e),
+        })
+
     await db.stok_onts.update_one(
         {"company_id": cid, "mac": mac_n},
         {"$set": {
@@ -271,11 +376,24 @@ async def revert_defective_ont(mac: str,
             "is_defective": False,
             "reverted_at": now_iso(),
             "reverted_by": (user.get("email") or "").strip() or None,
+            "destructive_audit_id": audit_doc["audit_id"],
+            "destructive_audit_hash": audit_doc["audit_hash"],
         },
          "$unset": {"defective_marked_at": "", "defective_marked_by": "",
                      "defective_reason": ""}},
     )
-    return {"ok": True, "mac": mac_n, "new_status": "disponivel"}
+
+    try:
+        await attach_after_snapshot(audit_doc["audit_id"], {
+            "counts": {"onts": 1},
+            "new_status": "disponivel",
+        })
+    except Exception as _e:
+        logger.warning("[revert_defective_ont] attach_after falhou: %s", _e)
+
+    return {"ok": True, "mac": mac_n, "new_status": "disponivel",
+            "audit_id": audit_doc["audit_id"],
+            "audit_hash": audit_doc["audit_hash"]}
 
 
 

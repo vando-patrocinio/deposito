@@ -1269,26 +1269,85 @@ async def reprocess_purchase_sns(
     }
 
 
+class DeletePurchaseIn(BaseModel):
+    """ONDA 1 — payload obrigatório para DELETE /{id}.
+
+    Endpoints DELETE não suportam body em HTTP semântico estrito,
+    mas FastAPI aceita. Como precisamos de `reason`, mantemos compat:
+    o body é opcional (compatibilidade), MAS o handler exige reason
+    via query param `reason_code` + `reason_details` se body ausente.
+    """
+    reason: Optional[Dict[str, Any]] = None  # {"code": ..., "details": ...}
+
+
 @router.delete("/{purchase_id}")
 async def delete_purchase(
     purchase_id: str,
+    reason_code: Optional[str] = Query(None),
+    reason_details: Optional[str] = Query(None),
     user: dict = Depends(require_role("auditor")),
 ) -> Dict[str, Any]:
-    """iter177 — Apaga uma compra. Apenas AUDITOR pode executar (acima de
-    gestor/administrador). Se a compra estava `confirmed`, REVERTE o
-    impacto no estoque:
-      - ONTs: apaga `stok_onts` que ainda estão `disponivel` na empresa
-        com `purchase_id` correspondente. ONTs já em uso (cliente/técnico)
-        permanecem (não destrutivo).
-      - Insumos: decrementa `stok_stock.empresa` e grava `entrada_insumo_reversao`
-        em `stok_history`.
-    Tudo é logado em `purchases_deletion_audit` para rastreabilidade.
+    """iter177 — Apaga uma compra. Apenas AUDITOR pode executar.
+
+    Onda 1 (CTO 16/02/2026): exige `reason_code` (query param OU body) +
+    auditoria patrimonial via `destructive_audit`. ONTs `disponivel` com
+    este purchase_id e insumos retornam ao estado pré-compra.
+
+    ROLLBACK: irreversível por delete_many. Re-insert via
+    `before_snapshot.docs` na collection `destructive_actions_audit`.
     """
     cid = user.get("company_id") or DEMO_COMPANY_ID
+    # ─── Onda 1 — reason obrigatório ──────────────────────────────────────
+    from services.destructive_audit import (
+        record_destructive_action, attach_after_snapshot,
+        DestructiveAuditError,
+    )
+    if not (reason_code or "").strip():
+        raise HTTPException(400, {
+            "error": "destructive_reason_required",
+            "message": "DELETE de compra exige query param `reason_code` "
+                       "(e `reason_details` ≥ 20 chars se code='Outro').",
+        })
+    reason_payload = {"code": reason_code.strip(),
+                      "details": (reason_details or "").strip() or None}
+
     p = await db.purchases.find_one({"id": purchase_id, "company_id": cid},
                                           {"_id": 0})
     if not p:
         raise HTTPException(404, "Compra não encontrada")
+
+    # ─── Onda 1 — dump completo: purchase + ONTs que serão deletadas ─────
+    affected_onts: List[Dict[str, Any]] = []
+    if p.get("status") == "confirmed" and p.get("type") == "ont":
+        affected_onts = await db.stok_onts.find({
+            "company_id": cid, "purchase_id": purchase_id,
+            "location_type": "empresa", "status": "disponivel",
+        }, {"_id": 0}).to_list(None)
+
+    try:
+        audit_doc = await record_destructive_action(
+            company_id=cid,
+            action_type="delete_purchase",
+            reason=reason_payload,
+            executed_by={
+                "id": user.get("id"),
+                "email": user.get("email"),
+                "name": user.get("name"),
+                "role": user.get("role"),
+            },
+            before_snapshot={
+                "docs": [p] + affected_onts,
+                "counts": {"purchase": 1, "affected_onts": len(affected_onts)},
+                "purchase_status": p.get("status"),
+                "purchase_type": p.get("type"),
+            },
+            scope={"purchase_id": purchase_id},
+        )
+    except DestructiveAuditError as e:
+        raise HTTPException(400, {
+            "error": "destructive_audit_validation",
+            "message": str(e),
+        })
 
     reverted_summary = await _revert_purchase_stock_impact(cid, p, user)
 
@@ -1303,16 +1362,37 @@ async def delete_purchase(
         "deleted_by_role": user.get("role"),
         "deleted_at": now_iso(),
         "reverted_summary": reverted_summary,
+        # Onda 1 — cross-reference para auditoria canônica
+        "destructive_audit_id": audit_doc["audit_id"],
+        "destructive_audit_hash": audit_doc["audit_hash"],
     })
+
+    # ─── Onda 1 — after_snapshot pós-execução ─────────────────────────────
+    remaining_onts = await db.stok_onts.count_documents({
+        "company_id": cid, "purchase_id": purchase_id,
+        "location_type": "empresa", "status": "disponivel",
+    })
+    try:
+        await attach_after_snapshot(audit_doc["audit_id"], {
+            "counts": {"purchase_exists": False,
+                       "remaining_disposable_onts": remaining_onts},
+            "reverted_summary": reverted_summary,
+        })
+    except Exception as _e:
+        logger.warning("[delete_purchase] attach_after_snapshot falhou: %s", _e)
+
     return {
         "ok": True,
         "purchase_id": purchase_id,
         "reverted": reverted_summary,
+        "audit_id": audit_doc["audit_id"],
+        "audit_hash": audit_doc["audit_hash"],
     }
 
 
 class BatchDeleteIn(BaseModel):
     ids: List[str]
+    reason: Optional[Dict[str, Any]] = None  # Onda 1: obrigatório (code+details)
 
 
 @router.post("/batch-delete")
@@ -1320,11 +1400,26 @@ async def batch_delete_purchases(
     payload: BatchDeleteIn,
     user: dict = Depends(require_role("auditor")),
 ) -> Dict[str, Any]:
-    """iter177 — Apaga várias compras em lote (auditor). Retorna resumo
-    por id (sucesso/erro). Idêntico a `DELETE /{id}` por id, mas atômico
-    em um único request para o frontend.
+    """iter177 — Apaga várias compras em lote (auditor).
+
+    Onda 1 (CTO 16/02/2026): exige `payload.reason` (`code`+`details` se "Outro")
+    + 1 registro em `destructive_actions_audit` por purchase deletada.
+    `audit_id` retornado por id no resultado.
     """
     cid = user.get("company_id") or DEMO_COMPANY_ID
+    from services.destructive_audit import (
+        record_destructive_action, attach_after_snapshot,
+        DestructiveAuditError,
+    )
+
+    # ─── Onda 1 — reason obrigatório (validado uma vez para o lote inteiro) ─
+    if not payload.reason or not (payload.reason.get("code") or "").strip():
+        raise HTTPException(400, {
+            "error": "destructive_reason_required",
+            "message": "Batch delete exige `reason.code` "
+                       "(e `details` ≥ 20 chars se code='Outro').",
+        })
+
     results: List[Dict[str, Any]] = []
     for pid in (payload.ids or []):
         try:
@@ -1333,6 +1428,36 @@ async def batch_delete_purchases(
             if not p:
                 results.append({"id": pid, "ok": False, "error": "not_found"})
                 continue
+            # snapshot pré-delete (mesma estratégia de delete_purchase)
+            affected_onts: List[Dict[str, Any]] = []
+            if p.get("status") == "confirmed" and p.get("type") == "ont":
+                affected_onts = await db.stok_onts.find({
+                    "company_id": cid, "purchase_id": pid,
+                    "location_type": "empresa", "status": "disponivel",
+                }, {"_id": 0}).to_list(None)
+            try:
+                audit_doc = await record_destructive_action(
+                    company_id=cid,
+                    action_type="batch_delete_purchases",
+                    reason=payload.reason,
+                    executed_by={
+                        "id": user.get("id"),
+                        "email": user.get("email"),
+                        "name": user.get("name"),
+                        "role": user.get("role"),
+                    },
+                    before_snapshot={
+                        "docs": [p] + affected_onts,
+                        "counts": {"purchase": 1, "affected_onts": len(affected_onts)},
+                    },
+                    scope={"batch_purchase_id": pid,
+                           "batch_size": len(payload.ids or [])},
+                )
+            except DestructiveAuditError as e:
+                results.append({"id": pid, "ok": False,
+                                "error": f"destructive_audit: {e}"})
+                continue
+
             reverted = await _revert_purchase_stock_impact(cid, p, user)
             await db.purchases.delete_one({"id": pid, "company_id": cid})
             await db.purchases_deletion_audit.insert_one({
@@ -1346,8 +1471,24 @@ async def batch_delete_purchases(
                 "deleted_at": now_iso(),
                 "reverted_summary": reverted,
                 "batch": True,
+                "destructive_audit_id": audit_doc["audit_id"],
+                "destructive_audit_hash": audit_doc["audit_hash"],
             })
-            results.append({"id": pid, "ok": True, "reverted": reverted})
+            try:
+                remaining = await db.stok_onts.count_documents({
+                    "company_id": cid, "purchase_id": pid,
+                    "location_type": "empresa", "status": "disponivel",
+                })
+                await attach_after_snapshot(audit_doc["audit_id"], {
+                    "counts": {"purchase_exists": False,
+                                "remaining_disposable_onts": remaining},
+                    "reverted_summary": reverted,
+                })
+            except Exception as _e:
+                logger.warning("[batch_delete] attach_after falhou: %s", _e)
+
+            results.append({"id": pid, "ok": True, "reverted": reverted,
+                            "audit_id": audit_doc["audit_id"]})
         except Exception as e:
             logger.warning("[batch_delete] %s falhou: %s", pid, e)
             results.append({"id": pid, "ok": False, "error": str(e)[:200]})

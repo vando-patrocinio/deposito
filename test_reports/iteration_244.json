@@ -1,0 +1,37 @@
+{
+  "summary": "E2E HTTP test of Onda 1 destructive audit routes (7 endpoints) via real JWT auth against running backend. 9/17 tests pass; 2 critical backend bugs found (auditor blocked from /api/purchases by RBAC middleware mismatch; scrap/revert return 422 instead of 400 for missing reason). Backend was running stale code prior to restart — required `sudo supervisorctl restart backend` to pick up Onda 1 changes.",
+  "backend_issues": {
+    "critical": [
+      {"endpoint": "DELETE /api/purchases/{id}", "issue": "RBAC middleware policy rbac_policy.py:100 allows only {financeiro, gestor} for /api/purchases. Route handler declares require_role('auditor') but middleware rejects auditor with 403 BEFORE handler. As specified in Onda 1.3 review request, delete_purchase must be auditor-only. CURRENTLY AUDITOR CANNOT DELETE PURCHASES VIA HTTP.", "priority": "CRITICAL"},
+      {"endpoint": "POST /api/purchases/batch-delete", "issue": "Same root cause as DELETE /api/purchases/{id}. RBAC middleware blocks auditor with 403. Route is currently unreachable for the role that owns the operation.", "priority": "CRITICAL"}
+    ],
+    "minor": [
+      {"endpoint": "POST /api/stok/defective-onts/{mac}/scrap", "issue": "Returns Pydantic 422 (not contract-specified 400 with {error:'destructive_reason_required'}) when body is empty, because DefectiveOntReasonIn.code is declared as required (str, not Optional[str]). The handler check at line 250-255 never runs. Make `code: Optional[str]` so handler returns canonical 400 payload."},
+      {"endpoint": "POST /api/stok/defective-onts/{mac}/revert", "issue": "Same as scrap: 422 instead of 400 for empty body. Same fix needed (code: Optional[str])."},
+      {"endpoint": "POST /api/stok-transfers/defective-onts/{mac}/...", "issue": "Review-request URL `/api/stok-transfers/...` is WRONG — routes/stok_transfers.py declares prefix '/api/stok' (line 39), so actual endpoint is `/api/stok/defective-onts/{mac}/scrap` and `.../revert`. Documentation drift only — code is consistent."}
+    ]
+  },
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_onda1_e2e_http.py",
+    "/app/test_reports/pytest/onda1_e2e.xml"
+  ],
+  "action_items": [
+    "URGENT: Add 'auditor' to rbac_policy.py:100 entry for /api/purchases (or carve out /api/purchases/{id} and /api/purchases/batch-delete in policy). Without this, the Onda 1.3 contract cannot be fulfilled via HTTP — auditor cannot delete purchases.",
+    "Change DefectiveOntReasonIn.code from `code: str` to `code: Optional[str] = None` in routes/stok_transfers.py:229 so the handler's HTTPException(400, destructive_reason_required) fires instead of Pydantic 422.",
+    "Update review-request URL docs to `/api/stok/defective-onts/...` (not `/api/stok-transfers/...`)."
+  ],
+  "critical_code_review_comments": [
+    "Backend was running stale code (started ~12:00, file mtime 13:34). Confirmed hot-reload is NOT effective for changes in routes/*.py — supervisor restart required. Recommend explicit restart in deploy/CI scripts after touching backend modules.",
+    "Architectural inconsistency: global RBAC middleware (rbac_policy.py) and per-handler require_role() can disagree. /api/purchases is the live example — handler wants auditor-only, middleware wants {financeiro, gestor}. Either policy should be single source of truth, or middleware should add auditor as super-role universally (matches handler semantics).",
+    "When a destructive route enforces reason via handler check (HTTPException 400 with {error:'destructive_reason_required'}), the Pydantic model field for `code` MUST be Optional, otherwise FastAPI's request validation returns 422 first and the canonical 400 payload is unreachable. Pattern violated in DefectiveOntReasonIn (scrap/revert)."
+  ],
+  "updated_files": ["/app/backend/tests/test_onda1_e2e_http.py"],
+  "success_rate": {"backend": "53% (9/17 HTTP tests). Of the 8 failures: 4 are caused by the RBAC middleware bug on /api/purchases (1 critical bug → 4 tests blocked), 2 are caused by 422-vs-400 contract mismatch (1 minor bug → 2 tests), 1 is a test fixture gap (granular needs a valid colaborador user), 1 is a cross-cutting assertion side-effect of fixture wiping."},
+  "test_credentials": "JWTs minted in-process via auth.create_access_token for synthetic users (auditor.onda1@test.local / gestor.onda1@test.local) inserted into db.users. Tenant: co-onda1-testing-agent (isolated, does NOT touch co-demo).",
+  "seed_data_creation": "Inserted 2 test users (auditor + gestor) into db.users; per-test fixtures: ONTs (defeito_em_analise for scrap/revert; disponivel for reset), 1 consumable, purchases with linked ONTs, 1 ticket with os_inventory_guardrail+completion_data. All under company_id='co-onda1-testing-agent'.",
+  "retest_needed": true,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "After main agent fixes rbac_policy.py for /api/purchases (add auditor) and makes DefectiveOntReasonIn.code Optional, rerun: `cd /app/backend && python -m pytest tests/test_onda1_e2e_http.py -v`. Expected all 17 to pass except possibly granular_happy_path (needs colaborador user fixture — low value). The 9 passing tests already validate the canonical Onda 1 contract for: reset (full), reset (granular reject), wipe_tickets full happy-path including reverse trail in inventory_os_movements_audit, scrap, revert with Outro/20-char rule, and cross-cutting reason whitelist + 20-char-Outro on reset. JWT minted via auth.create_access_token; users seeded directly in db.users with role/company_id.",
+  "rca of the issue": "1) Auditor 403 on /api/purchases: Global RBAC middleware (server.py:458 + rbac_policy.py:100) checks role against {financeiro, gestor} BEFORE FastAPI dispatches to handler. Handler-level require_role('auditor') (which allows admin+auditor) is bypassed because middleware returns 403 first. Fix: add 'auditor' to the policy tuple for /api/purchases. 2) 422 instead of 400 on scrap/revert: DefectiveOntReasonIn.code is declared `code: str` (non-Optional), so FastAPI's body validation rejects with 422 before the handler's `if not payload.code:` check runs. Fix: `code: Optional[str] = None`. 3) Stale backend: supervisor backend pid had uptime 1:57:48 while routes/stok.py mtime was 35min newer — uvicorn was not auto-reloading. Required manual `supervisorctl restart backend` to pick up Onda 1 code."
+}

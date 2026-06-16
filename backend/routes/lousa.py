@@ -3519,12 +3519,110 @@ async def quality_technicians_ranking(
 @router.post("/lousa/tickets/wipe-all")
 async def wipe_all_tickets(payload: dict = None,
                            user: dict = Depends(get_current_user)):
+    """Onda 1 (CTO 16/02/2026): exige `payload.reason` (`code`+`details`).
+    Snapshot completo dos tickets ANTES do delete. Trilha reversa em
+    `inventory_movements` para cada ticket finalizado com guardrail (corrige
+    achado §7.3 do DESTRUCTIVE_OPERATIONS_AUDIT.md).
+
+    ROLLBACK: irreversível. Restore via `before_snapshot.docs` em
+    `destructive_actions_audit`.
+    """
     if user.get("role") != "auditor":
         raise HTTPException(403, "Apenas auditor pode apagar todas as bolhas.")
     confirm = (payload or {}).get("confirm")
     if confirm != "APAGAR TUDO":
         raise HTTPException(400, "Para confirmar, envie {confirm: 'APAGAR TUDO'}.")
     cid = user.get("company_id") or "co-demo"
+
+    # ─── Onda 1 — reason obrigatório ──────────────────────────────────────
+    from services.destructive_audit import (
+        record_destructive_action, attach_after_snapshot,
+        DestructiveAuditError,
+    )
+    reason_payload = (payload or {}).get("reason")
+    if not reason_payload or not (reason_payload.get("code") or "").strip():
+        raise HTTPException(400, {
+            "error": "destructive_reason_required",
+            "message": "Wipe de tickets exige `reason.code` "
+                       "(e `details` ≥ 20 chars se code='Outro').",
+        })
+
+    # ─── Onda 1 — dump completo dos tickets antes do delete ───────────────
+    before_tickets = await db.tickets.find(
+        {"company_id": cid}, {"_id": 0}).to_list(None)
+    finalized_with_guardrail = [
+        t for t in before_tickets
+        if t.get("status") == "finalizada"
+        and t.get("os_inventory_guardrail")
+    ]
+
+    try:
+        audit_doc = await record_destructive_action(
+            company_id=cid,
+            action_type="wipe_tickets",
+            reason=reason_payload,
+            executed_by={
+                "id": user.get("id"),
+                "email": user.get("email"),
+                "name": user.get("name"),
+                "role": user.get("role"),
+            },
+            before_snapshot={
+                "docs": before_tickets,
+                "counts": {
+                    "total_tickets": len(before_tickets),
+                    "finalized_with_guardrail": len(finalized_with_guardrail),
+                },
+            },
+            scope={"action": "wipe_all_tickets"},
+        )
+    except DestructiveAuditError as e:
+        raise HTTPException(400, {
+            "error": "destructive_audit_validation",
+            "message": str(e),
+        })
+
+    # ─── Onda 1 — trilha reversa em inventory_movements (§7.3 do AUDIT) ──
+    # Para cada ticket com guardrail, grava 1 movimento de compensação para
+    # que a auditoria patrimonial não fique órfã quando o ticket sumir.
+    try:
+        from services.inventory_movements import write_movement
+        import hashlib as _hl
+        import json as _json
+        for t in finalized_with_guardrail:
+            _rec = {
+                "os_id": t.get("id"),
+                "ticket_id": t.get("id"),
+                "company_id": cid,
+                "movement_type": "ticket_reopen_revert",
+                "origin_type": "empresa",
+                "destination_type": "empresa",
+                "origin_owner": "empresa",
+                "destination_owner": "empresa",
+                "sn": (t.get("completion_data") or {}).get("ont_sn"),
+                "mac": (t.get("completion_data") or {}).get("ont"),
+                "actor_id": user.get("id"),
+                "actor_email": user.get("email"),
+                "reason": "ticket_wipe_compensation",
+                "destructive_audit_id": audit_doc["audit_id"],
+            }
+            # SN ou MAC ausente → pula (validator exige um deles)
+            if not _rec.get("sn") and not _rec.get("mac"):
+                continue
+            _canon = _json.dumps({k: _rec.get(k) for k in (
+                "os_id", "ticket_id", "company_id", "sn", "mac",
+                "movement_type", "actor_id", "destructive_audit_id",
+            )}, sort_keys=True, default=str)
+            _rec["audit_hash"] = _hl.sha256(_canon.encode()).hexdigest()
+            try:
+                await write_movement(_rec)
+            except Exception as _we:
+                logger.warning(
+                    "[wipe] compensation movement falhou para %s: %s",
+                    t.get("id"), _we)
+    except Exception as _ce:
+        logger.warning("[wipe] trilha reversa global falhou: %s", _ce)
+
     res = await db.tickets.delete_many({"company_id": cid})
     await db.lousa_logs.insert_one({
         "id": f"wipe-{uuid.uuid4().hex[:10]}",
@@ -3534,9 +3632,28 @@ async def wipe_all_tickets(payload: dict = None,
         "user_name": user.get("name"),
         "deleted_count": res.deleted_count,
         "created_at": now_iso(),
+        # Onda 1 — cross-reference
+        "destructive_audit_id": audit_doc["audit_id"],
+        "destructive_audit_hash": audit_doc["audit_hash"],
     })
-    logger.warning("[lousa] WIPE-ALL by auditor=%s deleted=%d", user.get("email"), res.deleted_count)
-    return {"ok": True, "deleted_count": res.deleted_count}
+
+    try:
+        await attach_after_snapshot(audit_doc["audit_id"], {
+            "counts": {
+                "remaining_tickets": await db.tickets.count_documents(
+                    {"company_id": cid}),
+                "deleted": res.deleted_count,
+                "compensation_movements_attempted": len(finalized_with_guardrail),
+            },
+        })
+    except Exception as _e:
+        logger.warning("[wipe] attach_after_snapshot falhou: %s", _e)
+
+    logger.warning("[lousa] WIPE-ALL by auditor=%s deleted=%d audit=%s",
+                   user.get("email"), res.deleted_count, audit_doc["audit_id"])
+    return {"ok": True, "deleted_count": res.deleted_count,
+            "audit_id": audit_doc["audit_id"],
+            "audit_hash": audit_doc["audit_hash"]}
 
 
 # -------------------------------------------------------------------------

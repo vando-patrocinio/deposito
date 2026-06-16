@@ -3625,16 +3625,30 @@ async def clientes_identify_all(force: bool = False,
 # ---------------------------------------------------------------------------
 # RESET DESTRUTIVO — zera estoque e movimentações (somente Auditor)
 # ---------------------------------------------------------------------------
+class ReasonIn(BaseModel):
+    """ONDA 1 — Motivo obrigatório para qualquer operação destrutiva.
+
+    `code` deve estar em services.destructive_audit.DESTRUCTIVE_REASONS.
+    Quando `code == "Outro"`, `details` é obrigatório com ≥ 20 chars.
+    """
+    code: str
+    details: Optional[str] = None
+
+
 class StokResetIn(BaseModel):
     """Confirmação obrigatória para o reset.
 
     O usuário precisa digitar EXATAMENTE "ZERAR ESTOQUE" no campo `confirm`.
     Sem isso a requisição é rejeitada. Garantia adicional contra mau uso.
+
+    ONDA 1 (16/02/2026 — CTO): `reason` agora é OBRIGATÓRIO. Sem reason válido
+    o endpoint retorna HTTP 400 ANTES de qualquer leitura ao banco.
     """
     confirm: str
     reset_history: bool = True
     reset_onts: bool = True
     reset_insumos: bool = True
+    reason: Optional[ReasonIn] = None  # validação real no handler
 
 
 @router.post("/admin/reset", status_code=200)
@@ -3645,24 +3659,94 @@ async def stok_admin_reset(payload: StokResetIn,
     Restrições:
     - Somente role=auditor pode chamar (RBAC do `require_role`).
     - Exige `confirm == "ZERAR ESTOQUE"`.
+    - Exige `reason` (code ∈ DESTRUCTIVE_REASONS; se "Outro", details ≥ 20 chars).
     - Apaga apenas dentro da `company_id` do auditor (escopo de tenant).
-    - Toda execução fica registrada em `stok_admin_log` com timestamp,
-      contagens antes/depois e o e-mail do auditor.
+
+    Onda 1 — Auditoria patrimonial obrigatória:
+    - ANTES do delete: dump COMPLETO dos docs em `destructive_actions_audit`
+      via `record_destructive_action(...)` com `audit_hash` SHA-256.
+    - APÓS o delete: contagens reais anexadas via `attach_after_snapshot(...)`.
+    - `stok_admin_log` legado é MANTIDO em paralelo (compat retroativa).
+
+    ROLLBACK: irreversível por delete_many. Recuperação só via re-insert do
+    `before_snapshot.docs` (collection `destructive_actions_audit`) — auditor
+    pode pedir restore manual via script.
     """
     if (payload.confirm or "").strip().upper() != "ZERAR ESTOQUE":
         raise HTTPException(400,
             "Confirmação inválida. Digite exatamente 'ZERAR ESTOQUE'.")
 
+    # ─── Onda 1 — validação de reason ANTES de qualquer leitura ───────────
+    from services.destructive_audit import (
+        record_destructive_action, attach_after_snapshot,
+        DestructiveAuditError,
+    )
+    reason_payload = (payload.reason.model_dump()
+                      if payload.reason else None)
+    if not reason_payload:
+        raise HTTPException(400, {
+            "error": "destructive_reason_required",
+            "message": "Operação destrutiva exige `reason.code` "
+                       "(e `details` ≥ 20 chars se code='Outro').",
+        })
+
     cid = user.get("company_id") or DEMO_COMPANY_ID
     q = {"company_id": cid}
 
-    # Conta antes para auditoria
+    # ─── Onda 1 — dump COMPLETO antes do delete (decisão CEO 2a) ──────────
+    before_docs_onts: List[Dict[str, Any]] = []
+    before_docs_consumables: List[Dict[str, Any]] = []
+    before_docs_history: List[Dict[str, Any]] = []
+    if payload.reset_onts:
+        before_docs_onts = await db.stok_onts.find(q, {"_id": 0}).to_list(None)
+    if payload.reset_insumos:
+        before_docs_consumables = await db.stok_consumables.find(
+            q, {"_id": 0}).to_list(None)
+    if payload.reset_history:
+        before_docs_history = await db.stok_history.find(
+            q, {"_id": 0}).to_list(None)
+
     before = {
-        "onts": await db.stok_onts.count_documents(q),
-        "insumos": await db.stok_consumables.count_documents(q),
-        "history": await db.stok_history.count_documents(q),
+        "onts": len(before_docs_onts),
+        "insumos": len(before_docs_consumables),
+        "history": len(before_docs_history),
     }
 
+    # Persiste auditoria ANTES do delete (chokepoint patrimonial)
+    try:
+        audit_doc = await record_destructive_action(
+            company_id=cid,
+            action_type="stok_reset_full",
+            reason=reason_payload,
+            executed_by={
+                "id": user.get("id"),
+                "email": user.get("email"),
+                "name": user.get("name"),
+                "role": user.get("role"),
+            },
+            before_snapshot={
+                "docs": (before_docs_onts + before_docs_consumables
+                         + before_docs_history),
+                "counts": before,
+                "by_collection": {
+                    "stok_onts": len(before_docs_onts),
+                    "stok_consumables": len(before_docs_consumables),
+                    "stok_history": len(before_docs_history),
+                },
+            },
+            scope={
+                "reset_onts": payload.reset_onts,
+                "reset_insumos": payload.reset_insumos,
+                "reset_history": payload.reset_history,
+            },
+        )
+    except DestructiveAuditError as e:
+        raise HTTPException(400, {
+            "error": "destructive_audit_validation",
+            "message": str(e),
+        })
+
+    # ─── Execução do delete (comportamento legado preservado) ─────────────
     deleted = {"onts": 0, "insumos": 0, "history": 0}
     if payload.reset_onts:
         r = await db.stok_onts.delete_many(q)
@@ -3674,8 +3758,21 @@ async def stok_admin_reset(payload: StokResetIn,
         r = await db.stok_history.delete_many(q)
         deleted["history"] = r.deleted_count
 
-    # Log permanente da ação destrutiva (mesmo se reset_history=True, esse
-    # log fica em coleção SEPARADA — `stok_admin_log` — então não é apagado)
+    # ─── Onda 1 — after_snapshot pós-execução ─────────────────────────────
+    after_counts = {
+        "onts": await db.stok_onts.count_documents(q),
+        "insumos": await db.stok_consumables.count_documents(q),
+        "history": await db.stok_history.count_documents(q),
+    }
+    try:
+        await attach_after_snapshot(audit_doc["audit_id"], {
+            "counts": after_counts,
+            "delta": {k: before[k] - after_counts[k] for k in before},
+        })
+    except Exception as _e:
+        logger.warning("[stok_reset] attach_after_snapshot falhou: %s", _e)
+
+    # Log legado (mantido para compat com painel `/admin/reset/log`)
     log_entry = {
         "id": str(uuid.uuid4()),
         "company_id": cid,
@@ -3691,6 +3788,9 @@ async def stok_admin_reset(payload: StokResetIn,
             "reset_insumos": payload.reset_insumos,
             "reset_history": payload.reset_history,
         },
+        # Onda 1 — cross-reference para a auditoria canônica
+        "destructive_audit_id": audit_doc["audit_id"],
+        "destructive_audit_hash": audit_doc["audit_hash"],
     }
     try:
         await db.stok_admin_log.insert_one(log_entry)
@@ -3698,12 +3798,18 @@ async def stok_admin_reset(payload: StokResetIn,
         logger.warning("[stok_reset] falha ao gravar log: %s", e)
 
     logger.warning(
-        "[stok_reset] AUDITOR %s zerou estoque cid=%s · onts=%d insumos=%d hist=%d",
+        "[stok_reset] AUDITOR %s zerou estoque cid=%s · onts=%d insumos=%d hist=%d · audit=%s",
         user.get("email"), cid,
         deleted["onts"], deleted["insumos"], deleted["history"],
+        audit_doc["audit_id"],
     )
-    return {"ok": True, "before": before, "deleted": deleted,
-             "log_id": log_entry["id"]}
+    return {
+        "ok": True, "before": before, "deleted": deleted,
+        "after": after_counts,
+        "log_id": log_entry["id"],
+        "audit_id": audit_doc["audit_id"],
+        "audit_hash": audit_doc["audit_hash"],
+    }
 
 
 @router.get("/admin/reset/log")
@@ -3739,12 +3845,21 @@ class StokGranularResetIn(BaseModel):
     target_id: str
     reset_onts: bool = True
     reset_consumables: bool = True
+    reason: Optional[ReasonIn] = None  # Onda 1 — obrigatório no handler
 
 
 @router.post("/admin/reset-granular", status_code=200)
 async def stok_admin_reset_granular(payload: StokGranularResetIn,
                                        user: dict = Depends(require_role("auditor"))):
-    """Reset por escopo (item, colaborador, praça)."""
+    """Reset por escopo (item, colaborador, praça).
+
+    Onda 1 (16/02/2026): `reason` obrigatório + auditoria patrimonial via
+    `destructive_audit.record_destructive_action`. Snapshot completo dos docs
+    afetados ANTES do delete; contagens reais ANEXADAS após execução.
+
+    ROLLBACK: irreversível por delete_many. Recuperação só via re-insert do
+    `before_snapshot.docs` (em `destructive_actions_audit`).
+    """
     if (payload.confirm or "").strip().upper() != "ZERAR ESTOQUE":
         raise HTTPException(400,
             "Confirmação inválida. Digite exatamente 'ZERAR ESTOQUE'.")
@@ -3754,11 +3869,28 @@ async def stok_admin_reset_granular(payload: StokGranularResetIn,
     if not (payload.target_id or "").strip():
         raise HTTPException(400, "target_id obrigatório.")
 
+    # ─── Onda 1 — reason obrigatório ANTES de qualquer leitura ────────────
+    from services.destructive_audit import (
+        record_destructive_action, attach_after_snapshot,
+        DestructiveAuditError,
+    )
+    reason_payload = (payload.reason.model_dump()
+                      if payload.reason else None)
+    if not reason_payload:
+        raise HTTPException(400, {
+            "error": "destructive_reason_required",
+            "message": "Operação destrutiva exige `reason.code` "
+                       "(e `details` ≥ 20 chars se code='Outro').",
+        })
+
     cid = user.get("company_id") or DEMO_COMPANY_ID
     target = payload.target_id.strip()
     deleted = {"onts": 0, "consumables_rows": 0, "consumable_units": 0}
     before: Dict[str, Any] = {}
     target_label = target
+    # ─── Onda 1 — dump completo dos docs antes do delete ──────────────────
+    before_docs_onts: List[Dict[str, Any]] = []
+    before_docs_stock: List[Dict[str, Any]] = []
 
     if scope == "item":
         # Validação do consumable_id
@@ -3767,19 +3899,13 @@ async def stok_admin_reset_granular(payload: StokGranularResetIn,
         target_label = CONSUMABLE_BY_ID[target]["name"]
         # Soma total antes
         cur = db.stok_stock.find({"company_id": cid, target: {"$gt": 0}},
-                                       {"_id": 0, "location": 1, target: 1})
-        rows = await cur.to_list(2000)
-        total_before = sum(r.get(target, 0) for r in rows)
-        before = {"total_units": total_before, "rows_affected": len(rows)}
-        # Zera em todas as locations
-        r = await db.stok_stock.update_many(
-            {"company_id": cid}, {"$set": {target: 0}},
-        )
-        deleted["consumables_rows"] = r.modified_count
-        deleted["consumable_units"] = total_before
+                                       {"_id": 0})
+        before_docs_stock = await cur.to_list(2000)
+        total_before = sum(r.get(target, 0) for r in before_docs_stock)
+        before = {"total_units": total_before,
+                  "rows_affected": len(before_docs_stock)}
 
     elif scope == "collaborator":
-        # Verifica que existe colaborador
         coll = await db.collaborators.find_one(
             {"id": target, "company_id": cid}, {"_id": 0, "name": 1},
         )
@@ -3787,33 +3913,22 @@ async def stok_admin_reset_granular(payload: StokGranularResetIn,
             raise HTTPException(404, "Colaborador não encontrado.")
         target_label = coll.get("name", target)
         if payload.reset_onts:
-            onts_count = await db.stok_onts.count_documents(
+            before_docs_onts = await db.stok_onts.find(
                 {"company_id": cid, "location_type": "tecnico",
-                  "location_id": target},
-            )
-            before["onts"] = onts_count
-            r = await db.stok_onts.delete_many(
-                {"company_id": cid, "location_type": "tecnico",
-                  "location_id": target},
-            )
-            deleted["onts"] = r.deleted_count
+                  "location_id": target}, {"_id": 0}).to_list(None)
+            before["onts"] = len(before_docs_onts)
         if payload.reset_consumables:
             loc_key = f"tech:{target}"
             doc = await db.stok_stock.find_one(
                 {"company_id": cid, "location": loc_key}, {"_id": 0},
             )
             if doc:
+                before_docs_stock = [doc]
                 before["consumables_units"] = sum(
                     v for k, v in doc.items() if k in CONSUMABLE_IDS
                     and isinstance(v, (int, float)))
-            r = await db.stok_stock.delete_one(
-                {"company_id": cid, "location": loc_key})
-            deleted["consumables_rows"] = r.deleted_count
 
     elif scope == "praca":
-        # Aceita praça vinda tanto de `db.pracas` (módulo Praças) quanto
-        # de `db.fin_filiais` (módulo Financeiro/Filiais). Frontend popula
-        # o dropdown a partir do praca_summary que consolida as duas.
         praca = await db.pracas.find_one(
             {"id": target, "company_id": cid}, {"_id": 0, "name": 1},
         )
@@ -3825,6 +3940,81 @@ async def stok_admin_reset_granular(payload: StokGranularResetIn,
             raise HTTPException(404, "Praça não encontrada.")
         target_label = praca.get("name", target)
         if payload.reset_onts:
+            before_docs_onts = await db.stok_onts.find(
+                {"company_id": cid, "location_type": "praca",
+                  "location_id": target}, {"_id": 0}).to_list(None)
+            before["onts_praca"] = len(before_docs_onts)
+        if payload.reset_consumables:
+            loc_key = f"praca:{target}"
+            doc = await db.stok_stock.find_one(
+                {"company_id": cid, "location": loc_key}, {"_id": 0},
+            )
+            extras = await db.stok_stock.find(
+                {"company_id": cid, "praca_id": target}, {"_id": 0}
+            ).to_list(2000)
+            before_docs_stock = ([doc] if doc else []) + extras
+            if doc:
+                before["consumables_units"] = sum(
+                    v for k, v in doc.items() if k in CONSUMABLE_IDS
+                    and isinstance(v, (int, float)))
+
+    # ─── Onda 1 — registra auditoria ANTES do delete ──────────────────────
+    try:
+        audit_doc = await record_destructive_action(
+            company_id=cid,
+            action_type="stok_reset_granular",
+            reason=reason_payload,
+            executed_by={
+                "id": user.get("id"),
+                "email": user.get("email"),
+                "name": user.get("name"),
+                "role": user.get("role"),
+            },
+            before_snapshot={
+                "docs": before_docs_onts + before_docs_stock,
+                "counts": before,
+                "by_collection": {
+                    "stok_onts": len(before_docs_onts),
+                    "stok_stock": len(before_docs_stock),
+                },
+            },
+            scope={
+                "scope": scope,
+                "target_id": target,
+                "target_label": target_label,
+                "reset_onts": payload.reset_onts,
+                "reset_consumables": payload.reset_consumables,
+            },
+        )
+    except DestructiveAuditError as e:
+        raise HTTPException(400, {
+            "error": "destructive_audit_validation",
+            "message": str(e),
+        })
+
+    # ─── Execução do delete (comportamento legado preservado) ─────────────
+    if scope == "item":
+        r = await db.stok_stock.update_many(
+            {"company_id": cid}, {"$set": {target: 0}},
+        )
+        deleted["consumables_rows"] = r.modified_count
+        deleted["consumable_units"] = before.get("total_units", 0)
+
+    elif scope == "collaborator":
+        if payload.reset_onts:
+            r = await db.stok_onts.delete_many(
+                {"company_id": cid, "location_type": "tecnico",
+                  "location_id": target},
+            )
+            deleted["onts"] = r.deleted_count
+        if payload.reset_consumables:
+            loc_key = f"tech:{target}"
+            r = await db.stok_stock.delete_one(
+                {"company_id": cid, "location": loc_key})
+            deleted["consumables_rows"] = r.deleted_count
+
+    elif scope == "praca":
+        if payload.reset_onts:
             r = await db.stok_onts.delete_many(
                 {"company_id": cid, "location_type": "praca",
                   "location_id": target},
@@ -3832,16 +4022,8 @@ async def stok_admin_reset_granular(payload: StokGranularResetIn,
             deleted["onts"] = r.deleted_count
         if payload.reset_consumables:
             loc_key = f"praca:{target}"
-            doc = await db.stok_stock.find_one(
-                {"company_id": cid, "location": loc_key}, {"_id": 0},
-            )
-            if doc:
-                before["consumables_units"] = sum(
-                    v for k, v in doc.items() if k in CONSUMABLE_IDS
-                    and isinstance(v, (int, float)))
             r = await db.stok_stock.delete_one(
                 {"company_id": cid, "location": loc_key})
-            # Também limpa praca_id para que não fique ortogonal
             r2 = await db.stok_stock.update_many(
                 {"company_id": cid, "praca_id": target},
                 {"$set": {**{cid_: 0 for cid_ in CONSUMABLE_IDS}}},
@@ -3849,7 +4031,32 @@ async def stok_admin_reset_granular(payload: StokGranularResetIn,
             deleted["consumables_rows"] = (
                 (r.deleted_count or 0) + (r2.modified_count or 0))
 
-    # Auditoria + histórico
+    # ─── Onda 1 — after_snapshot pós-execução ─────────────────────────────
+    after_counts: Dict[str, Any] = {}
+    if scope == "item":
+        after_counts = {"total_units": 0,
+                         "rows_affected": deleted.get("consumables_rows", 0)}
+    elif scope == "collaborator":
+        after_counts["onts"] = await db.stok_onts.count_documents(
+            {"company_id": cid, "location_type": "tecnico",
+             "location_id": target})
+        if payload.reset_consumables:
+            after_counts["consumables_doc_exists"] = bool(
+                await db.stok_stock.find_one(
+                    {"company_id": cid, "location": f"tech:{target}"}))
+    elif scope == "praca":
+        after_counts["onts_praca"] = await db.stok_onts.count_documents(
+            {"company_id": cid, "location_type": "praca",
+             "location_id": target})
+    try:
+        await attach_after_snapshot(audit_doc["audit_id"], {
+            "counts": after_counts,
+            "deleted": deleted,
+        })
+    except Exception as _e:
+        logger.warning("[stok_reset_granular] attach_after_snapshot falhou: %s", _e)
+
+    # Auditoria legada + histórico (compat)
     log_entry = {
         "id": str(uuid.uuid4()),
         "company_id": cid,
@@ -3865,6 +4072,9 @@ async def stok_admin_reset_granular(payload: StokGranularResetIn,
         "reset_consumables": payload.reset_consumables,
         "before": before,
         "deleted": deleted,
+        # Onda 1 — cross-reference para a auditoria canônica
+        "destructive_audit_id": audit_doc["audit_id"],
+        "destructive_audit_hash": audit_doc["audit_hash"],
     }
     try:
         await db.stok_admin_log.insert_one(log_entry)
@@ -3879,12 +4089,15 @@ async def stok_admin_reset_granular(payload: StokGranularResetIn,
         user.get("name", "?"), "auditoria", cid,
     )
     logger.warning(
-        "[stok_reset_granular] auditor=%s scope=%s target=%s deleted=%s",
-        user.get("email"), scope, target, deleted,
+        "[stok_reset_granular] auditor=%s scope=%s target=%s deleted=%s audit=%s",
+        user.get("email"), scope, target, deleted, audit_doc["audit_id"],
     )
     return {"ok": True, "scope": scope, "target_id": target,
              "target_label": target_label, "before": before,
-             "deleted": deleted, "log_id": log_entry["id"]}
+             "deleted": deleted, "after": after_counts,
+             "log_id": log_entry["id"],
+             "audit_id": audit_doc["audit_id"],
+             "audit_hash": audit_doc["audit_hash"]}
 
 
 # ---------------------------------------------------------------------------

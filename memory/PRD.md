@@ -4592,3 +4592,36 @@ DEPOIS purga:  16 aguardando triagem (todos válidos ou recuperáveis)
 - Hash inclui apenas `doc_ids` (não o snapshot inteiro), mantendo determinístico mesmo com dump volumoso.
 
 ### Próximo: PR 1.2 (refatorar `stok_admin_reset` + `stok_admin_reset_granular`)
+
+---
+## [2026-02-16 — adendo 5] Estoque OS V2 — Onda 1 COMPLETA
+
+**Decisões CEO aplicadas:** 1c (motivos hardcoded) · 2a (snapshot completo sempre) · 3a (sequencial).
+
+### PRs entregues (todos passando)
+- **1.1** `services/destructive_audit.py` — helper canônico + collection `destructive_actions_audit`.
+- **1.2** `routes/stok.py:stok_admin_reset` + `stok_admin_reset_granular` — chokepoint + dump completo + reason obrigatório.
+- **1.3** `routes/purchases.py:delete_purchase` + `batch_delete_purchases` + `routes/lousa.py:wipe_all_tickets` — auditoria + trilha reversa em `inventory_movements` para wipe.
+- **1.4** `routes/stok_transfers.py:scrap_defective_ont` + `revert_defective_ont` — auditoria patrimonial padronizada.
+
+### Testes
+- 11/11 smoke 1.1 + 5/5 smoke 1.2 + 6/6 smoke 1.3 + 4/4 smoke 1.4 = **26/26 verdes**.
+- Lint Python limpo em todos os arquivos modificados.
+- Backend reload sem stacktrace.
+
+### Contratos garantidos em 7 rotas
+- HTTP 400 se `reason` ausente (response code `destructive_reason_required`).
+- `reason.code` ∈ `DESTRUCTIVE_REASONS` (9 valores).
+- `reason.code == "Outro"` exige `details ≥ 20 chars`.
+- `before_snapshot.docs` com dump COMPLETO dos documentos afetados.
+- `after_snapshot` anexado pós-execução com contagens reais.
+- `audit_hash` SHA-256 determinístico.
+- Cross-reference em logs legados (`stok_admin_log`, `purchases_deletion_audit`, `lousa_logs`) via `destructive_audit_id`/`destructive_audit_hash`.
+- Rollback documentado em docstring (irreversível por delete_many; restore via `before_snapshot.docs`).
+
+### Achado §7.3 do AUDIT corrigido
+- `wipe_all_tickets` agora grava `ticket_reopen_revert` em `inventory_movements` para cada ticket finalizado com guardrail antes do delete — invariante da Fase 2 preservado.
+
+### Próximo
+- testing_agent_v3_fork cobrindo as 7 rotas refatoradas com fixtures isoladas.
+- R1 Valuation Schema (em paralelo, posicionado após testing_agent).

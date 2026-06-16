@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="8" skipped="0" tests="17" time="0.592" timestamp="2026-06-16T14:00:58.648103+00:00" hostname="agent-env-43695c10-da5b-4d81-a958-3ab98d1b85d6"><testcase classname="test_onda1_e2e_http.TestOnda12Reset" name="test_reset_rejects_without_reason" time="0.017" /><testcase classname="test_onda1_e2e_http.TestOnda12Reset" name="test_reset_happy_path" time="0.019" /><testcase classname="test_onda1_e2e_http.TestOnda12ResetGranular" name="test_granular_rejects_without_reason" time="0.006" /><testcase classname="test_onda1_e2e_http.TestOnda12ResetGranular" name="test_granular_happy_path" time="0.001"><failure message="pymongo.errors.BulkWriteError: batch op errors occurred, full error: {'writeErrors': [{'index': 0, 'code': 11000, 'errmsg': 'E11000 duplicate key error collection: test_database.stok_onts index: company_id_1_mac_1 dup key: { company_id: &quot;co-onda1-testing-agent&quot;, mac: &quot;AA:BB:DD:01:00:00&quot; }', 'keyPattern': {'company_id': 1, 'mac': 1}, 'keyValue': {'company_id': 'co-onda1-testing-agent', 'mac': 'AA:BB:DD:01:00:00'}, 'op': {'id': 'ont-gr-1', 'company_id': 'co-onda1-testing-agent', 'mac': 'AA:BB:DD:01:00:00', 'scan_sn': 'SN-GR-1', 'model': 'FIBERHOME', 'status': 'disponivel', 'location_type': 'colaborador', 'location_id': 'u-tec-1', 'client_name': None, '_id': ObjectId('6a31571a8c32144e8f7ea236')}}], 'writeConcernErrors': [], 'nInserted': 0, 'nUpserted': 0, 'nMatched': 0, 'nModified': 0, 'nRemoved': 0, 'upserted': []}">tests/test_onda1_e2e_http.py:251: in test_granular_happy_path
+    _run(_seed_granular())
+tests/test_onda1_e2e_http.py:63: in _run
+    return asyncio.get_event_loop().run_until_complete(coro)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/local/lib/python3.11/asyncio/base_events.py:654: in run_until_complete
+    return future.result()
+           ^^^^^^^^^^^^^^^
+tests/test_onda1_e2e_http.py:91: in _seed_granular
+    await db.stok_onts.insert_many([
+/usr/local/lib/python3.11/concurrent/futures/thread.py:58: in run
+    result = self.fn(*self.args, **self.kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/root/.venv/lib/python3.11/site-packages/pymongo/_csot.py:108: in csot_wrapper
+    return func(self, *args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/root/.venv/lib/python3.11/site-packages/pymongo/collection.py:757: in insert_many
+    blk.execute(write_concern, session=session)
+/root/.venv/lib/python3.11/site-packages/pymongo/bulk.py:580: in execute
+    return self.execute_command(generator, write_concern, session)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/root/.venv/lib/python3.11/site-packages/pymongo/bulk.py:450: in execute_command
+    _raise_bulk_write_error(full_result)
+/root/.venv/lib/python3.11/site-packages/pymongo/bulk.py:160: in _raise_bulk_write_error
+    raise BulkWriteError(full_result)
+E   pymongo.errors.BulkWriteError: batch op errors occurred, full error: {'writeErrors': [{'index': 0, 'code': 11000, 'errmsg': 'E11000 duplicate key error collection: test_database.stok_onts index: company_id_1_mac_1 dup key: { company_id: "co-onda1-testing-agent", mac: "AA:BB:DD:01:00:00" }', 'keyPattern': {'company_id': 1, 'mac': 1}, 'keyValue': {'company_id': 'co-onda1-testing-agent', 'mac': 'AA:BB:DD:01:00:00'}, 'op': {'id': 'ont-gr-1', 'company_id': 'co-onda1-testing-agent', 'mac': 'AA:BB:DD:01:00:00', 'scan_sn': 'SN-GR-1', 'model': 'FIBERHOME', 'status': 'disponivel', 'location_type': 'colaborador', 'location_id': 'u-tec-1', 'client_name': None, '_id': ObjectId('6a31571a8c32144e8f7ea236')}}], 'writeConcernErrors': [], 'nInserted': 0, 'nUpserted': 0, 'nMatched': 0, 'nModified': 0, 'nRemoved': 0, 'upserted': []}</failure></testcase><testcase classname="test_onda1_e2e_http.TestOnda13DeletePurchase" name="test_delete_rejects_without_reason_code" time="0.006"><failure message="AssertionError: {&quot;detail&quot;:&quot;Você não tem permissão para acessar este recurso.&quot;}&#10;assert 403 == 400&#10; +  where 403 = &lt;Response [403]&gt;.status_code">tests/test_onda1_e2e_http.py:271: in test_delete_rejects_without_reason_code
+    assert r.status_code == 400, r.text
+E   AssertionError: {"detail":"Você não tem permissão para acessar este recurso."}
+E   assert 403 == 400
+E    +  where 403 = &lt;Response [403]&gt;.status_code</failure></testcase><testcase classname="test_onda1_e2e_http.TestOnda13DeletePurchase" name="test_delete_happy_path" time="0.006"><failure message="AssertionError: {&quot;detail&quot;:&quot;Você não tem permissão para acessar este recurso.&quot;}&#10;assert 403 == 200&#10; +  where 403 = &lt;Response [403]&gt;.status_code">tests/test_onda1_e2e_http.py:279: in test_delete_happy_path
+    assert r.status_code == 200, r.text
+E   AssertionError: {"detail":"Você não tem permissão para acessar este recurso."}
+E   assert 403 == 200
+E    +  where 403 = &lt;Response [403]&gt;.status_code</failure></testcase><testcase classname="test_onda1_e2e_http.TestOnda13BatchDelete" name="test_batch_rejects_without_reason" time="0.005"><failure message="AssertionError: {&quot;detail&quot;:&quot;Você não tem permissão para acessar este recurso.&quot;}&#10;assert 403 == 400&#10; +  where 403 = &lt;Response [403]&gt;.status_code">tests/test_onda1_e2e_http.py:299: in test_batch_rejects_without_reason
+    assert r.status_code == 400, r.text
+E   AssertionError: {"detail":"Você não tem permissão para acessar este recurso."}
+E   assert 403 == 400
+E    +  where 403 = &lt;Response [403]&gt;.status_code</failure></testcase><testcase classname="test_onda1_e2e_http.TestOnda13BatchDelete" name="test_batch_happy_path" time="0.006"><failure message="AssertionError: {&quot;detail&quot;:&quot;Você não tem permissão para acessar este recurso.&quot;}&#10;assert 403 == 200&#10; +  where 403 = &lt;Response [403]&gt;.status_code">tests/test_onda1_e2e_http.py:308: in test_batch_happy_path
+    assert r.status_code == 200, r.text
+E   AssertionError: {"detail":"Você não tem permissão para acessar este recurso."}
+E   assert 403 == 200
+E    +  where 403 = &lt;Response [403]&gt;.status_code</failure></testcase><testcase classname="test_onda1_e2e_http.TestOnda13WipeTickets" name="test_wipe_rejects_without_reason" time="0.006" /><testcase classname="test_onda1_e2e_http.TestOnda13WipeTickets" name="test_wipe_happy_path_with_reverse_trail" time="0.011" /><testcase classname="test_onda1_e2e_http.TestOnda14ScrapRevert" name="test_scrap_rejects_without_code" time="0.009"><failure message="AssertionError: {&quot;detail&quot;:[{&quot;type&quot;:&quot;missing&quot;,&quot;loc&quot;:[&quot;body&quot;,&quot;code&quot;],&quot;msg&quot;:&quot;Field required&quot;,&quot;input&quot;:{},&quot;url&quot;:&quot;https://errors.pydantic.dev/2.13/v/missing&quot;}]}&#10;assert 422 == 400&#10; +  where 422 = &lt;Response [422]&gt;.status_code">tests/test_onda1_e2e_http.py:367: in test_scrap_rejects_without_code
+    assert r.status_code == 400, r.text
+E   AssertionError: {"detail":[{"type":"missing","loc":["body","code"],"msg":"Field required","input":{},"url":"https://errors.pydantic.dev/2.13/v/missing"}]}
+E   assert 422 == 400
+E    +  where 422 = &lt;Response [422]&gt;.status_code</failure></testcase><testcase classname="test_onda1_e2e_http.TestOnda14ScrapRevert" name="test_scrap_happy_path" time="0.013" /><testcase classname="test_onda1_e2e_http.TestOnda14ScrapRevert" name="test_revert_rejects_without_code" time="0.009"><failure message="AssertionError: {&quot;detail&quot;:[{&quot;type&quot;:&quot;missing&quot;,&quot;loc&quot;:[&quot;body&quot;,&quot;code&quot;],&quot;msg&quot;:&quot;Field required&quot;,&quot;input&quot;:{},&quot;url&quot;:&quot;https://errors.pydantic.dev/2.13/v/missing&quot;}]}&#10;assert 422 == 400&#10; +  where 422 = &lt;Response [422]&gt;.status_code">tests/test_onda1_e2e_http.py:393: in test_revert_rejects_without_code
+    assert r.status_code == 400, r.text
+E   AssertionError: {"detail":[{"type":"missing","loc":["body","code"],"msg":"Field required","input":{},"url":"https://errors.pydantic.dev/2.13/v/missing"}]}
+E   assert 422 == 400
+E    +  where 422 = &lt;Response [422]&gt;.status_code</failure></testcase><testcase classname="test_onda1_e2e_http.TestOnda14ScrapRevert" name="test_revert_happy_path_outro_requires_20_chars" time="0.020" /><testcase classname="test_onda1_e2e_http.TestCrossCutting" name="test_invalid_reason_code_rejected" time="0.013" /><testcase classname="test_onda1_e2e_http.TestCrossCutting" name="test_outro_requires_20_chars_in_reset" time="0.012" /><testcase classname="test_onda1_e2e_http.TestCrossCutting" name="test_destructive_collection_isolated" time="0.001"><failure message="AssertionError: no destructive_actions_audit docs persisted&#10;assert 0 &gt;= 1">tests/test_onda1_e2e_http.py:440: in test_destructive_collection_isolated
+    assert cnt &gt;= 1, "no destructive_actions_audit docs persisted"
+E   AssertionError: no destructive_actions_audit docs persisted
+E   assert 0 &gt;= 1</failure></testcase></testsuite></testsuites>
