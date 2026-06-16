@@ -1446,13 +1446,30 @@ async def get_onu_signal_live(external_id: str,
                                       "cleared": bool(force),
                                       "recovered": False,
                                       "message": emsg[:300]}}
-    sig_resp = sig.get("response") or {}
-    st_resp = st.get("response") or {}
+    # iter215af — A API SmartOLT per-ONU retorna campos no top-level com
+    # prefixo `onu_` e valores com sufixo " dBm". Diferente do bulk
+    # `/onu/get_all_onus_details` (que vem em `response: [...]` sem prefixo).
+    # CTO 2026-02 fix: ler as chaves corretas e strip da unidade pra ficar
+    # consistente com o que o bulk grava no cache (ex.: "-26.98").
+    def _strip_unit(v):
+        if v is None:
+            return None
+        s = str(v).strip()
+        # Remove sufixos comuns: "dBm", "dB", e espaços.
+        for suf in (" dBm", "dBm", " dB", "dB"):
+            if s.lower().endswith(suf.lower()):
+                s = s[: -len(suf)].strip()
+                break
+        return s or None
+    sig_resp = sig if isinstance(sig, dict) else {}
+    st_resp = st if isinstance(st, dict) else {}
     update = {
-        "signal_text": sig_resp.get("signal"),
-        "signal_1310": sig_resp.get("signal_1310"),
-        "signal_1490": sig_resp.get("signal_1490"),
-        "status": st_resp.get("status"),
+        "signal_text": sig_resp.get("onu_signal") or sig_resp.get("signal"),
+        "signal_1310": _strip_unit(sig_resp.get("onu_signal_1310")
+                                    or sig_resp.get("signal_1310")),
+        "signal_1490": _strip_unit(sig_resp.get("onu_signal_1490")
+                                    or sig_resp.get("signal_1490")),
+        "status": st_resp.get("onu_status") or st_resp.get("status"),
         "last_status_change": st_resp.get("last_status_change"),
         "signal_synced_at": now_iso(),
     }
