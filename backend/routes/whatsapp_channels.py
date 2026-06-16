@@ -172,6 +172,15 @@ async def list_all_channels(user=Depends(require_role(
             tail = ch["evolution_api_key"][-4:] if len(ch["evolution_api_key"]) >= 4 else ""
             ch["evolution_api_key_masked"] = f"***{tail}"
             ch.pop("evolution_api_key", None)
+    # CTO 16/02/2026 — Filtra docs Evolution da lista principal de canais.
+    # A UI espera só os 4 slots Baileys (channel-1..4). Evolution é provider
+    # separado e atualmente bloqueado pelo Apache externo, então não pode
+    # aparecer misturado no grid de canais (causa AxiosError "channel_id
+    # inválido" quando user clica Desconectar/QR no card Evolution).
+    enriched = [
+        ch for ch in enriched
+        if str(ch.get("id") or "").startswith("channel-")
+    ]
     return {"channels": enriched}
 
 
