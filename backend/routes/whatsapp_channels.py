@@ -42,7 +42,7 @@ from services.whatsapp_channels import (
     update_channel_runtime,
     VALID_PROVIDERS,
 )
-from services.whatsapp_evolution import EvolutionClient
+from services.whatsapp_evolution import EvolutionClient, EvolutionUnreachable
 from services.whatsapp_provider_health import collect as collect_provider_health
 
 logger = logging.getLogger("ponto.wa_channels")
@@ -89,12 +89,23 @@ def _is_evolution(channel: dict) -> bool:
 
 
 def _evolution_client(channel: dict) -> EvolutionClient:
-    """Constrói EvolutionClient a partir do doc do canal. Levanta 400 se faltar config."""
+    """Constrói EvolutionClient a partir do doc do canal. Levanta 400 se faltar config.
+
+    Aceita os 2 nomes de campo que aparecem na DB (legado + novo):
+      - instance: `evolution_instance` (legado · doc atual) OU
+                  `evolution_instance_name` (schema novo)
+    """
+    instance = (
+        channel.get("evolution_instance_name")
+        or channel.get("evolution_instance")
+        or ""
+    )
     try:
         return EvolutionClient(
             base_url=channel.get("evolution_url") or "",
             api_key=channel.get("evolution_api_key") or "",
-            instance_name=channel.get("evolution_instance_name") or "",
+            instance_name=instance,
+            basic_auth=channel.get("evolution_basic_auth") or None,
         )
     except ValueError as e:
         raise HTTPException(400, f"Canal mal configurado para Evolution: {e}")
@@ -104,8 +115,21 @@ def _evolution_client(channel: dict) -> EvolutionClient:
 # Helpers
 # --------------------------------------------------------------------------- #
 def _validate_channel_id(channel_id: str) -> None:
-    if channel_id not in CHANNEL_IDS:
-        raise HTTPException(400, f"channel_id inválido. Use um de: {CHANNEL_IDS}")
+    """Aceita os 4 slots Baileys (channel-1..4) E qualquer id de canal
+    Evolution (`wac-evolution-*`). Outros IDs viram 400.
+
+    CTO 16/02/2026 — antes só aceitava channel-1..4 e quebrava com
+    AxiosError quando o front mandava o id Evolution.
+    """
+    if channel_id in CHANNEL_IDS:
+        return
+    if channel_id.startswith("wac-evolution"):
+        return
+    raise HTTPException(
+        400,
+        f"channel_id inválido. Use um de: {CHANNEL_IDS} ou um id Evolution "
+        "(wac-evolution-*).",
+    )
 
 
 async def _proxy_get(channel_id: str, path: str) -> dict:
@@ -172,15 +196,6 @@ async def list_all_channels(user=Depends(require_role(
             tail = ch["evolution_api_key"][-4:] if len(ch["evolution_api_key"]) >= 4 else ""
             ch["evolution_api_key_masked"] = f"***{tail}"
             ch.pop("evolution_api_key", None)
-    # CTO 16/02/2026 — Filtra docs Evolution da lista principal de canais.
-    # A UI espera só os 4 slots Baileys (channel-1..4). Evolution é provider
-    # separado e atualmente bloqueado pelo Apache externo, então não pode
-    # aparecer misturado no grid de canais (causa AxiosError "channel_id
-    # inválido" quando user clica Desconectar/QR no card Evolution).
-    enriched = [
-        ch for ch in enriched
-        if str(ch.get("id") or "").startswith("channel-")
-    ]
     return {"channels": enriched}
 
 
@@ -356,8 +371,25 @@ async def channel_qr(
             # Cria instance se não existir; webhook ainda não configurado aqui.
             await evo.create_instance(webhook_url=None)
             return await evo.get_qr()
+        except EvolutionUnreachable as e:
+            # Cloudflare engole 5xx → devolve 200 com payload de erro pra UI
+            # mostrar a mensagem no card sem virar "Bad gateway".
+            return {"qr_base64": None, "error": str(e), "state": "unreachable"}
+        except httpx.HTTPStatusError as e:
+            sc = e.response.status_code
+            body = e.response.text[:160].replace("\n", " ")
+            return {
+                "qr_base64": None,
+                "state": "unreachable",
+                "error": (
+                    f"Evolution respondeu HTTP {sc}. "
+                    "Provavelmente Basic Auth no proxy. Body: "
+                    f"'{body}…'"
+                ),
+            }
         except httpx.HTTPError as e:
-            raise HTTPException(502, f"Evolution API inacessível: {e}")
+            return {"qr_base64": None, "state": "unreachable",
+                    "error": f"Evolution API inacessível: {e}"}
     # Baileys (default)
     try:
         return await _proxy_get(channel_id, "/qr")
@@ -382,8 +414,20 @@ async def channel_status(
                 phone_number=None, status=data.get("state"),
             )
             return data
+        except EvolutionUnreachable as e:
+            return {"state": "unreachable", "connected": False,
+                    "error": str(e)}
+        except httpx.HTTPStatusError as e:
+            return {
+                "state": "unreachable", "connected": False,
+                "error": (
+                    f"Evolution respondeu HTTP {e.response.status_code} "
+                    "(provavelmente Basic Auth no proxy externo)."
+                ),
+            }
         except httpx.HTTPError as e:
-            raise HTTPException(502, f"Evolution API inacessível: {e}")
+            return {"state": "unreachable", "connected": False,
+                    "error": f"Evolution API inacessível: {e}"}
     # Baileys (default)
     try:
         data = await _proxy_get(channel_id, "/status")
@@ -435,8 +479,18 @@ async def channel_logout(
         try:
             evo = _evolution_client(ch)
             result = await evo.logout()
+        except EvolutionUnreachable as e:
+            return {"ok": False, "error": str(e)}
+        except httpx.HTTPStatusError as e:
+            return {
+                "ok": False,
+                "error": (
+                    f"Evolution respondeu HTTP {e.response.status_code} "
+                    "(provavelmente Basic Auth no proxy externo)."
+                ),
+            }
         except httpx.HTTPError as e:
-            raise HTTPException(502, f"Evolution API inacessível: {e}")
+            return {"ok": False, "error": f"Evolution API inacessível: {e}"}
     else:
         try:
             result = await _proxy_post(channel_id, "/logout", {})
