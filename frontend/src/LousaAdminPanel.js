@@ -601,16 +601,32 @@ export default function LousaAdminPanel({ systemStatus = { offline: false, drift
     setDragOverCol(null);
   }
 
-  async function handleAdminClose(ticketId, action, notes, completionData = null) {
+  async function handleAdminClose(ticketId, action, notes, completionData = null, extras = null) {
     if (isLocked) { await window.alert("Sistema bloqueado: dispositivo offline ou horário dessincronizado."); return; }
     setBusy(true);
     try {
       const payload = { action, notes: notes || "" };
       if (completionData) payload.completion_data = completionData;
+      if (extras) {
+        if (extras.physical_attendance !== undefined)
+          payload.physical_attendance = extras.physical_attendance;
+        if (extras.admin_reason) payload.admin_reason = extras.admin_reason;
+        if (extras.smartolt_override_motivo)
+          payload.smartolt_override_motivo = extras.smartolt_override_motivo;
+      }
       await api.lousaAdminClose(ticketId, payload);
       await refresh();
     } catch (e) {
-      await window.alert(e?.response?.data?.detail || e.message);
+      const detail = e?.response?.data?.detail;
+      if (detail && typeof detail === "object"
+          && detail.error === "os_inventory_guardrail_bloqueou") {
+        await window.alert(
+          "Finalização BLOQUEADA pela Regra Global de Estoque OS:\n\n"
+          + (detail.human_reason || JSON.stringify(detail.blocked_reasons))
+          + "\n\nClassificação: " + (detail.classification || "?"));
+      } else {
+        await window.alert(detail || e.message);
+      }
     }
     setBusy(false);
   }
@@ -1563,8 +1579,9 @@ export default function LousaAdminPanel({ systemStatus = { offline: false, drift
         <AdminFinalizeModal
           ticket={adminFinalizeTicket}
           onClose={() => setAdminFinalizeTicket(null)}
-          onSubmit={async (cd, notes) => {
-            await handleAdminClose(adminFinalizeTicket.id, "encerrar", notes, cd);
+          onSubmit={async (cd, notes, extras) => {
+            await handleAdminClose(adminFinalizeTicket.id, "encerrar",
+                                    notes, cd, extras);
             setAdminFinalizeTicket(null);
           }}
         />

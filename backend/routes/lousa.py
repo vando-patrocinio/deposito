@@ -466,6 +466,13 @@ class AdminCloseIn(BaseModel):
     # Quando preenchido em action=encerrar, gravamos em completion_data e
     # disparamos os hooks (signal snapshot, auto-resched, etc).
     completion_data: Optional[Dict[str, Any]] = None
+    # CTO 2026-02 — REGRA GLOBAL ESTOQUE OS (Q1=c híbrido).
+    # Quando o gestor declarar physical_attendance=true, exigimos SN/MAC
+    # e o guardrail movimenta estoque. Quando false, exige admin_reason
+    # (motivo) e NÃO movimenta.
+    physical_attendance: Optional[bool] = None
+    admin_reason: Optional[str] = None
+    smartolt_override_motivo: Optional[str] = None
 
 
 # -------------------------------------------------------------------------
@@ -4438,6 +4445,48 @@ async def public_finalize_ticket(ticket_id: str, payload: PublicFinalizeIn,
             f"\n\n— Observação do técnico: {obs_atual}" if obs_atual else ""
         ))
 
+    # ════════════════════════════════════════════════════════════════════
+    # CTO 2026-02 — REGRA GLOBAL ESTOQUE OS (técnico via app).
+    # Chokepoint idêntico ao admin-close. Bloqueia ANTES do write final.
+    # Aplica-se apenas a outcome="executada" (informada já saiu acima).
+    # is_admin_test (admin operando no app próprio) pula pra não bloquear
+    # cenários de homologação interna.
+    # ════════════════════════════════════════════════════════════════════
+    guardrail_result = None
+    if payload.outcome == "executada" and not is_admin_test:
+        from services.os_inventory_guardrail import (
+            enforce_os_inventory_movement, explain_block,
+        )
+        comp_g = dict(cd_dump)
+        comp_g["physical_attendance"] = True
+        # Pra troca, propaga old/new vindos do equipment_swap detectado
+        if equipment_swap:
+            comp_g.setdefault("old_ont_mac",
+                              equipment_swap.get("old_mac"))
+            comp_g.setdefault("old_ont_sn",
+                              equipment_swap.get("old_sn"))
+            comp_g.setdefault("new_ont_mac",
+                              equipment_swap.get("new_mac"))
+            comp_g.setdefault("new_ont_sn",
+                              equipment_swap.get("new_sn"))
+        actor_g = {
+            "id": cid, "role": "colaborador", "email": None,
+            "name": t.get("assigned_collaborator_name") or "Técnico",
+            "origin": "tecnico_app",
+            "is_super_admin": False,
+        }
+        guardrail_result = await enforce_os_inventory_movement(
+            t, comp_g, actor_g)
+        if not guardrail_result["allowed"]:
+            raise HTTPException(403, {
+                "error": "os_inventory_guardrail_bloqueou",
+                "blocked_reasons": guardrail_result["blocked_reasons"],
+                "human_reason": explain_block(
+                    guardrail_result["blocked_reasons"]),
+                "classification": guardrail_result["classification"],
+                "audit_ids": guardrail_result["audit_ids"],
+            })
+
     await db.tickets.update_one(
         {"id": ticket_id},
         {"$set": {
@@ -4464,6 +4513,26 @@ async def public_finalize_ticket(ticket_id: str, payload: PublicFinalizeIn,
                 "auth_used": auth_used,
                 "sn_mismatch": sn_mismatch,
             },
+            # CTO 2026-02 — Snapshot do guardrail + status pendente_conciliacao
+            **({
+                "os_inventory_guardrail": {
+                    "classification": guardrail_result["classification"],
+                    "movements": guardrail_result["movements"],
+                    "smartolt": guardrail_result["smartolt"],
+                    "smartolt_override_applied":
+                        guardrail_result["smartolt_override_applied"],
+                    "audit_ids": guardrail_result["audit_ids"],
+                    "origin": "tecnico_app",
+                },
+            } if guardrail_result else {}),
+            **({"status": "pendente_conciliacao",
+                "pending_conciliation_reason":
+                  "SmartOLT indisponível — fila de reconciliação.",
+                "pending_conciliation_at": now_iso(),
+                "pending_conciliation_retries": 0}
+                if (guardrail_result
+                    and guardrail_result.get("os_pending_conciliation"))
+                else {}),
         }},
     )
     # Vincula cliente à porta da CTO (instalação/reparo).
@@ -5215,6 +5284,50 @@ async def admin_close_ticket(ticket_id: str, payload: AdminCloseIn,
         raise HTTPException(404, "Nota não encontrada")
     if t["status"] in ("finalizada", "encerrada", "cancelada"):
         raise HTTPException(400, "Nota já encerrada")
+    # ════════════════════════════════════════════════════════════════════
+    # CTO 2026-02 — REGRA GLOBAL ESTOQUE OS (Q1=c híbrido / Q2=b auto-pull /
+    # Q3=a smartolt online / Q4=b commit parcial). Chokepoint OBRIGATÓRIO
+    # antes de qualquer mutação no ticket.
+    # ════════════════════════════════════════════════════════════════════
+    guardrail_result = None
+    if payload.action == "encerrar":
+        from services.os_inventory_guardrail import (
+            enforce_os_inventory_movement, explain_block,
+        )
+        comp = dict(payload.completion_data or {})
+        # Default: se o gestor não declarou explicitamente, assume Q1=c "sim"
+        # quando o tipo da OS é físico (instalação/retirada/troca/reparo) E
+        # houver completion_data preenchido (sinal etc.). Caso contrário, vira
+        # fechamento administrativo (sem movimentação).
+        phys = payload.physical_attendance
+        if phys is None:
+            phys = bool(payload.completion_data) and \
+                (t.get("type") or "").lower() in (
+                    "instalacao", "retirada", "troca", "reparo")
+        comp["physical_attendance"] = phys
+        if payload.admin_reason:
+            comp["admin_reason"] = payload.admin_reason
+        if payload.smartolt_override_motivo:
+            comp["smartolt_override_motivo"] = payload.smartolt_override_motivo
+        actor = {
+            "id": user.get("id"),
+            "name": user.get("name") or user.get("email"),
+            "email": user.get("email"),
+            "role": user.get("role"),
+            "is_super_admin": (user.get("role") in ("super_admin",
+                                                     "administrador")
+                                or user.get("is_super_admin")),
+        }
+        guardrail_result = await enforce_os_inventory_movement(t, comp, actor)
+        if not guardrail_result["allowed"]:
+            raise HTTPException(403, {
+                "error": "os_inventory_guardrail_bloqueou",
+                "blocked_reasons": guardrail_result["blocked_reasons"],
+                "human_reason": explain_block(
+                    guardrail_result["blocked_reasons"]),
+                "classification": guardrail_result["classification"],
+                "audit_ids": guardrail_result["audit_ids"],
+            })
     status_map = {"encerrar": "encerrada", "reagendar": "reagendada", "cancelar": "cancelada"}
     update = {
         "status": status_map[payload.action],
@@ -5233,6 +5346,20 @@ async def admin_close_ticket(ticket_id: str, payload: AdminCloseIn,
         cd = dict(payload.completion_data)
         cd.setdefault("internal_close", True)
         update["completion_data"] = cd
+    # CTO 2026-02 — Anexa resultado do guardrail à OS (auditoria + status)
+    if guardrail_result is not None:
+        update["os_inventory_guardrail"] = {
+            "classification": guardrail_result["classification"],
+            "movements": guardrail_result["movements"],
+            "smartolt": guardrail_result["smartolt"],
+            "smartolt_override_applied":
+                guardrail_result["smartolt_override_applied"],
+            "audit_ids": guardrail_result["audit_ids"],
+        }
+        if guardrail_result.get("os_pending_conciliation"):
+            update["status"] = "pendente_conciliacao"
+            update["pending_conciliation_reason"] = (
+                "SmartOLT indisponível na finalização — fila de reconciliação.")
     if payload.action == "reagendar":
         # aceita new_scheduled_time OU (new_date + new_time)
         sched = payload.new_scheduled_time

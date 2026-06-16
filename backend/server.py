@@ -1099,6 +1099,13 @@ async def _startup() -> None:
             asyncio.create_task(_stg_loop(interval_sec=3600))
         except Exception as e:
             logger.warning("[startup] synthetic_tenant_guard: %s", e)
+        # CTO 2026-02 — Worker de Reconciliação OS (Q4=b). Reprocessa
+        # tickets `pendente_conciliacao` quando SmartOLT volta.
+        try:
+            from services.os_inventory_reconciliation import worker_loop as _osrec
+            asyncio.create_task(_osrec())
+        except Exception as e:
+            logger.warning("[startup] os_inventory_reconciliation: %s", e)
         # Migração one-shot — unifica OpenRouter keys em motor_ia_config
         try:
             from services.openrouter_unify_migration import run_once as _ourun

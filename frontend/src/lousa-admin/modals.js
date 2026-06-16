@@ -601,11 +601,17 @@ export function AutoReschedConfigModal({ initial, onClose, onSaved }) {
 export function AdminFinalizeModal({ ticket, onClose, onSubmit }) {
   const isRetirada = ticket?.type === "retirada";
   const isInstall = ticket?.type === "instalacao" || ticket?.type === "troca";
+  const isGeneric = !isRetirada && !isInstall;
   const [form, setForm] = useState({
     sinal: "", observacoes: "",
     ont: "", ont_sn: "",
     is_defective: false, defective_reason: "",
     cto_id: "", cto_name: "", cto_port_number: "",
+    // CTO 2026-02 (REGRA GLOBAL ESTOQUE OS — Q1=c híbrido):
+    // físico=true para instalação/retirada/troca (sempre movimenta)
+    // físico=false default p/ casos genéricos (sem internet, ONU offline...)
+    physical_attendance: !isGeneric,
+    admin_reason: "",
   });
   const [notes, setNotes] = useState("");
   const [busy, setBusy] = useState(false);
@@ -668,6 +674,12 @@ export function AdminFinalizeModal({ ticket, onClose, onSubmit }) {
       window.alert("Informe o sinal óptico final (dBm).");
       return;
     }
+    // CTO 2026-02 — Q1=c. Fechamento administrativo precisa motivo.
+    if (isGeneric && !form.physical_attendance &&
+        form.admin_reason.trim().length < 5) {
+      window.alert("Informe o motivo administrativo (mínimo 5 caracteres).");
+      return;
+    }
     if (isRetirada && !form.ont_sn && !form.ont) {
       const proceed = await window.confirm(
         "Nenhum SN/MAC informado.\n\n" +
@@ -718,7 +730,12 @@ export function AdminFinalizeModal({ ticket, onClose, onSubmit }) {
         // interno puro — o backend faz a baixa de fato no estoque.
         internal_close: !(isRetirada || isInstall),
       };
-      await onSubmit(cd, notes);
+      // CTO 2026-02 — extras pra o guardrail backend.
+      const extras = {
+        physical_attendance: isGeneric ? form.physical_attendance : true,
+        admin_reason: form.admin_reason || null,
+      };
+      await onSubmit(cd, notes, extras);
     } catch (e) {
       window.alert(e?.response?.data?.detail || e.message);
     } finally {
@@ -752,14 +769,71 @@ export function AdminFinalizeModal({ ticket, onClose, onSubmit }) {
           {ticket.assigned_collaborator_id && (
             <span> · técnico: {ticket.collaborator_name || ticket.assigned_collaborator_id}</span>
           )}
-          {!isRetirada && !isInstall && (
+          {isGeneric && (
             <>
-              <br/>Fechamento <strong>interno</strong>: registra apenas o sinal
-              final do cliente e a descrição. <strong>Não consome insumos nem
-              ONT</strong> (técnico não esteve no local).
+              <br/>Movimentação de estoque depende do tipo de fechamento
+              selecionado abaixo.
             </>
           )}
         </p>
+
+        {/* CTO 2026-02 — REGRA GLOBAL ESTOQUE OS (Q1=c) */}
+        {isGeneric && (
+          <div data-testid="adm-fin-physical-block"
+                style={{ background: form.physical_attendance
+                          ? "#eff6ff" : "#fff7ed",
+                          border: `1.5px solid ${form.physical_attendance
+                            ? "#3b82f6" : "#fdba74"}`,
+                          borderRadius: 10, padding: 12, marginBottom: 14,
+                          fontSize: 12, color: "#1e293b", lineHeight: 1.5 }}>
+            <strong style={{ fontSize: 12 }}>Houve atendimento físico do técnico?</strong>
+            <div style={{ display: "flex", gap: 16, marginTop: 8 }}>
+              <label style={{ display: "flex", alignItems: "center", gap: 6,
+                fontWeight: 600, cursor: "pointer" }}>
+                <input type="radio" name="phys-attendance"
+                  data-testid="adm-fin-phys-no"
+                  checked={!form.physical_attendance}
+                  onChange={() => setF("physical_attendance", false)}/>
+                Não — fechamento administrativo
+              </label>
+              <label style={{ display: "flex", alignItems: "center", gap: 6,
+                fontWeight: 600, cursor: "pointer" }}>
+                <input type="radio" name="phys-attendance"
+                  data-testid="adm-fin-phys-yes"
+                  checked={form.physical_attendance}
+                  onChange={() => setF("physical_attendance", true)}/>
+                Sim — houve visita técnica
+              </label>
+            </div>
+            {!form.physical_attendance && (
+              <div style={{ marginTop: 10 }}>
+                <div style={{ fontSize: 11, color: "#92400e",
+                  marginBottom: 4, fontWeight: 700 }}>
+                  Motivo administrativo (obrigatório, mín. 5 caracteres) *
+                </div>
+                <textarea data-testid="adm-fin-admin-reason"
+                  value={form.admin_reason}
+                  onChange={(e) => setF("admin_reason", e.target.value)}
+                  placeholder="Ex.: cliente cancelou antes do agendamento. Sem atendimento físico."
+                  rows={2} style={{ width: "100%", padding: 8,
+                    borderRadius: 6, border: "1px solid #fdba74",
+                    background: "white", fontSize: 12,
+                    fontFamily: "inherit", boxSizing: "border-box" }}/>
+                <div style={{ fontSize: 10, color: "#92400e", marginTop: 4 }}>
+                  Nenhum equipamento será movimentado. Esta finalização será
+                  auditada como <strong>fechamento administrativo</strong>.
+                </div>
+              </div>
+            )}
+            {form.physical_attendance && (
+              <div style={{ marginTop: 8, fontSize: 11, color: "#1e3a8a" }}>
+                ✓ Caso tenha havido troca de ONT no atendimento, a regra
+                global de estoque exigirá <strong>SN/MAC</strong>. Inclua nas
+                observações o detalhamento da movimentação.
+              </div>
+            )}
+          </div>
+        )}
 
         {/* iter195 — Banner Retirada com info de transferência automática */}
         {isRetirada && (

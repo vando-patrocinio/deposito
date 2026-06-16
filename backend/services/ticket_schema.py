@@ -33,6 +33,7 @@ STATUS_CANONICAL: List[str] = [
     "encerrada",                 # gestor confirmou e fechou definitivamente
     "reagendada",                # cliente/operador remarcou
     "cancelada",                 # operador cancelou
+    "pendente_conciliacao",      # CTO 2026-02 Q4=b — aguarda worker SmartOLT
 ]
 
 # `type` é aberto por design (a empresa cria novos tipos sem restart). Aqui
