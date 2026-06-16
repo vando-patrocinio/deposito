@@ -4703,3 +4703,36 @@ DEPOIS purga:  16 aguardando triagem (todos válidos ou recuperáveis)
 ### Resultado validado em banco
 - 28/28 docs com `valuation_grade`, `valuation_calculated_at`, `valuation_source`, etc.
 - 10 ONTs com `valuation_needs_human_review=true` (todas Grade F).
+
+---
+## [2026-02-16 — adendo 9] Estoque OS V2 — Onda 2.0 AUDITORIA
+
+**Decisão CEO:** Auditar primeiro. Sem código. Sem migração. Gerar 2 entregáveis.
+
+### Entregáveis criados
+- `/app/memory/TRANSFER_AUDIT.md` — matriz das 19 surfaces + plano de fechamento.
+- `/app/memory/TRANSFER_FLOW_MATRIX.md` — grafo de ownership + schema unificado + queries.
+- `/app/backend/scripts/onda2_audit.py` — script reproduzível.
+
+### Achados centrais (preview · co-demo)
+- 19 surfaces mapeadas: **3 canônicas · 4 legado controlado · 12 BYPASS**.
+- `inventory_os_movements_audit` em preview: **0 registros**.
+- 11/11 ONTs em movimento ativo (técnico/cliente) **NÃO TÊM TRILHA CANÔNICA**.
+- `stok_history.action=null` em 93% dos 99 registros — ranking de técnico hoje é INVENTADO.
+- 1 caso de dupla movimentação detectado (mesmo MAC, mesmo dia).
+
+### Top 11 rotas BYPASS (P0 primeiro)
+1-4 P0: transfer-to-tech / bulk / return-to-company / manual-withdraw
+5-8 P1: pending-transfers approve/reject / field-ops return / defective confirm-return
+9-11 P2: reconcile-with-olt / ont-scan / balanco
+
+### Plano (8 PRs · ~6h impl + 2h testes)
+- 2.1: helper `services/transfer_engine.py`
+- 2.2-2.9: refatoração sequencial das 12 rotas
+- 2.4 (paralelo): cleanup `stok_history.action=null`
+
+### Decisões CEO pendentes
+- A) Aprovar plano §5.
+- B) Política para 11 órfãos (B1 backfill sintético / B2 deixar / B3 bloquear).
+- C) `reason` opcional ou obrigatório em transfer_engine.
+- D) Confirmar Etapa 2.4 como backlog separado.
