@@ -4681,3 +4681,25 @@ DEPOIS purga:  16 aguardando triagem (todos válidos ou recuperáveis)
 
 ### R1.3 + R1.4
 - BLOQUEADAS aguardando autorização CEO após análise do relatório.
+
+---
+## [2026-02-16 — adendo 8] R1.3 APPLY executado em co-demo ✅
+
+**CEO autorizou aplly após validação do dry-run + 2 métricas extras.**
+
+### Bug encontrado e corrigido durante execução
+- Filtro `{"id": ont.get("id")}` colapsava todas as 26 ONTs sem campo `id` (legacy). Apply reportava 28 atualizadas mas só 3 docs persistiam.
+- **Fix:** filtro fallback por MAC quando `id` está ausente. Aplicado e re-executado. 28/28 confirmadas no banco.
+
+### Métricas extras adicionadas ao relatório
+- `patrimony_per_source`: nf=R$ 1.904 (10 ONTs) · model_canonical=R$ 775 (8) · unknown=R$ 850 (10).
+- `top_20_highest_value`: todas R$ 190,40 (Grade A FIBERHOME).
+- `top_20_lowest_value`: R$ 75 (ZTE F660 canônico) a R$ 85 (TestModel default). Sem outliers grotescos.
+
+### Arquivos gerados
+- `/app/memory/VALUATION_APPLY_REPORT_20260616T152219Z.json` — relatório final apply.
+- `/app/memory/VALUATION_APPLY_ROLLBACK_20260616T152219Z.json` — snapshot pré-apply (rollback).
+
+### Resultado validado em banco
+- 28/28 docs com `valuation_grade`, `valuation_calculated_at`, `valuation_source`, etc.
+- 10 ONTs com `valuation_needs_human_review=true` (todas Grade F).

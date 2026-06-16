@@ -1,0 +1,758 @@
+{
+  "scanned_at": "2026-06-16T15:20:58.979563+00:00",
+  "finished_at": "2026-06-16T15:20:59.019511+00:00",
+  "company_id": "co-demo",
+  "ont_total": 28,
+  "grade_distribution": {
+    "A": 10,
+    "B": 0,
+    "C": 8,
+    "D": 0,
+    "E": 0,
+    "F": 10
+  },
+  "grade_pct": {
+    "A": 35.71,
+    "B": 0.0,
+    "C": 28.57,
+    "D": 0.0,
+    "E": 0.0,
+    "F": 35.71
+  },
+  "source_distribution": {
+    "model_canonical": 8,
+    "unknown": 10,
+    "nf": 10
+  },
+  "patrimony_per_source": {
+    "model_canonical": 775.0,
+    "unknown": 850.0,
+    "nf": 1904.0
+  },
+  "weighted_avg_used": 200.36363636363637,
+  "patrimony": {
+    "min_possible": 1400.0,
+    "max_possible": 11200.0,
+    "calculated_total": 3529.0,
+    "auditable_AB": 1904.0,
+    "speculative_CDF": 1625.0,
+    "per_grade": {
+      "A": 1904.0,
+      "B": 0,
+      "C": 775.0,
+      "D": 0,
+      "E": 0,
+      "F": 850.0
+    }
+  },
+  "needs_human_review": {
+    "no_purchase_id_count": 18,
+    "autosn_locked_count": 6,
+    "model_garbage_count": 10,
+    "grade_F_total": 10
+  },
+  "top_20_models": [
+    [
+      "FIBERHOME ONT AC1200 GPON 2GE WIFI HG8145D",
+      7
+    ],
+    [
+      "TestModel",
+      4
+    ],
+    [
+      "Desconhecido",
+      3
+    ],
+    [
+      "(null)",
+      3
+    ],
+    [
+      "FIBERHOME HG6145D",
+      3
+    ],
+    [
+      "Huawei HG8245",
+      2
+    ],
+    [
+      "ZTE F670L",
+      2
+    ],
+    [
+      "ZTE F660",
+      2
+    ],
+    [
+      "zte chinez",
+      1
+    ],
+    [
+      "Huawei HG",
+      1
+    ]
+  ],
+  "top_20_grade_F_samples": [
+    {
+      "id": null,
+      "mac": "AA:11:22:33:44:4A",
+      "scan_sn": "AUTOSN_2233444A",
+      "model": "TestModel",
+      "location_type": "tecnico",
+      "status": "retirada_com_tecnico",
+      "client_name": null
+    },
+    {
+      "id": null,
+      "mac": "AA:11:22:33:44:91",
+      "scan_sn": "AUTOSN_22334491",
+      "model": "TestModel",
+      "location_type": "tecnico",
+      "status": "retirada_com_tecnico",
+      "client_name": null
+    },
+    {
+      "id": null,
+      "mac": "AA:BB:CC:11:22:33",
+      "scan_sn": null,
+      "model": "Desconhecido",
+      "location_type": "tecnico",
+      "status": "retirada_com_tecnico",
+      "client_name": null
+    },
+    {
+      "id": null,
+      "mac": "AA:BB:CC:DD:EE:01",
+      "scan_sn": "ITBS32697D69",
+      "model": null,
+      "location_type": "cliente",
+      "status": "instalada",
+      "client_name": "B22B Ap202 Alexandre"
+    },
+    {
+      "id": null,
+      "mac": "BE:EF:CA:FE:69:C9",
+      "scan_sn": "AUTOSN_CAFE69C9",
+      "model": "Desconhecido",
+      "location_type": "tecnico",
+      "status": "retirada_com_tecnico",
+      "client_name": null
+    },
+    {
+      "id": null,
+      "mac": "BE:EF:CA:FE:7B:4F",
+      "scan_sn": "REAL-LABEL-001-FIXED",
+      "model": "Desconhecido",
+      "location_type": "tecnico",
+      "status": "retirada_com_tecnico",
+      "client_name": null
+    },
+    {
+      "id": null,
+      "mac": "C0:FF:EE:00:11:5A",
+      "scan_sn": "AUTOSN_EE00115A",
+      "model": "TestModel",
+      "location_type": "tecnico",
+      "status": "retirada_com_tecnico",
+      "client_name": null
+    },
+    {
+      "id": null,
+      "mac": "C0:FF:EE:00:11:EC",
+      "scan_sn": "AUTOSN_EE0011EC",
+      "model": "TestModel",
+      "location_type": "tecnico",
+      "status": "retirada_com_tecnico",
+      "client_name": null
+    },
+    {
+      "id": "ont-8c63f99679f3",
+      "mac": "MANUAL-44BD4E0522",
+      "scan_sn": "FHTT6A96A9B8",
+      "model": null,
+      "location_type": "tecnico",
+      "status": "retirada_com_tecnico",
+      "client_name": null
+    },
+    {
+      "id": "ont-c21190fe7181",
+      "mac": "MANUAL-65521F394A",
+      "scan_sn": "DEFEITO-001",
+      "model": null,
+      "location_type": "tecnico",
+      "status": "defeito_devolver_empresa",
+      "client_name": null
+    }
+  ],
+  "sample_grade_A": [
+    {
+      "id": null,
+      "mac": "SN-FHTTC250CE0B",
+      "scan_sn": "FHTTC250CE0B",
+      "model": "FIBERHOME HG6145D",
+      "purchase_id": "pur-51f61a1aaa",
+      "resolved_valor_nf": 190.4
+    },
+    {
+      "id": null,
+      "mac": "SN-FHTTC250CE0C",
+      "scan_sn": "FHTTC250CE0C",
+      "model": "FIBERHOME HG6145D",
+      "purchase_id": "pur-51f61a1aaa",
+      "resolved_valor_nf": 190.4
+    },
+    {
+      "id": null,
+      "mac": "SN-FHTTC250CE14",
+      "scan_sn": "FHTTC250CE14",
+      "model": "FIBERHOME HG6145D",
+      "purchase_id": "pur-51f61a1aaa",
+      "resolved_valor_nf": 190.4
+    },
+    {
+      "id": null,
+      "mac": "SN-FHTTC250D38F",
+      "scan_sn": "FHTTC250D38F",
+      "model": "FIBERHOME ONT AC1200 GPON 2GE WIFI HG8145D",
+      "purchase_id": "pur-e9836ea9f3",
+      "resolved_valor_nf": 190.4
+    },
+    {
+      "id": null,
+      "mac": "SN-FHTTC250D394",
+      "scan_sn": "FHTTC250D394",
+      "model": "FIBERHOME ONT AC1200 GPON 2GE WIFI HG8145D",
+      "purchase_id": "pur-e9836ea9f3",
+      "resolved_valor_nf": 190.4
+    }
+  ],
+  "top_20_highest_value": [
+    {
+      "id": null,
+      "mac": "SN-FHTTC250CE0B",
+      "scan_sn": "FHTTC250CE0B",
+      "model": "FIBERHOME HG6145D",
+      "purchase_id": "pur-51f61a1aaa",
+      "location_type": "empresa",
+      "status": "disponivel",
+      "grade": "A",
+      "source": "nf",
+      "value": 190.4,
+      "valor_nf": 190.4
+    },
+    {
+      "id": null,
+      "mac": "SN-FHTTC250CE0C",
+      "scan_sn": "FHTTC250CE0C",
+      "model": "FIBERHOME HG6145D",
+      "purchase_id": "pur-51f61a1aaa",
+      "location_type": "empresa",
+      "status": "disponivel",
+      "grade": "A",
+      "source": "nf",
+      "value": 190.4,
+      "valor_nf": 190.4
+    },
+    {
+      "id": null,
+      "mac": "SN-FHTTC250CE14",
+      "scan_sn": "FHTTC250CE14",
+      "model": "FIBERHOME HG6145D",
+      "purchase_id": "pur-51f61a1aaa",
+      "location_type": "empresa",
+      "status": "disponivel",
+      "grade": "A",
+      "source": "nf",
+      "value": 190.4,
+      "valor_nf": 190.4
+    },
+    {
+      "id": null,
+      "mac": "SN-FHTTC250D38F",
+      "scan_sn": "FHTTC250D38F",
+      "model": "FIBERHOME ONT AC1200 GPON 2GE WIFI HG8145D",
+      "purchase_id": "pur-e9836ea9f3",
+      "location_type": "empresa",
+      "status": "disponivel",
+      "grade": "A",
+      "source": "nf",
+      "value": 190.4,
+      "valor_nf": 190.4
+    },
+    {
+      "id": null,
+      "mac": "SN-FHTTC250D394",
+      "scan_sn": "FHTTC250D394",
+      "model": "FIBERHOME ONT AC1200 GPON 2GE WIFI HG8145D",
+      "purchase_id": "pur-e9836ea9f3",
+      "location_type": "empresa",
+      "status": "disponivel",
+      "grade": "A",
+      "source": "nf",
+      "value": 190.4,
+      "valor_nf": 190.4
+    },
+    {
+      "id": null,
+      "mac": "SN-FHTTC250D499",
+      "scan_sn": "FHTTC250D499",
+      "model": "FIBERHOME ONT AC1200 GPON 2GE WIFI HG8145D",
+      "purchase_id": "pur-e9836ea9f3",
+      "location_type": "empresa",
+      "status": "disponivel",
+      "grade": "A",
+      "source": "nf",
+      "value": 190.4,
+      "valor_nf": 190.4
+    },
+    {
+      "id": null,
+      "mac": "SN-FHTTC250D4F7",
+      "scan_sn": "FHTTC250D4F7",
+      "model": "FIBERHOME ONT AC1200 GPON 2GE WIFI HG8145D",
+      "purchase_id": "pur-e9836ea9f3",
+      "location_type": "empresa",
+      "status": "disponivel",
+      "grade": "A",
+      "source": "nf",
+      "value": 190.4,
+      "valor_nf": 190.4
+    },
+    {
+      "id": null,
+      "mac": "SN-FHTTC250DAA5",
+      "scan_sn": "FHTTC250DAA5",
+      "model": "FIBERHOME ONT AC1200 GPON 2GE WIFI HG8145D",
+      "purchase_id": "pur-e9836ea9f3",
+      "location_type": "empresa",
+      "status": "disponivel",
+      "grade": "A",
+      "source": "nf",
+      "value": 190.4,
+      "valor_nf": 190.4
+    },
+    {
+      "id": null,
+      "mac": "SN-FHTTC250DED9",
+      "scan_sn": "FHTTC250DED9",
+      "model": "FIBERHOME ONT AC1200 GPON 2GE WIFI HG8145D",
+      "purchase_id": "pur-e9836ea9f3",
+      "location_type": "empresa",
+      "status": "disponivel",
+      "grade": "A",
+      "source": "nf",
+      "value": 190.4,
+      "valor_nf": 190.4
+    },
+    {
+      "id": null,
+      "mac": "SN-FHTTC250DEF5",
+      "scan_sn": "FHTTC250DEF5",
+      "model": "FIBERHOME ONT AC1200 GPON 2GE WIFI HG8145D",
+      "purchase_id": "pur-e9836ea9f3",
+      "location_type": "empresa",
+      "status": "disponivel",
+      "grade": "A",
+      "source": "nf",
+      "value": 190.4,
+      "valor_nf": 190.4
+    },
+    {
+      "id": null,
+      "mac": "48:F1:AB:2C:4E:00",
+      "scan_sn": "HUAW48F1AB2C4E",
+      "model": "Huawei HG8245",
+      "purchase_id": null,
+      "location_type": "empresa",
+      "status": "disponivel",
+      "grade": "C",
+      "source": "model_canonical",
+      "value": 120.0,
+      "valor_nf": null
+    },
+    {
+      "id": null,
+      "mac": "LEGACYFF220696",
+      "scan_sn": "LEGACYFF220696",
+      "model": "Huawei HG",
+      "purchase_id": null,
+      "location_type": "empresa",
+      "status": "disponivel",
+      "grade": "C",
+      "source": "model_canonical",
+      "value": 120.0,
+      "valor_nf": null
+    },
+    {
+      "id": null,
+      "mac": "SN-HUAW48F1AB2C3D",
+      "scan_sn": "HUAW48F1AB2C3D",
+      "model": "Huawei HG8245",
+      "purchase_id": null,
+      "location_type": "empresa",
+      "status": "disponivel",
+      "grade": "C",
+      "source": "model_canonical",
+      "value": 120.0,
+      "valor_nf": null
+    },
+    {
+      "id": null,
+      "mac": "48:F1:AB:2C:4E:99",
+      "scan_sn": "ITER211HSN8D1E7619B",
+      "model": "ZTE F670L",
+      "purchase_id": null,
+      "location_type": "empresa",
+      "status": "disponivel",
+      "grade": "C",
+      "source": "model_canonical",
+      "value": 95.0,
+      "valor_nf": null
+    },
+    {
+      "id": null,
+      "mac": "SN-ITER211HSN8D1E7619",
+      "scan_sn": "ITER211HSN8D1E7619",
+      "model": "ZTE F670L",
+      "purchase_id": null,
+      "location_type": "empresa",
+      "status": "disponivel",
+      "grade": "C",
+      "source": "model_canonical",
+      "value": 95.0,
+      "valor_nf": null
+    },
+    {
+      "id": null,
+      "mac": "AA:11:22:33:44:4A",
+      "scan_sn": "AUTOSN_2233444A",
+      "model": "TestModel",
+      "purchase_id": null,
+      "location_type": "tecnico",
+      "status": "retirada_com_tecnico",
+      "grade": "F",
+      "source": "unknown",
+      "value": 85.0,
+      "valor_nf": null
+    },
+    {
+      "id": null,
+      "mac": "AA:11:22:33:44:91",
+      "scan_sn": "AUTOSN_22334491",
+      "model": "TestModel",
+      "purchase_id": null,
+      "location_type": "tecnico",
+      "status": "retirada_com_tecnico",
+      "grade": "F",
+      "source": "unknown",
+      "value": 85.0,
+      "valor_nf": null
+    },
+    {
+      "id": null,
+      "mac": "AA:BB:CC:11:22:33",
+      "scan_sn": null,
+      "model": "Desconhecido",
+      "purchase_id": null,
+      "location_type": "tecnico",
+      "status": "retirada_com_tecnico",
+      "grade": "F",
+      "source": "unknown",
+      "value": 85.0,
+      "valor_nf": null
+    },
+    {
+      "id": null,
+      "mac": "AA:BB:CC:DD:EE:01",
+      "scan_sn": "ITBS32697D69",
+      "model": null,
+      "purchase_id": null,
+      "location_type": "cliente",
+      "status": "instalada",
+      "grade": "F",
+      "source": "unknown",
+      "value": 85.0,
+      "valor_nf": null
+    },
+    {
+      "id": null,
+      "mac": "BE:EF:CA:FE:69:C9",
+      "scan_sn": "AUTOSN_CAFE69C9",
+      "model": "Desconhecido",
+      "purchase_id": null,
+      "location_type": "tecnico",
+      "status": "retirada_com_tecnico",
+      "grade": "F",
+      "source": "unknown",
+      "value": 85.0,
+      "valor_nf": null
+    }
+  ],
+  "top_20_lowest_value": [
+    {
+      "id": null,
+      "mac": "AA:BB:CC:DD:00:01",
+      "scan_sn": "AUTOSN_CCDD0001",
+      "model": "zte chinez",
+      "purchase_id": null,
+      "location_type": "tecnico",
+      "status": "com_tecnico",
+      "grade": "C",
+      "source": "model_canonical",
+      "value": 75.0,
+      "valor_nf": null
+    },
+    {
+      "id": null,
+      "mac": "ZTEG48F1ABCD01",
+      "scan_sn": "ZTEG48F1ABCD01",
+      "model": "ZTE F660",
+      "purchase_id": null,
+      "location_type": "empresa",
+      "status": "disponivel",
+      "grade": "C",
+      "source": "model_canonical",
+      "value": 75.0,
+      "valor_nf": null
+    },
+    {
+      "id": null,
+      "mac": "ZTEG48F1ABCD02",
+      "scan_sn": "ZTEG48F1ABCD02",
+      "model": "ZTE F660",
+      "purchase_id": null,
+      "location_type": "empresa",
+      "status": "disponivel",
+      "grade": "C",
+      "source": "model_canonical",
+      "value": 75.0,
+      "valor_nf": null
+    },
+    {
+      "id": null,
+      "mac": "AA:11:22:33:44:4A",
+      "scan_sn": "AUTOSN_2233444A",
+      "model": "TestModel",
+      "purchase_id": null,
+      "location_type": "tecnico",
+      "status": "retirada_com_tecnico",
+      "grade": "F",
+      "source": "unknown",
+      "value": 85.0,
+      "valor_nf": null
+    },
+    {
+      "id": null,
+      "mac": "AA:11:22:33:44:91",
+      "scan_sn": "AUTOSN_22334491",
+      "model": "TestModel",
+      "purchase_id": null,
+      "location_type": "tecnico",
+      "status": "retirada_com_tecnico",
+      "grade": "F",
+      "source": "unknown",
+      "value": 85.0,
+      "valor_nf": null
+    },
+    {
+      "id": null,
+      "mac": "AA:BB:CC:11:22:33",
+      "scan_sn": null,
+      "model": "Desconhecido",
+      "purchase_id": null,
+      "location_type": "tecnico",
+      "status": "retirada_com_tecnico",
+      "grade": "F",
+      "source": "unknown",
+      "value": 85.0,
+      "valor_nf": null
+    },
+    {
+      "id": null,
+      "mac": "AA:BB:CC:DD:EE:01",
+      "scan_sn": "ITBS32697D69",
+      "model": null,
+      "purchase_id": null,
+      "location_type": "cliente",
+      "status": "instalada",
+      "grade": "F",
+      "source": "unknown",
+      "value": 85.0,
+      "valor_nf": null
+    },
+    {
+      "id": null,
+      "mac": "BE:EF:CA:FE:69:C9",
+      "scan_sn": "AUTOSN_CAFE69C9",
+      "model": "Desconhecido",
+      "purchase_id": null,
+      "location_type": "tecnico",
+      "status": "retirada_com_tecnico",
+      "grade": "F",
+      "source": "unknown",
+      "value": 85.0,
+      "valor_nf": null
+    },
+    {
+      "id": null,
+      "mac": "BE:EF:CA:FE:7B:4F",
+      "scan_sn": "REAL-LABEL-001-FIXED",
+      "model": "Desconhecido",
+      "purchase_id": null,
+      "location_type": "tecnico",
+      "status": "retirada_com_tecnico",
+      "grade": "F",
+      "source": "unknown",
+      "value": 85.0,
+      "valor_nf": null
+    },
+    {
+      "id": null,
+      "mac": "C0:FF:EE:00:11:5A",
+      "scan_sn": "AUTOSN_EE00115A",
+      "model": "TestModel",
+      "purchase_id": null,
+      "location_type": "tecnico",
+      "status": "retirada_com_tecnico",
+      "grade": "F",
+      "source": "unknown",
+      "value": 85.0,
+      "valor_nf": null
+    },
+    {
+      "id": null,
+      "mac": "C0:FF:EE:00:11:EC",
+      "scan_sn": "AUTOSN_EE0011EC",
+      "model": "TestModel",
+      "purchase_id": null,
+      "location_type": "tecnico",
+      "status": "retirada_com_tecnico",
+      "grade": "F",
+      "source": "unknown",
+      "value": 85.0,
+      "valor_nf": null
+    },
+    {
+      "id": "ont-8c63f99679f3",
+      "mac": "MANUAL-44BD4E0522",
+      "scan_sn": "FHTT6A96A9B8",
+      "model": null,
+      "purchase_id": null,
+      "location_type": "tecnico",
+      "status": "retirada_com_tecnico",
+      "grade": "F",
+      "source": "unknown",
+      "value": 85.0,
+      "valor_nf": null
+    },
+    {
+      "id": "ont-c21190fe7181",
+      "mac": "MANUAL-65521F394A",
+      "scan_sn": "DEFEITO-001",
+      "model": null,
+      "purchase_id": null,
+      "location_type": "tecnico",
+      "status": "defeito_devolver_empresa",
+      "grade": "F",
+      "source": "unknown",
+      "value": 85.0,
+      "valor_nf": null
+    },
+    {
+      "id": null,
+      "mac": "48:F1:AB:2C:4E:99",
+      "scan_sn": "ITER211HSN8D1E7619B",
+      "model": "ZTE F670L",
+      "purchase_id": null,
+      "location_type": "empresa",
+      "status": "disponivel",
+      "grade": "C",
+      "source": "model_canonical",
+      "value": 95.0,
+      "valor_nf": null
+    },
+    {
+      "id": null,
+      "mac": "SN-ITER211HSN8D1E7619",
+      "scan_sn": "ITER211HSN8D1E7619",
+      "model": "ZTE F670L",
+      "purchase_id": null,
+      "location_type": "empresa",
+      "status": "disponivel",
+      "grade": "C",
+      "source": "model_canonical",
+      "value": 95.0,
+      "valor_nf": null
+    },
+    {
+      "id": null,
+      "mac": "48:F1:AB:2C:4E:00",
+      "scan_sn": "HUAW48F1AB2C4E",
+      "model": "Huawei HG8245",
+      "purchase_id": null,
+      "location_type": "empresa",
+      "status": "disponivel",
+      "grade": "C",
+      "source": "model_canonical",
+      "value": 120.0,
+      "valor_nf": null
+    },
+    {
+      "id": null,
+      "mac": "LEGACYFF220696",
+      "scan_sn": "LEGACYFF220696",
+      "model": "Huawei HG",
+      "purchase_id": null,
+      "location_type": "empresa",
+      "status": "disponivel",
+      "grade": "C",
+      "source": "model_canonical",
+      "value": 120.0,
+      "valor_nf": null
+    },
+    {
+      "id": null,
+      "mac": "SN-HUAW48F1AB2C3D",
+      "scan_sn": "HUAW48F1AB2C3D",
+      "model": "Huawei HG8245",
+      "purchase_id": null,
+      "location_type": "empresa",
+      "status": "disponivel",
+      "grade": "C",
+      "source": "model_canonical",
+      "value": 120.0,
+      "valor_nf": null
+    },
+    {
+      "id": null,
+      "mac": "SN-FHTTC250CE0B",
+      "scan_sn": "FHTTC250CE0B",
+      "model": "FIBERHOME HG6145D",
+      "purchase_id": "pur-51f61a1aaa",
+      "location_type": "empresa",
+      "status": "disponivel",
+      "grade": "A",
+      "source": "nf",
+      "value": 190.4,
+      "valor_nf": 190.4
+    },
+    {
+      "id": null,
+      "mac": "SN-FHTTC250CE0C",
+      "scan_sn": "FHTTC250CE0C",
+      "model": "FIBERHOME HG6145D",
+      "purchase_id": "pur-51f61a1aaa",
+      "location_type": "empresa",
+      "status": "disponivel",
+      "grade": "A",
+      "source": "nf",
+      "value": 190.4,
+      "valor_nf": 190.4
+    }
+  ],
+  "confidence_pct": 35.71,
+  "model_canonical_table_size": 23,
+  "dry_run": true,
+  "would_write": 0
+}

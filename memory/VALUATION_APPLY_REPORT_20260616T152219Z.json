@@ -1,0 +1,37 @@
+{
+  "company_id": "co-demo",
+  "started_at": "2026-06-16T15:22:19.132502+00:00",
+  "finished_at": "2026-06-16T15:22:19.154223+00:00",
+  "ont_total": 28,
+  "updated": 28,
+  "errors_count": 0,
+  "errors_sample": [],
+  "grade_distribution": {
+    "A": 10,
+    "B": 0,
+    "C": 8,
+    "D": 0,
+    "E": 0,
+    "F": 10
+  },
+  "source_distribution": {
+    "model_canonical": 8,
+    "unknown": 10,
+    "nf": 10
+  },
+  "patrimony": {
+    "auditable_AB": 1904.0,
+    "speculative_CDF": 1625.0,
+    "total": 3529.0,
+    "per_grade": {
+      "A": 1904.0,
+      "B": 0,
+      "C": 775.0,
+      "D": 0,
+      "E": 0,
+      "F": 850.0
+    }
+  },
+  "confidence_pct": 35.71,
+  "rollback_file": "/app/memory/VALUATION_APPLY_ROLLBACK_20260616T152219Z.json"
+}

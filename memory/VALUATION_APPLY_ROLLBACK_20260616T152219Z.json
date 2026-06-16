@@ -1,0 +1,373 @@
+{
+  "company_id": "co-demo",
+  "applied_at": "2026-06-16T15:22:19.132502+00:00",
+  "finished_at": "2026-06-16T15:22:19.154223+00:00",
+  "total": 28,
+  "updated": 28,
+  "rollback_docs": [
+    {
+      "id": null,
+      "mac": "48:F1:AB:2C:4E:00",
+      "previous": {
+        "valor_nf": null,
+        "valor_medio_ponderado": null,
+        "valor_referencia": 75.0,
+        "valuation_grade": "C",
+        "valuation_source": "model_canonical",
+        "valuation_calculated_at": "2026-06-16T15:21:18.200256+00:00",
+        "valuation_needs_human_review": false
+      }
+    },
+    {
+      "id": null,
+      "mac": "48:F1:AB:2C:4E:99",
+      "previous": {
+        "valor_nf": null,
+        "valor_medio_ponderado": null,
+        "valor_referencia": null,
+        "valuation_grade": null,
+        "valuation_source": null,
+        "valuation_calculated_at": null,
+        "valuation_needs_human_review": null
+      }
+    },
+    {
+      "id": null,
+      "mac": "AA:11:22:33:44:4A",
+      "previous": {
+        "valor_nf": null,
+        "valor_medio_ponderado": null,
+        "valor_referencia": null,
+        "valuation_grade": null,
+        "valuation_source": null,
+        "valuation_calculated_at": null,
+        "valuation_needs_human_review": null
+      }
+    },
+    {
+      "id": null,
+      "mac": "AA:11:22:33:44:91",
+      "previous": {
+        "valor_nf": null,
+        "valor_medio_ponderado": null,
+        "valor_referencia": null,
+        "valuation_grade": null,
+        "valuation_source": null,
+        "valuation_calculated_at": null,
+        "valuation_needs_human_review": null
+      }
+    },
+    {
+      "id": null,
+      "mac": "AA:BB:CC:11:22:33",
+      "previous": {
+        "valor_nf": null,
+        "valor_medio_ponderado": null,
+        "valor_referencia": null,
+        "valuation_grade": null,
+        "valuation_source": null,
+        "valuation_calculated_at": null,
+        "valuation_needs_human_review": null
+      }
+    },
+    {
+      "id": null,
+      "mac": "AA:BB:CC:DD:00:01",
+      "previous": {
+        "valor_nf": null,
+        "valor_medio_ponderado": null,
+        "valor_referencia": null,
+        "valuation_grade": null,
+        "valuation_source": null,
+        "valuation_calculated_at": null,
+        "valuation_needs_human_review": null
+      }
+    },
+    {
+      "id": null,
+      "mac": "AA:BB:CC:DD:EE:01",
+      "previous": {
+        "valor_nf": null,
+        "valor_medio_ponderado": null,
+        "valor_referencia": null,
+        "valuation_grade": null,
+        "valuation_source": null,
+        "valuation_calculated_at": null,
+        "valuation_needs_human_review": null
+      }
+    },
+    {
+      "id": null,
+      "mac": "BE:EF:CA:FE:69:C9",
+      "previous": {
+        "valor_nf": null,
+        "valor_medio_ponderado": null,
+        "valor_referencia": null,
+        "valuation_grade": null,
+        "valuation_source": null,
+        "valuation_calculated_at": null,
+        "valuation_needs_human_review": null
+      }
+    },
+    {
+      "id": null,
+      "mac": "BE:EF:CA:FE:7B:4F",
+      "previous": {
+        "valor_nf": null,
+        "valor_medio_ponderado": null,
+        "valor_referencia": null,
+        "valuation_grade": null,
+        "valuation_source": null,
+        "valuation_calculated_at": null,
+        "valuation_needs_human_review": null
+      }
+    },
+    {
+      "id": null,
+      "mac": "C0:FF:EE:00:11:5A",
+      "previous": {
+        "valor_nf": null,
+        "valor_medio_ponderado": null,
+        "valor_referencia": null,
+        "valuation_grade": null,
+        "valuation_source": null,
+        "valuation_calculated_at": null,
+        "valuation_needs_human_review": null
+      }
+    },
+    {
+      "id": null,
+      "mac": "C0:FF:EE:00:11:EC",
+      "previous": {
+        "valor_nf": null,
+        "valor_medio_ponderado": null,
+        "valor_referencia": null,
+        "valuation_grade": null,
+        "valuation_source": null,
+        "valuation_calculated_at": null,
+        "valuation_needs_human_review": null
+      }
+    },
+    {
+      "id": null,
+      "mac": "LEGACYFF220696",
+      "previous": {
+        "valor_nf": null,
+        "valor_medio_ponderado": null,
+        "valor_referencia": null,
+        "valuation_grade": null,
+        "valuation_source": null,
+        "valuation_calculated_at": null,
+        "valuation_needs_human_review": null
+      }
+    },
+    {
+      "id": "ont-8c63f99679f3",
+      "mac": "MANUAL-44BD4E0522",
+      "previous": {
+        "valor_nf": null,
+        "valor_medio_ponderado": null,
+        "valor_referencia": 85.0,
+        "valuation_grade": "F",
+        "valuation_source": "unknown",
+        "valuation_calculated_at": "2026-06-16T15:21:18.191884+00:00",
+        "valuation_needs_human_review": true
+      }
+    },
+    {
+      "id": "ont-c21190fe7181",
+      "mac": "MANUAL-65521F394A",
+      "previous": {
+        "valor_nf": null,
+        "valor_medio_ponderado": null,
+        "valor_referencia": 85.0,
+        "valuation_grade": "F",
+        "valuation_source": "unknown",
+        "valuation_calculated_at": "2026-06-16T15:21:18.192293+00:00",
+        "valuation_needs_human_review": true
+      }
+    },
+    {
+      "id": null,
+      "mac": "SN-FHTTC250CE0B",
+      "previous": {
+        "valor_nf": null,
+        "valor_medio_ponderado": null,
+        "valor_referencia": null,
+        "valuation_grade": null,
+        "valuation_source": null,
+        "valuation_calculated_at": null,
+        "valuation_needs_human_review": null
+      }
+    },
+    {
+      "id": null,
+      "mac": "SN-FHTTC250CE0C",
+      "previous": {
+        "valor_nf": null,
+        "valor_medio_ponderado": null,
+        "valor_referencia": null,
+        "valuation_grade": null,
+        "valuation_source": null,
+        "valuation_calculated_at": null,
+        "valuation_needs_human_review": null
+      }
+    },
+    {
+      "id": null,
+      "mac": "SN-FHTTC250CE14",
+      "previous": {
+        "valor_nf": null,
+        "valor_medio_ponderado": null,
+        "valor_referencia": null,
+        "valuation_grade": null,
+        "valuation_source": null,
+        "valuation_calculated_at": null,
+        "valuation_needs_human_review": null
+      }
+    },
+    {
+      "id": null,
+      "mac": "SN-FHTTC250D38F",
+      "previous": {
+        "valor_nf": null,
+        "valor_medio_ponderado": null,
+        "valor_referencia": null,
+        "valuation_grade": null,
+        "valuation_source": null,
+        "valuation_calculated_at": null,
+        "valuation_needs_human_review": null
+      }
+    },
+    {
+      "id": null,
+      "mac": "SN-FHTTC250D394",
+      "previous": {
+        "valor_nf": null,
+        "valor_medio_ponderado": null,
+        "valor_referencia": null,
+        "valuation_grade": null,
+        "valuation_source": null,
+        "valuation_calculated_at": null,
+        "valuation_needs_human_review": null
+      }
+    },
+    {
+      "id": null,
+      "mac": "SN-FHTTC250D499",
+      "previous": {
+        "valor_nf": null,
+        "valor_medio_ponderado": null,
+        "valor_referencia": null,
+        "valuation_grade": null,
+        "valuation_source": null,
+        "valuation_calculated_at": null,
+        "valuation_needs_human_review": null
+      }
+    },
+    {
+      "id": null,
+      "mac": "SN-FHTTC250D4F7",
+      "previous": {
+        "valor_nf": null,
+        "valor_medio_ponderado": null,
+        "valor_referencia": null,
+        "valuation_grade": null,
+        "valuation_source": null,
+        "valuation_calculated_at": null,
+        "valuation_needs_human_review": null
+      }
+    },
+    {
+      "id": null,
+      "mac": "SN-FHTTC250DAA5",
+      "previous": {
+        "valor_nf": null,
+        "valor_medio_ponderado": null,
+        "valor_referencia": null,
+        "valuation_grade": null,
+        "valuation_source": null,
+        "valuation_calculated_at": null,
+        "valuation_needs_human_review": null
+      }
+    },
+    {
+      "id": null,
+      "mac": "SN-FHTTC250DED9",
+      "previous": {
+        "valor_nf": null,
+        "valor_medio_ponderado": null,
+        "valor_referencia": null,
+        "valuation_grade": null,
+        "valuation_source": null,
+        "valuation_calculated_at": null,
+        "valuation_needs_human_review": null
+      }
+    },
+    {
+      "id": null,
+      "mac": "SN-FHTTC250DEF5",
+      "previous": {
+        "valor_nf": null,
+        "valor_medio_ponderado": null,
+        "valor_referencia": null,
+        "valuation_grade": null,
+        "valuation_source": null,
+        "valuation_calculated_at": null,
+        "valuation_needs_human_review": null
+      }
+    },
+    {
+      "id": null,
+      "mac": "SN-HUAW48F1AB2C3D",
+      "previous": {
+        "valor_nf": null,
+        "valor_medio_ponderado": null,
+        "valor_referencia": null,
+        "valuation_grade": null,
+        "valuation_source": null,
+        "valuation_calculated_at": null,
+        "valuation_needs_human_review": null
+      }
+    },
+    {
+      "id": null,
+      "mac": "SN-ITER211HSN8D1E7619",
+      "previous": {
+        "valor_nf": null,
+        "valor_medio_ponderado": null,
+        "valor_referencia": null,
+        "valuation_grade": null,
+        "valuation_source": null,
+        "valuation_calculated_at": null,
+        "valuation_needs_human_review": null
+      }
+    },
+    {
+      "id": null,
+      "mac": "ZTEG48F1ABCD01",
+      "previous": {
+        "valor_nf": null,
+        "valor_medio_ponderado": null,
+        "valor_referencia": null,
+        "valuation_grade": null,
+        "valuation_source": null,
+        "valuation_calculated_at": null,
+        "valuation_needs_human_review": null
+      }
+    },
+    {
+      "id": null,
+      "mac": "ZTEG48F1ABCD02",
+      "previous": {
+        "valor_nf": null,
+        "valor_medio_ponderado": null,
+        "valor_referencia": null,
+        "valuation_grade": null,
+        "valuation_source": null,
+        "valuation_calculated_at": null,
+        "valuation_needs_human_review": null
+      }
+    }
+  ]
+}
