@@ -4448,12 +4448,20 @@ async def public_finalize_ticket(ticket_id: str, payload: PublicFinalizeIn,
     # ════════════════════════════════════════════════════════════════════
     # CTO 2026-02 — REGRA GLOBAL ESTOQUE OS (técnico via app).
     # Chokepoint idêntico ao admin-close. Bloqueia ANTES do write final.
-    # Aplica-se apenas a outcome="executada" (informada já saiu acima).
+    # Aplica-se apenas a outcome="sucesso" (informada já saiu acima).
     # is_admin_test (admin operando no app próprio) pula pra não bloquear
     # cenários de homologação interna.
+    # ────────────────────────────────────────────────────────────────────
+    # CTO 16/02/2026 — Bug histórico corrigido: a string literal era
+    # "executada" mas o schema Outcome só aceita "sucesso"/"informada".
+    # Resultado: 241 finalizações de técnico em produção passaram bypass
+    # do guardrail desde a implementação. Trilha retroativa marcada como
+    # `legacy_without_inventory_trace=true` em relatório (sem write em
+    # massa). Daqui pra frente toda finalização sucesso passa pelo
+    # chokepoint.
     # ════════════════════════════════════════════════════════════════════
     guardrail_result = None
-    if payload.outcome == "executada" and not is_admin_test:
+    if payload.outcome == "sucesso" and not is_admin_test:
         from services.os_inventory_guardrail import (
             enforce_os_inventory_movement, explain_block,
         )

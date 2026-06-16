@@ -158,7 +158,7 @@
 |---|-------|------------|---------------------|
 | 1 | **8 ONTs com SN auto-gerado em poder de técnico** (col-30aafc3c). 6 do mesmo técnico. Quando ele tentar instalar, o guardrail vai exigir SN real → bloqueio em campo. | 🔴 Alta | Forçar re-scan do SN antes de devolução, ou marcar como REVISAR e bloquear próxima movimentação. |
 | 2 | **1.828 ONTs no SmartOLT sem registro no estoque** (legacy). | 🔴 Alta | Job de "seed" do estoque a partir do SmartOLT (criar `stok_onts` com `status=instalada` + `location_type=cliente` quando possível inferir o cliente via PPPoE). Plano de migração explícito. |
-| 3 | **`inventory_os_movements_audit` vazia** após meses de funcionamento do guardrail. | 🟡 Média | Investigar se as finalizações de OS estão chamando `apply_on_close`. Possível regressão silenciosa. |
+| 3 | **`inventory_os_movements_audit` vazia** após meses de funcionamento do guardrail. | 🟡 Média | ✅ **CORRIGIDO 16/02/2026.** Bug de string literal em `lousa.py:4456` (`"executada"` vs `"sucesso"`). Após patch + restart, validado e2e que próxima OS de técnico (outcome=sucesso) grava em `inventory_os_movements_audit` com hash de auditoria. Ver §11. |
 | 4 | **`client_equipment_history` poluído** com 2.410 `STAGE_TRANSITION` (que não são movimento de equipamento). | 🟡 Média | Mover STAGE_TRANSITION para `ticket_logs`. Manter só ações reais de equipamento. |
 | 5 | **DEFEITO modelado como status, não como location_type.** | 🟡 Média | Migrar pra `location_type=defeito` (responsabilidade única). |
 | 6 | **`stok_history` virou log de reset, não de movimento.** | 🟢 Baixa | Renomear/depreciar. |
@@ -229,3 +229,72 @@ Antes de iniciar a **Fase 2**, preciso da sua decisão em 3 pontos:
 ---
 
 **Próximo doc previsto:** `/app/memory/ESTOQUE_OPERACIONAL_MIGRATION_PLAN.md` (após aprovação humana das decisões D1-D3 e início da Fase 12).
+
+---
+
+## §11. POST-MORTEM P0 — BUG DE STRING NO CHOKEPOINT (16/02/2026)
+
+### Decisões aprovadas pelo CEO
+
+- **D1=b**: manter `inventory_os_movements_audit` + criar alias lógico `inventory_movements` (sem migração física).
+- **D2=b**: migrar as 1.828 ONTs SmartOLT órfãs apenas na Fase 12.
+- **D3=a**: bloquear próxima movimentação das 8 ONTs REVISAR até re-scan do SN real.
+- **P0**: investigar por que `inventory_os_movements_audit` estava com 0 registros ANTES da Fase 2.
+
+### Root cause (P0)
+
+```python
+# /app/backend/routes/lousa.py — linha 4456 (BUG HISTÓRICO)
+if payload.outcome == "executada" and not is_admin_test:
+    enforce_os_inventory_movement(...)
+```
+
+Schema do payload em `lousa.py:65`:
+```python
+Outcome = Literal["sucesso", "informada"]
+```
+
+A string `"executada"` NUNCA fez parte do contrato. Resultado: chokepoint sempre falso → guardrail nunca invocado → `inventory_os_movements_audit` zerada.
+
+### Patch aplicado
+
+```diff
+- if payload.outcome == "executada" and not is_admin_test:
++ if payload.outcome == "sucesso" and not is_admin_test:
+```
+Mais comentário CTO explicativo no bloco superior.
+
+### Validações realizadas
+
+1. ✅ Teste unitário `test_chokepoint_string_is_sucesso_not_executada` — bloqueia regressão.
+2. ✅ Teste unitário `test_outcome_literal_only_accepts_sucesso_and_informada` — bloqueia alteração silenciosa do Literal sem update do chokepoint.
+3. ✅ Teste unitário `test_outcome_sucesso_invokes_guardrail` — confirma invocação.
+4. ✅ Teste unitário `test_outcome_informada_does_not_invoke_guardrail` — confirma NÃO-invocação para fechamento informativo.
+5. ✅ Teste unitário `test_outcome_sucesso_admin_test_skips_guardrail` — confirma bypass em homologação interna.
+6. ✅ E2E pós-restart: simulação de finalização técnica com `outcome=sucesso` gerou 1 audit record com hash SHA-256 válido.
+
+```
+=== AUDIT RECORD CRIADO ===
+  os_id:          tkt-validp0-b8a397
+  movement_type:  instalacao_tecnico_cliente
+  sn/mac:         VALIDP0-001 / AA:BB:CC:DD:EE:01
+  origin:         tecnico → cliente
+  hash_auditoria: 7777ffb01e2d1c7561020c34...
+```
+
+Todos os 5 testes em `tests/test_lousa_outcome_chokepoint.py` passam.
+
+### Débito histórico — sem write em massa
+
+| Universo | Quant. | Status pós-fix |
+|----------|--------|----------------|
+| Técnico finalizou via app (`outcome=sucesso`) ANTES do patch | 241 | `legacy_without_inventory_trace=true` (marcação **lógica em relatório apenas** — sem write em DB por decisão CTO) |
+| Auto-fechados (SmartProv Auto: ONU_OFFLINE, wifi_ruim) | 2.003 | `legacy_without_inventory_trace=true` (mesma política — não passa por nenhum chokepoint hoje) |
+| Admin encerrou via gestor (`action=encerrar`) | 5 | Avaliados pelo guardrail corretamente — sem movimento por design (reparos sem troca) |
+| Daqui pra frente | ∞ | Toda finalização técnica com sucesso passa pelo chokepoint + grava audit |
+
+**Política**: NÃO há tentativa de reconstrução retroativa. O débito de 2.244 finalizações sem trilha fica documentado neste relatório e será exibido como flag no painel de Estoque Operacional (Fase 11). Critério: `closed_at < 2026-02-16T00:00:00Z` AND tipo físico AND sem `os_inventory_guardrail.audit_ids` → flag `legacy_without_inventory_trace=true` em runtime, sem write.
+
+### Próximo passo
+
+Fase 2 — modelagem da `inventory_movements` (alias lógico do `inventory_os_movements_audit`). Bloqueador P0 resolvido.
