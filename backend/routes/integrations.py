@@ -101,12 +101,93 @@ async def _check_meta(company_id: str) -> Dict[str, Any]:
     }
 
 
+async def _check_evolution(company_id: str) -> Dict[str, Any]:
+    """Status do canal Evolution API (CTO 2026-02 dual-provider).
+
+    Lê o doc em `whatsapp_channels` e, se houver URL+key, pinga
+    `/instance/connectionState/{instance}` pra checar conexão real.
+    """
+    chan = await db.whatsapp_channels.find_one(
+        {"company_id": company_id, "provider": "evolution"}, {"_id": 0}) or {}
+    base_url = chan.get("evolution_url") or os.environ.get("EVOLUTION_URL")
+    api_key = (chan.get("evolution_api_key")
+                or os.environ.get("EVOLUTION_API_KEY"))
+    instance = (chan.get("evolution_instance")
+                 or chan.get("instance_name") or "default")
+    if not chan and not base_url:
+        return {
+            "channel": "evolution",
+            "label": "WhatsApp Evolution API",
+            "available": False, "connected": False,
+            "status": "disabled", "needs_action": False,
+        }
+    if not base_url or not api_key:
+        return {
+            "channel": "evolution",
+            "label": "WhatsApp Evolution API",
+            "available": False, "connected": False,
+            "status": "missing_credentials", "needs_action": True,
+        }
+    basic = (chan.get("evolution_basic_auth")
+              or os.environ.get("EVOLUTION_BASIC_AUTH") or "").strip()
+    headers = {"apikey": api_key}
+    if basic:
+        import base64
+        token = base64.b64encode(basic.encode("utf-8")).decode("ascii")
+        headers["Authorization"] = f"Basic {token}"
+    try:
+        async with httpx.AsyncClient(timeout=6.0) as cli:
+            r = await cli.get(
+                f"{base_url.rstrip('/')}/instance/connectionState/{instance}",
+                headers=headers)
+        if r.status_code == 401:
+            return {
+                "channel": "evolution",
+                "label": "WhatsApp Evolution API",
+                "available": True, "connected": False,
+                "status": ("basic_auth_required" if not basic
+                            else "basic_auth_invalid"),
+                "needs_action": True,
+                "instance": instance,
+            }
+        if r.status_code >= 400:
+            return {
+                "channel": "evolution",
+                "label": "WhatsApp Evolution API",
+                "available": True, "connected": False,
+                "status": f"http_{r.status_code}",
+                "needs_action": True,
+                "instance": instance,
+            }
+        d = r.json() if r.content else {}
+        state = (d.get("state") or d.get("instance", {}).get("state")
+                  or "").lower()
+        connected = state in ("open", "connected")
+        return {
+            "channel": "evolution",
+            "label": "WhatsApp Evolution API",
+            "available": True, "connected": connected,
+            "status": state or "unknown",
+            "needs_action": not connected,
+            "instance": instance,
+        }
+    except Exception as e:
+        return {
+            "channel": "evolution",
+            "label": "WhatsApp Evolution API",
+            "available": False, "connected": False,
+            "status": "evolution_down",
+            "error": str(e)[:120], "needs_action": True,
+        }
+
+
 @router.get("/health")
 async def integrations_health(user: dict = Depends(require_role("gestor"))):
     """Status de todos os canais."""
     cid = user.get("company_id") or DEMO_COMPANY_ID
     results = await asyncio.gather(
         _check_baileys(),
+        _check_evolution(cid),
         _check_twilio(cid),
         _check_meta(cid),
         return_exceptions=False,
