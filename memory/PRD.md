@@ -4517,3 +4517,30 @@ DEPOIS purga:  16 aguardando triagem (todos válidos ou recuperáveis)
 ### Validação
 - 7/7 smoke tests passando (incluindo o novo `test_close_service_has_observability`).
 - Lint limpo, backend reload sem stacktrace.
+
+---
+## [2026-02-16 — adendo 2] Estoque OS V2 — Onda 1 (Auditoria de Destrutivos)
+
+**Decisão CEO:** Auditar primeiro. Sem código. Sem migração. Produzir 2 entregáveis.
+
+### Entregáveis criados
+- `/app/memory/DESTRUCTIVE_OPERATIONS_AUDIT.md` — matriz das 10 operações destrutivas + plano de fechamento em 5 etapas.
+- `/app/memory/INVENTORY_ASSET_VALUATION.md` — valuation patrimonial (preview + projeção 1.828 ONTs).
+
+### Achados-chave
+- **10 operações destrutivas mapeadas** (7 críticas patrimoniais + 3 helpers).
+- **0/10 atendem critério CEO completo** (`audit_hash` + `before_snapshot` + `after_snapshot` + `reason`).
+- Gap universal: `reason` livre nunca exigido. `audit_hash` nunca gerado. `after_snapshot` nunca verificado.
+- 23/Mai/2026: operação zerou 9.775 unidades de consumível em 1 execução — sem identificar o item específico.
+- Patrimônio estimado (1.828 ONTs × R$ 85): **R$ 155.380** (só ONT). Total c/ insumos cenário médio: **R$ 218.880**.
+
+### Decisões CEO pendentes
+- A) Aprovar plano §4 (helper `services/destructive_audit.py` + refatorar 7 rotas, ~5h impl).
+- B) Definir tabela de motivos pré-definidos (radio + livre).
+- C) Aprovar collection nova `destructive_actions_audit` (não-deletável).
+- D) Validar custo médio R$ 85/ONT ou fornecer NF/planilha oficial.
+
+### NÃO feito (por ordem CEO)
+- Nenhum código de produção alterado.
+- Nenhuma migração.
+- Nenhum delete.
