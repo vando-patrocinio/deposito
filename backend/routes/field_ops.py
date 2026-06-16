@@ -313,6 +313,8 @@ class EquipmentReturnIn(BaseModel):
     recovered: bool
     physical_state: Literal["bom", "danificado", "inutilizado"] = "bom"
     notes: Optional[str] = None
+    # Onda 2.6 (16/02/2026) — reason obrigatório quando há mudança de owner.
+    reason: Optional[Dict[str, Any]] = None  # {"code": ..., "details": ...}
 
 
 class FieldSettingsIn(BaseModel):
@@ -1086,14 +1088,52 @@ async def field_equipment_return(request: Request,
     now = now_iso()
     new_status = ("retirada_com_tecnico" if payload.physical_state == "bom"
                   else "defeito_devolver_empresa")
+    # Onda 2.6 — quando há recovery de equipamento existente, exige reason
+    # e canaliza via transfer_engine (cliente→tecnico com manual=True para
+    # cobrir cenários sem OS). Quando ONT não existe ainda, criamos no banco
+    # como gênese (Onda 4) — sem trilha por enquanto.
+    transfer_audit_id = None
+    transfer_audit_hash = None
     if payload.recovered:
         if ont:
-            await db.stok_onts.update_one(
-                {"company_id": company, "mac": ont["mac"]},
-                {"$set": {"status": new_status, "location_type": "tecnico",
-                          "location_id": collab["id"], "client_name": None,
-                          "field_returned_at": now,
-                          "field_physical_state": payload.physical_state}})
+            if not payload.reason or not (payload.reason.get("code") or "").strip():
+                raise HTTPException(400, {
+                    "error": "transfer_reason_required",
+                    "message": "equipment/return com recovered=true exige "
+                               "payload.reason ({code,details?}).",
+                })
+            from services.transfer_engine import (
+                execute_transfer, TransferEngineError,
+            )
+            try:
+                tr = await execute_transfer(
+                    company_id=company,
+                    origin_type=("cliente" if ont.get("location_type") == "cliente"
+                                  else "tecnico"),
+                    origin_id=ont.get("location_id"),
+                    destination_type="tecnico",
+                    destination_id=collab["id"],
+                    actor={"id": collab.get("id"),
+                            "email": collab.get("email"),
+                            "name": collab.get("name"),
+                            "role": "tecnico",
+                            "origin": "field_ops_equipment_return",
+                            "physical_attendance": True},
+                    reason=payload.reason,
+                    mac=ont["mac"],
+                    ticket_id=payload.ticket_id,
+                    manual=(ont.get("location_type") != "cliente"),
+                    extra_set_fields={
+                        "status": new_status,
+                        "field_returned_at": now,
+                        "field_physical_state": payload.physical_state,
+                    },
+                )
+                transfer_audit_id = tr["movement_id"]
+                transfer_audit_hash = tr["audit_hash"]
+            except TransferEngineError as e:
+                raise HTTPException(400, {
+                    "error": "transfer_blocked", "message": str(e)})
         else:
             # Equipamento recuperado mas não cadastrado — entra no estoque
             ont = {

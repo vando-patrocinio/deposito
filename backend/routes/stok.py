@@ -2924,6 +2924,14 @@ async def manual_withdraw(payload: ManualWithdrawIn,
     gestor_name = (user.get("name") or user.get("email") or "Gestor").strip()
     gestor_email = (user.get("email") or "").strip() or None
 
+    # ─── Onda 2.4 — reason obrigatório ANTES de qualquer side effect ──────
+    from services.transfer_engine import execute_transfer, TransferEngineError
+    if not payload.reason or not (payload.reason.get("code") or "").strip():
+        raise HTTPException(400, {
+            "error": "transfer_reason_required",
+            "message": "manual-withdraw exige payload.reason ({code,details?}).",
+        })
+
     if not payload.technician_id:
         raise HTTPException(400, "technician_id é obrigatório")
     if not (payload.client_name or payload.client_id):
@@ -2989,25 +2997,39 @@ async def manual_withdraw(payload: ManualWithdrawIn,
             extra_fields["defective_reason"] = defective_reason
 
     if ont:
-        # Atualiza ONT existente
-        await db.stok_onts.update_one(
-            {"company_id": cid, "mac": ont["mac"]},
-            {"$set": {
-                "location_type": "tecnico",
-                "location_id": payload.technician_id,
-                "client_name": None,
-                "status": ont_status,
-                "source": "retirada_manual",
-                "withdrawn_from_client_id": client_id,
-                "withdrawn_from_client_name": client_name,
-                "withdrawn_by_email": gestor_email,
-                "withdrawn_by_name": tech_name,
-                "withdrawn_manual_by": gestor_name,
-                "withdrawn_at": now_iso(),
-                "withdraw_notes": notes_full,
-                **extra_fields,
-            }},
-        )
+        # ─── Onda 2.4 — Grava trilha canônica ANTES do update ─────────────
+        # Transição: cliente → tecnico (manual, sem OS).
+        transfer_audit_id = None
+        transfer_audit_hash = None
+        try:
+            tr = await execute_transfer(
+                company_id=cid,
+                origin_type="cliente", origin_id=client_id,
+                destination_type="tecnico", destination_id=payload.technician_id,
+                actor={"id": user.get("id"), "email": gestor_email,
+                        "name": gestor_name, "role": user.get("role"),
+                        "origin": "gestor_ui_manual_withdraw",
+                        "client_name": client_name},
+                reason=payload.reason,
+                mac=ont["mac"],
+                extra_set_fields={
+                    "source": "retirada_manual",
+                    "withdrawn_from_client_id": client_id,
+                    "withdrawn_from_client_name": client_name,
+                    "withdrawn_by_email": gestor_email,
+                    "withdrawn_by_name": tech_name,
+                    "withdrawn_manual_by": gestor_name,
+                    "withdrawn_at": now_iso(),
+                    "withdraw_notes": notes_full,
+                    "status": ont_status,
+                    **extra_fields,
+                },
+            )
+            transfer_audit_id = tr["movement_id"]
+            transfer_audit_hash = tr["audit_hash"]
+        except TransferEngineError as e:
+            raise HTTPException(400, {
+                "error": "transfer_blocked", "message": str(e)})
         ont_id_msg = ont["mac"]
     else:
         # Cria ONT do zero — útil quando o equipamento não estava no estoque
