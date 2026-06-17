@@ -636,32 +636,52 @@ function ProviderModal({ channel, onClose, onSaved }) {
   );
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState("");
-  const [defaultsLoaded, setDefaultsLoaded] = useState(false);
   const [usingServerKey, setUsingServerKey] = useState(false);
+  const [defaultsErr, setDefaultsErr] = useState("");
+  const [loadingDefaults, setLoadingDefaults] = useState(false);
 
-  // Auto-preenche URL + API-key + instance assim que o usuário escolhe
-  // Evolution (ou já abre o modal num canal Evolution). A key vem do
-  // backend (.env EVOLUTION_API_KEY) — evita o operador colar manualmente.
-  React.useEffect(() => {
-    if (provider !== "evolution" || defaultsLoaded) return;
-    let cancelled = false;
-    (async () => {
-      try {
-        const d = await api.waChannelEvolutionDefaults();
-        if (cancelled) return;
-        if (d?.evolution_url && !evoUrl) setEvoUrl(d.evolution_url);
-        if (d?.evolution_api_key && !evoKey) {
-          setEvoKey(d.evolution_api_key);
-          setUsingServerKey(true);
-        }
-        if (!evoInstance) setEvoInstance(channel?.id || "channel-1");
-      } catch (_) {
-        // sem defaults — usuário preenche manual
-      } finally {
-        if (!cancelled) setDefaultsLoaded(true);
+  // Carrega defaults do servidor (URL + API key do .env). Sempre que o
+  // usuário cair em provider=evolution. Sobrescreve campos vazios; mantém
+  // o que o usuário já digitou. Falhas viram mensagem visível + botão
+  // "Recarregar" pra retry — silenciar isso quebrou a UX no ambiente
+  // do CEO (17/02/2026).
+  const fetchDefaults = useCallback(async (force = false) => {
+    setLoadingDefaults(true);
+    setDefaultsErr("");
+    try {
+      const d = await api.waChannelEvolutionDefaults();
+      if (d?.evolution_url && (force || !evoUrl)) setEvoUrl(d.evolution_url);
+      if (d?.evolution_api_key && (force || !evoKey)) {
+        setEvoKey(d.evolution_api_key);
+        setUsingServerKey(true);
       }
-    })();
-    return () => { cancelled = true; };
+      if (force || !evoInstance) {
+        setEvoInstance(
+          channel?.evolution_instance
+          || channel?.evolution_instance_name
+          || channel?.id
+          || ""
+        );
+      }
+      if (!d?.evolution_url && !d?.evolution_api_key) {
+        setDefaultsErr(
+          "O servidor não tem EVOLUTION_URL/EVOLUTION_API_KEY no .env — preencha manual."
+        );
+      }
+    } catch (e) {
+      setDefaultsErr(
+        e?.response?.data?.detail
+        || e?.message
+        || "Falha ao buscar defaults do servidor. Sua sessão pode ter expirado."
+      );
+    } finally {
+      setLoadingDefaults(false);
+    }
+  }, [channel, evoUrl, evoKey, evoInstance]);
+
+  React.useEffect(() => {
+    if (provider !== "evolution") return;
+    fetchDefaults(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [provider]);
 
@@ -744,6 +764,39 @@ function ProviderModal({ channel, onClose, onSaved }) {
 
         {provider === "evolution" && (
           <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 6 }}>
+            <div data-testid="provider-evolution-defaults-bar" style={{
+              display: "flex", alignItems: "center", justifyContent: "space-between",
+              gap: 10, padding: "8px 10px", borderRadius: 8,
+              background: defaultsErr ? "#fef2f2" : "#ecfeff",
+              border: `1px solid ${defaultsErr ? "#fecaca" : "#a5f3fc"}`,
+              fontSize: 11,
+            }}>
+              <span style={{
+                color: defaultsErr ? "#b91c1c" : "#0e7490",
+                lineHeight: 1.35, flex: 1,
+              }}>
+                {loadingDefaults
+                  ? "Carregando defaults do servidor…"
+                  : defaultsErr
+                    ? defaultsErr
+                    : "Defaults do servidor carregados (EVOLUTION_URL + API_KEY do .env)."}
+              </span>
+              <button
+                data-testid="provider-evolution-reload-defaults"
+                onClick={() => fetchDefaults(true)}
+                disabled={loadingDefaults}
+                style={{
+                  padding: "4px 10px",
+                  background: defaultsErr ? "#fee2e2" : "white",
+                  color: defaultsErr ? "#b91c1c" : "#0e7490",
+                  border: `1px solid ${defaultsErr ? "#fca5a5" : "#a5f3fc"}`,
+                  borderRadius: 6, cursor: loadingDefaults ? "wait" : "pointer",
+                  fontSize: 11, fontWeight: 700, whiteSpace: "nowrap",
+                }}
+              >
+                {loadingDefaults ? "…" : "Recarregar"}
+              </button>
+            </div>
             <label style={{ fontSize: 12, fontWeight: 700, color: "#475569" }}>
               URL Evolution API
               <input
