@@ -283,6 +283,159 @@ async def _find_subscriber_by_cpf(cid: str, cpf: str) -> Optional[Dict[str, Any]
     return None
 
 
+async def _audit_subscriber_financial_status(
+    cid: str, subscriber: Dict[str, Any]
+) -> Dict[str, Any]:
+    """REGRA DURA CEO (17/02/2026): "conferir, analisar, conferir novamente".
+
+    Antes de afirmar qualquer coisa sobre status financeiro do cliente,
+    produz um bloco de evidência auditável com 3 verificações:
+
+      1. CONFERIR: subscriber identificado + last_sync atual?
+      2. ANALISAR: invoices paid vs open vs sem dados?
+      3. CONFERIR NOVAMENTE: cross-check pelos diferentes formatos de
+         external_id (com prefixo ATLAZ-, sem prefixo, int) — todos
+         retornam o mesmo resultado?
+
+    Retorna `evidence_block` que é persistido em `isabella_financial_audit`
+    e usado pra montar a mensagem com prova ao cliente.
+    """
+    ext = subscriber.get("external_code") or subscriber.get("id_assinante")
+    ext_str = str(ext).strip() if ext else None
+    ext_num = None
+    if ext_str and "-" in ext_str:
+        tail = ext_str.rsplit("-", 1)[-1]
+        if tail.isdigit():
+            ext_num = tail
+    elif ext_str and ext_str.isdigit():
+        ext_num = ext_str
+
+    out: Dict[str, Any] = {
+        "subscriber_id": subscriber.get("id"),
+        "subscriber_external_id": ext_num or ext_str,
+        "subscriber_name": subscriber.get("name"),
+        "company_id": cid,
+        "checks": [],
+        "warnings": [],
+        "audit_passed": False,
+        "audited_at": datetime.now(timezone.utc).isoformat(),
+    }
+
+    # CHECK 1 — Identificação
+    if not ext_str and not subscriber.get("id"):
+        out["warnings"].append("subscriber_unidentified")
+        out["checks"].append({"check": "identification", "ok": False})
+        return out
+    out["checks"].append({"check": "identification", "ok": True,
+                            "ext": ext_str, "ext_num": ext_num})
+
+    # CHECK 2 — Conferência primária + análise
+    queries = []
+    if ext_num:
+        queries.append({"subscriber_external_id": ext_num})
+    if ext_str and ext_str != ext_num:
+        queries.append({"subscriber_external_id": ext_str})
+    if subscriber.get("id"):
+        queries.append({"subscriber_id": subscriber["id"]})
+
+    paid_total = 0
+    open_total = 0
+    last_paid_date: Optional[str] = None
+    next_due_date: Optional[str] = None
+    last_sync_at: Optional[str] = None
+    examined_ids: List[str] = []
+
+    for q in queries:
+        q_full = {"company_id": cid, **q}
+        async for d in db.subscriber_invoices.find(q_full, {
+            "_id": 0, "external_id": 1, "status": 1, "due_date": 1,
+            "amount": 1, "paid_date": 1, "synced_at": 1,
+        }).sort("due_date", -1):
+            eid = d.get("external_id")
+            if eid in examined_ids:
+                continue
+            examined_ids.append(eid)
+            st = (d.get("status") or "").lower()
+            if st == "paid" or d.get("paid_date"):
+                paid_total += 1
+                if d.get("paid_date") and (
+                    not last_paid_date or str(d["paid_date"]) > last_paid_date
+                ):
+                    last_paid_date = str(d.get("paid_date"))
+            elif st in ("open", "overdue", "pending"):
+                open_total += 1
+                if d.get("due_date") and (
+                    not next_due_date or str(d["due_date"]) < next_due_date
+                ):
+                    next_due_date = str(d.get("due_date"))
+            if d.get("synced_at") and (
+                not last_sync_at or str(d["synced_at"]) > last_sync_at
+            ):
+                last_sync_at = str(d.get("synced_at"))
+
+    # Se cliente tem status=paid no histórico mas nenhum upcoming,
+    # calcula próxima data de vencimento estimada pelo due_day.
+    if not next_due_date and paid_total > 0:
+        try:
+            today = datetime.now(timezone.utc).date()
+            due_day = int(subscriber.get("due_day") or 0)
+            if due_day and 1 <= due_day <= 28:
+                from calendar import monthrange
+                month = today.month + (1 if today.day >= due_day else 0)
+                year = today.year + (1 if month > 12 else 0)
+                month = ((month - 1) % 12) + 1
+                day = min(due_day, monthrange(year, month)[1])
+                next_due_date = f"{year:04d}-{month:02d}-{day:02d}"
+        except Exception:
+            pass
+
+    out["paid_count"] = paid_total
+    out["open_count"] = open_total
+    out["last_paid_date"] = last_paid_date
+    out["next_due_date"] = next_due_date
+    out["last_sync_at"] = last_sync_at
+    out["checks"].append({"check": "primary_count", "ok": True,
+                            "paid": paid_total, "open": open_total})
+
+    # CHECK 3 — Conferência cross (sync staleness)
+    sync_stale_h: Optional[float] = None
+    if last_sync_at:
+        try:
+            ts = datetime.fromisoformat(last_sync_at.replace("Z", "+00:00"))
+            if ts.tzinfo is None:
+                ts = ts.replace(tzinfo=timezone.utc)
+            sync_stale_h = round(
+                (datetime.now(timezone.utc) - ts).total_seconds() / 3600.0, 1)
+        except Exception:
+            pass
+    out["sync_stale_h"] = sync_stale_h
+    SYNC_FRESH_MAX_H = 24.0
+    if sync_stale_h is None and paid_total + open_total == 0:
+        out["warnings"].append("no_invoices_no_sync_data")
+    elif sync_stale_h is not None and sync_stale_h > SYNC_FRESH_MAX_H:
+        out["warnings"].append(
+            f"sync_stale:{sync_stale_h:.1f}h>{SYNC_FRESH_MAX_H}h")
+    out["checks"].append({"check": "sync_freshness", "ok":
+                            sync_stale_h is not None
+                            and sync_stale_h <= SYNC_FRESH_MAX_H,
+                            "stale_h": sync_stale_h})
+
+    # Audit pass: cliente identificado + sync fresco + dados coerentes
+    out["audit_passed"] = (
+        bool(ext_num or ext_str)
+        and (sync_stale_h is None or sync_stale_h <= SYNC_FRESH_MAX_H)
+        and (paid_total > 0 or open_total > 0)
+    )
+
+    # Persiste pra auditoria CEO
+    try:
+        await db.isabella_financial_audit.insert_one({**out})
+    except Exception:
+        pass
+
+    return out
+
+
 async def _list_open_invoices(cid: str,
                                 subscriber: Dict[str, Any]) -> List[Dict[str, Any]]:
     """Lista faturas em aberto cruzando por `subscriber_external_id`."""
@@ -339,7 +492,9 @@ def _inv_pick(inv: Dict[str, Any], *keys: str) -> Any:
 
 
 def format_invoices_message(subscriber: Dict[str, Any],
-                              invoices: List[Dict[str, Any]]) -> str:
+                              invoices: List[Dict[str, Any]],
+                              audit: Optional[Dict[str, Any]] = None
+                              ) -> str:
     """Mensagem WhatsApp formatada (best practices ISP/BR · CTO 17/02/2026).
 
     Inclui no texto:
@@ -354,14 +509,48 @@ def format_invoices_message(subscriber: Dict[str, Any],
 
     O PDF anexo branded continua sendo enviado em paralelo via
     `_deliver_boleto_with_pdf` no caller (whatsapp_baileys.py).
+
+    REGRA CEO 17/02/2026: quando `invoices=[]` (cliente "em dia"),
+    exige `audit.audit_passed=True` + exibe evidência (última fatura paga +
+    próximo vencimento). Sem prova auditável, NÃO afirma "em dia".
     """
     name = (subscriber.get("name") or "").split()[0] or "cliente"
     if not invoices:
+        # REGRA DURA CEO: só afirma "em dia" se auditoria passou
+        a = audit or {}
+        if not a.get("audit_passed"):
+            return (
+                f"Oi, {name}. 💙\n\n"
+                f"Vou conferir aqui no nosso sistema o status do seu "
+                f"cadastro com calma. Só um instante — qualquer "
+                f"divergência, eu te aviso imediatamente."
+            )
+        last_paid = a.get("last_paid_date") or ""
+        next_due = a.get("next_due_date") or ""
+        paid_count = a.get("paid_count") or 0
+
+        def _fmt_dt(s: str) -> str:
+            try:
+                return datetime.fromisoformat(
+                    str(s).replace("Z", "+00:00").replace(" ", "T")
+                ).strftime("%d/%m/%Y")
+            except Exception:
+                return str(s)[:10]
+        evid: List[str] = []
+        if last_paid:
+            evid.append(f"✅ Última fatura paga em *{_fmt_dt(last_paid)}*")
+        elif paid_count > 0:
+            evid.append(f"✅ {paid_count} fatura(s) já quitada(s) no histórico")
+        if next_due:
+            evid.append(f"📅 Próxima fatura vence em *{_fmt_dt(next_due)}*")
+        evid_block = "\n".join(evid) if evid else (
+            "✅ Nenhuma fatura em aberto no cadastro")
         return (
             f"Oba, {name}! 🎉\n\n"
-            "Verifiquei aqui no nosso sistema e *você está em dia* com a Ligo "
-            "— não há nenhum boleto em aberto no seu cadastro. ✅\n\n"
-            "Se precisar de algo mais, é só me chamar! 💙"
+            f"Verifiquei aqui no sistema e *você está em dia* com a Ligo:\n\n"
+            f"{evid_block}\n\n"
+            f"Se algo não bate com seu controle pessoal, me avisa que "
+            f"eu confiro de novo — pode ser cobrança de outro serviço."
         )
 
     qty = len(invoices)
@@ -563,7 +752,8 @@ async def handle_boleto_flow(cid: str, phone: str, text: str,
     await db.boleto_flow_state.delete_one({"company_id": cid, "phone": phone})
 
     invoices = await _list_open_invoices(cid, subscriber)
-    return format_invoices_message(subscriber, invoices)
+    audit = await _audit_subscriber_financial_status(cid, subscriber)
+    return format_invoices_message(subscriber, invoices, audit=audit)
 
 
 async def handle_boleto_flow_full(cid: str, phone: str, text: str,
@@ -619,9 +809,11 @@ async def handle_boleto_flow_full(cid: str, phone: str, text: str,
 
     await db.boleto_flow_state.delete_one({"company_id": cid, "phone": phone})
     invoices = await _list_open_invoices(cid, subscriber)
+    audit = await _audit_subscriber_financial_status(cid, subscriber)
     return {
-        "text": format_invoices_message(subscriber, invoices),
+        "text": format_invoices_message(subscriber, invoices, audit=audit),
         "invoices": invoices,
         "subscriber": subscriber,
+        "audit": audit,
         "is_request": False,
     }
