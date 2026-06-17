@@ -34,42 +34,27 @@ _EMOJI_DUP = re.compile(r"([\U0001F600-\U0001F9FF\u2600-\u27BF])\1+")
 # Greeting saturation ("Oi Pamela! Pamela, ... Pamela ...")
 _NAME_GREETING_RX = re.compile(
     r"^(oi|olá|ola|opa)\s+([A-ZÁÉÍÓÚ][\w]+)[!,.\s]+", re.IGNORECASE)
-# Aspas envolventes: a Isabella é instruída no prompt a produzir bolhas
-# entre aspas duplas (`"texto."`), mas o cliente NUNCA pode ver as aspas.
-# Cobre regular ("..."), smart quotes (“...”) e single quotes ('...').
-_WRAP_QUOTES_RX = re.compile(
-    r'^[\s]*[\"“”\'`]+\s*(.*?)\s*[\"“”\'`]+[\s]*$', re.DOTALL)
-
-
-def _strip_wrapping_quotes(text: str) -> str:
-    """Remove aspas envolventes de UMA linha/bolha. Idempotente.
-
-    Roda em loop pra cobrir aspas duplicadas (`""texto""`) que algumas
-    versões do LLM produzem quando confunde o formato do prompt.
-    """
-    s = (text or "").strip()
-    for _ in range(3):  # cap 3 iterações pra evitar runaway
-        m = _WRAP_QUOTES_RX.match(s)
-        if not m:
-            break
-        inner = (m.group(1) or "").strip()
-        if not inner or inner == s:
-            break
-        s = inner
-    return s
+# P0 CTO 17/02/2026: aspas duplas como separador de bolha.
+# Quando o LLM produz `"bolha1." "" "bolha2." "" "bolha3."` (sem \n),
+# CADA aspa dupla é convertida em quebra de linha. O LLM raramente usa
+# aspas como CITAÇÃO REAL em WhatsApp; quando usa, a perda é aceitável
+# vs o bug atual de aspas saindo brutas pro cliente.
+# Cobre regular ("), smart (“ ”), single (‘ ’) e backtick (`).
+_ALL_QUOTES_RX = re.compile(r'[\"“”\'`]')
 
 
 def _clean(text: str) -> str:
     text = (text or "").strip()
+    # P0 CTO 17/02/2026: converte TODA aspa em \n. O LLM usa aspas como
+    # separador de bolha no formato `"bolha1" "" "bolha2"` mesmo após
+    # prompt atualizado. Tratamos aspas como separadores hard. Aspas de
+    # citação real (raras em WhatsApp) são sacrificadas.
+    text = _ALL_QUOTES_RX.sub("\n", text)
     text = _NL_RX.sub("\n", text)
-    # P0 CTO 17/02/2026: remove aspas envolventes por linha. O prompt da
-    # Isabella instrui formato `"bolha."` por linha. Aspas NÃO podem chegar
-    # ao cliente. Idempotente quando aspas ausentes.
-    lines = [l.strip() for l in text.split("\n")]
-    lines = [_strip_wrapping_quotes(l) for l in lines if l]
-    text = "\n".join(lines)
     text = _EMOJI_DUP.sub(r"\1", text)
-    text = _TRIPLE_SPACE.sub(" ", text)
+    # Triple space colapsa SÓ dentro da linha — não toca \n
+    lines = [_TRIPLE_SPACE.sub(" ", l).strip() for l in text.split("\n")]
+    text = "\n".join(l for l in lines if l)
     return text.strip()
 
 
