@@ -27,6 +27,7 @@ from fastapi import APIRouter, Depends, Query
 from core import require_role
 from database import db
 from services import isabella_learning, isabella_outcome_recorder
+from services import opportunity_executor
 
 router = APIRouter(prefix="/api/isabella/learning-health",
                    tags=["isabella-learning-health"])
@@ -156,3 +157,102 @@ async def recent_outcomes(
     docs = await db.isabella_outcomes.find(q, {"_id": 0}) \
         .sort("created_at", -1).limit(limit).to_list(limit)
     return {"ok": True, "items": docs}
+
+
+# ═════════════ SPRINT B — Pipeline & Execution ═════════════
+
+
+@router.get("/pipeline")
+async def pipeline_state(
+    user: Dict[str, Any] = Depends(
+        require_role("gestor", "administrador", "auditor")),
+) -> Dict[str, Any]:
+    """Snapshot do funil commander → executor. Por status + por type."""
+    cid = _company_of(user)
+    since = _iso_24h_ago()
+    # Status global
+    pipe = [
+        {"$match": {"company_id": cid}},
+        {"$group": {"_id": "$status", "n": {"$sum": 1}}},
+    ]
+    rows = await db.isabella_commander_opportunities.aggregate(
+        pipe).to_list(20)
+    by_status = {r["_id"] or "<none>": r["n"] for r in rows}
+    # 24h
+    pipe24 = [
+        {"$match": {"company_id": cid, "created_at": {"$gte": since}}},
+        {"$group": {"_id": "$status", "n": {"$sum": 1}}},
+    ]
+    rows24 = await db.isabella_commander_opportunities.aggregate(
+        pipe24).to_list(20)
+    by_status_24h = {r["_id"] or "<none>": r["n"] for r in rows24}
+    # Executions 24h
+    n_exec_24h = await db.opportunity_executor_audit.count_documents(
+        {"company_id": cid, "created_at": {"$gte": since}})
+    n_exec_ok_24h = await db.opportunity_executor_audit.count_documents(
+        {"company_id": cid, "created_at": {"$gte": since},
+         "result_ok": True})
+    n_awaiting = await db.isabella_commander_opportunities.count_documents(
+        {"company_id": cid, "status": "pending",
+         "awaiting_approval_since": {"$exists": True}})
+    return {
+        "ok": True,
+        "all_time_by_status": by_status,
+        "last_24h_by_status": by_status_24h,
+        "executions_24h": n_exec_24h,
+        "executions_ok_24h": n_exec_ok_24h,
+        "exec_success_rate_24h": round(
+            (n_exec_ok_24h / n_exec_24h * 100.0) if n_exec_24h else 0.0,
+            2),
+        "awaiting_approval": n_awaiting,
+        "dry_run": opportunity_executor._is_dry_run(),
+    }
+
+
+@router.post("/execute")
+async def trigger_execute(
+    opp_id: Optional[str] = Query(None,
+                                    description="Executa 1 opp específica"),
+    limit: int = Query(5, ge=1, le=50,
+                         description="Cap pra drenagem batch"),
+    user: Dict[str, Any] = Depends(
+        require_role("gestor", "administrador")),
+) -> Dict[str, Any]:
+    cid = _company_of(user)
+    if opp_id:
+        opp = await db.isabella_commander_opportunities.find_one(
+            {"id": opp_id, "company_id": cid}, {"_id": 0})
+        if not opp:
+            return {"ok": False, "reason": "opp_not_found",
+                    "opp_id": opp_id}
+        r = await opportunity_executor.execute_opportunity(opp)
+        return {"ok": True, "opp_id": opp_id, "result": r}
+    r = await opportunity_executor.drain_pending(
+        company_id=cid, limit=limit)
+    return r
+
+
+@router.post("/approve")
+async def approve_opportunity(
+    opp_id: str = Query(..., description="opp a aprovar"),
+    execute_now: bool = Query(True,
+                                description="Executa imediatamente após approve"),
+    user: Dict[str, Any] = Depends(
+        require_role("gestor", "administrador")),
+) -> Dict[str, Any]:
+    cid = _company_of(user)
+    now = datetime.now(timezone.utc).isoformat()
+    upd = await db.isabella_commander_opportunities.update_one(
+        {"id": opp_id, "company_id": cid,
+         "status": {"$nin": ["executed", "dismissed"]}},
+        {"$set": {"status": "approved", "approved_at": now,
+                   "approved_by": user.get("email") or user.get("id")}})
+    if not upd.modified_count:
+        return {"ok": False, "reason": "opp_not_found_or_already_handled"}
+    if not execute_now:
+        return {"ok": True, "approved": True, "executed": False}
+    opp = await db.isabella_commander_opportunities.find_one(
+        {"id": opp_id, "company_id": cid}, {"_id": 0})
+    r = await opportunity_executor.execute_opportunity(opp)
+    return {"ok": True, "approved": True, "executed": r.get("ok"),
+            "result": r}

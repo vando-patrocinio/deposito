@@ -823,6 +823,16 @@ async def _startup() -> None:
         except Exception as e:
             logger.warning("[startup] isabella_outcome_recorder falhou: %r",
                            e)
+        # SPRINT B CEO 17/02/2026 — Opportunity Executor: bridge entre
+        # commanders_worker e ação real. Drena `pending` sem
+        # `requires_approval` em ciclos de 10min, cap 20/tick.
+        # Kill switch: OPPORTUNITY_EXECUTOR_DRY_RUN=1
+        #              OPPORTUNITY_EXECUTOR_DISABLED=1
+        try:
+            from services import opportunity_executor as _oxe
+            _oxe.register_scheduler(scheduler)
+        except Exception as e:
+            logger.warning("[startup] opportunity_executor falhou: %r", e)
         scheduler.add_job(holidays_refresh_job, CronTrigger(day="1", hour=3, minute=0),
                           id="holidays_refresh", replace_existing=True)
         # iter241 — Snapshot diário do President Score às 03:00
