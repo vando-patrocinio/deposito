@@ -813,6 +813,16 @@ async def _startup() -> None:
             _waw.register_scheduler(scheduler)
         except Exception as e:
             logger.warning("[startup] wa_sidecar_watchdog falhou: %r", e)
+        # SPRINT A CEO 17/02/2026 — Outcome Recorder: fecha o learning
+        # loop classificando opportunities `expired` em
+        # success/failure/partial/unknown a partir de SINAIS REAIS no DB
+        # e ajusta os pesos do motor `isabella_playbook_weights`.
+        try:
+            from services import isabella_outcome_recorder as _ior
+            _ior.register_scheduler(scheduler)
+        except Exception as e:
+            logger.warning("[startup] isabella_outcome_recorder falhou: %r",
+                           e)
         scheduler.add_job(holidays_refresh_job, CronTrigger(day="1", hour=3, minute=0),
                           id="holidays_refresh", replace_existing=True)
         # iter241 — Snapshot diário do President Score às 03:00
@@ -1504,6 +1514,8 @@ from routes import wa_retry_failed as routes_wa_retry_failed  # noqa: E402
 app.include_router(routes_wa_retry_failed.router)
 from routes import wa_watchdog as routes_wa_watchdog  # noqa: E402
 app.include_router(routes_wa_watchdog.router)
+from routes import isabella_learning_health as routes_isabella_lh  # noqa: E402
+app.include_router(routes_isabella_lh.router)
 
 
 # ============================================================
