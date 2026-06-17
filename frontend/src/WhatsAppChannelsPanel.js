@@ -474,6 +474,34 @@ function ProviderModal({ channel, onClose, onSaved }) {
   const [evoInstance, setEvoInstance] = useState(channel?.evolution_instance_name || channel?.id || "");
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState("");
+  const [defaultsLoaded, setDefaultsLoaded] = useState(false);
+  const [usingServerKey, setUsingServerKey] = useState(false);
+
+  // Auto-preenche URL + API-key + instance assim que o usuário escolhe
+  // Evolution (ou já abre o modal num canal Evolution). A key vem do
+  // backend (.env EVOLUTION_API_KEY) — evita o operador colar manualmente.
+  React.useEffect(() => {
+    if (provider !== "evolution" || defaultsLoaded) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const d = await api.waChannelEvolutionDefaults();
+        if (cancelled) return;
+        if (d?.evolution_url && !evoUrl) setEvoUrl(d.evolution_url);
+        if (d?.evolution_api_key && !evoKey) {
+          setEvoKey(d.evolution_api_key);
+          setUsingServerKey(true);
+        }
+        if (!evoInstance) setEvoInstance(channel?.id || "channel-1");
+      } catch (_) {
+        // sem defaults — usuário preenche manual
+      } finally {
+        if (!cancelled) setDefaultsLoaded(true);
+      }
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [provider]);
 
   const handleSave = async () => {
     setSaving(true); setErr("");
@@ -561,14 +589,21 @@ function ProviderModal({ channel, onClose, onSaved }) {
               <input
                 data-testid="provider-evolution-key"
                 value={evoKey}
-                onChange={(e) => setEvoKey(e.target.value)}
+                onChange={(e) => { setEvoKey(e.target.value); setUsingServerKey(false); }}
                 placeholder={channel?.evolution_api_key_masked
                   ? `(atual: ${channel.evolution_api_key_masked}) — cole nova chave pra trocar`
                   : "cole a AUTHENTICATION_API_KEY do container Evolution"}
                 type="password"
-                style={{ width: "100%", padding: "8px 10px", border: "1px solid #cbd5e1",
-                          borderRadius: 8, marginTop: 4, fontSize: 13, fontFamily: "monospace" }}
+                style={{ width: "100%", padding: "8px 10px",
+                          border: `1px solid ${usingServerKey ? "#10b981" : "#cbd5e1"}`,
+                          borderRadius: 8, marginTop: 4, fontSize: 13, fontFamily: "monospace",
+                          background: usingServerKey ? "#ecfdf5" : "white" }}
               />
+              {usingServerKey && (
+                <div style={{ fontSize: 11, color: "#047857", marginTop: 4, fontWeight: 600 }}>
+                  ✓ Preenchido automaticamente do servidor (EVOLUTION_API_KEY)
+                </div>
+              )}
             </label>
             <label style={{ fontSize: 12, fontWeight: 700, color: "#475569" }}>
               Nome da instance

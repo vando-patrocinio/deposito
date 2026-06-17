@@ -238,6 +238,81 @@ async def check_connection_for_phone(
     except Exception as e:
         logger.info("[subscriber_connection] save equipment falhou: %s", e)
 
+    # ── P0 CEO 17/02/2026 — CLAIM TECHNICAL ─────────────────
+    # Antes de retornar, gera claim auditável. A Isabella só pode
+    # afirmar "online" / "sinal X" se `audit_passed=True`.
+    def _parse_signal_dbm(s: Any) -> Optional[float]:
+        """signal_1310 vem como string `'-22.4 dBm'` ou número ou None."""
+        if s is None or s == "":
+            return None
+        try:
+            import re as _re
+            txt = str(s)
+            m = _re.search(r"-?\d+\.?\d*", txt)
+            return float(m.group(0)) if m else None
+        except Exception:
+            return None
+
+    signal_1310_val = _parse_signal_dbm(onu.get("signal_1310"))
+    signal_1490_val = _parse_signal_dbm(onu.get("signal_1490"))
+    rx_in_range = (
+        signal_1310_val is not None
+        and -30.0 <= signal_1310_val <= -8.0
+    )
+    olt_reachable = bool(onu and onu.get("status") is not None)
+    SNAPSHOT_MAX_H = 24.0
+    snapshot_fresh = (
+        minutes_since is not None
+        and minutes_since / 60.0 <= SNAPSHOT_MAX_H
+    )
+    tech_checks = [
+        {"name": "olt_reachable", "ok": olt_reachable,
+         "onu_name": onu.get("name")},
+        {"name": "rx_power_in_range",
+         "ok": rx_in_range or status_raw.lower() == "los",
+         "rx_dbm_1310": signal_1310_val,
+         "rx_dbm_1490": signal_1490_val,
+         "range": "[-30, -8] dBm"},
+        {"name": "snapshot_fresh",
+         "ok": snapshot_fresh if minutes_since is not None else True,
+         "minutes_since_change": minutes_since,
+         "max_h": SNAPSHOT_MAX_H},
+    ]
+    tech_warnings: List[str] = []
+    if not olt_reachable:
+        tech_warnings.append("olt_snapshot_missing")
+    if signal_1310_val is None and status_raw.lower() != "los":
+        tech_warnings.append("signal_1310_missing")
+    if (minutes_since is not None
+            and minutes_since / 60.0 > SNAPSHOT_MAX_H):
+        tech_warnings.append(
+            f"snapshot_stale:{minutes_since/60.0:.1f}h>{SNAPSHOT_MAX_H}h")
+
+    tech_evidence = {
+        "onu_sn": onu_sn,
+        "onu_status_raw": status_raw,
+        "connected": connected,
+        "signal_1310_dbm": signal_1310_val,
+        "signal_1490_dbm": signal_1490_val,
+        "olt_name": onu.get("olt_name"),
+        "minutes_since_change": minutes_since,
+    }
+    tech_claim_id: Optional[str] = None
+    try:
+        from services import isabella_factual_claims as _fc
+        tech_claim = await _fc.claim(
+            domain=_fc.ClaimDomain.TECHNICAL,
+            entity_type="onu",
+            entity_id=onu_sn or onu_id_val,
+            company_id=company_id,
+            checks=tech_checks,
+            warnings=tech_warnings,
+            evidence=tech_evidence,
+        )
+        tech_claim_id = tech_claim.get("id")
+    except Exception as e:  # noqa: BLE001
+        logger.exception("[subscriber_connection] tech claim exc: %s", e)
+
     return {
         "found": True,
         "subscriber_name": sub.get("name"),
@@ -268,6 +343,11 @@ async def check_connection_for_phone(
         "onu_id": onu_id_val,
         "onu_sn": onu_sn,
         "onu_model": onu_model,
+        "tech_audit_passed": (
+            len(tech_warnings) == 0
+            and all(c.get("ok") for c in tech_checks)),
+        "tech_evidence_id": tech_claim_id,
+        "tech_warnings": tech_warnings,
     }
 
 
@@ -394,8 +474,31 @@ def format_for_prompt(info: Dict[str, Any]) -> str:
         if status.lower() != "online":
             last_info = last_info.replace("ONLINE HÁ", "Caiu há")
 
+    # P0 CEO 17/02/2026 — REGRA DURA: se claim TECHNICAL não passou,
+    # injeta bloco TECNICO_NAO_AUDITAVEL e proíbe Isabella de afirmar
+    # status técnico ao cliente.
+    audit_passed = info.get("tech_audit_passed", True)
+    audit_warns = info.get("tech_warnings") or []
+    evid_id = info.get("tech_evidence_id") or "—"
+
+    if not audit_passed:
+        return (
+            "=== VERIFICAÇÃO TÉCNICA — AUDITORIA FALHOU ===\n"
+            f"📋 Cliente identificado: {sub_name} · Plano: {plan}\n\n"
+            f"🚫 STATUS TÉCNICO NÃO AUDITÁVEL\n"
+            f"  evidence_id: {evid_id}\n"
+            f"  warnings: {', '.join(audit_warns) or 'multiple'}\n\n"
+            "AÇÃO OBRIGATÓRIA: NÃO afirme nada sobre estado do equipamento, "
+            "potência ótica, online/offline ou sinal. A consulta retornou "
+            "dados incompletos ou desatualizados. Responda apenas:\n"
+            "  → 'Vou conferir essa informação com mais cuidado. Só um instante.'\n"
+            "Em seguida, ROTEIE pra suporte ([ROTEAR_SUPORTE]) que o Álvaro "
+            "consulta direto na OLT em tempo real."
+        )
+
     return (
         "=== VERIFICAÇÃO DA CONEXÃO DO CLIENTE (Motor IA · SmartOLT) ===\n"
+        f"🔒 evidence_id: {evid_id} (auditoria PASSOU)\n"
         "📋 DADOS QUE VOCÊ JÁ TEM SOBRE ESTE CLIENTE (NÃO PEÇA NOVAMENTE):\n"
         f"  {known_data_block}\n\n"
         f"🔌 SITUAÇÃO TÉCNICA AGORA:\n"

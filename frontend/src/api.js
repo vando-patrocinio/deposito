@@ -1108,6 +1108,8 @@ export const api = {
   waChannelSetProvider: (channelId, payload) =>
     client.patch(`/whatsapp-channels/${channelId}/provider`, payload)
       .then((r) => r.data),
+  waChannelEvolutionDefaults: () =>
+    client.get(`/whatsapp-channels/evolution/defaults`).then((r) => r.data),
   waChannelMigrate: (channelId, payload) =>
     client.post(`/whatsapp-channels/${channelId}/migrate`, payload)
       .then((r) => r.data),

@@ -298,6 +298,30 @@ async def make_default_outbound(
     return updated
 
 
+@router.get("/evolution/defaults")
+async def evolution_defaults(
+    user=Depends(require_role("administrador", "gestor", "auditor")),
+):
+    """Retorna os defaults Evolution configurados no servidor (env vars).
+
+    Usado pelo frontend pra auto-preencher o modal de provider quando o
+    operador seleciona "Evolution API" — evita pedir URL/API-key manual
+    quando o container Evolution já está provisionado no backend.
+
+    Só é exposto a usuários com role admin/gestor/auditor (mesma proteção
+    do PATCH /provider) — a API key NÃO é segredo pra esse público (eles
+    já podem gravar ela manualmente via PATCH).
+    """
+    import os
+    url = (os.environ.get("EVOLUTION_URL") or "").rstrip("/")
+    key = os.environ.get("EVOLUTION_API_KEY") or ""
+    return {
+        "evolution_url": url or None,
+        "evolution_api_key": key or None,
+        "has_defaults": bool(url and key),
+    }
+
+
 @router.patch("/{channel_id}/provider")
 async def patch_provider(
     channel_id: str,
