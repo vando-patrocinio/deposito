@@ -28,7 +28,7 @@ MAX_BUBBLES = 4
 # Símbolos que sinalizam quebra natural
 _SENT_RX = re.compile(r"(?<=[\.!\?…])\s+(?=[A-ZÁÉÍÓÚÂÊÔÇ0-9])")
 _NL_RX = re.compile(r"\n+")
-_TRIPLE_SPACE = re.compile(r"\s{2,}")
+_TRIPLE_SPACE = re.compile(r"[ \t]{2,}")
 # Emojis comuns que LLM repete (😊🚀✨🎉)
 _EMOJI_DUP = re.compile(r"([\U0001F600-\U0001F9FF\u2600-\u27BF])\1+")
 # Greeting saturation ("Oi Pamela! Pamela, ... Pamela ...")
@@ -41,18 +41,22 @@ _NAME_GREETING_RX = re.compile(
 # vs o bug atual de aspas saindo brutas pro cliente.
 # Cobre regular ("), smart (“ ”), single (‘ ’) e backtick (`).
 _ALL_QUOTES_RX = re.compile(r'[\"“”\'`]')
+# Sentinela Unit-Separator (U+001F): boundary HARD entre bolhas. Inserida
+# por `_clean()` no lugar de cada aspa. Em `split_into_bubbles`, o texto é
+# fatiado por esse char ANTES do packing — assim 2+ frases curtas vindas
+# de aspas-como-separador permanecem em bolhas independentes.
+_HARD_BOUNDARY = "\x1f"
 
 
 def _clean(text: str) -> str:
     text = (text or "").strip()
-    # P0 CTO 17/02/2026: converte TODA aspa em \n. O LLM usa aspas como
-    # separador de bolha no formato `"bolha1" "" "bolha2"` mesmo após
-    # prompt atualizado. Tratamos aspas como separadores hard. Aspas de
-    # citação real (raras em WhatsApp) são sacrificadas.
-    text = _ALL_QUOTES_RX.sub("\n", text)
+    # P0 CTO 17/02/2026: aspas como separador hard de bolha. Insere
+    # sentinela U+001F (`_HARD_BOUNDARY`) — NÃO \n — pra impedir merge
+    # de frases curtas adjacentes por `_pack_into_bubbles`.
+    text = _ALL_QUOTES_RX.sub(_HARD_BOUNDARY, text)
     text = _NL_RX.sub("\n", text)
     text = _EMOJI_DUP.sub(r"\1", text)
-    # Triple space colapsa SÓ dentro da linha — não toca \n
+    # Colapsa whitespace por linha sem tocar nas sentinelas
     lines = [_TRIPLE_SPACE.sub(" ", l).strip() for l in text.split("\n")]
     text = "\n".join(l for l in lines if l)
     return text.strip()
@@ -223,8 +227,18 @@ def split_into_bubbles(text: str, *,
     MAX_BUBBLE_CHARS = max_bubble_chars
     MAX_BUBBLES = max_bubbles
     try:
-        sents = _split_sentences(text)
-        bubbles = _pack_into_bubbles(sents)
+        # P0 CTO 17/02/2026: respeita hard boundary (`\x1F`) inserido em
+        # `_clean()` no lugar de aspas. Cada bloco é empacotado em bolhas
+        # de forma INDEPENDENTE — assim "Bolha1." \x1F "Bolha2." vira 2
+        # bolhas mesmo com <50 chars cada (sem merge tiny entre blocos).
+        all_bubbles: List[str] = []
+        for block in text.split(_HARD_BOUNDARY):
+            block = block.strip()
+            if not block:
+                continue
+            sents = _split_sentences(block)
+            all_bubbles.extend(_pack_into_bubbles(sents))
+        bubbles = all_bubbles
         bubbles = _suppress_repeated_name(bubbles)
         bubbles = _enforce_single_question(bubbles)
         bubbles = _cap_bubbles(bubbles)
