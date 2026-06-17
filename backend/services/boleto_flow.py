@@ -323,6 +323,21 @@ async def _list_open_invoices(cid: str,
     return result
 
 
+def _inv_pick(inv: Dict[str, Any], *keys: str) -> Any:
+    """Pega 1º valor não-vazio entre N chaves. Procura no nível raiz
+    (schema normalizado por `_norm_invoice` no `atlaz_financeiro.py`)
+    E em `raw.*` (fallback p/ docs antigos). Aceita 0 como vazio."""
+    raw = inv.get("raw") if isinstance(inv.get("raw"), dict) else {}
+    for k in keys:
+        v = inv.get(k)
+        if v not in (None, "", 0, 0.0):
+            return v
+        v = raw.get(k) if raw else None
+        if v not in (None, "", 0, 0.0):
+            return v
+    return None
+
+
 def format_invoices_message(subscriber: Dict[str, Any],
                               invoices: List[Dict[str, Any]]) -> str:
     """Mensagem WhatsApp formatada (best practices ISP/BR · CTO 17/02/2026).
@@ -356,10 +371,10 @@ def format_invoices_message(subscriber: Dict[str, Any],
     has_overdue = False
     max_days_overdue = 0
     for inv in invoices:
-        raw = inv.get("raw") or {}
         try:
-            v_juros = float(raw.get("valor_com_juros") or 0) or float(
-                inv.get("amount") or 0)
+            v_juros = float(_inv_pick(
+                inv, "amount_with_interest", "valor_com_juros") or 0) \
+                or float(inv.get("amount") or 0)
         except (TypeError, ValueError):
             v_juros = float(inv.get("amount") or 0)
         total_atualizado += v_juros
@@ -383,9 +398,9 @@ def format_invoices_message(subscriber: Dict[str, Any],
     parts.append("")
 
     for idx, inv in enumerate(invoices, 1):
-        raw = inv.get("raw") or {}
-        desc = (inv.get("description") or raw.get("descricao")
-                or "Cobrança").strip()
+        desc = (_inv_pick(inv, "description", "descricao")
+                or "Cobrança")
+        desc = str(desc).strip().rstrip("*").strip()  # sanitiza asterisco residual
         valor_original = _format_brl(inv.get("amount"))
         emoji, label = _status_emoji_and_label(inv.get("due_date"))
         venc_date = ""
@@ -404,8 +419,10 @@ def format_invoices_message(subscriber: Dict[str, Any],
             label_full = f" ({label})" if label else ""
             parts.append(f"📅 Vencimento: {venc_date} {emoji}{label_full}")
 
-        # Valor atualizado (juros + multa) quando Atlaz expõe e está vencido
-        v_atualizado = raw.get("valor_com_juros")
+        # Valor atualizado (juros + multa) — Atlaz V2 retorna `amount_with_interest`
+        # (normalizado em `atlaz_financeiro._norm_invoice`).
+        v_atualizado = _inv_pick(inv, "amount_with_interest",
+                                   "valor_com_juros")
         try:
             v_atualizado_f = float(v_atualizado or 0)
             v_original_f = float(inv.get("amount") or 0)
@@ -414,38 +431,44 @@ def format_invoices_message(subscriber: Dict[str, Any],
             v_original_f = 0.0
         if (v_atualizado_f > 0 and v_original_f > 0
                 and abs(v_atualizado_f - v_original_f) > 0.01):
-            multa = raw.get("multa") or 0
-            juros = raw.get("juros") or 0
+            multa = _inv_pick(inv, "fine_value", "multa") or 0
+            juros = _inv_pick(inv, "interest_value", "juros") or 0
             extra = []
             try:
                 if float(multa) > 0:
-                    extra.append(f"multa {float(multa):.2f}%")
+                    extra.append(f"multa R$ {float(multa):.2f}")
             except (TypeError, ValueError):
                 pass
             try:
                 if float(juros) > 0:
-                    extra.append(f"juros {float(juros):.2f}%/mês")
+                    extra.append(f"juros R$ {float(juros):.2f}")
             except (TypeError, ValueError):
                 pass
             suffix = f" ({' + '.join(extra)})" if extra else ""
             parts.append(f"💰 *Valor atualizado: "
                          f"{_format_brl(v_atualizado_f)}*{suffix}")
 
-        link = inv.get("boleto_url") or raw.get("link")
+        link = _inv_pick(inv, "boleto_url", "link")
         if link:
             parts.append("🔗 Boleto online:")
-            parts.append(link)
+            parts.append(str(link))
         ld = _format_linha_digitavel(
-            inv.get("barcode") or raw.get("linha_digitavel"))
+            _inv_pick(inv, "barcode", "linha_digitavel"))
         if ld:
             parts.append("🧾 Linha digitável:")
             parts.append(f"`{ld}`")
-        # PIX copia-e-cola (quando Atlaz expõe)
-        pix_code = (raw.get("pix_copia_cola") or raw.get("pix")
-                    or raw.get("pix_emv") or raw.get("qrcode_pix"))
+        # PIX copia-e-cola — Atlaz V2 retorna `pix_brcode` (normalizado
+        # em `atlaz_financeiro._norm_invoice` com `retornar_pix=1`).
+        pix_code = _inv_pick(inv, "pix_brcode", "pix_copia_cola",
+                              "pix_emv", "pix")
         if pix_code and len(str(pix_code)) > 30:
-            parts.append("⚡ PIX copia-e-cola:")
+            parts.append("⚡ *PIX copia-e-cola:*")
             parts.append(f"`{pix_code}`")
+        # QR Code do PIX (link de imagem) — quando Atlaz expõe
+        pix_qr = _inv_pick(inv, "pix_qrcode_link", "pix_qrcode")
+        if pix_qr and not pix_code:
+            # Só anuncia o QR se NÃO temos o copia-e-cola
+            parts.append(f"📱 QR Code PIX: {pix_qr}")
         parts.append("")
 
     if qty > 1:
