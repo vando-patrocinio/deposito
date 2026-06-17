@@ -141,6 +141,7 @@ async def _agg_patrimony(company_id: str) -> Dict[str, Any]:
 
 async def _agg_alerts(company_id: str) -> Dict[str, Any]:
     """Conta alertas operacionais P0."""
+    from datetime import timedelta
     cutoff_30d = (_now_utc() - timedelta(days=30)).isoformat()
     autosn = await db.stok_onts.count_documents({
         "company_id": company_id,
@@ -155,13 +156,21 @@ async def _agg_alerts(company_id: str) -> Dict[str, Any]:
         "company_id": company_id,
         "valuation_needs_human_review": True,
     })
-    # sem_trilha = ONT existente mas sem nenhum doc em inventory_os_movements_audit
-    # Aproximação: contar ONTs ativas que NÃO têm `valuation_genesis_at` (criadas
-    # antes do hook R1.4) — proxy de "sem trilha de genesis canônica".
+    # Sprint 3.A — separa "Sem Trilha" (sem nenhum tipo de movimento) de
+    # "Trilha Sintética" (backfill Onda 2 aplicado, mas precisa revisão humana).
+    # Hierarquia de classificação:
+    #   sem_trilha:     valuation_genesis_at ausente E não tem synthetic_backfill_applied
+    #   trilha_sintetica: synthetic_backfill_applied=True E synthetic_backfill_needs_review=True
     sem_trilha = await db.stok_onts.count_documents({
         "company_id": company_id,
         "location_type": {"$in": ["empresa", "tecnico", "cliente"]},
         "valuation_genesis_at": {"$exists": False},
+        "synthetic_backfill_applied": {"$ne": True},
+    })
+    trilha_sintetica = await db.stok_onts.count_documents({
+        "company_id": company_id,
+        "synthetic_backfill_applied": True,
+        "synthetic_backfill_needs_review": True,
     })
     reconciliacoes_30d = await db.inventory_os_movements_audit.count_documents({
         "company_id": company_id,
@@ -181,9 +190,11 @@ async def _agg_alerts(company_id: str) -> Dict[str, Any]:
         "autosn": autosn,
         "needs_review": needs_review,
         "sem_trilha": sem_trilha,
+        "trilha_sintetica": trilha_sintetica,
         "reconciliacoes_30d": reconciliacoes_30d,
         "duplicadas": duplicadas,
-        "total": autosn + needs_review + sem_trilha + reconciliacoes_30d + duplicadas,
+        "total": (autosn + needs_review + sem_trilha + trilha_sintetica
+                   + reconciliacoes_30d + duplicadas),
     }
 
 

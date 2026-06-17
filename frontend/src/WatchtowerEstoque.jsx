@@ -37,7 +37,8 @@ const LOCATION_META = {
 const ALERT_META = {
   autosn: { label: "AUTOSN", desc: "MAC/SN auto-gerados", color: "border-amber-500/40 bg-amber-500/10" },
   needs_review: { label: "Needs Review", desc: "Valuation precisa revisão humana", color: "border-rose-500/40 bg-rose-500/10" },
-  sem_trilha: { label: "Sem Trilha", desc: "ONTs sem genesis canônico (pré-R1.4)", color: "border-slate-500/40 bg-slate-500/10" },
+  sem_trilha: { label: "Sem Trilha", desc: "ONTs sem genesis canônico nem sintético", color: "border-slate-500/40 bg-slate-500/10" },
+  trilha_sintetica: { label: "Trilha Sintética · Revisar", desc: "Backfill Onda 2 sem source identificado", color: "border-violet-500/40 bg-violet-500/10" },
   reconciliacoes_30d: { label: "Reconciliações 30d", desc: "Correções SmartOLT (cadastro)", color: "border-sky-500/40 bg-sky-500/10" },
   duplicadas: { label: "Duplicadas", desc: "Mesma MAC em múltiplos docs", color: "border-rose-600/40 bg-rose-600/10" },
 };
@@ -283,7 +284,7 @@ export default function WatchtowerEstoque() {
             <div className="text-2xl font-bold text-amber-300 tabular-nums" data-testid="alertas-total">{fmtInt(a.total)}</div>
           </div>
           <div className="space-y-2.5">
-            {["autosn", "needs_review", "sem_trilha", "reconciliacoes_30d", "duplicadas"].map((k) => {
+            {["autosn", "needs_review", "sem_trilha", "trilha_sintetica", "reconciliacoes_30d", "duplicadas"].map((k) => {
               const meta = ALERT_META[k];
               const v = a[k] || 0;
               return (

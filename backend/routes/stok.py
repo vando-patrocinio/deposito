@@ -1611,19 +1611,49 @@ async def _move_ont_for_install(company_id: str, service: dict, mac_input: Optio
 
     # Caso 1: SmartOLT tem MAC e bate → instala normalmente
     if smart_mac_n and smart_mac_n == mac_n:
-        await db.stok_onts.update_one(
-            {"company_id": company_id, "mac": mac_n},
-            {"$set": {"location_type": "cliente",
-                       "location_id": service["client_id"],
-                       "client_name": service["client_name"],
-                       "status": "instalada",
-                       "installed_at": now_iso(),
-                       "installed_by_id": service.get("technician_id"),
-                       "installed_by_name": installer_name,
-                       "installed_by_email": installer_email,
-                       "installed_via_ticket": service.get("ticket_id"),
-                       "installed_via_service": service.get("id")}},
+        # Sprint 3.B.1 — refactor para passar por transfer_engine.execute_transfer
+        # (chokepoint canônico tecnico→cliente). Substitui update_one direto.
+        from services.transfer_engine import (
+            execute_transfer, TransferEngineError,
         )
+        try:
+            await execute_transfer(
+                company_id=company_id,
+                origin_type="tecnico",
+                origin_id=service["technician_id"],
+                destination_type="cliente",
+                destination_id=service["client_id"],
+                actor={"id": service.get("technician_id"),
+                        "email": installer_email,
+                        "name": installer_name,
+                        "role": "tecnico",
+                        "origin": "ai_scan_install",
+                        "client_name": service.get("client_name"),
+                        "physical_attendance": True},
+                reason={
+                    "code": "Instalação OS",
+                    "details": (
+                        f"OS {service.get('ticket_id') or service.get('id')}"
+                        f" finalizada · SmartOLT confirma ONT ativa "
+                        f"({smart_mac_n}). Origem: ai_scan_install."
+                    ),
+                },
+                mac=mac_n,
+                ticket_id=service.get("ticket_id"),
+                extra_set_fields={
+                    "installed_at": now_iso(),
+                    "installed_by_id": service.get("technician_id"),
+                    "installed_by_name": installer_name,
+                    "installed_by_email": installer_email,
+                    "installed_via_ticket": service.get("ticket_id"),
+                    "installed_via_service": service.get("id"),
+                },
+            )
+        except TransferEngineError as e:
+            raise HTTPException(400, {
+                "error": "transfer_blocked",
+                "message": str(e),
+            })
         # iter163 — registra evento de instalação por cliente
         await ceh.log_event(
             company_id=company_id,
@@ -1804,59 +1834,72 @@ async def _move_ont_for_withdraw(company_id: str, service: dict, tech_name: str,
     # A partir daqui temos `ont` carregada. Garante `mac_n` setado.
     if not mac_n:
         mac_n = ont.get("mac")
-    if ont["location_type"] != "cliente" or ont["location_id"] != service["client_id"]:
-        # Caso inconsistente: força a baixa pro técnico mesmo assim
-        # (a foto + IA é prova auditável); marca o desvio em notes
-        await db.stok_onts.update_one(
-            {"company_id": company_id, "mac": mac_n},
-            {"$set": {"location_type": "tecnico",
-                       "location_id": service["technician_id"],
-                       "client_name": None,
-                       "status": ont_status,
-                       "withdraw_inconsistency": True,
-                       "withdraw_inconsistency_note":
-                           f"prev_loc={ont.get('location_type')}/{ont.get('location_id')}",
-                       "source": "retirada",
-                       "withdrawn_from_client_id": service["client_id"],
-                       "withdrawn_from_client_name": service.get("client_name"),
-                       "withdrawn_by_email": actor_email,
-                       "withdrawn_by_name": tech_name,
-                       "withdrawn_via_ticket": service.get("ticket_id"),
-                       "withdrawn_via_service": service.get("id"),
-                       "withdrawn_at": now_iso(),
-                       **extra_fields}},
-        )
-        await ceh.log_event(
-            company_id=company_id,
-            client_id=service["client_id"],
-            client_name=service.get("client_name"),
-            action="withdraw",
-            ont_mac=mac_n,
-            ont_sn=ont.get("scan_sn"),
-            actor_id=service.get("technician_id"),
-            actor_name=tech_name,
-            actor_email=actor_email,
-            ticket_id=service.get("ticket_id"),
-            service_id=service.get("id"),
-            notes=f"vínculo prévio divergente: {ont.get('location_type')}/{ont.get('location_id')}",
-        )
-        suffix = " (DEFEITUOSA)" if is_defective else ""
-        return (f"ONT {mac_n} retirada via scan IA e entrou no estoque "
-                f"de {tech_name}{suffix} (atenção: vínculo prévio divergente)")
-    await db.stok_onts.update_one(
-        {"company_id": company_id, "mac": mac_n},
-        {"$set": {"location_type": "tecnico", "location_id": service["technician_id"],
-                  "client_name": None, "status": ont_status,
-                  "source": "retirada",
-                  "withdrawn_from_client_id": service["client_id"],
-                  "withdrawn_from_client_name": service.get("client_name"),
-                  "withdrawn_by_email": actor_email,
-                  "withdrawn_by_name": tech_name,
-                  "withdrawn_via_ticket": service.get("ticket_id"),
-                  "withdrawn_via_service": service.get("id"),
-                  "withdrawn_at": now_iso(),
-                  **extra_fields}},
+    # Sprint 3.B.2 — refactor: dois caminhos (consistente vs divergente)
+    # unificados via transfer_engine.execute_transfer. Origin sempre é a
+    # location atual da ONT (cliente ou outro fallback). Destination = técnico.
+    from services.transfer_engine import (
+        execute_transfer, TransferEngineError,
     )
+    prev_loc_type = ont.get("location_type")
+    prev_loc_id = ont.get("location_id")
+    inconsistent = (prev_loc_type != "cliente"
+                     or prev_loc_id != service["client_id"])
+    # Se prev_loc inválido pro grafo (ex: defeito, descarte), força "cliente"
+    # virtual com flag de inconsistência. Mantém compatibilidade com legacy.
+    origin_type_for_engine = (prev_loc_type
+                               if prev_loc_type in ("cliente", "empresa")
+                               else "cliente")
+    origin_id_for_engine = (prev_loc_id
+                             if prev_loc_type == "cliente"
+                             else service["client_id"])
+    base_set = {
+        "source": "retirada",
+        "withdrawn_from_client_id": service["client_id"],
+        "withdrawn_from_client_name": service.get("client_name"),
+        "withdrawn_by_email": actor_email,
+        "withdrawn_by_name": tech_name,
+        "withdrawn_via_ticket": service.get("ticket_id"),
+        "withdrawn_via_service": service.get("id"),
+        "withdrawn_at": now_iso(),
+        **extra_fields,
+    }
+    if inconsistent:
+        base_set["withdraw_inconsistency"] = True
+        base_set["withdraw_inconsistency_note"] = (
+            f"prev_loc={prev_loc_type}/{prev_loc_id}"
+        )
+    try:
+        await execute_transfer(
+            company_id=company_id,
+            origin_type=origin_type_for_engine,
+            origin_id=origin_id_for_engine,
+            destination_type="tecnico",
+            destination_id=service["technician_id"],
+            actor={"id": service.get("technician_id"),
+                    "email": actor_email,
+                    "name": tech_name,
+                    "role": "tecnico",
+                    "origin": "ai_scan_retirada",
+                    "client_name": service.get("client_name"),
+                    "physical_attendance": True},
+            reason={
+                "code": "Retirada OS",
+                "details": (
+                    f"OS {service.get('ticket_id') or service.get('id')} "
+                    f"retirada via scan IA"
+                    + (f" · INCONSISTÊNCIA: prev={prev_loc_type}/{prev_loc_id}"
+                        if inconsistent else "")
+                ),
+            },
+            mac=mac_n,
+            ticket_id=service.get("ticket_id"),
+            extra_set_fields=base_set,
+        )
+    except TransferEngineError as e:
+        raise HTTPException(400, {
+            "error": "transfer_blocked",
+            "message": str(e),
+        })
     # iter163 — registra evento de retirada por cliente
     await ceh.log_event(
         company_id=company_id,
@@ -1876,6 +1919,10 @@ async def _move_ont_for_withdraw(company_id: str, service: dict, tech_name: str,
         return (f"ONT {mac_n} retirada do {service['client_name']} marcada como "
                 f"DEFEITUOSA — devolução obrigatória à empresa, não disponível "
                 f"para nova instalação")
+    if inconsistent:
+        return (f"ONT {mac_n} retirada do {service['client_name']} e entrou no "
+                f"estoque de {tech_name} · ⚠️ vínculo prévio divergente "
+                f"({prev_loc_type}/{prev_loc_id}) registrado em trilha")
     return f"ONT {mac_n} retirada do {service['client_name']} e entrou no estoque de {tech_name}"
 
 
@@ -4644,11 +4691,43 @@ async def decide_ai_review(
         update_set["is_defective"] = False
         update_set["defective_reason"] = None
     elif decision == "return_to_company":
-        # Devolver à empresa: status `retornada_empresa`
-        update_set["status"] = "retornada_empresa"
-        update_set["location_type"] = "empresa"
-        update_set["location_id"] = "empresa"
-        update_set["location"] = "empresa"
+        # Sprint 3.B.3 — devolver à empresa via transfer_engine (técnico→empresa).
+        # Mantém update_one apenas para campos da decisão IA (audit + nota).
+        from services.transfer_engine import (
+            execute_transfer, TransferEngineError,
+        )
+        try:
+            await execute_transfer(
+                company_id=cid,
+                origin_type="tecnico",
+                origin_id=doc.get("location_id"),
+                destination_type="empresa",
+                destination_id=None,
+                actor={"id": user.get("id"),
+                        "email": user.get("email"),
+                        "name": user.get("name") or user.get("email"),
+                        "role": user.get("role"),
+                        "origin": "ai_review_decision"},
+                reason={
+                    "code": "Outro",
+                    "details": (
+                        f"AI Review · decisão gestor: return_to_company. "
+                        f"ONT {ont_id} devolvida via revisão IA."
+                        + (f" Nota: {payload.note[:200]}" if payload.note else "")
+                    ),
+                },
+                mac=doc.get("mac"),
+                sn=doc.get("scan_sn"),
+                manual=True,
+                extra_set_fields={"status": "retornada_empresa",
+                                   "location": "empresa"},
+            )
+        except TransferEngineError as e:
+            raise HTTPException(400, {"error": "transfer_blocked",
+                                       "message": str(e)})
+        # Remove campos de location dos update_set — engine já cuidou
+        update_set.pop("location_type", None)
+        update_set.pop("location_id", None)
     elif decision == "scrap_defect":
         # Descarte definitivo (sucateada). Continua no técnico até
         # devolução física, mas indisponível pra reinstalar.

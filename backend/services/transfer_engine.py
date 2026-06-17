@@ -435,6 +435,8 @@ async def record_synthetic_backfill(
     inferred_movement_type: str,
     reason_note: str,
     operator_email: str,
+    needs_human_review: bool = False,
+    inference_signals: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """Grava 1 trilha SINTÉTICA para uma ONT órfã.
 
@@ -445,6 +447,13 @@ async def record_synthetic_backfill(
 
     Não chama `write_movement` (que validaria contra a real). Grava direto
     na collection sintética com schema próprio.
+
+    Args:
+      needs_human_review: True quando a inferência foi conservadora (sem source
+                          ou source desconhecido) — Watchtower exibe como
+                          "Trilha Sintética · Revisar".
+      inference_signals: dict opcional com pistas usadas pra inferir
+                          (ex: {source, has_installed_at, has_withdrawn_at}).
     """
     if not reason_note or len(reason_note.strip()) < MIN_REASON_DETAILS_LENGTH:
         raise TransferEngineError(
@@ -466,6 +475,8 @@ async def record_synthetic_backfill(
         "actor_origin": "synthetic_backfill_onda2",
         "reason": {"code": "Regularização manual",
                     "details": reason_note.strip()},
+        "needs_human_review": bool(needs_human_review),
+        "inference_signals": inference_signals or {},
         "performed_at": _now_iso(),
         "created_at": _now_iso(),
     }

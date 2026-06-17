@@ -1,0 +1,34 @@
+{
+  "summary": "Iter248 — Sprint 3 (Backfill sintético Onda 2 + Refactor 3 rotas AI + Watchtower 'Trilha Sintética'): 16/16 tests PASS (100%). DB state validado (31 docs synthetic, 15 needs_human_review, 0 poluição canônica). Watchtower /summary retorna trilha_sintetica=15, sem_trilha=1 (residual), total=39 com schema 4-cards preservado. Refactor 3 rotas AI (ai_scan_install, ai_scan_retirada, ai_review_decision) validado por análise estática: as 3 chamam execute_transfer com origin correto; approve_reuse e scrap_defect NÃO chamam (apenas update_set, conforme spec). Idempotência: dry-run retorna 0 órfãos.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_sprint3_backfill_iter248.py",
+    "/app/test_reports/pytest/sprint3_iter248.xml"
+  ],
+  "action_items": [
+    "Nenhuma ação obrigatória — Sprint 3 está plenamente funcional pelos critérios CEO.",
+    "NICE-TO-HAVE: cobertura end-to-end das 3 rotas AI via fluxo OS completo (finalize ticket em lousa) — exigiria seed de OS + técnico com ONT em estoque + cliente. Não bloqueante: refactor é canonicalização (mesmo helper transfer_engine.execute_transfer já validado em iter247 manual-withdraw)."
+  ],
+  "critical_code_review_comments": [
+    "stok.py:1614-1656 (_move_ont_for_install caminho SmartOLT-bate): refactor CORRETO, usa execute_transfer com origin='ai_scan_install', origin_type=tecnico → destination_type=cliente. Mantém ceh.log_event e ont_dup.detect_and_log inalterados.",
+    "stok.py:1834-1902 (_move_ont_for_withdraw unificado): refactor CORRETO. Detecta inconsistência (prev_loc divergente) e adiciona flags withdraw_inconsistency=True + withdraw_inconsistency_note no extra_set_fields. Origin_type degradado para 'cliente' quando prev_loc inválido (defeito/descarte) — preserva fluxo legacy, mas trilha canônica reflete prev real via reason.details. Decisão razoável.",
+    "stok.py:4693-4730 (ai_review_decision return_to_company): refactor CORRETO com manual=True. approve_reuse e scrap_defect permanecem update_set-only, conforme spec — validado por isolamento de blocos.",
+    "transfer_engine.record_synthetic_backfill (linhas 431-479): assinatura agora aceita needs_human_review:bool=False e inference_signals:Optional[Dict]=None — backfill script usa ambos. Sem regressão.",
+    "scripts/backfill_onda2_orphans.py: classify() correto (PURCHASE_SOURCES, SCAN_SOURCES, fallback unknown→needs_human_review=True). find_orphans() é idempotente (skip se existing_synthetic OU canonical). update_one marca synthetic_backfill_applied/needs_review na ONT — alimenta Watchtower aggregation.",
+    "watchtower_estoque._agg_alerts (linhas 142-198): novo campo trilha_sintetica computado independente de sem_trilha (mutex via synthetic_backfill_applied flag). total = soma dos 6 campos — match com curl real (11+12+1+15+0+0=39)."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_sprint3_backfill_iter248.py (novo arquivo, 16 tests)"
+  ],
+  "success_rate": {"backend": "100% (16/16)"},
+  "test_credentials": "admin@empresa.com / 123456 (super admin co-demo, JWT via POST /api/auth/login)",
+  "seed_data_creation": "Nenhum seed criado. Validação foi feita 100% sobre estado existente (backfill já aplicado offline em co-demo, conforme contexto da review).",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Sprint 3 completamente validado pelos critérios CEO (a/b/c/d): (a) órfãos sem source → synthetic_unknown_genesis_backfill com needs_human_review=True (15/15 ✓); (b) backfill em collection SEPARADA inventory_movements_synthetic_backfill (31 docs co-demo ✓); (c) ZERO poluição em inventory_os_movements_audit canônico ✓; (d) Watchtower expõe trilha_sintetica=15 separado de sem_trilha=1 ✓. Refactor AI cobertura estática 100%. Para regressão: pytest tests/test_sprint3_backfill_iter248.py -v. Para teste end-to-end das 3 rotas AI: precisaria seed OS+técnico+cliente com ONT em location_type=tecnico (install) ou location_type=cliente (retirada) — fora deste iter pela complexidade do setup.",
+  "rca of the issue": "N/A — sem bugs identificados. Sprint 3 entregue corretamente conforme spec CEO 16/02/2026."
+}
