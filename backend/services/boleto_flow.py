@@ -99,6 +99,48 @@ def _format_brl(value: Any) -> str:
         return "—"
 
 
+def _format_linha_digitavel(barcode: Optional[str]) -> Optional[str]:
+    """Formata os 47 dígitos da linha digitável do boleto bancário.
+
+    Padrão FEBRABAN: `XXXXX.XXXXX XXXXX.XXXXXX XXXXX.XXXXXX X XXXXXXXXXXXXXX`
+    (campos 1, 2, 3, DV, fator+valor). Tolerante a entrada com 47 ou 48
+    dígitos.
+    """
+    if not barcode:
+        return None
+    digits = re.sub(r"\D", "", str(barcode))
+    if len(digits) < 47:
+        return None
+    d = digits[:47]
+    try:
+        return (f"{d[0:5]}.{d[5:10]} {d[10:15]}.{d[15:21]} "
+                f"{d[21:26]}.{d[26:32]} {d[32]} {d[33:47]}")
+    except Exception:
+        return d
+
+
+def _status_emoji_and_label(due_iso: Optional[str]) -> tuple:
+    """Retorna (emoji, label_curto) baseado no delta de dias.
+
+    🟢 no prazo (>7d), 🟡 vence em breve (0-7d), 🔴 vencida.
+    """
+    if not due_iso:
+        return ("⚪", "")
+    try:
+        dt = datetime.fromisoformat(str(due_iso).replace("Z", "+00:00"))
+        today = datetime.now(timezone.utc).date()
+        delta = (dt.date() - today).days
+        if delta < 0:
+            return ("🔴", f"venceu há {abs(delta)} dia{'s' if abs(delta) != 1 else ''}")
+        if delta == 0:
+            return ("🟡", "vence HOJE")
+        if delta <= 7:
+            return ("🟡", f"vence em {delta} dia{'s' if delta != 1 else ''}")
+        return ("🟢", "no prazo")
+    except Exception:
+        return ("⚪", "")
+
+
 def _format_due(due_iso: Optional[str]) -> str:
     if not due_iso:
         return "—"
@@ -283,10 +325,20 @@ async def _list_open_invoices(cid: str,
 
 def format_invoices_message(subscriber: Dict[str, Any],
                               invoices: List[Dict[str, Any]]) -> str:
-    """Monta a mensagem WhatsApp ENXUTA com todas as faturas em aberto.
+    """Mensagem WhatsApp formatada (best practices ISP/BR · CTO 17/02/2026).
 
-    Como agora enviamos o PDF anexo branded, o texto é curto:
-    só anuncia que o boleto está vindo + resumo de cada fatura.
+    Inclui no texto:
+      - Status visual (🟢/🟡/🔴) por urgência de vencimento.
+      - Valor original + valor com juros (quando vencida e Atlaz retorna).
+      - Descrição da cobrança (mensalidade, multa, avulso etc).
+      - Link clicável do boleto online.
+      - Linha digitável formatada (padrão FEBRABAN) para internet banking.
+      - PIX copia-e-cola **quando disponível** no payload Atlaz.
+      - Orientação proativa de negociação para vencidas >15 dias.
+      - Disclaimer pós-pagamento (até 1 dia útil pra compensar).
+
+    O PDF anexo branded continua sendo enviado em paralelo via
+    `_deliver_boleto_with_pdf` no caller (whatsapp_baileys.py).
     """
     name = (subscriber.get("name") or "").split()[0] or "cliente"
     if not invoices:
@@ -298,24 +350,126 @@ def format_invoices_message(subscriber: Dict[str, Any],
         )
 
     qty = len(invoices)
-    total = sum(float(i.get("amount") or 0) for i in invoices)
     qty_label = "fatura" if qty == 1 else "faturas"
+    total_original = sum(float(i.get("amount") or 0) for i in invoices)
+    total_atualizado = 0.0
+    has_overdue = False
+    max_days_overdue = 0
+    for inv in invoices:
+        raw = inv.get("raw") or {}
+        try:
+            v_juros = float(raw.get("valor_com_juros") or 0) or float(
+                inv.get("amount") or 0)
+        except (TypeError, ValueError):
+            v_juros = float(inv.get("amount") or 0)
+        total_atualizado += v_juros
+        due = inv.get("due_date")
+        if due:
+            try:
+                d = datetime.fromisoformat(
+                    str(due).replace("Z", "+00:00")).date()
+                delta = (d - datetime.now(timezone.utc).date()).days
+                if delta < 0:
+                    has_overdue = True
+                    max_days_overdue = max(max_days_overdue, abs(delta))
+            except Exception:
+                pass
 
-    parts = [
-        f"Aqui está sua fatura 💚",
-        "",
-        f"Olá, {name}! Encontrei *{qty} {qty_label}* em aberto no seu cadastro.",
-        f"Estou enviando o(s) boleto(s) em PDF logo abaixo — é só abrir e pagar pelo PIX ou código de barras. 📎",
-        "",
-    ]
+    parts: List[str] = []
+    parts.append("*Sua 2ª via — Ligo Fibra* 💚")
+    parts.append("")
+    parts.append(f"Olá, {name}! Encontrei *{qty} {qty_label}* em aberto "
+                 f"no seu cadastro:")
+    parts.append("")
+
     for idx, inv in enumerate(invoices, 1):
-        valor = _format_brl(inv.get("amount"))
-        venc = _format_due(inv.get("due_date"))
-        prefix = f"📄 Fatura {idx}/{qty} · " if qty > 1 else "📄 "
-        parts.append(f"{prefix}{valor} · venc. {venc}")
-    if qty > 1:
+        raw = inv.get("raw") or {}
+        desc = (inv.get("description") or raw.get("descricao")
+                or "Cobrança").strip()
+        valor_original = _format_brl(inv.get("amount"))
+        emoji, label = _status_emoji_and_label(inv.get("due_date"))
+        venc_date = ""
+        if inv.get("due_date"):
+            try:
+                d = datetime.fromisoformat(
+                    str(inv["due_date"]).replace("Z", "+00:00"))
+                venc_date = d.strftime("%d/%m/%Y")
+            except Exception:
+                venc_date = str(inv["due_date"])[:10]
+        header = (f"📄 *Fatura {idx}/{qty} — {desc}*" if qty > 1
+                  else f"📄 *{desc}*")
+        parts.append(header)
+        parts.append(f"💵 Valor original: *{valor_original}*")
+        if venc_date:
+            label_full = f" ({label})" if label else ""
+            parts.append(f"📅 Vencimento: {venc_date} {emoji}{label_full}")
+
+        # Valor atualizado (juros + multa) quando Atlaz expõe e está vencido
+        v_atualizado = raw.get("valor_com_juros")
+        try:
+            v_atualizado_f = float(v_atualizado or 0)
+            v_original_f = float(inv.get("amount") or 0)
+        except (TypeError, ValueError):
+            v_atualizado_f = 0.0
+            v_original_f = 0.0
+        if (v_atualizado_f > 0 and v_original_f > 0
+                and abs(v_atualizado_f - v_original_f) > 0.01):
+            multa = raw.get("multa") or 0
+            juros = raw.get("juros") or 0
+            extra = []
+            try:
+                if float(multa) > 0:
+                    extra.append(f"multa {float(multa):.2f}%")
+            except (TypeError, ValueError):
+                pass
+            try:
+                if float(juros) > 0:
+                    extra.append(f"juros {float(juros):.2f}%/mês")
+            except (TypeError, ValueError):
+                pass
+            suffix = f" ({' + '.join(extra)})" if extra else ""
+            parts.append(f"💰 *Valor atualizado: "
+                         f"{_format_brl(v_atualizado_f)}*{suffix}")
+
+        link = inv.get("boleto_url") or raw.get("link")
+        if link:
+            parts.append("🔗 Boleto online:")
+            parts.append(link)
+        ld = _format_linha_digitavel(
+            inv.get("barcode") or raw.get("linha_digitavel"))
+        if ld:
+            parts.append("🧾 Linha digitável:")
+            parts.append(f"`{ld}`")
+        # PIX copia-e-cola (quando Atlaz expõe)
+        pix_code = (raw.get("pix_copia_cola") or raw.get("pix")
+                    or raw.get("pix_emv") or raw.get("qrcode_pix"))
+        if pix_code and len(str(pix_code)) > 30:
+            parts.append("⚡ PIX copia-e-cola:")
+            parts.append(f"`{pix_code}`")
         parts.append("")
-        parts.append(f"💵 *Total em aberto: {_format_brl(total)}*")
+
+    if qty > 1:
+        parts.append(f"💵 *Total original: {_format_brl(total_original)}*")
+        if abs(total_atualizado - total_original) > 0.01:
+            parts.append(f"💰 *Total atualizado: "
+                         f"{_format_brl(total_atualizado)}*")
+        parts.append("")
+
+    parts.append("📎 Também estou enviando o(s) PDF(s) logo abaixo, prontos "
+                 "pra pagar pelo app do banco. ")
+
+    # Orientação proativa de negociação
+    if has_overdue and max_days_overdue >= 15:
+        parts.append("")
+        parts.append(f"⚠️ Há fatura vencida há {max_days_overdue} dias. Se "
+                     f"quiser *negociar ou parcelar*, é só me dizer "
+                     f"\"quero negociar\" que eu te encaminho pro time "
+                     f"financeiro. 💙")
+    elif has_overdue:
+        parts.append("")
+        parts.append("ℹ️ Após o pagamento, a compensação leva até "
+                     "*1 dia útil* pra cair no nosso sistema.")
+
     parts.append("")
     parts.append("Qualquer dúvida é só me chamar! 💙")
     return "\n".join(parts)
