@@ -55,13 +55,17 @@ function StateBadge({ state, connected }) {
 function ChannelCard({ ch, onRename, onSetDefault, onConnect, onLogout, onConfigProvider, onQuickMigrate, onRefresh, busy }) {
   const [editing, setEditing] = useState(false);
   const [draftName, setDraftName] = useState(ch.channel_name || "");
-  const [qrOpen, setQrOpen] = useState(false);
   const connected = ch.live_connected || ch.live_state === "connected";
+  // QR aparece automaticamente quando o canal está desconectado/conectando.
+  // O usuário pode fechar manualmente; reabre se o canal cair de novo.
+  const [qrOpen, setQrOpen] = useState(!connected);
   const provider = ch.provider || "baileys";
   const providerLabel = provider === "evolution" ? "Evolution API" : "Baileys (interno)";
   const providerColor = provider === "evolution" ? "#7c3aed" : "#0ea5e9";
 
   useEffect(() => { setDraftName(ch.channel_name || ""); }, [ch.channel_name]);
+  // Sincroniza qrOpen com o estado real do canal: abre se desconectar, fecha se conectar
+  useEffect(() => { setQrOpen(!connected); }, [connected]);
 
   const submitRename = async () => {
     const trimmed = draftName.trim();
