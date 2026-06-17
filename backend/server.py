@@ -805,6 +805,14 @@ async def _startup() -> None:
             _rec.register_scheduler(scheduler)
         except Exception as e:
             logger.warning("[startup] cash_reconciler falhou: %r", e)
+        # P0 CEO 17/02/2026 — Watchdog Baileys: monitora sidecar e
+        # auto-reenvia mensagens failed_send/failed_timeout quando o
+        # sidecar volta a `state=connected`. Sem fallback cruzado.
+        try:
+            from services import wa_sidecar_watchdog as _waw
+            _waw.register_scheduler(scheduler)
+        except Exception as e:
+            logger.warning("[startup] wa_sidecar_watchdog falhou: %r", e)
         scheduler.add_job(holidays_refresh_job, CronTrigger(day="1", hour=3, minute=0),
                           id="holidays_refresh", replace_existing=True)
         # iter241 — Snapshot diário do President Score às 03:00
@@ -1494,6 +1502,8 @@ app.include_router(routes_watchtower_estoque.router)
 # CTO 17/02/2026 — Retry de mensagens IA com falha do sidecar Baileys
 from routes import wa_retry_failed as routes_wa_retry_failed  # noqa: E402
 app.include_router(routes_wa_retry_failed.router)
+from routes import wa_watchdog as routes_wa_watchdog  # noqa: E402
+app.include_router(routes_wa_watchdog.router)
 
 
 # ============================================================

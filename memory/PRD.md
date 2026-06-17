@@ -4912,3 +4912,28 @@ Mesmo padrão da Onda 1: chamar `execute_transfer` ANTES de tocar stok_onts. Con
 - **PR 2.6**: `POST /api/field-ops/equipment/return`.
 - **PR 2.8**: `POST /api/stok/onts/reconcile-with-olt` (mais complexa).
 - **PR 2.9**: `POST /api/ont-scan/...` + `POST /api/balanco/...`.
+
+---
+
+## 🛡 WA Sidecar Watchdog — 17/02/2026 (CTO P0)
+
+### Problema resolvido
+Sidecar Baileys caindo durante o dia → mensagens AI ficavam com `delivery_status=failed_send` sem retry automático. Solução manual exigia o gestor scanear QR e disparar `/retry-failed-send` por endpoint.
+
+### Entrega
+- `services/wa_sidecar_watchdog.py` — monitora CH1..CH4 a cada 30s; detecta transição `disconnected/connecting/banned → connected`; reenvia automaticamente mensagens `failed_send/failed_timeout` das últimas 12h **somente via Baileys** (regra dura, sem fallback Evolution).
+- `routes/wa_watchdog.py` — `GET/POST /api/whatsapp-baileys/sidecar-watchdog/{status,tick}`.
+- Job registrado no LEADER worker via APScheduler (interval 30s, `max_instances=1`, `coalesce=True`).
+- Filtro estrito: `channel ∈ {baileys, null, "", ausente}`. Mensagens `channel=evolution` jamais tocadas.
+- Persiste em `wa_sidecar_watchdog_state` (1 doc/sidecar) e `wa_sidecar_watchdog_events` (log append-only).
+
+### Validação real
+- Reboot do backend → CH1 detectado `connected` → 1 mensagem real (`phone=551147099675`, `failed_send` desde 03:42 UTC) reenviada com sucesso em 04:19 UTC → `delivery_status=sent`, `retry_via=watchdog_baileys`.
+- Tick manual idempotente: estados estáveis não disparam reenvio.
+
+### Env vars
+- `WA_WATCHDOG_INTERVAL_S=30`, `WA_WATCHDOG_RETRY_WINDOW_H=12`, `WA_WATCHDOG_MAX_RETRY_PER_TICK=50`.
+
+### Doc completo
+`/app/memory/WA_SIDECAR_WATCHDOG_AUDIT.md`
+
