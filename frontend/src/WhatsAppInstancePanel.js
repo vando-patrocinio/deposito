@@ -44,7 +44,8 @@ export default function WhatsAppInstancePanel() {
   }, []);
 
   useEffect(() => {
-    fetchState();
+    // Defer initial fetch — evita set-state-in-effect ao montar.
+    const initialT = setTimeout(() => { fetchState(); }, 0);
     let currentInterval = null;
     const setupPoll = () => {
       const need = status !== "connected";
@@ -57,7 +58,10 @@ export default function WhatsAppInstancePanel() {
       }
     };
     setupPoll();
-    return () => { if (pollRef.current) clearInterval(pollRef.current); };
+    return () => {
+      clearTimeout(initialT);
+      if (pollRef.current) clearInterval(pollRef.current);
+    };
   }, [fetchState, status]);
 
   const logout = async () => {
@@ -84,6 +88,57 @@ export default function WhatsAppInstancePanel() {
     } catch (e) {
       setErr(e?.response?.data?.detail || e.message || "Falha ao gerar novo QR");
       // Mesmo falhando, faz fetch normal para mostrar status
+      try { await fetchState(); } catch { /* ignore */ }
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  /**
+   * Force Reset (Logout + Re-QR) — CTO 16/02/2026.
+   *
+   * Ação destrutiva: limpa credenciais do sidecar (auth_info + Mongo),
+   * desloga do WhatsApp e força nova janela de QR Code.
+   *
+   * Quando usar:
+   *   - sidecar travado em loop de "QR refs attempts ended"
+   *   - retry_count saturado (12/12) sem reconectar
+   *   - WhatsApp invalidou a sessão remotamente (ban temporário, multi-device limit)
+   *   - número já está logado em outro lugar e quer "puxar" pra cá
+   */
+  const forceReset = async () => {
+    // eslint-disable-next-line no-alert
+    if (!window.confirm(
+      "⚠️ FORCE RESET destrutivo\n\n" +
+      "Vai:\n" +
+      "  1. Deslogar do WhatsApp\n" +
+      "  2. Limpar credenciais do sidecar (auth_info + Mongo)\n" +
+      "  3. Reiniciar sessão e gerar novo QR Code\n\n" +
+      "TODAS as mensagens em fila serão preservadas, mas o número fica " +
+      "OFFLINE até alguém escanear o novo QR.\n\nConfirma?"
+    )) return;
+    setBusy(true); setErr(null);
+    try {
+      // 1. Logout (limpa creds)
+      try {
+        await api.waBaileysLogout();
+      } catch (e) {
+        // Logout pode falhar se já estava disconnected — não bloqueia
+        console.warn("[force-reset] logout falhou (ignorado):", e?.message);
+      }
+      // 2. Aguarda sidecar reinicializar (~2s)
+      await new Promise((r) => setTimeout(r, 2000));
+      // 3. Pede QR fresh
+      const r = await api.waBaileysRefreshQR();
+      setStatus(r?.status || "connecting");
+      if (r?.qr) {
+        setQr(r.qr);
+        setLastQrAt(new Date().toISOString());
+      }
+      // 4. Atualiza state geral
+      await fetchState();
+    } catch (e) {
+      setErr(e?.response?.data?.detail || e.message || "Force reset falhou");
       try { await fetchState(); } catch { /* ignore */ }
     } finally {
       setBusy(false);
@@ -157,16 +212,18 @@ export default function WhatsAppInstancePanel() {
       )}
 
       {status === "connected" ? (
-        <ConnectedView phoneNumber={phoneNumber} me={me} onLogout={logout} busy={busy} />
+        <ConnectedView phoneNumber={phoneNumber} me={me} onLogout={logout}
+                         onForceReset={forceReset} busy={busy} />
       ) : (
         <QrView qr={qr} lastQrAt={lastQrAt} status={status}
-                  onRefresh={refreshNow} busy={busy} errDetail={err} />
+                  onRefresh={refreshNow} onForceReset={forceReset}
+                  busy={busy} errDetail={err} />
       )}
     </div>
   );
 }
 
-function QrView({ qr, lastQrAt, status, onRefresh, busy, errDetail }) {
+function QrView({ qr, lastQrAt, status, onRefresh, onForceReset, busy, errDetail }) {
   const [fullscreen, setFullscreen] = useState(false);
   const [now, setNow] = useState(() => Date.now());
   const prevQrRef = useRef(qr);
@@ -407,7 +464,7 @@ function QrView({ qr, lastQrAt, status, onRefresh, busy, errDetail }) {
                 <div>
                   <strong>Sessão expirada.</strong> Faça login novamente para acessar a conexão WhatsApp.
                   <div style={{ marginTop: 6 }}>
-                    <button onClick={() => { try { localStorage.removeItem("token"); } catch {} ; window.location.reload(); }}
+                    <button onClick={() => { try { localStorage.removeItem("token"); } catch { /* ignore */ } ; window.location.reload(); }}
                             style={{ ...btnInlineStyle("danger") }}
                             data-testid="wa-qr-relogin-btn">
                       Fazer login
@@ -457,6 +514,19 @@ function QrView({ qr, lastQrAt, status, onRefresh, busy, errDetail }) {
                   <Loader2 size={12} style={{ animation: "wa-spin 1.2s linear infinite" }} />
                   Aguardando escaneamento…
                 </div>
+              )}
+              {onForceReset && (
+                <button onClick={onForceReset} disabled={busy}
+                        data-testid="wa-force-reset-btn"
+                        title="Logout destrutivo + limpa creds + força novo QR (use se travado no QR)"
+                        style={{
+                          ...btnInlineStyle("ghost"),
+                          borderColor: "rgba(220,38,38,.45)",
+                          color: "#ef4444",
+                        }}>
+                  <AlertTriangle size={13} />
+                  Force Reset
+                </button>
               )}
             </div>
           </div>
@@ -533,7 +603,7 @@ function btnInlineStyle(tone) {
   };
 }
 
-function ConnectedView({ phoneNumber, me, onLogout, busy }) {
+function ConnectedView({ phoneNumber, me, onLogout, onForceReset, busy }) {
   return (
     <div style={{ display: "grid", gap: 14 }} data-testid="wa-connected-view">
       <div className="surface" style={{
@@ -594,6 +664,18 @@ function ConnectedView({ phoneNumber, me, onLogout, busy }) {
                   }}>
             <LogOut size={13} /> Desconectar
           </button>
+          {onForceReset && (
+            <button className="btn btn-ghost btn-sm" onClick={onForceReset} disabled={busy}
+                    data-testid="wa-force-reset-btn"
+                    title="Logout destrutivo + limpa creds + força novo QR"
+                    style={{
+                      color: "#dc2626",
+                      border: "1px solid #fecaca",
+                      background: "rgba(255,255,255,.7)",
+                    }}>
+              <AlertTriangle size={13} /> Force Reset
+            </button>
+          )}
         </div>
       </div>
     </div>
