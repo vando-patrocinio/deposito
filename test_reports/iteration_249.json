@@ -1,0 +1,46 @@
+{
+  "summary": "Iter249 audit: WA Sidecar Watchdog endpoints (status/tick) + boleto_flow PIX/juros formatting + bubble_splitter quotes + detect_boleto_intent. 18/19 tests passed (94.7%). 1 real bug: bubble_splitter NÃO produz 3 bolhas separadas quando LLM usa aspas como separador entre frases curtas — _pack_into_bubbles re-une frases <50 chars. Endpoint sync-faturas do spec retorna 404 (endpoint real é /sync-now, funciona).",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {
+        "endpoint": "services.bubble_splitter.split_into_bubbles",
+        "issue": "Input 'Bolha1.\" \"\" \"Bolha2.\" \"\" \"Bolha3.' produz 1 bolha ['Bolha1. Bolha2. Bolha3.'] em vez de 3 bolhas separadas. _clean() converte aspas em \\n corretamente, mas _pack_into_bubbles() depois reagrega frases tiny (<50c) adjacentes. Spec do CEO requer 3 bolhas. Fix: tratar quebras vindas de aspas como hard boundary.",
+        "priority": "MEDIUM"
+      },
+      {
+        "endpoint": "POST /api/atlaz-financeiro/sync-faturas",
+        "issue": "Retorna 404 — endpoint não existe. Endpoint real é POST /api/atlaz-financeiro/sync-now (testado: 200). Provável discrepância no spec do review request."
+      },
+      {
+        "endpoint": "GET /api/atlaz-financeiro/invoices?subscriber_external_id=X",
+        "issue": "Query param subscriber_external_id parece não filtrar (retorna 8826 items sem filtragem). Não-bloqueante."
+      }
+    ]
+  },
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_iter249_boleto_watchdog.py",
+    "/app/test_reports/pytest/iter249.xml"
+  ],
+  "action_items": [
+    "Fix bubble_splitter: garantir 3 bolhas em entrada com aspas-como-separador (alterar _pack_into_bubbles pra respeitar \\n-de-aspas como hard boundary, ex: usar marker em _clean e prevenir merge tiny através dele).",
+    "Confirmar nome real do endpoint de sync manual de faturas (sync-now vs sync-faturas) e atualizar docs/spec.",
+    "(opcional) Adicionar filtro real de subscriber_external_id no GET /invoices."
+  ],
+  "critical_code_review_comments": [
+    "wa_sidecar_watchdog.py respeita STRICT ROUTING: retry só p/ channel ∈ {baileys, null}, evitando fallback cruzado pra Evolution — OK conforme spec CEO.",
+    "_norm_invoice em atlaz_financeiro.py expõe pix_brcode/amount_with_interest/fine_value/interest_value/barcode no nível raiz; format_invoices_message via _inv_pick lê desses campos com fallback pra raw.* — integração validada com docs reais (LEANDRO ROCHA, ext_id 1952523).",
+    "boleto_flow._format_linha_digitavel aplica padrão FEBRABAN corretamente.",
+    "bubble_splitter._clean: conversão de TODAS as aspas em \\n é correta, mas _pack_into_bubbles desfaz o efeito quando frases resultantes são <50 chars.",
+    "Arquivos boleto_flow.py (628 linhas) e atlaz_financeiro.py (1074 linhas) próximos/acima do threshold de 700 linhas; considerar split."
+  ],
+  "updated_files": ["/app/backend/tests/test_iter249_boleto_watchdog.py"],
+  "success_rate": {"backend": "94.7%", "frontend": "N/A (backend only)"},
+  "test_credentials": "admin@empresa.com / 123456 (gestor/admin/auditor — login OK via /api/auth/login → access_token)",
+  "seed_data_creation": "Nenhuma. MOCK_INVOICE local (amount=99.9, amount_with_interest=102.1, fine=2.0, juros=1.0, pix_brcode=>30c, barcode=47 dígitos). Validou doc real em prod (LEANDRO ROCHA DA SILVA, ext=1952523) com todos campos normalizados.",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Re-run test_iter249_boleto_watchdog.py após fix do bubble_splitter. Único test failing: TestBubbleSplitter::test_quotes_as_bubble_separator. Os outros 18 cobrem watchdog endpoints (200/401), format_invoices_message (PIX/juros/FEBRABAN/status emoji), empty-list, detect_boleto_intent (7+/3-).",
+  "rca of the issue": "BUG bubble_splitter pipeline: _clean (aspas→\\n) → _split_sentences (pontuação) → _pack_into_bubbles (agrupa tiny). Em 'Bolha1.\" \"\" \"Bolha2.\" \"\" \"Bolha3.': _clean='Bolha1.\\nBolha2.\\nBolha3.' OK; _split_sentences=['Bolha1.','Bolha2.','Bolha3.'] OK; _pack_into_bubbles vê 3 frases <50c e combina em 1 bolha 'Bolha1. Bolha2. Bolha3.'. Repro: from services.bubble_splitter import split_into_bubbles; split_into_bubbles('Bolha1.\" \"\" \"Bolha2.\" \"\" \"Bolha3.'). Mitigação: marcar \\n vindos de aspas com sentinela em _clean, não colapsar via _NL_RX, e em _pack_into_bubbles flush buf ao encontrar a sentinela (ignorar is_tiny merge). Alternativa: em _clean retornar bolhas pré-quebradas e pular _pack quando _ALL_QUOTES_RX já produziu múltiplas."
+}
