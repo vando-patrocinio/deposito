@@ -486,9 +486,44 @@ async def channel_qr(
                     "error": f"Evolution API inacessível: {e}"}
     # Baileys (default)
     try:
-        return await _proxy_get(channel_id, "/qr")
+        data = await _proxy_get(channel_id, "/qr")
     except httpx.HTTPError as e:
         raise HTTPException(502, f"Sidecar do {channel_id} inacessível: {e}")
+
+    # Auto-heal: se o Baileys esgotou as tentativas de QR (sidecar fica
+    # com last_disconnect.reason == "QR refs attempts ended"), dispara
+    # /reload pra reabrir o socket e gerar QRs novos. Sem isso o card
+    # mostra um QR velho que NUNCA conecta.
+    try:
+        sid_status = await _proxy_get(channel_id, "/status")
+        ld = (sid_status or {}).get("last_disconnect") or {}
+        if str(ld.get("reason") or "").lower().startswith("qr refs"):
+            await _proxy_post(channel_id, "/reload", {})
+    except Exception:
+        pass
+    return data
+
+
+@router.post("/{channel_id}/reload")
+async def channel_reload(
+    channel_id: str,
+    user=Depends(require_role("administrador", "gestor", "auditor")),
+):
+    """Força o sidecar Baileys a reabrir o socket e gerar QRs novos.
+
+    Usado quando o usuário pede 'Force Reset' no card — resolve o caso
+    do sidecar travado em `QR refs attempts ended` com retries esgotados.
+    """
+    _validate_channel_id(channel_id)
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+    ch = await get_channel(db, cid, channel_id)
+    if _is_evolution(ch):
+        # Em Evolution o reload é via re-create instance — fora do escopo aqui.
+        raise HTTPException(400, "Reload manual só é suportado em canais Baileys.")
+    try:
+        return await _proxy_post(channel_id, "/reload", {})
+    except httpx.HTTPError as e:
+        raise HTTPException(502, f"Sidecar inacessível: {e}")
 
 
 @router.get("/{channel_id}/status")

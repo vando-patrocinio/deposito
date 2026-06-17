@@ -275,6 +275,7 @@ function InlineQRPanel({ channel, onConnected, onClose }) {
   const [qr, setQr] = useState(null);
   const [status, setStatus] = useState("loading");
   const [err, setErr] = useState(null);
+  const [resetting, setResetting] = useState(false);
 
   const tick = useCallback(async () => {
     try {
@@ -290,6 +291,21 @@ function InlineQRPanel({ channel, onConnected, onClose }) {
       setStatus("error");
     }
   }, [channel.id, onConnected]);
+
+  const forceReset = useCallback(async () => {
+    setResetting(true);
+    try {
+      await api.waChannelReload(channel.id);
+      setQr(null);
+      setStatus("reloading");
+      // Espera o sidecar reabrir o socket antes do próximo tick
+      setTimeout(() => { tick(); }, 1800);
+    } catch (e) {
+      setErr(e?.response?.data?.detail || e?.message || "Falha no reset");
+    } finally {
+      setResetting(false);
+    }
+  }, [channel.id, tick]);
 
   useEffect(() => {
     tick();
@@ -374,6 +390,19 @@ function InlineQRPanel({ channel, onConnected, onClose }) {
               display: "inline-flex", alignItems: "center", gap: 4,
             }}
           ><RefreshCw size={11}/> Atualizar QR</button>
+          <button
+            data-testid={`inline-qr-reset-${channel.id}`}
+            onClick={forceReset}
+            disabled={resetting}
+            title="Reabre o socket Baileys quando o QR para de renovar"
+            style={{
+              padding: "5px 10px", background: "#fef2f2", color: "#b91c1c",
+              border: "1px solid #fecaca", borderRadius: 6,
+              cursor: resetting ? "wait" : "pointer",
+              fontSize: 11, fontWeight: 600,
+              display: "inline-flex", alignItems: "center", gap: 4,
+            }}
+          ><AlertTriangle size={11}/> {resetting ? "Resetando…" : "Force Reset"}</button>
           <span style={{ fontSize: 10, color: "#94a3b8" }}>
             atualiza a cada 4s
           </span>
@@ -1003,6 +1032,7 @@ export default function WhatsAppChannelsPanel() {
           display: "grid",
           gridTemplateColumns: "repeat(auto-fit, minmax(380px, 1fr))",
           gap: 16,
+          alignItems: "start",
         }}>
           {channels.map((ch) => (
             <ChannelCard
