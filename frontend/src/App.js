@@ -25,6 +25,7 @@ import CadastroPanel from "@/CadastroPanel";
 import ProjectsPanel from "@/ProjectsPanel";
 import LeaderboardMural from "@/LeaderboardMural";
 import TvHub from "@/TvHub";
+import LigoTV from "@/LigoTV";
 import SubscribersPanel from "@/SubscribersPanel";
 import PlansPanel from "@/PlansPanel";
 import ManagerPanel from "@/ManagerPanel";
@@ -1145,6 +1146,7 @@ function AppContent() {
       const p = window.location.pathname;
       if (p === "/mural" || p === "/leaderboard") return <LeaderboardMural />;
       if (p === "/tv" || p === "/quadro" || p.startsWith("/tv/")) return <TvHub />;
+      if (p === "/ligo-tv" || p.startsWith("/ligo-tv/")) return <LigoTV />;
       if (p === "/smartprov-ai-center") {
         return <SmartProvLanding />;
       }
@@ -1179,6 +1181,10 @@ function AppContent() {
   if (route.path === "/tv" || route.path === "/quadro"
        || (route.path || "").startsWith("/tv/")) {
     return <TvHub />;
+  }
+  // Ligo TV — Portal de canais grátis pro assinante (Pluto TV) público sem JWT corp
+  if (route.path === "/ligo-tv" || (route.path || "").startsWith("/ligo-tv/")) {
+    return <LigoTV />;
   }
 
   if (mobile) {

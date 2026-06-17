@@ -66,6 +66,7 @@ PUBLIC_PATHS: List[str] = [
     "/api/rede-ia/public/",  # App PWA do técnico externo (auth via collab_id na URL)
     "/api/treasury/webhooks/asaas",
     "/api/treasury/webhook/asaas",
+    "/api/ligo-tv/auth/login",
     "/api/atlaz/notify/",  # CTO 2026-02 — Atlaz webhooks inbound (auth via token no body)
     "/docs", "/redoc", "/openapi.json",
 ]
@@ -83,6 +84,7 @@ NON_STAFF_AUTH_PREFIXES: List[str] = [
     "/api/collaborator-auth",
     "/api/wifi-hotspot/portal",
     "/api/ceo",  # CEO Digital · auth Bearer próprio (CEO_BRIEFING_TOKEN)
+    "/api/ligo-tv",  # Ligo TV · JWT próprio (CPF do assinante)
 ]
 
 

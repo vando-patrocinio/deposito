@@ -52,6 +52,7 @@ from routes import (
     ai_config as routes_ai_config,
     atlaz as routes_atlaz,
     atlaz_webhooks as routes_atlaz_webhooks,
+    ligo_tv as routes_ligo_tv,
     clock as routes_clock,
     collab_auth as routes_collab_auth,
     dashboard as routes_dashboard,
@@ -1472,6 +1473,7 @@ app.include_router(routes_financeiro_analytics.router)
 app.include_router(routes_financeiro_reports.router)
 app.include_router(routes_atlaz_financeiro.router)
 app.include_router(routes_atlaz_webhooks.router)
+app.include_router(routes_ligo_tv.router)
 app.include_router(routes_alvaro.router)
 app.include_router(routes_alvaro_os_summary.router)
 app.include_router(routes_gps_vlan_suggest.router)
