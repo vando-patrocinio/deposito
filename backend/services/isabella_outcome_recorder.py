@@ -86,7 +86,15 @@ async def _classify_churn(opp: Dict[str, Any]) -> Dict[str, Any]:
     ext_id = (
         (opp.get("evidence_at_open") or {}).get("subscriber_external_id")
         or (opp.get("recommended_action") or {}).get("subscriber_external_id")
+        or (opp.get("evidence") or {}).get("subscriber_external_id")
     )
+    # Fallback: extrair de target_label "NOME (123456)"
+    if not ext_id:
+        import re as _re
+        lbl = opp.get("target_label") or ""
+        m = _re.search(r"\((\d{4,})\)\s*$", lbl)
+        if m:
+            ext_id = m.group(1)
     if not ext_id:
         return {"outcome": "unknown", "signal": "no_subscriber_ref"}
     cache = await db.atlaz_clients_cache.find_one(
@@ -108,7 +116,17 @@ async def _classify_revenue(opp: Dict[str, Any]) -> Dict[str, Any]:
     """Receita: olha se houve pagamento do subscriber após a opp ser
     criada (subscriber_invoices.paid_date > opp.created_at)."""
     target_id = opp.get("target_id")
-    ext_id = (opp.get("evidence_at_open") or {}).get("subscriber_external_id")
+    ext_id = (
+        (opp.get("evidence_at_open") or {}).get("subscriber_external_id")
+        or (opp.get("recommended_action") or {}).get("subscriber_external_id")
+        or (opp.get("evidence") or {}).get("subscriber_external_id")
+    )
+    if not ext_id:
+        import re as _re
+        lbl = opp.get("target_label") or ""
+        m = _re.search(r"\((\d{4,})\)\s*$", lbl)
+        if m:
+            ext_id = m.group(1)
     opp_ts = opp.get("created_at") or ""
     q: Dict[str, Any] = {"status": "paid", "paid_date": {"$gt": opp_ts}}
     if ext_id:
