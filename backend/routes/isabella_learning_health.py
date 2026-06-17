@@ -159,6 +159,38 @@ async def recent_outcomes(
     return {"ok": True, "items": docs}
 
 
+# ═════════════ FACTUAL CLAIMS · CEO ORDEM 17/02 ═════════════
+
+
+@router.get("/factual-claims/stats")
+async def factual_claims_stats(
+    user: Dict[str, Any] = Depends(
+        require_role("gestor", "administrador", "auditor")),
+) -> Dict[str, Any]:
+    """Trust rate da Isabella nas últimas 24h: % de claims que passaram
+    em todas as 3 conferências (audit_passed=True)."""
+    from services import isabella_factual_claims as _fc
+    return {"ok": True, **(await _fc.stats_24h(_company_of(user)))}
+
+
+@router.get("/factual-claims")
+async def factual_claims_recent(
+    domain: Optional[str] = Query(
+        None, description="financial|technical|cadastro|estoque"),
+    passed: Optional[bool] = Query(
+        None, description="filtra por audit_passed"),
+    limit: int = Query(50, ge=1, le=200),
+    user: Dict[str, Any] = Depends(
+        require_role("gestor", "administrador", "auditor")),
+) -> Dict[str, Any]:
+    """Lista claims recentes da Isabella. Cada doc traz `checks`,
+    `warnings`, `evidence` para auditoria ponto-a-ponto."""
+    from services import isabella_factual_claims as _fc
+    items = await _fc.recent(company_id=_company_of(user),
+                              domain=domain, passed=passed, limit=limit)
+    return {"ok": True, "items": items, "count": len(items)}
+
+
 # ═════════════ SPRINT B — Pipeline & Execution ═════════════
 
 

@@ -427,7 +427,37 @@ async def _audit_subscriber_financial_status(
         and (paid_total > 0 or open_total > 0)
     )
 
-    # Persiste pra auditoria CEO
+    # P0 CEO 17/02/2026 — Persiste claim factual padrão institucional
+    # em `isabella_factual_claims`. Mantém também o doc legado
+    # `isabella_financial_audit` durante migração para retrocompat.
+    try:
+        from services import isabella_factual_claims as _fc
+        evidence = {
+            "subscriber_external_id": out["subscriber_external_id"],
+            "subscriber_name": out["subscriber_name"],
+            "paid_count": paid_total,
+            "open_count": open_total,
+            "last_paid_date": last_paid_date,
+            "next_due_date": next_due_date,
+            "last_sync_at": last_sync_at,
+        }
+        claim_doc = await _fc.claim(
+            domain=_fc.ClaimDomain.FINANCIAL,
+            entity_type="subscriber",
+            entity_id=subscriber.get("id"),
+            company_id=cid,
+            checks=out["checks"],
+            warnings=out["warnings"],
+            evidence=evidence,
+        )
+        out["evidence_id"] = claim_doc.get("id")
+        # Sobrescreve o audit_passed com o do claim (mesma lógica
+        # estrita: checks_ok + zero_warnings)
+        out["audit_passed"] = claim_doc.get("audit_passed", out["audit_passed"])
+    except Exception:
+        pass
+
+    # Legado (retrocompat — remover após Sprint 5)
     try:
         await db.isabella_financial_audit.insert_one({**out})
     except Exception:
