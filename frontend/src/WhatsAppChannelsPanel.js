@@ -52,9 +52,10 @@ function StateBadge({ state, connected }) {
   );
 }
 
-function ChannelCard({ ch, onRename, onSetDefault, onConnect, onLogout, onConfigProvider, onQuickMigrate, busy }) {
+function ChannelCard({ ch, onRename, onSetDefault, onConnect, onLogout, onConfigProvider, onQuickMigrate, onRefresh, busy }) {
   const [editing, setEditing] = useState(false);
   const [draftName, setDraftName] = useState(ch.channel_name || "");
+  const [qrOpen, setQrOpen] = useState(false);
   const connected = ch.live_connected || ch.live_state === "connected";
   const provider = ch.provider || "baileys";
   const providerLabel = provider === "evolution" ? "Evolution API" : "Baileys (interno)";
@@ -179,15 +180,21 @@ function ChannelCard({ ch, onRename, onSetDefault, onConnect, onLogout, onConfig
         {!connected && (
           <button
             data-testid={`channel-connect-btn-${ch.id}`}
-            onClick={() => onConnect(ch)}
+            onClick={() => {
+              setQrOpen((v) => !v);
+              if (onConnect) onConnect(ch);
+            }}
             disabled={busy}
             style={{
-              padding: "8px 14px", background: "#0d9488", color: "white",
-              border: "none", borderRadius: 8, cursor: "pointer", fontWeight: 600,
+              padding: "8px 14px",
+              background: qrOpen ? "#fef3c7" : "#0d9488",
+              color: qrOpen ? "#92400e" : "white",
+              border: qrOpen ? "1px solid #fde68a" : "none",
+              borderRadius: 8, cursor: "pointer", fontWeight: 600,
               fontSize: 13, display: "inline-flex", alignItems: "center", gap: 6,
             }}
           >
-            <QrCode size={14}/> Conectar via QR
+            <QrCode size={14}/> {qrOpen ? "Fechar QR" : "Conectar via QR"}
           </button>
         )}
         {connected && (
@@ -250,6 +257,127 @@ function ChannelCard({ ch, onRename, onSetDefault, onConnect, onLogout, onConfig
         >
           <Settings size={14}/> Provedor
         </button>
+      </div>
+
+      {/* QR inline — renderizado dentro do card (não modal) */}
+      {qrOpen && !connected && (
+        <InlineQRPanel
+          channel={ch}
+          onConnected={() => { setQrOpen(false); if (onRefresh) onRefresh(); }}
+          onClose={() => setQrOpen(false)}
+        />
+      )}
+    </div>
+  );
+}
+
+function InlineQRPanel({ channel, onConnected, onClose }) {
+  const [qr, setQr] = useState(null);
+  const [status, setStatus] = useState("loading");
+  const [err, setErr] = useState(null);
+
+  const tick = useCallback(async () => {
+    try {
+      const data = await api.waChannelQR(channel.id);
+      setQr(data?.qr || null);
+      setStatus(data?.status || "unknown");
+      setErr(null);
+      if (data?.status === "connected") {
+        setTimeout(() => { if (onConnected) onConnected(); }, 1200);
+      }
+    } catch (e) {
+      setErr(e?.response?.data?.detail || e?.message || "Falha ao buscar QR");
+      setStatus("error");
+    }
+  }, [channel.id, onConnected]);
+
+  useEffect(() => {
+    tick();
+    const t = setInterval(tick, 4000);
+    return () => clearInterval(t);
+  }, [tick]);
+
+  return (
+    <div
+      data-testid={`inline-qr-${channel.id}`}
+      style={{
+        marginTop: 14,
+        padding: 16,
+        background: "linear-gradient(180deg,#f8fafc 0%,#ffffff 100%)",
+        border: "1px dashed #cbd5e1",
+        borderRadius: 12,
+        display: "flex",
+        gap: 16,
+        alignItems: "center",
+      }}
+    >
+      <div style={{
+        width: 200, height: 200, flexShrink: 0,
+        display: "flex", alignItems: "center", justifyContent: "center",
+        background: "white", borderRadius: 10, border: "1px solid #e2e8f0",
+        overflow: "hidden",
+      }}>
+        {status === "connected" ? (
+          <div data-testid={`inline-qr-connected-${channel.id}`}
+                style={{ color: "#16a34a", fontWeight: 700, fontSize: 14, textAlign: "center" }}>
+            ✓ Conectado!
+          </div>
+        ) : qr ? (
+          <img
+            src={qr}
+            alt="QR Code"
+            data-testid={`inline-qr-image-${channel.id}`}
+            style={{ width: "100%", height: "100%", objectFit: "contain" }}
+          />
+        ) : err ? (
+          <div style={{ padding: 12, color: "#dc2626", fontSize: 11, textAlign: "center" }}>
+            {err}
+          </div>
+        ) : (
+          <Loader2 className="animate-spin" size={28} color="#0d9488"/>
+        )}
+      </div>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+          <QrCode size={14} color="#0d9488"/>
+          <b style={{ fontSize: 13, color: "#0f172a" }}>Escaneie com o WhatsApp</b>
+          <button
+            data-testid={`inline-qr-close-${channel.id}`}
+            onClick={onClose}
+            title="Fechar"
+            style={{
+              marginLeft: "auto", padding: 4, background: "transparent",
+              color: "#64748b", border: "none", cursor: "pointer",
+            }}
+          ><X size={14}/></button>
+        </div>
+        <ol style={{ margin: 0, paddingLeft: 18, fontSize: 12, color: "#475569", lineHeight: 1.6 }}>
+          <li>Abra o <b>WhatsApp</b> no celular</li>
+          <li>Toque em <b>Mais opções (⋮)</b> ou <b>Configurações</b></li>
+          <li><b>Aparelhos conectados</b> → <b>Conectar um aparelho</b></li>
+          <li>Aponte a câmera pro QR ao lado</li>
+        </ol>
+        <div style={{ marginTop: 10, display: "flex", alignItems: "center", gap: 10 }}>
+          <span style={{
+            fontSize: 11, fontWeight: 700, color: "#0d9488",
+            background: "#ccfbf1", padding: "3px 8px", borderRadius: 999,
+          }} data-testid={`inline-qr-status-${channel.id}`}>
+            {status}
+          </span>
+          <button
+            data-testid={`inline-qr-refresh-${channel.id}`}
+            onClick={tick}
+            style={{
+              padding: "5px 10px", background: "white", color: "#0d9488",
+              border: "1px solid #99f6e4", borderRadius: 6, cursor: "pointer",
+              fontSize: 11, fontWeight: 600,
+              display: "inline-flex", alignItems: "center", gap: 4,
+            }}
+          ><RefreshCw size={11}/> Atualizar QR</button>
+          <span style={{ fontSize: 10, color: "#94a3b8" }}>
+            atualiza a cada 4s
+          </span>
+        </div>
       </div>
     </div>
   );
@@ -789,7 +917,6 @@ export default function WhatsAppChannelsPanel() {
   const [externals, setExternals] = useState([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
-  const [qrFor, setQrFor] = useState(null);
   const [providerFor, setProviderFor] = useState(null);
   const [err, setErr] = useState(null);
 
@@ -884,9 +1011,9 @@ export default function WhatsAppChannelsPanel() {
               busy={busy}
               onRename={handleRename}
               onSetDefault={handleSetDefault}
-              onConnect={(c) => setQrFor(c)}
               onLogout={handleLogout}
               onConfigProvider={(c) => setProviderFor(c)}
+              onRefresh={load}
             />
           ))}
         </div>
@@ -933,7 +1060,6 @@ export default function WhatsAppChannelsPanel() {
         </div>
       )}
 
-      {qrFor && <QRModal channel={qrFor} onClose={() => { setQrFor(null); load(); }} />}
       {providerFor && (
         <ProviderModal
           channel={providerFor}
