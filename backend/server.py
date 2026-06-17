@@ -1491,6 +1491,9 @@ app.include_router(routes_ligo_maps.router)
 # Sprint 1 (CEO 16/02/2026) — Watchtower Estoque (Dashboard Patrimonial Executivo)
 from routes import watchtower_estoque as routes_watchtower_estoque  # noqa: E402
 app.include_router(routes_watchtower_estoque.router)
+# CTO 17/02/2026 — Retry de mensagens IA com falha do sidecar Baileys
+from routes import wa_retry_failed as routes_wa_retry_failed  # noqa: E402
+app.include_router(routes_wa_retry_failed.router)
 
 
 # ============================================================
