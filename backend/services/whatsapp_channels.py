@@ -239,9 +239,24 @@ async def set_provider_config(db, company_id: str, channel_id: str,
             raise ValueError(
                 "Evolution requer evolution_url + evolution_api_key + evolution_instance_name"
             )
+        inst = (evolution_instance_name or "").strip()
+        # Evolution v2 valida instance pelo path /instance/connectionState/<name>.
+        # Nomes com espaço/maiúsculas/acentos quebram com 404. Rejeitamos aqui
+        # antes de gravar no Mongo pra não ter de catar drift depois.
+        import re as _re
+        if not _re.fullmatch(r"[a-z0-9._-]+", inst):
+            raise ValueError(
+                "evolution_instance_name inválido: use só letras minúsculas, "
+                "dígitos, ponto, underscore ou hífen (sem espaços). "
+                f"Recebido: '{inst}'"
+            )
         set_doc["evolution_url"] = evolution_url.rstrip("/")
         set_doc["evolution_api_key"] = evolution_api_key
-        set_doc["evolution_instance_name"] = evolution_instance_name
+        set_doc["evolution_instance_name"] = inst
+        # Mantém o campo legacy `evolution_instance` sincronizado pro card
+        # exibir e pro fallback do _evolution_client funcionar mesmo se o
+        # campo principal sumir.
+        set_doc["evolution_instance"] = inst
     else:
         # baileys → limpa Evolution config pra não confundir
         set_doc["evolution_url"] = None

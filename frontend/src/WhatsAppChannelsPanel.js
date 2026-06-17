@@ -628,7 +628,12 @@ function ProviderModal({ channel, onClose, onSaved }) {
   const [provider, setProvider] = useState(initialProvider);
   const [evoUrl, setEvoUrl] = useState(channel?.evolution_url || "");
   const [evoKey, setEvoKey] = useState("");
-  const [evoInstance, setEvoInstance] = useState(channel?.evolution_instance_name || channel?.id || "");
+  const [evoInstance, setEvoInstance] = useState(
+    channel?.evolution_instance
+    || channel?.evolution_instance_name
+    || channel?.id
+    || ""
+  );
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState("");
   const [defaultsLoaded, setDefaultsLoaded] = useState(false);
@@ -668,9 +673,18 @@ function ProviderModal({ channel, onClose, onSaved }) {
         if (!evoUrl.trim() || !evoKey.trim() || !evoInstance.trim()) {
           throw new Error("Para Evolution preencha URL, API key e nome da instance.");
         }
+        const inst = evoInstance.trim();
+        // Evolution v2 não aceita nomes de instance com espaço ou maiúsculas:
+        // bate em /instance/connectionState/<name> e devolve 404. Bloqueamos
+        // no front pra falhar rápido em vez de salvar e quebrar depois.
+        if (!/^[a-z0-9._-]+$/.test(inst)) {
+          throw new Error(
+            "Nome da instance inválido. Use só letras minúsculas, números, ponto, underscore ou hífen (sem espaços). Ex: 'smartprov'."
+          );
+        }
         payload.evolution_url = evoUrl.trim();
         payload.evolution_api_key = evoKey.trim();
-        payload.evolution_instance_name = evoInstance.trim();
+        payload.evolution_instance_name = inst;
       }
       await api.waChannelSetProvider(channel.id, payload);
       onSaved();
