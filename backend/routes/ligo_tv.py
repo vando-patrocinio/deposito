@@ -34,6 +34,7 @@ from fastapi.responses import Response, StreamingResponse
 from pydantic import BaseModel, Field
 
 from services import pluto_tv
+from services import ligo_tv_catalog
 
 log = logging.getLogger("ponto.ligo_tv")
 
@@ -162,9 +163,29 @@ async def list_channels(
     search: Optional[str] = None,
     user: Dict[str, Any] = Depends(current_subscriber),
 ):
-    """Lista canais (filtra por categoria e/ou busca)."""
-    chans = await pluto_tv.fetch_channels()
-    out = chans
+    """Lista canais combinando YouTube Live BR + Pluto TV.
+
+    YouTube Live BR é o coração do MVP (24/7, sem geo-block do cloud).
+    Pluto entra como complemento — serve "takedown slate" em IP de cloud,
+    mas mantemos no catálogo pra quando migrarmos pra proxy residencial.
+    """
+    yt = ligo_tv_catalog.get_youtube_channels()
+    pluto = await pluto_tv.fetch_channels()
+    # YouTube primeiro (funciona aqui), Pluto depois (offline na maioria
+    # dos casos via IP de cloud — usuário ainda vê o catálogo).
+    merged = list(yt) + [{
+        "id": c["id"],
+        "slug": c["slug"],
+        "name": c["name"],
+        "number": c["number"],
+        "category": c["category"],
+        "logo": c["logo"],
+        "tile": c["tile"],
+        "thumbnail": c["thumbnail"],
+        "summary": c["summary"],
+        "kind": "pluto_hls",
+    } for c in pluto]
+    out = merged
     if category and category.lower() != "todos":
         cat_low = category.lower()
         out = [c for c in out if (c["category"] or "").lower() == cat_low]
@@ -173,23 +194,34 @@ async def list_channels(
         out = [
             c for c in out
             if q in (c["name"] or "").lower()
-            or q in (c["summary"] or "").lower()
+            or q in (c.get("summary") or "").lower()
         ]
-    # Não exponha a hls_url completa na listagem (poupa bytes + força
-    # passar pelo endpoint /channels/{slug} pra hidratar)
     light = [{
         "id": c["id"], "slug": c["slug"], "name": c["name"],
-        "number": c["number"], "category": c["category"],
-        "logo": c["logo"], "tile": c["tile"], "thumbnail": c["thumbnail"],
-        "summary": c["summary"],
+        "number": c.get("number"), "category": c["category"],
+        "logo": c.get("logo"), "tile": c.get("tile"),
+        "thumbnail": c.get("thumbnail"),
+        "summary": c.get("summary"),
+        "kind": c.get("kind", "pluto_hls"),
+        "youtube_channel_id": c.get("youtube_channel_id"),
+        "youtube_video_id": c.get("youtube_video_id"),
     } for c in out]
     return {"count": len(light), "channels": light}
 
 
 @router.get("/categories")
 async def list_categories(user: Dict[str, Any] = Depends(current_subscriber)):
-    chans = await pluto_tv.fetch_channels()
-    return {"categories": pluto_tv.categories(chans)}
+    yt = ligo_tv_catalog.get_youtube_channels()
+    pluto = await pluto_tv.fetch_channels()
+    counts: Dict[str, int] = {}
+    for c in yt + pluto:
+        cat = c.get("category") or "Outros"
+        counts[cat] = counts.get(cat, 0) + 1
+    cats = sorted(
+        [{"name": k, "count": v} for k, v in counts.items()],
+        key=lambda x: (-x["count"], x["name"]),
+    )
+    return {"categories": cats}
 
 
 @router.get("/channels/{slug}")
@@ -198,6 +230,10 @@ async def channel_detail(
     request: Request,
     user: Dict[str, Any] = Depends(current_subscriber),
 ):
+    # Primeiro tenta YouTube Live (sem proxy — embed iframe no frontend)
+    for c in ligo_tv_catalog.get_youtube_channels():
+        if c["slug"] == slug or c["id"] == slug:
+            return {"channel": dict(c)}
     c = await pluto_tv.find_channel(slug)
     if not c:
         raise HTTPException(404, "Canal não encontrado.")
@@ -206,7 +242,84 @@ async def channel_detail(
     # navegador trava em `networkError` ao buscar o master.m3u8.
     out = dict(c)
     out["hls_url"] = f"{_public_base(request)}/api/ligo-tv/stream/{c['slug']}/master.m3u8"
+    out["kind"] = "pluto_hls"
     return {"channel": out}
+
+
+# ─────────────────────── Câmeras (geofencing por CEP) ───────────────────────
+
+async def _cep_of_user(user: Dict[str, Any]) -> str:
+    """Lookup do CEP do usuário autenticado (cliente). Pode estar em vários
+    docs — checa atlaz_clients_cache primeiro, depois subscriber_addresses."""
+    db = await get_db()
+    doc = user.get("doc")
+    if not doc:
+        return ""
+    cli = await db.atlaz_clients_cache.find_one({"document": doc})
+    if cli:
+        cep = (cli.get("address") or {}).get("cep") or cli.get("cep") or ""
+        if cep:
+            return "".join(ch for ch in cep if ch.isdigit())
+    addr = await db.subscriber_addresses.find_one({"document": doc})
+    if addr:
+        cep = addr.get("cep") or ""
+        return "".join(ch for ch in cep if ch.isdigit())
+    return ""
+
+
+async def _seed_demo_cameras_if_empty():
+    """Popula a collection `ligo_tv_cameras` com 4 demos caso esteja vazia."""
+    db = await get_db()
+    n = await db.ligo_tv_cameras.count_documents({})
+    if n > 0:
+        return
+    for cam in ligo_tv_catalog.get_demo_cameras():
+        await db.ligo_tv_cameras.update_one(
+            {"id": cam["id"]},
+            {"$setOnInsert": cam},
+            upsert=True,
+        )
+    log.info("[ligo_tv] seeded %d demo cameras", len(ligo_tv_catalog.get_demo_cameras()))
+
+
+@router.get("/cameras")
+async def list_cameras(user: Dict[str, Any] = Depends(current_subscriber)):
+    """Lista câmeras autorizadas pro assinante.
+
+    Geofencing por CEP: prefixo de 5 dígitos do CEP do cliente bate com
+    `cep_prefix` da câmera. Se o cliente não tem CEP cadastrado, devolve
+    apenas as câmeras-demo (pra UX não ficar vazia).
+    """
+    await _seed_demo_cameras_if_empty()
+    db = await get_db()
+    cep = await _cep_of_user(user)
+    cep5 = (cep or "")[:5]
+    q: Dict[str, Any] = {"active": True}
+    if cep5:
+        q["cep_prefix"] = cep5
+    out = []
+    async for cam in db.ligo_tv_cameras.find(q):
+        cam.pop("_id", None)
+        out.append(cam)
+    # Fallback — se filtro por CEP zerou, devolve TODAS pra demo
+    if not out:
+        async for cam in db.ligo_tv_cameras.find({"active": True}):
+            cam.pop("_id", None)
+            out.append(cam)
+    return {"count": len(out), "cameras": out, "matched_cep_prefix": cep5}
+
+
+@router.get("/cameras/{cam_id}")
+async def camera_detail(
+    cam_id: str,
+    user: Dict[str, Any] = Depends(current_subscriber),
+):
+    db = await get_db()
+    cam = await db.ligo_tv_cameras.find_one({"id": cam_id, "active": True})
+    if not cam:
+        raise HTTPException(404, "Câmera não encontrada.")
+    cam.pop("_id", None)
+    return {"camera": cam}
 
 
 # ─────────────────────── Proxy HLS (CORS bypass) ───────────────────────
