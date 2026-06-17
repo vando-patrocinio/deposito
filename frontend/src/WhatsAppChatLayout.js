@@ -3101,6 +3101,8 @@ function MsgBubble({ msg, onCorrect }) {
     if (dst === "failed_motor_ia_unavailable") return "Motor IA indisponível";
     if (dst === "failed_empty_reply") return "IA retornou resposta vazia";
     if (dst === "failed_sidecar") return "Falha ao enviar para WhatsApp";
+    if (dst === "failed_send") return "Falha ao enviar (Sidecar Baileys offline)";
+    if (dst === "failed_timeout") return "Timeout ao enviar (Sidecar Baileys lento)";
     return "Não entregue";
   })();
   const time = msg.created_at
