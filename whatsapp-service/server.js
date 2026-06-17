@@ -893,6 +893,179 @@ app.post("/send-document", async (req, res) => {
 });
 
 
+/**
+ * POST /send-image
+ * Envia imagem para um contato/grupo (JID).
+ *
+ * Body:
+ *   { phone: "5511999999999" | "<jid>", image_b64: "...", caption: "...",
+ *     mimetype: "image/jpeg" (opcional) }
+ *
+ * Resposta: { ok, message_id, jid } | { ok:false, error }
+ */
+app.post("/send-image", async (req, res) => {
+  if (connState !== "connected" || !sock) {
+    return res.status(503).json({ ok: false, error: "WhatsApp não conectado." });
+  }
+  let { phone, image_b64, caption, mimetype } = req.body || {};
+  if (!phone || !image_b64) {
+    return res.status(400).json({ ok: false, error: "phone e image_b64 obrigatórios" });
+  }
+  phone = String(phone).replace(/\D/g, "");
+  if (!phone) {
+    return res.status(400).json({ ok: false, error: "phone inválido" });
+  }
+  const jid = phone.includes("@") ? phone : `${phone}@s.whatsapp.net`;
+  await applyRateLimit();
+  try {
+    const buffer = Buffer.from(String(image_b64), "base64");
+    const payload = { image: buffer, mimetype: mimetype || "image/jpeg" };
+    if (caption && String(caption).trim()) {
+      payload.caption = String(caption).slice(0, 1024);
+    }
+    const r = await withTimeout(
+      sock.sendMessage(jid, payload),
+      30000, "sendImage",
+    );
+    lastSuccessAt = Date.now();
+    return res.json({ ok: true, message_id: r.key?.id, jid });
+  } catch (e) {
+    const msg = String(e?.message || "");
+    logger.error({ err: msg, phone }, "send-image err");
+    if (/timeout|closed|terminat|connection|stale|stream/i.test(msg)) {
+      forceReconnect(`send-image:${msg}`);
+    }
+    return res.status(502).json({ ok: false, error: msg || "erro desconhecido" });
+  }
+});
+
+
+/**
+ * POST /send-status
+ * Publica STATUS (story) do WhatsApp com 24h de visibilidade.
+ *
+ * Body:
+ *   { kind: "text" | "image" | "video",
+ *     text: "..."           (kind=text — fundo colorido auto),
+ *     media_b64: "..."      (kind=image|video — base64 do binário),
+ *     mimetype: "image/jpeg" | "video/mp4",
+ *     caption: "..."        (opcional para image/video),
+ *     background_color: "#075E54"  (opcional kind=text),
+ *     font: 1 (Sans), 2 (Serif), 3 (Norican)  (opcional kind=text),
+ *     audience_jids: ["55119...@s.whatsapp.net", ...]
+ *                          (audiência explícita; se vazio, default = todos
+ *                           os contatos que têm seu nº salvo).
+ *   }
+ *
+ * Risco: status broadcast frequente pode disparar fingerprint anti-spam do WA.
+ * Recomendação CEO: máx 2-3 status/dia, contatos com opt-in.
+ */
+app.post("/send-status", async (req, res) => {
+  if (connState !== "connected" || !sock) {
+    return res.status(503).json({ ok: false, error: "WhatsApp não conectado." });
+  }
+  const {
+    kind, text, media_b64, mimetype, caption,
+    background_color, font, audience_jids,
+  } = req.body || {};
+  if (!kind || !["text", "image", "video"].includes(String(kind))) {
+    return res.status(400).json({ ok: false, error: "kind inválido (text|image|video)" });
+  }
+  // Monta payload baileys
+  let payload;
+  try {
+    if (kind === "text") {
+      if (!text || !String(text).trim()) {
+        return res.status(400).json({ ok: false, error: "text obrigatório para kind=text" });
+      }
+      payload = {
+        text: String(text).slice(0, 700),
+        backgroundColor: background_color || "#075E54",
+        font: Number(font) || 1,
+      };
+    } else if (kind === "image") {
+      if (!media_b64) {
+        return res.status(400).json({ ok: false, error: "media_b64 obrigatório para kind=image" });
+      }
+      payload = {
+        image: Buffer.from(String(media_b64), "base64"),
+        mimetype: mimetype || "image/jpeg",
+      };
+      if (caption && String(caption).trim()) {
+        payload.caption = String(caption).slice(0, 1024);
+      }
+    } else if (kind === "video") {
+      if (!media_b64) {
+        return res.status(400).json({ ok: false, error: "media_b64 obrigatório para kind=video" });
+      }
+      payload = {
+        video: Buffer.from(String(media_b64), "base64"),
+        mimetype: mimetype || "video/mp4",
+      };
+      if (caption && String(caption).trim()) {
+        payload.caption = String(caption).slice(0, 1024);
+      }
+    }
+  } catch (e) {
+    return res.status(400).json({ ok: false, error: `payload inválido: ${e.message}` });
+  }
+  // Audience
+  let statusJidList = [];
+  if (Array.isArray(audience_jids) && audience_jids.length > 0) {
+    statusJidList = audience_jids.map((j) => {
+      const s = String(j || "").trim();
+      if (!s) return null;
+      return s.includes("@") ? s : `${s.replace(/\D/g, "")}@s.whatsapp.net`;
+    }).filter(Boolean);
+  }
+  await applyRateLimit();
+  try {
+    const opts = statusJidList.length > 0 ? { statusJidList } : {};
+    const r = await withTimeout(
+      sock.sendMessage("status@broadcast", payload, opts),
+      30000, "sendStatus",
+    );
+    lastSuccessAt = Date.now();
+    return res.json({
+      ok: true,
+      message_id: r.key?.id,
+      kind,
+      audience_count: statusJidList.length || "all_contacts_default",
+    });
+  } catch (e) {
+    const msg = String(e?.message || "");
+    logger.error({ err: msg, kind }, "send-status err");
+    if (/timeout|closed|terminat|connection|stale|stream/i.test(msg)) {
+      forceReconnect(`send-status:${msg}`);
+    }
+    return res.status(502).json({ ok: false, error: msg || "erro desconhecido" });
+  }
+});
+
+
+/**
+ * POST /update-profile-status
+ * Atualiza a frase "Sobre" do perfil WhatsApp.
+ *
+ * Body: { text: "string" }
+ */
+app.post("/update-profile-status", async (req, res) => {
+  if (connState !== "connected" || !sock) {
+    return res.status(503).json({ ok: false, error: "WhatsApp não conectado." });
+  }
+  const { text } = req.body || {};
+  if (!text || !String(text).trim()) {
+    return res.status(400).json({ ok: false, error: "text obrigatório" });
+  }
+  try {
+    await sock.updateProfileStatus(String(text).slice(0, 139));
+    return res.json({ ok: true, applied_text: String(text).slice(0, 139) });
+  } catch (e) {
+    logger.error({ err: e.message }, "update-profile-status err");
+    return res.status(502).json({ ok: false, error: e.message });
+  }
+});
+
 
 app.post("/logout", async (_req, res) => {
   try {
