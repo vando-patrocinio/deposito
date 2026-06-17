@@ -685,6 +685,7 @@ async def asaas_balance(user: dict = Depends(require_role("gestor"))):
 
 # ─────────── Webhook ───────────
 @router.post("/webhooks/asaas")
+@router.post("/webhook/asaas")  # Alias singular — formato que CEO configura no painel ASAAS
 async def asaas_webhook(request: Request):
     token = request.headers.get("asaas-access-token") or request.query_params.get("token") or ""
     if not asaas_client.verify_webhook_token(token):
