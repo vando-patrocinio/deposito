@@ -322,6 +322,54 @@ async def camera_detail(
     return {"camera": cam}
 
 
+# ─────────────────────── Pedido de nova câmera ───────────────────────
+class CameraRequestPayload(BaseModel):
+    cep: str = Field(..., min_length=8, max_length=10)
+    address: str = Field(..., min_length=5, max_length=200)
+    reference: Optional[str] = Field(None, max_length=200)
+    reason: Optional[str] = Field(None, max_length=500)
+    lgpd_consent: bool = Field(...)
+
+
+@router.post("/camera-requests")
+async def request_camera(
+    payload: CameraRequestPayload,
+    user: Dict[str, Any] = Depends(current_subscriber),
+):
+    """Morador solicita nova câmera no quarteirão dele.
+
+    Cria um lead em `ligo_tv_camera_requests` pra equipe comercial atender.
+    Exige consentimento LGPD explícito (a câmera filmará via pública).
+    """
+    if not payload.lgpd_consent:
+        raise HTTPException(400, "Consentimento LGPD obrigatório.")
+    cep = "".join(ch for ch in payload.cep if ch.isdigit())
+    if len(cep) != 8:
+        raise HTTPException(400, "CEP inválido (precisa ter 8 dígitos).")
+    db = await get_db()
+    doc = {
+        "id": f"cam-req-{int(time.time()*1000)}",
+        "subscriber_cpf": user.get("doc"),
+        "subscriber_name": user.get("name"),
+        "cep": cep,
+        "cep_prefix": cep[:5],
+        "address": payload.address.strip(),
+        "reference": (payload.reference or "").strip(),
+        "reason": (payload.reason or "").strip(),
+        "lgpd_consent": True,
+        "lgpd_consent_at": int(time.time()),
+        "status": "pending_review",
+        "created_at": int(time.time()),
+    }
+    await db.ligo_tv_camera_requests.insert_one(doc)
+    log.info("[ligo_tv] new camera request from %s cep=%s", user.get("doc"), cep)
+    return {
+        "ok": True,
+        "request_id": doc["id"],
+        "message": "Pedido registrado. Nossa equipe vai analisar a viabilidade no seu quarteirão.",
+    }
+
+
 # ─────────────────────── Proxy HLS (CORS bypass) ───────────────────────
 #
 # Pluto TV bloqueia origins de terceiros via CORS. Sem proxy, qualquer

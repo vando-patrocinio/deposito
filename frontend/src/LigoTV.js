@@ -8,7 +8,7 @@
  */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Hls from "hls.js";
-import { Search, LogOut, Play, Tv, Radio, Loader2, AlertCircle, X, Video, MapPin } from "lucide-react";
+import { Search, LogOut, Play, Tv, Radio, Loader2, AlertCircle, X, Video, MapPin, Plus, CheckCircle2 } from "lucide-react";
 
 const BACKEND = process.env.REACT_APP_BACKEND_URL || "";
 const TOKEN_KEY = "ligotv_token";
@@ -295,6 +295,7 @@ function Hub({ me, onLogout }) {
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
   const [playing, setPlaying] = useState(null);
+  const [requestOpen, setRequestOpen] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -490,16 +491,31 @@ function Hub({ me, onLogout }) {
 
       {section === "cameras" && (
         <main style={{ padding: 20 }}>
-          {matchedCep && (
-            <div style={{
-              marginBottom: 16, padding: 10,
-              background: "#0d2c1e", border: "1px solid #166534",
-              borderRadius: 8, fontSize: 12, color: "#86efac",
-              display: "inline-flex", alignItems: "center", gap: 8,
-            }} data-testid="ligotv-cep-badge">
-              <MapPin size={12}/> Câmeras da sua região (CEP {matchedCep}…)
-            </div>
-          )}
+          <div style={{
+            display: "flex", alignItems: "center", justifyContent: "space-between",
+            marginBottom: 16, gap: 12, flexWrap: "wrap",
+          }}>
+            {matchedCep ? (
+              <div style={{
+                padding: 10,
+                background: "#0d2c1e", border: "1px solid #166534",
+                borderRadius: 8, fontSize: 12, color: "#86efac",
+                display: "inline-flex", alignItems: "center", gap: 8,
+              }} data-testid="ligotv-cep-badge">
+                <MapPin size={12}/> Câmeras da sua região (CEP {matchedCep}…)
+              </div>
+            ) : <span />}
+            <button
+              data-testid="ligotv-request-camera-btn"
+              onClick={() => setRequestOpen(true)}
+              style={{
+                padding: "8px 14px", background: ACCENT, color: "white",
+                border: "none", borderRadius: 8, cursor: "pointer",
+                fontSize: 12, fontWeight: 700,
+                display: "inline-flex", alignItems: "center", gap: 6,
+              }}
+            ><Plus size={13}/> Pedir câmera no meu bairro</button>
+          </div>
           {loading ? (
             <div style={{ padding: 80, textAlign: "center", color: TEXT_DIM }}>
               <Loader2 className="animate-spin" size={20} color={ACCENT}/>
@@ -528,6 +544,11 @@ function Hub({ me, onLogout }) {
           playing={playing}
           onClose={() => setPlaying(null)}
         />
+      )}
+
+      {/* Modal pedido de câmera */}
+      {requestOpen && (
+        <CameraRequestModal onClose={() => setRequestOpen(false)}/>
       )}
     </div>
   );
@@ -643,6 +664,199 @@ const summaryStyle = {
   fontSize: 11, color: "#737373", lineHeight: 1.3,
   display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical",
   overflow: "hidden",
+};
+
+// ─────────────────────── Camera Request Modal ───────────────────────
+const fmtCEP = (s) => {
+  const d = (s || "").replace(/\D+/g, "").slice(0, 8);
+  if (d.length <= 5) return d;
+  return `${d.slice(0,5)}-${d.slice(5)}`;
+};
+
+function CameraRequestModal({ onClose }) {
+  const [cep, setCep] = useState("");
+  const [address, setAddress] = useState("");
+  const [reference, setReference] = useState("");
+  const [reason, setReason] = useState("");
+  const [consent, setConsent] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+  const [done, setDone] = useState(false);
+
+  const submit = async (e) => {
+    e?.preventDefault?.();
+    setErr("");
+    if (!consent) {
+      setErr("Você precisa concordar com o consentimento LGPD pra prosseguir.");
+      return;
+    }
+    setBusy(true);
+    try {
+      await api("/api/ligo-tv/camera-requests", {
+        method: "POST",
+        body: JSON.stringify({
+          cep: cep.replace(/\D+/g, ""),
+          address: address.trim(),
+          reference: reference.trim(),
+          reason: reason.trim(),
+          lgpd_consent: true,
+        }),
+      });
+      setDone(true);
+    } catch (e) {
+      setErr(e.message || "Falha ao enviar.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div
+      data-testid="ligotv-request-modal"
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+      style={{
+        position: "fixed", inset: 0, zIndex: 60,
+        background: "rgba(0,0,0,0.85)",
+        display: "flex", alignItems: "center", justifyContent: "center",
+        padding: 20, overflowY: "auto",
+      }}
+    >
+      <div style={{
+        width: "100%", maxWidth: 540, maxHeight: "90vh",
+        background: BG_CARD, borderRadius: 14, border: "1px solid #262626",
+        overflowY: "auto",
+      }}>
+        <div style={{
+          padding: "14px 18px", borderBottom: "1px solid #1f1f1f",
+          display: "flex", alignItems: "center", gap: 10,
+        }}>
+          <Plus color={ACCENT} size={18}/>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontWeight: 700, fontSize: 15 }}>Pedir câmera no meu bairro</div>
+            <div style={{ fontSize: 11, color: TEXT_DIM }}>Equipe Ligo analisa a viabilidade no quarteirão.</div>
+          </div>
+          <button onClick={onClose} data-testid="ligotv-request-close"
+            style={{ background: "transparent", color: TEXT_DIM, border: "none", cursor: "pointer", padding: 6 }}>
+            <X size={20}/>
+          </button>
+        </div>
+
+        {done ? (
+          <div style={{ padding: 40, textAlign: "center" }}>
+            <CheckCircle2 size={48} color="#22c55e" style={{ marginBottom: 12 }}/>
+            <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 6 }}>
+              Pedido recebido!
+            </div>
+            <p style={{ color: TEXT_DIM, fontSize: 13, lineHeight: 1.5 }}>
+              Nossa equipe vai avaliar a viabilidade no seu quarteirão e te
+              avisar pelo WhatsApp em até 5 dias úteis. Obrigado por contribuir
+              com a segurança da sua região!
+            </p>
+            <button
+              data-testid="ligotv-request-done"
+              onClick={onClose}
+              style={{
+                marginTop: 18, padding: "10px 18px", background: ACCENT,
+                color: "white", border: "none", borderRadius: 8,
+                cursor: "pointer", fontSize: 13, fontWeight: 700,
+              }}
+            >Fechar</button>
+          </div>
+        ) : (
+          <form onSubmit={submit} style={{ padding: 18, display: "flex", flexDirection: "column", gap: 12 }}>
+            <label style={labelStyle}>
+              CEP
+              <input
+                data-testid="ligotv-request-cep"
+                value={fmtCEP(cep)} onChange={(e) => setCep(e.target.value)}
+                placeholder="27240-000" inputMode="numeric"
+                style={modalInputStyle} required autoFocus
+              />
+            </label>
+            <label style={labelStyle}>
+              Endereço (rua, número)
+              <input
+                data-testid="ligotv-request-address"
+                value={address} onChange={(e) => setAddress(e.target.value)}
+                placeholder="Rua das Flores, 123"
+                style={modalInputStyle} required
+              />
+            </label>
+            <label style={labelStyle}>
+              Ponto de referência <span style={{ color: "#6b7280", fontWeight: 400 }}>(opcional)</span>
+              <input
+                data-testid="ligotv-request-reference"
+                value={reference} onChange={(e) => setReference(e.target.value)}
+                placeholder="Em frente à padaria do João"
+                style={modalInputStyle}
+              />
+            </label>
+            <label style={labelStyle}>
+              Motivo do pedido <span style={{ color: "#6b7280", fontWeight: 400 }}>(opcional)</span>
+              <textarea
+                data-testid="ligotv-request-reason"
+                value={reason} onChange={(e) => setReason(e.target.value)}
+                placeholder="Aumentou roubo nesse trecho, etc."
+                rows={3}
+                style={{ ...modalInputStyle, resize: "vertical", minHeight: 60, letterSpacing: 0 }}
+              />
+            </label>
+            <label style={{
+              display: "flex", gap: 10, alignItems: "flex-start",
+              padding: 10, background: "#1a1a1a",
+              border: `1px solid ${consent ? "#166534" : "#2a2a2a"}`,
+              borderRadius: 8, cursor: "pointer", fontSize: 11,
+              color: TEXT_DIM, lineHeight: 1.5,
+            }}>
+              <input
+                type="checkbox"
+                data-testid="ligotv-request-consent"
+                checked={consent}
+                onChange={(e) => setConsent(e.target.checked)}
+                style={{ marginTop: 2, flexShrink: 0 }}
+              />
+              <span>
+                <b style={{ color: TEXT }}>Consentimento LGPD.</b> Autorizo a Ligo a instalar
+                câmera em via pública próxima ao endereço acima, gravar imagens 24/7
+                pra fins de segurança comunitária, e disponibilizar o stream pra
+                assinantes Ligo do mesmo bairro (mesmo prefixo de CEP). Estou ciente
+                de que as imagens são armazenadas por até 30 dias e excluídas após.
+              </span>
+            </label>
+            {err && (
+              <div style={{
+                padding: 10, background: "#2a0f0f", border: "1px solid #5b1d1d",
+                borderRadius: 8, fontSize: 12, color: "#fda4af",
+                display: "flex", alignItems: "center", gap: 6,
+              }}>
+                <AlertCircle size={14}/> {err}
+              </div>
+            )}
+            <button
+              data-testid="ligotv-request-submit"
+              type="submit"
+              disabled={busy || !cep || !address || !consent}
+              style={{
+                padding: "11px 16px", background: ACCENT, color: "white",
+                border: "none", borderRadius: 8, fontWeight: 700,
+                fontSize: 13, cursor: busy ? "wait" : "pointer",
+                opacity: (!cep || !address || !consent) ? 0.55 : 1,
+              }}
+            >{busy ? "Enviando…" : "Enviar pedido"}</button>
+          </form>
+        )}
+      </div>
+    </div>
+  );
+}
+
+const labelStyle = { fontSize: 11, color: TEXT_DIM, fontWeight: 700 };
+const modalInputStyle = {
+  display: "block", width: "100%", marginTop: 5,
+  padding: "9px 11px", borderRadius: 8,
+  background: "#1a1a1a", border: "1px solid #2a2a2a",
+  color: TEXT, fontSize: 13, outline: "none",
+  boxSizing: "border-box",
 };
 
 // ─────────────────────── Player Modal ───────────────────────
