@@ -2077,6 +2077,50 @@ async def _maybe_auto_reply(cid: str, phone: str, user_text: str,
         logger.warning("[coverage] timeout pra phone=%s", phone)
     except Exception as _e:
         logger.warning("[coverage] skip: %s", _e)
+
+    # 3.0d. LOOKUP CNPJ — CEO 17/02/2026. Quando o cliente envia um CNPJ
+    # (14 dígitos, com/sem pontuação), consulta BrasilAPI e injeta
+    # === LOOKUP CNPJ === pra Isabella confirmar empresa + escalar pro
+    # Consultor PJ. Implementa Regra de Ouro (1.5): evidência objetiva
+    # antes de afirmar nome/endereço de empresa.
+    try:
+        from services.cnpj_lookup import extract_cnpj, lookup as cnpj_lookup
+        cnpj_d = extract_cnpj(user_text)
+        if cnpj_d:
+            cnpj_data = await asyncio.wait_for(cnpj_lookup(cnpj_d), timeout=6.0)
+            if cnpj_data.get("ok"):
+                block = (
+                    "=== LOOKUP CNPJ (evidência objetiva — Regra de Ouro) ===\n"
+                    f"CNPJ: {cnpj_data['cnpj']} ({cnpj_data['situacao']})\n"
+                    f"Razão social: {cnpj_data['razao_social']}\n"
+                    + (f"Nome fantasia: {cnpj_data['nome_fantasia']}\n"
+                        if cnpj_data['nome_fantasia'] else "")
+                    + f"Endereço: {cnpj_data['address_full']}\n"
+                    + (f"Atividade: {cnpj_data['cnae_descricao']}\n"
+                        if cnpj_data['cnae_descricao'] else "")
+                    + (f"Porte: {cnpj_data['porte']}\n" if cnpj_data['porte'] else "")
+                    + "\nUSE estes dados pra confirmar com o cliente "
+                    "(trilha 6.8). Se ATIVA + cliente confirmar, "
+                    "envie [CONSULTOR_PJ_ACIONAR]."
+                )
+            else:
+                block = (
+                    "=== LOOKUP CNPJ (FALHA — Regra de Ouro) ===\n"
+                    f"CNPJ enviado: {cnpj_d}\n"
+                    f"Erro: {cnpj_data.get('error')}\n"
+                    "NÃO confirme nome/endereço de cabeça. Peça pro "
+                    "cliente confirmar os números do CNPJ."
+                )
+            extra.append(block)
+            logger.info(
+                "[cnpj_lookup] phone=%s cnpj=%s ok=%s situacao=%s",
+                phone, cnpj_d, cnpj_data.get("ok"),
+                cnpj_data.get("situacao"),
+            )
+    except asyncio.TimeoutError:
+        logger.warning("[cnpj_lookup] timeout pra phone=%s", phone)
+    except Exception as _e:
+        logger.warning("[cnpj_lookup] skip: %s", _e)
     # 3a. Conflito de vínculo: se o telefone está vinculado a 2+ subscribers
     # cadastrados, a IA NÃO pode chamar pelo nome (vazaria dados de outro
     # cliente). Injeta diretiva clara forçando a IA a pedir CPF antes de
