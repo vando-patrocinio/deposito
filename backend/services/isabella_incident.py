@@ -768,7 +768,8 @@ async def mass_notify_incident(company: str, incident_id: str, *,
         text = template.format(
             nome=(s.get("name") or "cliente").split(" ")[0].title(),
             empresa=company_name, where=where)
-        r = await send_text(company_id=company, to=phone, text=text)
+        r = await send_text(company_id=company, to=phone, text=text,
+                              channel="baileys")  # P0 CEO 17/02/2026
         if r.get("ok"):
             sent += 1
         else:

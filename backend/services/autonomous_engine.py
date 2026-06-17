@@ -487,7 +487,8 @@ async def _execute_action(decision: Dict[str, Any]) -> Dict[str, Any]:
             if phone:
                 send = await wa_dispatcher.send_text(
                     company_id=decision["company_id"],
-                    to=phone, text=text)
+                    to=phone, text=text,
+                    channel="baileys")  # P0 CEO 17/02/2026 — IA operacional via Baileys
                 if send.get("ok"):
                     action["status"] = "dispatched"
                     action["executed_at"] = _iso()

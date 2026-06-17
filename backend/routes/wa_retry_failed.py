@@ -98,7 +98,8 @@ async def retry_failed_send(
 
     cursor = db.aihub_wa_messages.find(query,
         {"_id": 0, "id": 1, "message_id": 1, "external_id": 1, "phone": 1,
-         "text": 1, "delivery_status": 1, "created_at": 1}).sort("created_at", 1)
+         "text": 1, "delivery_status": 1, "created_at": 1,
+         "channel": 1}).sort("created_at", 1)
     docs = []
     async for m in cursor:
         docs.append(m)
@@ -108,20 +109,27 @@ async def retry_failed_send(
         mid = (m.get("id") or m.get("message_id") or m.get("external_id"))
         phone = m.get("phone")
         text = m.get("text") or ""
+        # P0 CEO 17/02/2026 — usa channel da mensagem original quando
+        # presente; senão herda da última inbound da conversa via dispatcher.
+        # (Bypass direto via sidecar mantido como override emergencial.)
+        msg_channel = (m.get("channel") or "").strip().lower() or None
         if not phone or not text:
             failed += 1
             items.append({"id": mid, "phone": phone, "status": "skip_empty"})
             continue
         retried += 1
         if payload.dry_run:
-            items.append({"id": mid, "phone": phone, "status": "dry_run"})
+            items.append({"id": mid, "phone": phone, "status": "dry_run",
+                           "channel": msg_channel or "auto"})
             continue
         try:
             if payload.force_sidecar_direct:
                 r = await _send_via_sidecar_direct(phone=phone, text=text)
             else:
                 r = await wa_dispatcher.send_text(
-                    company_id=cid, to=phone, text=text)
+                    company_id=cid, to=phone, text=text,
+                    channel=msg_channel,
+                    strict=True)
             ok = bool(r.get("ok"))
             if ok:
                 succeeded += 1

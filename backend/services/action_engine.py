@@ -124,6 +124,7 @@ async def _exec_notify_manager(dec: Dict[str, Any]) -> Dict[str, Any]:
                         text=(f"🤖 *Presidente IA*\n\n"
                                f"*{notif['title']}*\n\n"
                                f"{notif['message']}"),
+                        channel="baileys",  # P0 CEO 17/02/2026 — gestor via Baileys
                     )
                     sent = True
             except Exception:

@@ -532,7 +532,8 @@ async def execute_campaign(*, campaign_id: str, company_id: str,
                                  reason="sem telefone")
         return {"ok": False, "reason": "no_phone"}
     r = await send_text(company_id=company_id, to=phone,
-                          text=camp["message"])
+                          text=camp["message"],
+                          channel="baileys")  # P0 CEO 17/02/2026 — atendimento via Baileys
     real_cost = float(camp.get("estimated_cost_brl") or 0)
     await db.experience_campaigns.update_one(
         {"id": campaign_id},

@@ -75,7 +75,8 @@ async def dispatch(company_id: str, slot: str = "07h") -> Dict[str, Any]:
         out["reason"] = "WA não OPEN ou PRESIDENTE_IA_GESTOR_PHONE ausente"
     else:
         send = await wa_dispatcher.send_text(
-            company_id=company_id, to=gestor, text=text)
+            company_id=company_id, to=gestor, text=text,
+            channel="baileys")  # P0 CEO 17/02/2026 — briefing IA → Baileys
         if send.get("ok"):
             out["delivery_status"] = "delivered"
             out["wa_id"] = send.get("id")

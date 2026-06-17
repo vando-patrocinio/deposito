@@ -343,7 +343,8 @@ async def start_operation(company_id: str, dry_run: bool = True,
             try:
                 from services.wa_dispatcher import send_text
                 r = await send_text(
-                    company_id=company_id, to=c["phone"], text=body)
+                    company_id=company_id, to=c["phone"], text=body,
+                    channel="baileys")  # P0 CEO 17/02/2026
                 msg_record["status"] = ("sent"
                                          if r and r.get("ok") else "failed")
                 msg_record["wa_response"] = r

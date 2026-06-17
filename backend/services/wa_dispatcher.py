@@ -32,7 +32,7 @@ import os
 import time
 import uuid
 from datetime import datetime, timezone
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 import httpx
 
@@ -42,7 +42,17 @@ log = logging.getLogger("wa_dispatcher")
 
 
 def _baileys_url() -> str:
-    return os.environ.get("BAILEYS_SIDECAR_URL", "")
+    """Resolve a URL do sidecar Baileys.
+
+    Ordem (P0 CEO 17/02/2026 — alinhamento com .env real):
+      1. BAILEYS_SIDECAR_URL (legacy)
+      2. WA_SIDECAR_URL_CH1  (channel-1 default outbound — atual padrão)
+      3. WA_SIDECAR_URL      (genérico)
+    """
+    return (os.environ.get("BAILEYS_SIDECAR_URL")
+             or os.environ.get("WA_SIDECAR_URL_CH1")
+             or os.environ.get("WA_SIDECAR_URL")
+             or "")
 
 
 def _timeout_s() -> float:
@@ -160,20 +170,40 @@ async def _resolve_channels(company_id: str):
 
 async def _send_via_baileys(*, company_id: str, to: str, text: str,
                               start: float, msg_id: str) -> Dict[str, Any]:
-    """Caminho legacy — sidecar Baileys local. Mantido funcional."""
-    sess = await db.wa_baileys_sessions.find_one(
-        {"company_id": company_id, "status": "open"})
-    if not sess:
-        return {"ok": False, "reason": "baileys_no_session"}
+    """Caminho Baileys — sidecar local.
+
+    P0 CEO 17/02/2026: gate prioritário é HEALTH do sidecar (state=connected),
+    com fallback opcional pra `wa_baileys_sessions` legado.
+    """
     url = _baileys_url()
     if not url:
         return {"ok": False, "reason": "BAILEYS_SIDECAR_URL_missing"}
+    # Health-check rápido — confirma sidecar `state=connected`
     try:
+        async with httpx.AsyncClient(timeout=3.0) as cli:
+            h = await cli.get(f"{url}/health")
+            health = h.json() if h.status_code == 200 else {}
+    except Exception as e:
+        return {"ok": False, "reason": f"baileys_health_fail:{str(e)[:80]}"}
+    sidecar_state = (health.get("state") or "").lower()
+    if sidecar_state != "connected":
+        # Fallback de compat — verifica collection legacy de sessões
+        sess = await db.wa_baileys_sessions.find_one(
+            {"company_id": company_id, "status": "open"})
+        if not sess:
+            return {"ok": False,
+                    "reason": f"baileys_sidecar_state:{sidecar_state or 'unknown'}"}
+    try:
+        # Inclui token no header (sidecar exige Bearer)
+        token = os.environ.get("WA_SIDECAR_TOKEN", "")
+        headers = {"Authorization": f"Bearer {token}"} if token else {}
         async with httpx.AsyncClient(timeout=_timeout_s()) as cli:
             r = await cli.post(
                 f"{url}/send",
                 json={"company_id": company_id, "to": to,
-                       "text": text, "id": msg_id})
+                       "phone": to,  # alias aceito pelo sidecar
+                       "text": text, "id": msg_id},
+                headers=headers)
             r.raise_for_status()
             return {"ok": True, "id": msg_id, "provider": "baileys",
                     "latency_ms": int((time.time() - start) * 1000),
@@ -228,15 +258,54 @@ async def _send_via_evolution(*, channel: Dict[str, Any],
                   "provider": "evolution"}
 
 
-async def send_text(*, company_id: str, to: str,
-                       text: str) -> Dict[str, Any]:
-    """Envia texto. Roteia entre Baileys e Evolution com fallback.
+async def _get_channel_strict(company_id: str, channel: str) -> Optional[Dict[str, Any]]:
+    """P0 (CEO 17/02/2026): retorna UM canal específico, ativo.
 
-    Política CTO 2026-02:
-      1. Lê canais ativos do `company_id`.
-      2. Tenta o primário; se falhar, tenta o secundário do outro provider.
-      3. Se nenhum disponível → no_session/no_channel.
-      4. Modo FAKE (SMARTPROV_TRANSPORT_FAKE=1) ainda funciona.
+    Sem fallback, sem lista, sem ranking. Se o canal pedido não existe
+    OU está `active=False`, retorna None → caller decide o erro.
+    """
+    doc = await db.whatsapp_channels.find_one(
+        {"company_id": company_id, "provider": channel, "active": True},
+        {"_id": 0})
+    return doc
+
+
+async def _resolve_channel_from_conversation(
+    company_id: str, to: str,
+) -> Optional[str]:
+    """Herda canal da última INBOUND do telefone (channel está persistido lá).
+
+    Retorna o nome do provider ("baileys" / "evolution" / "twilio") ou None.
+    """
+    phone = "".join(c for c in (to or "") if c.isdigit())
+    if not phone:
+        return None
+    inbound = await db.aihub_wa_messages.find_one(
+        {"company_id": company_id, "phone": phone, "direction": "inbound",
+         "channel": {"$exists": True, "$nin": [None, ""]}},
+        {"_id": 0, "channel": 1},
+        sort=[("created_at", -1)])
+    if not inbound:
+        return None
+    return (inbound.get("channel") or "").strip().lower() or None
+
+
+async def send_text(*, company_id: str, to: str, text: str,
+                       channel: Optional[str] = None,
+                       conversation_id: Optional[str] = None,
+                       strict: bool = False) -> Dict[str, Any]:
+    """Envia texto.
+
+    P0 — CEO 17/02/2026: roteamento ESTRITO por canal, sem fallback cruzado.
+
+    Ordem de resolução do canal a usar:
+      1. `channel` explícito (informado pelo caller) — preferencial.
+      2. Herda da última inbound do mesmo telefone (`aihub_wa_messages.channel`).
+      3. Se `strict=True` → fail-fast `channel_required`.
+      4. Se `strict=False` (default deprecado) → cai em legado `_resolve_channels`
+         (preserva compat durante migração; emite log de alerta).
+
+    `conversation_id` reservado para futura evolução (`aihub_conversations`).
     """
     start = time.time()
 
@@ -247,19 +316,82 @@ async def send_text(*, company_id: str, to: str,
             await db.wa_fake_outbox.insert_one({
                 "id": msg_id, "company_id": company_id,
                 "to": to, "text": text,
+                "channel": (channel or "fake"),
                 "created_at": datetime.now(timezone.utc).isoformat(),
             })
         except Exception:
             pass
         await _record_metric(company_id, True,
                               int((time.time() - start) * 1000), "fake_ok")
-        return {"ok": True, "id": msg_id, "fake": True}
+        return {"ok": True, "id": msg_id, "fake": True,
+                "used_provider": channel or "fake"}
 
     if is_breaker_open(company_id):
         await _record_metric(company_id, False, 0, "breaker_open")
         return {"ok": False, "reason": "breaker_open"}
 
     msg_id = f"wa-{uuid.uuid4().hex[:12]}"
+
+    # 1. Tenta resolver canal (estritamente)
+    resolved_channel = (channel or "").strip().lower() or None
+    resolved_source = "explicit" if resolved_channel else None
+    if not resolved_channel:
+        resolved_channel = await _resolve_channel_from_conversation(
+            company_id, to)
+        if resolved_channel:
+            resolved_source = "inbound_history"
+
+    if resolved_channel:
+        # ROTEAMENTO ESTRITO — sem fallback cruzado
+        ch_doc = await _get_channel_strict(company_id, resolved_channel)
+        if not ch_doc:
+            await _record_metric(company_id, False,
+                                  int((time.time() - start) * 1000),
+                                  f"channel_not_active:{resolved_channel}")
+            return {
+                "ok": False,
+                "reason": f"channel_not_active:{resolved_channel}",
+                "requested_channel": resolved_channel,
+                "channel_source": resolved_source,
+            }
+        if resolved_channel == "baileys":
+            result = await _send_via_baileys(
+                company_id=company_id, to=to, text=text,
+                start=start, msg_id=msg_id)
+        elif resolved_channel == "evolution":
+            result = await _send_via_evolution(
+                channel=ch_doc, to=to, text=text,
+                start=start, msg_id=msg_id)
+        else:
+            return {"ok": False,
+                    "reason": f"channel_unsupported:{resolved_channel}"}
+        if result.get("ok"):
+            _record_success(company_id)
+        else:
+            _record_failure(company_id)
+        await _record_metric(company_id, bool(result.get("ok")),
+                              int((time.time() - start) * 1000),
+                              result.get("reason", f"ok:{resolved_channel}"))
+        result["used_provider"] = resolved_channel
+        result["channel_source"] = resolved_source
+        return result
+
+    # 2. Sem canal resolvido — modo strict explode aqui
+    if strict:
+        await _record_metric(company_id, False,
+                              int((time.time() - start) * 1000),
+                              "channel_required_strict")
+        return {"ok": False,
+                "reason": "channel_required",
+                "hint": ("informe channel=... ou garanta que existe inbound "
+                          "prévia com channel persistido")}
+
+    # 3. LEGADO — caller antigo sem channel. Loga e usa _resolve_channels.
+    # Mantém compat por 1 sprint enquanto callers migram.
+    log.warning(
+        "[wa_dispatcher] LEGACY_PATH cid=%s to=%s — caller não informou "
+        "channel e não há inbound prévia. Migrar para passar channel "
+        "explícito (P0 CEO 17/02/2026).", company_id, to)
     routes = await _resolve_channels(company_id)
 
     # Compat — se não há canal configurado mas há sessão Baileys + env URL,
@@ -275,6 +407,7 @@ async def send_text(*, company_id: str, to: str,
         await _record_metric(company_id, legacy["ok"],
                               int((time.time() - start) * 1000),
                               legacy.get("reason", ""))
+        legacy["legacy_path"] = True
         return legacy
 
     last_error: Dict[str, Any] = {}
@@ -293,9 +426,9 @@ async def send_text(*, company_id: str, to: str,
                                   int((time.time() - start) * 1000),
                                   f"ok:{route['provider']}")
             result["used_provider"] = route["provider"]
+            result["legacy_path"] = True
             return result
         last_error = result
-        # Para no_session ou falha de rede, tenta o próximo provider
         log.info("[wa_dispatcher] %s falhou (%s), tentando próximo",
                   route["provider"], result.get("reason"))
 
@@ -305,6 +438,7 @@ async def send_text(*, company_id: str, to: str,
                           last_error.get("reason", "all_routes_failed"))
     last_error["latency_ms"] = latency
     last_error["routes_tried"] = [r["provider"] for r in routes]
+    last_error["legacy_path"] = True
     return last_error
 
 
