@@ -2,6 +2,35 @@
 
 > Documento vivo. Atualizado a cada sprint.
 
+## ✅ P1 CEO — SPRINT 3 BACKFILL ÓRFÃOS ONDA 2 + REFACTOR ROTAS AI (16/02/2026 · ENTREGUE)
+
+**Aprovação CEO 16/02/2026** · Iteration 248 · 16/16 testes PASS · zero bug crítico.
+
+### 3.A — Backfill sintético dos 31 órfãos
+- **Script** `/app/backend/scripts/backfill_onda2_orphans.py` (dry-run + apply).
+- **Classificação**: 10 `synthetic_purchase_genesis_backfill` (compra/reprocess), 6 `synthetic_scan_genesis_backfill` (AI scan), **15 `synthetic_unknown_genesis_backfill` com `needs_human_review=True`** (sem source identificável).
+- **Collection separada**: `inventory_movements_synthetic_backfill` — ZERO poluição em `inventory_os_movements_audit`.
+- **Marcas em `stok_onts`**: `synthetic_backfill_applied=True`, `synthetic_backfill_movement_type`, `synthetic_backfill_needs_review`, `valuation_genesis_via="synthetic_backfill_onda2"`.
+
+### 3.B — Refactor das 3 rotas AI
+- **3.B.1 — `_move_ont_for_install`** (`stok.py:1612`): SmartOLT-bate agora chama `execute_transfer(tecnico→cliente, reason="Instalação OS", origin="ai_scan_install")`.
+- **3.B.2 — `_move_ont_for_withdraw`** (`stok.py:1834`): caminhos consistent + inconsistent UNIFICADOS num só `execute_transfer(cliente→tecnico, reason="Retirada OS")`. Flags `withdraw_inconsistency=True` preservadas.
+- **3.B.3 — `ai_review_decision return_to_company`** (`stok.py:4693`): chama `execute_transfer(tecnico→empresa, manual=True, reason="Outro")`. `approve_reuse` e `scrap_defect` permanecem `update_set`-only.
+- **`lousa.py:3016/3110`**: validado — chama `write_movement` direto ANTES do `update_one`. Audit canônico preservado, refactor formal para `execute_transfer` adiado para Sprint futura (não é bypass real).
+
+### 3.C — Watchtower atualizado
+- **Novo alerta** `trilha_sintetica` (violet badge) na agregação `_agg_alerts`.
+- Lógica mutex: `sem_trilha` agora exclui ONTs com `synthetic_backfill_applied=True`.
+- **Resultado em co-demo**: Sem Trilha 28 → 1 (residual) · Trilha Sintética · Revisar 0 → 15 · Total alertas 51 → 39.
+
+### Maturidade Estoque OS V2: **9,5/10** (CEO 16/02/2026)
+✅ Onda 0/1/2 · ✅ R1 + R1.4 · ✅ Watchtower · ✅ STOK_UPDATE_AUDIT · ✅ Backfill sintético · ✅ Decorator
+🚧 Sprint 4 (Sankey + Snapshot History + Comparativo mensal)
+⏳ Sprint 5 (Owner & Location)
+⏳ Encerramento Estoque OS V2
+
+---
+
 ## ✅ P1 CEO — SPRINT 1 WATCHTOWER ESTOQUE + SPRINT 2 STOK_UPDATE_AUDIT (16/02/2026 · ENTREGUE)
 
 **Aprovação CEO 16/02/2026**: Maturidade Estoque OS subiu 8,8 → 9,2/10. Sprint 1 (Watchtower) + Sprint 2 (Audit final de bypass) entregues em paralelo.
