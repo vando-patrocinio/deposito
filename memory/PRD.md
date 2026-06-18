@@ -2,6 +2,35 @@
 
 > Documento vivo. Atualizado a cada sprint.
 
+## ✅ AUDITORIA E2E LOUSA MOBILE (18/06/2026 · ordem CEO · APROVADO)
+
+**Pen-test funcional REAL** (HTTP + Mongo, sem mocks) cobrindo 8 fluxos críticos. Resultado: **7/8 PASS, 1 SKIP esperado** (defesa de inventário funcionando — não é bug).
+
+### Confirmações principais
+- ✅ Bug #4 (consumíveis) bloqueia HTTP 400 em instalação/reparo/retirada sem materiais; ticket permanece `aberta`.
+- ✅ Bug #6 (auto-detect ONT swap) cria evento ANTES de gates downstream 4xx, idempotente via upsert (2 finalizes = 1 doc).
+- ✅ Retirada bloqueia sem ONT; aceita com `ont`+`asset_recovered`.
+- ✅ Bater ponto: 2 docs únicos em `clock_records`, JWT exigido, bypass de cerca/selfie/time-sync para admin/auditor.
+- ✅ Watchtower Diagnóstico retorna estrutura completa, bounds 1-168 validados (422 fora).
+- ✅ Card "Movimentos Anômalos" reflete 4 cabos anulados pela RCA Fibra.
+- ✅ Zero órfãs novas em `stok_services`, zero saldos negativos novos em `stok_stock` durante todos os 6 fluxos de OS.
+- ✅ 6-phase trace (Onda B) registra todas as fases mesmo em fluxos que falham.
+
+### Relatório completo
+- `/app/memory/AUDITORIA_E2E_LOUSA_2026-06-18.md` — veredito + tabela por fluxo + defesas em profundidade + pontos de acompanhamento.
+- `/app/backend/tests/test_audit_lousa_e2e.py` — 8 testes E2E reais.
+- `/app/test_reports/iteration_253.json` — relatório bruto do testing agent.
+
+### Achados de defesa em profundidade
+Encadeamento de gates confirmado: Bug #4 → CTO_PORT_REQUIRED → SN_PHOTO → OS_INVENTORY (regra_4_equipamento_nao_existe) → auto_ont_swap_events upsert → SmartOLT merge → equipment_swaps audit → auto_close → 6-phase exit. Nenhum `try/except` silencioso.
+
+### SKIP esperado (FLUXO 2 success path)
+`OS_INVENTORY_GUARDRAIL` bloqueia ONT sintética que não está em `stok_stock`. Defesa correta. Para validar full-close em E2E exigiria seed de stok_stock+stok_collaborator_inventory+smartolt_onus+ctos — fora do escopo do pen-test, P2 backlog.
+
+---
+
+
+
 ## ✅ ONDA C P0.1 — RCA Fibra Estorno + 4 Guardrails (18/06/2026 · EXECUTADO)
 
 **CTO 18/06/2026 · CEO approved (rca_20260618_ceo_approved)** · 41/41 testes PASS (15 novos guardrails + 26 regressão) · Lint clean.
