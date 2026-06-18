@@ -1275,6 +1275,7 @@ app.include_router(routes_rede_cell.router)
 app.include_router(routes_rede_cell.watch_router)
 from routes import ia_patrimonial as routes_ia_patrimonial  # noqa: E402
 app.include_router(routes_ia_patrimonial.router)
+app.include_router(routes_ia_patrimonial.watch_cost_router)
 from routes import audit_users as routes_audit_users  # noqa: E402
 app.include_router(routes_audit_users.router)
 from routes import os_lifecycle as routes_os_lifecycle  # noqa: E402

@@ -2,6 +2,38 @@
 
 > Documento vivo. Atualizado a cada sprint.
 
+## ✅ ONDA IA-1.5 · CUSTO POR OS + DRE OPERACIONAL — 18/06/2026
+
+**Diretiva CEO**: "cada OS vira uma linha do DRE operacional". Extensão da Onda IA-1 que combina extração IA + catálogo de preços para calcular custo material + mão-de-obra por OS.
+
+### Entregue
+- `services/os_cost_engine.py` — motor de custo (IA Patrimonial + PRICE_CATALOG)
+  - Bridge `IA_TO_PRICE_KEY` entre nomes IA (singular) e catálogo histórico (plural)
+  - Mão-de-obra base por tipo: instalacao R$35 · reparo R$15 · retirada R$12 · troca R$25 · rompimento R$55 · preventiva R$10
+  - Fallback elegante: IA → form_manual → none (sempre retorna labor base)
+  - Agregador `compute_cost_kpis(cid, days)`: total · by_type · top_techs · top_zones · ia_coverage_pct
+- `routes/ia_patrimonial.py` (atualizado)
+  - `POST /api/lousa/tickets/{id}/cost-estimate` (custo de 1 OS)
+  - `GET /api/watchtower/os-cost/kpis?days=N` (KPIs agregados)
+- `frontend/src/WatchtowerOSCost.jsx` — nova aba **"Custos OS"** no Watchtower com 4 KPIs hero + tabela por tipo + top techs + top zonas + seletor de janela (7/30/60/90d)
+
+### Validação E2E
+- Snapshot 30d co-demo (sem narrativas IA ainda): **R$ 586,30** em 17 OS · R$ 151,30 material + R$ 435 labor
+- Custo médio por tipo: reparo R$ 27,61 · rompimento R$ 55 · instalação R$ 35
+- IA Coverage 0% (dataset mock sem descricao); engine usa form_fallback corretamente — quando narrativas reais entrarem (Onda IA-2 destravada), coverage sobe
+
+### Próximas extensões já mapeadas (CEO mencionou)
+- KPI **CAC Técnico** (receita gerada ÷ material consumido)
+- KPI **Lucro real por cliente** (LTV - custo material acumulado por subscriber)
+- Auto Balanço Patrimonial mensal (Sprint 5.1) já tem fonte oficial de custo
+
+### Files
+- NOVOS: `/app/backend/services/os_cost_engine.py` · `/app/frontend/src/WatchtowerOSCost.jsx`
+- MODIFICADOS: `/app/backend/routes/ia_patrimonial.py` · `/app/backend/server.py` · `/app/frontend/src/Watchtower.jsx`
+
+---
+
+
 ## ✅ ONDA IA-1 · Parser Narrativo Patrimonial (SHADOW MODE) — 18/06/2026
 
 **Diretiva CEO**: "técnico só explica o que aconteceu; IA transforma em movimentação patrimonial". Lousa Mobile em hold → entrega é backend-only em shadow.

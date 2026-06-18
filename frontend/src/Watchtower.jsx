@@ -14,13 +14,14 @@
  */
 import React, { useState } from "react";
 import {
-  Brain, Heart, DollarSign, Package, Boxes, Lock, Network,
+  Brain, Heart, DollarSign, Package, Boxes, Lock, Network, Calculator,
 } from "lucide-react";
 import WatchtowerIaPresidente from "@/WatchtowerIaPresidente";
 import WatchtowerRelacionamento from "@/WatchtowerRelacionamento";
 import WatchtowerRecebimentos from "@/WatchtowerRecebimentos";
 import WatchtowerEstoque from "@/WatchtowerEstoque";
 import WatchtowerRede from "@/WatchtowerRede";
+import WatchtowerOSCost from "@/WatchtowerOSCost";
 
 const TABS = [
   { id: "ia-presidente", label: "IA Presidente", Icon: Brain,
@@ -31,6 +32,8 @@ const TABS = [
     Component: WatchtowerRecebimentos },
   { id: "rede", label: "Rede (Tier 2)", Icon: Network,
     Component: WatchtowerRede },
+  { id: "oscost", label: "Custos OS", Icon: Calculator,
+    Component: WatchtowerOSCost },
   { id: "patrimonio", label: "Patrimônio", Icon: Package,
     Component: PatrimonioPlaceholder, locked: true },
   { id: "estoque", label: "Estoque", Icon: Boxes,
