@@ -264,38 +264,43 @@ async def preview(
 async def execute_import(
     confirm: bool = Query(False,
         description="DEVE ser true para executar"),
+    tier: str = Query("official",
+        description="official (>=0.90) ou quarantine (0.70-0.89)"),
     batch_size: int = Query(100, ge=10, le=500),
     user: dict = Depends(require_role("administrador", "gestor")),
 ):
-    """Fase 5.2 — Genesis Import. Importa TODAS as ONUs SmartOLT
-    elegíveis para stok_onts com origin/import_batch_id/data_confidence.
+    """Fase 5.2 — Genesis Import em DUAS CAMADAS (CEO Opção D 19/02/2026).
 
-    REQUER: ?confirm=true (proteção contra acidente).
+    - tier=official    → importa data_confidence >= 0.90 (asset_status=validado)
+    - tier=quarantine  → importa data_confidence < 0.90 e >= 0.70
+                          (asset_status=pending_validation, exclude_from_balance=True)
+
+    REQUER: ?confirm=true
     """
     if not confirm:
         raise HTTPException(400,
             "Genesis Import requer ?confirm=true. Rode /preview primeiro.")
+    if tier not in ("official", "quarantine"):
+        raise HTTPException(400, "tier deve ser official ou quarantine")
 
     cid = _user_company(user)
-    batch_id = f"o5g-{uuid.uuid4().hex[:14]}"
+    batch_id = f"o5g-{tier[:3]}-{uuid.uuid4().hex[:12]}"
     now = _now_iso()
 
-    # Itera smartolt_onus
     cur = db.smartolt_onus.find({"company_id": cid}, {"_id": 0})
     imported = 0
     blocked = 0
     skipped_existing = 0
+    skipped_wrong_tier = 0
     by_conf: Dict[str, int] = {"1.00": 0, "0.90": 0, "0.70": 0, "0.50": 0}
 
     async for ont in cur:
         sn = ont.get("sn")
         mac = ont.get("mac")
         eid = ont.get("unique_external_id")
-        # Bloqueio sem identificador
         if not sn and not mac:
             blocked += 1
             continue
-        # Skip duplicado (já existe em stok_onts)
         if sn:
             exists = await db.stok_onts.find_one(
                 {"company_id": cid,
@@ -305,17 +310,25 @@ async def execute_import(
                 skipped_existing += 1
                 continue
 
-        # Classifica confidence
         conf, path, extras = await _classify_confidence(db, cid, ont)
+        # Decide tier-skip
+        if tier == "official" and conf < 0.90:
+            skipped_wrong_tier += 1
+            continue
+        if tier == "quarantine" and (conf >= 0.90 or conf < 0.70):
+            skipped_wrong_tier += 1
+            continue
+
         by_conf[f"{conf:.2f}"] = by_conf.get(f"{conf:.2f}", 0) + 1
 
+        # Tier-specific fields (CEO Opção D)
+        is_official = (tier == "official")
         ont_id = f"ont-{uuid.uuid4().hex[:14]}"
         doc = {
             "id": ont_id,
             "company_id": cid,
             "sn": sn,
             "scan_sn": sn,
-            "mac": mac,
             "unique_external_id": eid,
             "model": ont.get("onu_type_name"),
             "olt_name": ont.get("olt_name"),
@@ -323,15 +336,12 @@ async def execute_import(
             "port_olt": ont.get("port"),
             "smartolt_status": ont.get("status"),
             "signal_1490": ont.get("signal_1490"),
-            # Vínculo cliente (se identificado)
             "subscriber_id": extras.get("subscriber_id"),
             "client_name": ont.get("name"),
-            # Status patrimonial inicial: "estoque_smartolt"
-            # (online no OLT mas não fisicamente em depósito)
             "status": "smartolt_genesis",
             "location_type": "smartolt",
             "location_id": ont.get("olt_id"),
-            # Genesis metadata (CEO requirements)
+            # Genesis metadata
             "origin": "smartolt_genesis",
             "import_batch_id": batch_id,
             "imported_at": now,
@@ -340,25 +350,39 @@ async def execute_import(
             "data_confidence": conf,
             "data_confidence_path": path,
             "data_confidence_extras": extras,
+            # CEO Opção D — DUAS CAMADAS
+            "tier": tier,
+            "asset_status": "validado" if is_official
+                                  else "pending_validation",
+            "exclude_from_balance": not is_official,
             "created_at": now,
             "created_by": user.get("id"),
         }
-        await db.stok_onts.insert_one(doc)
-        imported += 1
+        # Só inclui `mac` se truthy (evita conflito com sparse unique index)
+        if mac:
+            doc["mac"] = mac
+        try:
+            await db.stok_onts.insert_one(doc)
+            imported += 1
+        except Exception as ex:
+            logger.warning("[onda5.import] insert falhou sn=%s: %s",
+                              sn, ex)
+            blocked += 1
 
-    # Audit log
     try:
         await db.sprint5_audit_log.insert_one({
             "id": f"o5a-{uuid.uuid4().hex[:14]}",
             "batch_id": batch_id,
             "company_id": cid,
             "wave": "sprint5_onda5",
-            "action": "genesis_import.completed",
-            "target": f"stok_onts/genesis/{batch_id}",
+            "action": f"genesis_import.completed.{tier}",
+            "target": f"stok_onts/genesis/{tier}/{batch_id}",
             "payload": {
+                "tier": tier,
                 "imported": imported,
                 "blocked": blocked,
                 "skipped_existing": skipped_existing,
+                "skipped_wrong_tier": skipped_wrong_tier,
                 "by_confidence": by_conf,
             },
             "actor_user_id": user.get("id"),
@@ -371,10 +395,81 @@ async def execute_import(
     return {
         "batch_id": batch_id,
         "phase": "5.2_genesis_import",
+        "tier": tier,
         "imported": imported,
         "blocked": blocked,
         "skipped_existing": skipped_existing,
+        "skipped_wrong_tier": skipped_wrong_tier,
         "by_confidence": by_conf,
+        "asset_status": "validado" if tier == "official"
+                              else "pending_validation",
+        "exclude_from_balance": tier == "quarantine",
+        "completed_at": _now_iso(),
+    }
+
+
+@router.post("/promote-pending")
+async def promote_pending(
+    confirm: bool = Query(False),
+    user: dict = Depends(require_role("administrador", "gestor")),
+):
+    """Fase 5.2C — Worker de promoção quarantena → oficial.
+
+    Re-classifica cada ONU em `pending_validation` cruzando com
+    SAP/subscribers/canonical/swap_events. Se confidence >= 0.90,
+    promove para asset_status=validado e exclude_from_balance=false.
+    """
+    if not confirm:
+        raise HTTPException(400, "Requer ?confirm=true")
+    cid = _user_company(user)
+    batch_id = f"o5p-{uuid.uuid4().hex[:14]}"
+    promoted = 0
+    still_pending = 0
+    cur = db.stok_onts.find(
+        {"company_id": cid, "asset_status": "pending_validation",
+         "origin": "smartolt_genesis"}, {"_id": 0})
+    async for ont in cur:
+        # Reconsulta smartolt_onus para pegar metadata mais recente
+        sm = await db.smartolt_onus.find_one(
+            {"company_id": cid, "sn": ont.get("sn")}, {"_id": 0})
+        if not sm:
+            still_pending += 1
+            continue
+        conf, path, extras = await _classify_confidence(db, cid, sm)
+        # Tentar enriquecimento adicional via canonical/swap_events
+        if conf < 0.90 and ont.get("sn"):
+            # Procurar em canonical
+            link = await db.network_access_canonical.find_one(
+                {"company_id": cid,
+                 "$or": [{"ont_sn": ont["sn"]}, {"ont_mac": ont.get("mac")}]},
+                {"_id": 0, "subscriber_id": 1})
+            if link and link.get("subscriber_id"):
+                conf = 0.95
+                path = "promoted_via_canonical"
+                extras = {"subscriber_id": link["subscriber_id"]}
+        if conf >= 0.90:
+            await db.stok_onts.update_one(
+                {"id": ont["id"], "company_id": cid},
+                {"$set": {
+                    "asset_status": "validado",
+                    "exclude_from_balance": False,
+                    "data_confidence": conf,
+                    "data_confidence_path": path,
+                    "data_confidence_extras": extras,
+                    "subscriber_id":
+                        extras.get("subscriber_id")
+                        or ont.get("subscriber_id"),
+                    "promoted_at": _now_iso(),
+                    "promoted_by": user.get("id"),
+                    "promotion_batch_id": batch_id,
+                }})
+            promoted += 1
+        else:
+            still_pending += 1
+    return {
+        "batch_id": batch_id,
+        "promoted": promoted,
+        "still_pending": still_pending,
         "completed_at": _now_iso(),
     }
 
@@ -385,45 +480,50 @@ async def status(
 ):
     cid = _user_company(user)
     total = await db.stok_onts.count_documents({"company_id": cid})
-    genesis = await db.stok_onts.count_documents(
+    genesis_total = await db.stok_onts.count_documents(
         {"company_id": cid, "origin": "smartolt_genesis"})
-    # Confidence distribution sobre os Genesis
+    official = await db.stok_onts.count_documents(
+        {"company_id": cid, "origin": "smartolt_genesis",
+         "tier": "official"})
+    quarantine = await db.stok_onts.count_documents(
+        {"company_id": cid, "origin": "smartolt_genesis",
+         "tier": "quarantine"})
+
     pipe = [
-        {"$match": {"company_id": cid,
-                       "origin": "smartolt_genesis"}},
+        {"$match": {"company_id": cid, "origin": "smartolt_genesis"}},
         {"$group": {"_id": "$data_confidence", "n": {"$sum": 1}}},
     ]
     res = await db.stok_onts.aggregate(pipe).to_list(length=20)
     conf_dist = {f"{(x['_id'] or 0):.2f}": x["n"] for x in res}
 
-    high_conf = await db.stok_onts.count_documents(
+    # Cobertura SOBRE OS OFICIAIS (gate da Onda 6)
+    with_sub_off = await db.stok_onts.count_documents(
         {"company_id": cid, "origin": "smartolt_genesis",
-         "data_confidence": {"$gte": 0.9}})
-    with_sub = await db.stok_onts.count_documents(
+         "tier": "official", "subscriber_id": {"$nin": [None, ""]}})
+    high_conf_off = await db.stok_onts.count_documents(
         {"company_id": cid, "origin": "smartolt_genesis",
-         "subscriber_id": {"$nin": [None, ""]}})
+         "tier": "official", "data_confidence": {"$gte": 0.9}})
+
+    pct_with_sub = round((with_sub_off / official * 100), 2) \
+        if official else 0.0
+    pct_high_conf = round((high_conf_off / official * 100), 2) \
+        if official else 0.0
 
     return {
         "phase": "post_genesis",
         "company_id": cid,
         "stok_onts_total": total,
-        "from_genesis": genesis,
+        "from_genesis_total": genesis_total,
+        "tier_official": official,
+        "tier_quarantine": quarantine,
         "by_confidence": conf_dist,
-        "high_confidence_count": high_conf,
-        "high_confidence_pct": round((high_conf / genesis * 100), 2)
-            if genesis else 0.0,
-        "with_subscriber_id_count": with_sub,
-        "with_subscriber_pct": round((with_sub / genesis * 100), 2)
-            if genesis else 0.0,
-        "gates_onda6": {
-            "cobertura_onus_95": (genesis >= 0.95 * 1833),
-            "cliente_vinculado_95":
-                round((with_sub / genesis * 100), 2) >= 95.0
-                if genesis else False,
-            "origem_conhecida_95": genesis > 0,
-            "data_confidence_high_90":
-                round((high_conf / genesis * 100), 2) >= 90.0
-                if genesis else False,
+        "official_with_subscriber_pct": pct_with_sub,
+        "official_high_confidence_pct": pct_high_conf,
+        "gates_onda6_over_official": {
+            "cobertura_onus_95": (official >= 0.95 * 1833),
+            "cliente_vinculado_95": pct_with_sub >= 95.0,
+            "origem_conhecida_95": official > 0,
+            "data_confidence_high_90": pct_high_conf >= 90.0,
         },
         "computed_at": _now_iso(),
     }
@@ -431,21 +531,44 @@ async def status(
 
 @router.get("/certidao")
 async def certidao(
+    tier: str = Query("official",
+        description="official ou quarantine"),
     user: dict = Depends(require_role("administrador", "gestor", "auditor")),
 ):
+    """Emite certidão por tier (CEO Opção D — 2 certidões separadas)."""
+    if tier not in ("official", "quarantine"):
+        raise HTTPException(400, "tier deve ser official ou quarantine")
     cid = _user_company(user)
-    st = await status(user)
+    total = await db.stok_onts.count_documents(
+        {"company_id": cid, "origin": "smartolt_genesis",
+         "tier": tier})
+    with_sub = await db.stok_onts.count_documents(
+        {"company_id": cid, "origin": "smartolt_genesis",
+         "tier": tier, "subscriber_id": {"$nin": [None, ""]}})
+    high_conf = await db.stok_onts.count_documents(
+        {"company_id": cid, "origin": "smartolt_genesis",
+         "tier": tier, "data_confidence": {"$gte": 0.9}})
+
     last_batch = await db.sprint5_audit_log.find_one(
         {"company_id": cid, "wave": "sprint5_onda5",
-         "action": "genesis_import.completed"},
+         "action": f"genesis_import.completed.{tier}"},
         {"_id": 0}, sort=[("created_at", -1)])
 
+    pct_high = round((high_conf / total * 100), 2) if total else 0.0
+    pct_sub = round((with_sub / total * 100), 2) if total else 0.0
+
     return {
-        "certidao_type": "SPRINT5_ONDA5_GENESIS_PATRIMONIAL",
+        "certidao_type": f"SPRINT5_ONDA5_GENESIS_{tier.upper()}",
         "company_id": cid,
-        "metrics": st,
-        "gates_onda6": st["gates_onda6"],
-        "onda6_ready": all(st["gates_onda6"].values()),
+        "tier": tier,
+        "total": total,
+        "with_subscriber": with_sub,
+        "high_confidence": high_conf,
+        "pct_with_subscriber": pct_sub,
+        "pct_high_confidence": pct_high,
+        "exclude_from_balance": tier == "quarantine",
+        "onda6_eligible": (tier == "official"
+                              and pct_high >= 90.0),
         "last_batch": last_batch,
         "issued_at": _now_iso(),
     }

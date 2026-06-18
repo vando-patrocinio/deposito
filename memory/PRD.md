@@ -6126,3 +6126,42 @@ ORDEM EXECUTIVA: 4 fases obrigatórias (5.0 Audit / 5.1 Preview / 5.2 Import / 5
 ### Docs
 - `/app/memory/GENESIS_AUDIT.md`
 - `/app/memory/GENESIS_PREVIEW.md`
+
+---
+## [2026-02-19] Sprint 5 · Onda 5 — Genesis SmartOLT ✅ OPÇÃO D (DUAS CAMADAS)
+
+### Mandato CEO
+Opção D — importar em DUAS camadas:
+- OFICIAL: confidence ≥0.90 → asset_status=validado
+- QUARENTENA: 0.70 ≤ confidence <0.90 → asset_status=pending_validation, exclude_from_balance=true
+
+### Entrega
+- **Endpoint** `POST /api/sprint5/onda5/import?confirm=true&tier=<official|quarantine>`.
+- **Worker** `POST /api/sprint5/onda5/promote-pending?confirm=true` (Fase 5.2C — promove quarentena→oficial quando confidence sobe).
+- **Helper** `_classify_confidence()` com 3 caminhos (pppoe→SAP, name fuzzy match, fallback).
+- **Índice** `stok_onts.company_id_1_mac_1` reconstruído como `partialFilterExpression{mac:{$exists:true,$type:'string'}}` (sparse compound não funcionava).
+- **Backend** ajustado para omitir campo `mac` no doc quando ausente (não envia `null`).
+
+### Resultado co-demo (medição real)
+- 1.443 ONUs importadas OFICIAIS (asset_status=validado, 100% com subscriber, 100% confidence ≥0.90).
+- 387 ONUs em QUARENTENA (exclude_from_balance=true, preservadas, 0 promovidas no worker inicial).
+- 1.830 / 1.833 importadas (99.84%).
+- 3 não-importadas: 1 sem SN/MAC + 2 já existentes em stok_onts.
+
+### Gates Onda 6 sobre camada OFICIAL
+- ✅ Cliente vinculado: 100%
+- ✅ Origem conhecida: 100%
+- ✅ Data confidence ≥0.9: 100%
+- ⚠️ Cobertura sobre 1833: 78.83% (informativo — por design, quarentena fora)
+
+### Onda 6 LIBERADA para camada oficial
+Auto Balanço Patrimonial pode publicar:
+- Patrimônio Oficial: 1.443
+- Patrimônio em Validação: 387
+- Confiabilidade oficial: 100%
+
+### Docs
+- `/app/memory/GENESIS_AUDIT.md`
+- `/app/memory/GENESIS_PREVIEW.md`
+- `/app/memory/GENESIS_CERTIDAO_OFICIAL.md`
+- `/app/memory/GENESIS_CERTIDAO_QUARENTENA.md`
