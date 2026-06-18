@@ -2,6 +2,55 @@
 
 > Documento vivo. Atualizado a cada sprint.
 
+## ✅ WATCHTOWER RECEBIMENTOS (18/02/2026 · ENTREGUE)
+
+**CTO 18/02/2026** · 36/36 testes globais PASS · Validado em produção com dados reais.
+
+### Reutilização da lógica V16.1 no Dashboard Executivo
+
+Os componentes drill-down criados para o painel financeiro foram **extraídos** para arquivo compartilhado e reutilizados no novo Watchtower:
+
+- **`/app/frontend/src/PayersComponents.jsx`** (NOVO): `TopPayersPanel` + `PayersDrillDownModal` — componentes 100% reutilizáveis com prop `compact` para layouts diferentes
+- `FinanceiroAnalyticsChart.js` refatorado para importar do compartilhado (zero duplicação)
+
+### Watchtower Recebimentos
+
+Novo card no menu **Dashboard Executivo → Watchtower Recebimentos**:
+
+**KPIs executivos (mês atual, comparação MoM):**
+- 💰 **Recebido no mês** + comparação com mês anterior em % (positivo/negativo colorido)
+- 👥 **Clientes únicos pagantes**
+- 📈 **Ticket médio** (total / pagadores únicos)
+- 📅 **Dias úteis decorridos** com pagamentos
+
+**Top 10 Pagadores** abaixo (compartilha o mesmo componente do painel financeiro)
+
+**Drill-down completo** ao clicar "Ver lista completa" — todos os pagadores do mês com busca por nome/documento.
+
+### Validações em produção (co-demo, mês atual)
+
+Screenshot validado mostrando:
+- R$ 204.915,93 recebido no mês (vs R$ 265.256,92 do mês anterior, -22.7%)
+- 2.021 clientes únicos pagantes
+- Ticket médio R$ 101,39
+- Top 10 real: MARIA DE LOURDES CARREIRAS, SERGIO AGOSTINHO, TOTAL DYNAMICS, LEIVIDA FERREIRA, PLANO SANTO CRISTO, SHOW MÓVEIS, DRACHMA, LUCIANO ALMEIDA, GENIVALDO NUNES...
+
+### Files
+
+- `/app/frontend/src/PayersComponents.jsx` (~250 LOC novo — componentes reutilizáveis)
+- `/app/frontend/src/WatchtowerRecebimentos.jsx` (~170 LOC novo)
+- `/app/frontend/src/FinanceiroAnalyticsChart.js` (refactor: -220 LOC, importa do compartilhado)
+- `/app/frontend/src/App.js` (+nav + route)
+
+### Próximos itens (Dashboard Executivo)
+
+CEO já tinha pedido outros watchtowers que agora ficam alinhados ao mesmo padrão:
+- **Watchtower IA Presidente** (ISABELLA INDEX + AUTONOMY INDEX + alarmes)
+- **Watchtower Patrimônio Consolidado** (CAPEX + ativos + depreciação)
+- **Watchtower Relacionamento** (memórias usadas + promessas + Trust Score por cliente)
+
+---
+
 ## ✅ FINANCEIRO V16.1 — DRILL-DOWN POR CLIENTE (18/02/2026 · ENTREGUE)
 
 **CTO 18/02/2026** · 36/36 testes globais PASS · regressão zero.

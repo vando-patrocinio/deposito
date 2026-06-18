@@ -84,6 +84,7 @@ import AccessProfilesPanel from "@/AccessProfilesPanel";
 import OSHealthDashboard from "@/OSHealthDashboard";
 import DashboardPanel from "@/DashboardPanel";
 import WatchtowerEstoque from "@/WatchtowerEstoque";
+import WatchtowerRecebimentos from "@/WatchtowerRecebimentos";
 import PracasPanel from "@/PracasPanel";
 import LogsPanel from "@/LogsPanel";
 import ClientErrorsPanel from "@/ClientErrorsPanel";
@@ -217,6 +218,9 @@ const NAV_GROUPS = [
     label: "Dashboard Executivo",
     items: [
       { id: "watchtower-estoque", icon: BarChart3, label: "Watchtower Estoque",
+        roles: ["gestor", "administrador", "auditor"] },
+      { id: "watchtower-recebimentos", icon: BarChart3,
+        label: "Watchtower Recebimentos",
         roles: ["gestor", "administrador", "auditor"] },
     ],
   },
@@ -1277,6 +1281,7 @@ function AppContent() {
           <>
           {view === "dashboard" && <DashboardPanel />}
           {view === "watchtower-estoque" && <WatchtowerEstoque />}
+          {view === "watchtower-recebimentos" && <WatchtowerRecebimentos />}
           {view === "lousa" && <LousaAdminPanel systemStatus={systemStatus} currentUser={user} />}
           {view === "field-ops" && <FieldOpsManagerPanel />}
           {view === "isabella-console" && <IsabellaConsole />}
