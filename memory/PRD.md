@@ -2,6 +2,85 @@
 
 > Documento vivo. Atualizado a cada sprint.
 
+## ✅ SPRINT B — OPPORTUNITY EXECUTOR + PIPELINE HEALTH (18/02/2026 · ENTREGUE)
+
+**CTO 18/02/2026** · 6/6 testes Sprint B PASS · V14/V15 sem regressão (12/12).
+
+### Diagnóstico (B.0)
+
+Auditoria da collection `isabella_commander_opportunities`:
+- **Total**: 3.880 opportunities (não 3.338 como citado)
+- **14 action_types** reais (não 5)
+- **0 executed** em toda a história — pipeline ficava apenas em inteligência, nunca operava
+
+### Root Cause das 5 approved órfãs (P0)
+
+1. **Bug Worker**: `drain_pending()` filtrava `status="pending"` apenas. Após aprovação humana, opps `approved` ficavam **eternamente órfãs**.
+2. **Bug block_subscriber**: handler retornava `block_requires_human` mesmo após approval — não havia caminho pós-aprovação.
+
+### Fixes aplicados
+
+- `drain_pending()` agora consulta `{$or: [pending+elegível, approved]}` (qualquer status approved é processado)
+- Handler `_execute_block_request()` novo: gera `pending_smartolt_action` para o painel admin executar (audit trail garantido, nunca bloqueia direto)
+
+### B.4 Pipeline Health
+
+`/app/backend/services/opportunity_executor_health.py` + endpoint `GET /api/isabella/executor/pipeline?hours=24`:
+- **Funil**: criadas → elegíveis → aprovadas → executadas → sucesso (+ conversion %)
+- **AUTONOMY INDEX**: % de opps elegíveis (não-manual) executadas com sucesso. Exclui `block_subscriber`, `quarantine_release`, `expand_coverage`
+- **Breakdown por action_type**: total/executed/failed/pending/approved/expired + success_rate + is_autonomous
+- **ROI por kind**: soma de `impact_brl` das opps executadas com sucesso
+- **Executor audit health**: dry_run vs real, taxa de sucesso real
+
+### Ativação produção — Fase 1 (CTO autorizado)
+
+Env `OPPORTUNITY_EXECUTOR_ALLOWED_TYPES` (NOVA):
+```
+send_reminder, satisfaction_survey, schedule_repair, schedule_inspection, schedule_preventive
+```
+- `OPPORTUNITY_EXECUTOR_DRY_RUN=0` (kill switch global desligado)
+- Tipos fora da allowlist são automaticamente forçados para `phase_dry_run=True` (handler não envia)
+- `audit.dry_run` reflete o estado real (global OR phase)
+
+### Roadmap de risco
+
+- **Fase 1 (ATIVA)**: low risk — apenas mensagens informativas e criação de OS field-ops
+- **Fase 2 (7 dias após Fase 1 estável)**: `send_offer`, `send_negotiation`, `negotiation_offer`, `send_warning` (mensagens com impacto comercial/financeiro)
+- **Fase 3 (sempre manual)**: `block_subscriber`, `quarantine_release`, `expand_coverage`
+
+### Endpoints novos
+
+- `GET /api/isabella/executor/pipeline?hours=24` — pipeline health
+- `POST /api/isabella/executor/run?limit=20` — trigger manual do drain (admin)
+
+### Validações executadas
+
+- ✓ send_reminder em produção real (dry=False, audit confirmado)
+- ✓ send_negotiation forçado para phase_dry_run (Fase 2 bloqueada)
+- ✓ Approved órfã processada pelo worker (5/5 das históricas)
+- ✓ block_subscriber pós-approval gera pending_smartolt_action
+- ✓ Gate de approval continua bloqueando pending+requires_approval
+- ✓ Pipeline Health endpoint completo (funil + AI + ROI)
+- ✓ E2E via API com token JWT real
+- ✓ Drain manual: 20 examined / 18 executed / 2 failed (Evolution API 500 — externo)
+
+### Files
+
+- `/app/backend/services/opportunity_executor.py` (+~50 LOC, allowlist + handler block)
+- `/app/backend/services/opportunity_executor_health.py` (~230 LOC novo)
+- `/app/backend/routes/isabella_commanders.py` (+2 endpoints)
+- `/app/backend/tests/test_sprint_b_executor.py` (6/6 PASS)
+- `/app/backend/.env` (DRY_RUN=0 + ALLOWED_TYPES Fase 1)
+
+### Próximo passo
+
+**Confidence Score** (V15.2 — arquitetura aprovada pelo CTO):
+- 3 níveis de correção: factual_error (0-2h, 100% peso) / state_changed (2-24h, 0%) / delayed_resolution (1-7d, 25%)
+- 4 sub-scores: Trust, Relationship, Resolution, Promise
+- **ISABELLA INDEX** = composite exposto no Presidente IA
+
+---
+
 ## ✅ ISABELLA V15 — ORÁCULO RELACIONAL ABSOLUTO (18/02/2026 · ENTREGUE)
 
 **CTO 18/02/2026** · 6/6 testes V15 PASS · 6/6 V14 PASS (regressão zero).

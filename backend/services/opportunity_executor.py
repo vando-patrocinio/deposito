@@ -62,6 +62,38 @@ def _is_dry_run() -> bool:
     return os.environ.get("OPPORTUNITY_EXECUTOR_DRY_RUN", "0") == "1"
 
 
+def _is_dry_for(action_type: str) -> bool:
+    """True se ESTE action_type deve rodar em dry-run.
+
+    Combina kill switch global (`OPPORTUNITY_EXECUTOR_DRY_RUN=1`) com
+    a allowlist (`OPPORTUNITY_EXECUTOR_ALLOWED_TYPES`). Se a allowlist
+    está setada e o type NÃO está nela → força dry-run pra esse type.
+    """
+    if _is_dry_run():
+        return True
+    allowed = _allowed_types()
+    if allowed is None:
+        return False
+    return action_type not in allowed
+
+
+def _allowed_types() -> Optional[set]:
+    """Allowlist Fase 1 / Fase 2 controlada por env.
+
+    `OPPORTUNITY_EXECUTOR_ALLOWED_TYPES` = lista CSV de action.type que
+    podem ser EXECUTADOS DE VERDADE. Se vazio: comportamento legado
+    (todos os tipos auto_wa + notify_only + os_creation).
+
+    CTO 18/02/2026 — Fase 1 autorizada:
+      send_reminder, satisfaction_survey,
+      schedule_repair, schedule_inspection, schedule_preventive
+    """
+    raw = (os.environ.get("OPPORTUNITY_EXECUTOR_ALLOWED_TYPES") or "").strip()
+    if not raw:
+        return None
+    return {x.strip() for x in raw.split(",") if x.strip()}
+
+
 def _max_per_tick() -> int:
     try:
         return max(1, min(100, int(
@@ -235,7 +267,7 @@ async def _execute_whatsapp(opp: Dict[str, Any]) -> Dict[str, Any]:
         return {"ok": False, "reason": "missing_phone"}
     template = action.get("template") or action.get("type") or "default"
     text = _render_template(template, action, opp)
-    if _is_dry_run():
+    if _is_dry_for(action.get("type") or ""):
         return {"ok": True, "dry_run": True, "phone": phone,
                 "template": template, "preview": text[:200]}
     r = await wa_dispatcher.send_text(
@@ -253,7 +285,7 @@ async def _execute_os_creation(opp: Dict[str, Any], os_type: str
     """Cria registro de OS pendente em `pending_os_requests`. Não chama
     o SmartField direto — fica a cargo do gestor de campo despachar."""
     action = opp.get("recommended_action") or {}
-    if _is_dry_run():
+    if _is_dry_for(action.get("type") or f"schedule_{os_type}"):
         return {"ok": True, "dry_run": True, "os_type": os_type,
                 "sn": action.get("sn"),
                 "subscriber_external_id":
@@ -277,11 +309,39 @@ async def _execute_os_creation(opp: Dict[str, Any], os_type: str
     return {"ok": True, "request_id": req_id, "os_type": os_type}
 
 
+async def _execute_block_request(opp: Dict[str, Any]) -> Dict[str, Any]:
+    """Cria registro `pending_smartolt_action` para o painel admin
+    executar o bloqueio físico via SmartOLT. Audit trail garantido —
+    NUNCA bloqueia direto do executor (regra dura)."""
+    action = opp.get("recommended_action") or {}
+    if _is_dry_for("block_subscriber"):
+        return {"ok": True, "dry_run": True,
+                "subscriber_id": action.get("subscriber_id")}
+    req_id = f"smolt-{uuid.uuid4().hex[:10]}"
+    await db.pending_smartolt_actions.insert_one({
+        "id": req_id,
+        "company_id": opp.get("company_id"),
+        "opp_id": opp.get("id"),
+        "action_kind": "block_subscriber",
+        "subscriber_id": action.get("subscriber_id"),
+        "subscriber_external_id": action.get("subscriber_external_id"),
+        "phone": action.get("phone"),
+        "reason": "dunning_block_approved",
+        "evidence": opp.get("evidence") or {},
+        "approved_by": opp.get("approved_by"),
+        "approved_at": opp.get("approved_at"),
+        "created_at": _iso(_now()),
+        "status": "pending",
+    })
+    return {"ok": True, "request_id": req_id,
+            "kind": "smartolt_block_queued"}
+
+
 async def _execute_quarantine_release(opp: Dict[str, Any]
                                          ) -> Dict[str, Any]:
     """Marca evento órfão para release. Cria record em
     `pending_quarantine_releases` para o admin revisar."""
-    if _is_dry_run():
+    if _is_dry_for("quarantine_release"):
         return {"ok": True, "dry_run": True}
     req_id = f"qrel-{uuid.uuid4().hex[:10]}"
     await db.pending_quarantine_releases.insert_one({
@@ -296,7 +356,7 @@ async def _execute_quarantine_release(opp: Dict[str, Any]
 async def _notify_operator(opp: Dict[str, Any]) -> Dict[str, Any]:
     """`shield_review` / `review_module`: só registra notificação no
     `operator_inbox`. Não age."""
-    if _is_dry_run():
+    if _is_dry_for((opp.get("recommended_action") or {}).get("type") or ""):
         return {"ok": True, "dry_run": True}
     nid = f"opnotif-{uuid.uuid4().hex[:10]}"
     await db.operator_inbox.insert_one({
@@ -334,6 +394,14 @@ async def execute_opportunity(opp: Dict[str, Any]) -> Dict[str, Any]:
         return {"ok": False, "reason": "requires_approval",
                 "gate_reason": gate_reason, "action_type": t}
 
+    # FASE GATE (CTO 18/02/2026) — allowlist por env.
+    # Se setada, força DRY_RUN para tipos fora da allowlist.
+    # Em modo "dry_run global" o allowlist é irrelevante.
+    allowed = _allowed_types()
+    phase_dry_run = False
+    if allowed is not None and t not in allowed and not _is_dry_run():
+        phase_dry_run = True  # força dry-run pra esse type específico
+
     # Roteamento
     handler_result: Dict[str, Any]
     if t in ("send_reminder", "send_warning", "send_negotiation",
@@ -346,8 +414,15 @@ async def execute_opportunity(opp: Dict[str, Any]) -> Dict[str, Any]:
     elif t == "schedule_preventive":
         handler_result = await _execute_os_creation(opp, "preventive")
     elif t == "block_subscriber":
-        # NUNCA chega aqui sem approval; mas guarda extra.
-        return {"ok": False, "reason": "block_requires_human"}
+        # FIX P0 18/02/2026: antes retornava `block_requires_human` mesmo
+        # após approval, deixando opps `approved` eternamente órfãs.
+        # Agora: se status=approved, cria pending_smartolt_action para o
+        # painel admin executar (audit trail mantido). Se ainda pending,
+        # devolve com gate de approval normal.
+        if opp.get("status") != "approved":
+            handler_result = {"ok": False, "reason": "block_requires_human"}
+        else:
+            handler_result = await _execute_block_request(opp)
     elif t == "quarantine_release":
         handler_result = await _execute_quarantine_release(opp)
     elif t in _NOTIFY_ONLY:
@@ -362,12 +437,14 @@ async def execute_opportunity(opp: Dict[str, Any]) -> Dict[str, Any]:
     # Persistência do resultado — em DRY_RUN, NÃO marca executed_at
     # (preserva integridade dos KPIs).
     now = _now()
-    dry = _is_dry_run()
+    dry = _is_dry_run() or phase_dry_run
     update: Dict[str, Any] = {
         "execution_result": handler_result,
         "gate_reason": gate_reason,
         "action_type": t,
     }
+    if phase_dry_run:
+        update["phase_dry_run"] = True
     if not dry:
         update["executed_at"] = _iso(now)
         if handler_result.get("ok"):
@@ -392,7 +469,8 @@ async def execute_opportunity(opp: Dict[str, Any]) -> Dict[str, Any]:
         "action_type": t,
         "channel": action.get("channel"),
         "gate_reason": gate_reason,
-        "dry_run": _is_dry_run(),
+        "dry_run": dry,  # reflete o estado REAL (global OR phase OR allowlist)
+        "phase_dry_run": phase_dry_run,
         "result_ok": bool(handler_result.get("ok")),
         "result": handler_result,
         "created_at": _iso(now),
@@ -410,18 +488,30 @@ async def execute_opportunity(opp: Dict[str, Any]) -> Dict[str, Any]:
 
 async def drain_pending(*, company_id: Optional[str] = None,
                           limit: Optional[int] = None) -> Dict[str, Any]:
-    """Drena N opps `pending` com `requires_approval=False` (e não
-    block_subscriber). Cap conservador. Idempotente."""
+    """Drena N opps prontas para execução. Cap conservador. Idempotente.
+
+    Inclui DOIS subconjuntos:
+      1. `status=pending` com `requires_approval=False` e tipo não-manual
+         → executor automático para tipos low/medium risk.
+      2. `status=approved` SEM `executed_at` → opps aprovadas
+         manualmente (inclusive `block_subscriber`) entram aqui.
+         Antes desta fix, ficavam órfãs (FIX P0 18/02/2026).
+    """
     if os.environ.get("OPPORTUNITY_EXECUTOR_DISABLED") == "1":
         return {"ok": False, "reason": "disabled_by_env"}
     n = limit if limit is not None else _max_per_tick()
     q: Dict[str, Any] = {
-        "status": "pending",
         "executed_at": {"$exists": False},
-        # Pula tipos que SEMPRE precisam de approval
-        "recommended_action.type": {"$nin": list(_ALWAYS_MANUAL)},
-        # Pula docs com requires_approval=True
-        "recommended_action.requires_approval": {"$ne": True},
+        "$or": [
+            # Caso 1: pending elegível para auto-execução
+            {
+                "status": "pending",
+                "recommended_action.type": {"$nin": list(_ALWAYS_MANUAL)},
+                "recommended_action.requires_approval": {"$ne": True},
+            },
+            # Caso 2: approved (aprovado manualmente) — sempre processa
+            {"status": "approved"},
+        ],
     }
     if company_id:
         q["company_id"] = company_id
@@ -429,9 +519,12 @@ async def drain_pending(*, company_id: Optional[str] = None,
               .find(q, {"_id": 0}).sort("created_at", 1).limit(n))
     docs = await cursor.to_list(n)
     summary: Dict[str, int] = {"examined": 0, "executed": 0,
-                                 "failed": 0, "skipped": 0}
+                                 "failed": 0, "skipped": 0,
+                                 "from_approved": 0}
     for opp in docs:
         summary["examined"] += 1
+        if opp.get("status") == "approved":
+            summary["from_approved"] += 1
         try:
             r = await execute_opportunity(opp)
             if r.get("ok"):

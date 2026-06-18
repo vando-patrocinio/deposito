@@ -189,6 +189,41 @@ async def expire_endpoint(request: Request,
 
 
 # ---------------------------------------------------------------------------
+# B.4 — Pipeline Health (funil + AUTONOMY INDEX + ROI)
+# ---------------------------------------------------------------------------
+@router.get("/executor/pipeline")
+@limiter.limit(get_limit("isabella_read"))
+async def executor_pipeline(
+    request: Request,
+    hours: int = Query(24, ge=1, le=720),
+    cid: Optional[str] = None,
+    user: dict = Depends(get_current_user),
+):
+    """Pipeline Health (B.4): funil completo + AUTONOMY INDEX + ROI
+    + breakdown por action_type + executor audit health."""
+    company = _company_or_param(user, cid)
+    from services.opportunity_executor_health import pipeline_overview
+    return await pipeline_overview(company_id=company, hours=hours)
+
+
+@router.post("/executor/run")
+@limiter.limit(get_limit("isabella_write"))
+async def executor_run(
+    request: Request,
+    limit: int = Query(20, ge=1, le=100),
+    cid: Optional[str] = None,
+    user: dict = Depends(get_current_user),
+):
+    """Trigger manual do drain_pending (respeita dry_run / disabled env).
+    Útil para o admin forçar uma rodada após approval em massa.
+    """
+    _require_priv(user)
+    company = _company_or_param(user, cid)
+    from services.opportunity_executor import drain_pending
+    return await drain_pending(company_id=company, limit=limit)
+
+
+# ---------------------------------------------------------------------------
 # Commanders — scans
 # ---------------------------------------------------------------------------
 @router.post("/churn/scan")
