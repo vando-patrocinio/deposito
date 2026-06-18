@@ -157,6 +157,9 @@ ROLE_RULES: List[Tuple[str, Set[str]]] = [
     ("/api/appointments",        {"gestor", "atendimento", "tecnico"}),
     ("/api/sales-funnel",        {"gestor", "atendimento"}),
 
+    # ─── Sprint 5 (CEO mandate · Onda 2+) — admin/gestor/auditor ───
+    ("/api/sprint5",             {"gestor", "auditor"}),
+
     # ─── Rede / OLT / CTOs / WiFi corporativo ───
     ("/api/smartolt",            {"gestor", "tecnico", "auditor"}),
     ("/api/cto-ports",           {"gestor", "tecnico"}),

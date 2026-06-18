@@ -5887,3 +5887,39 @@ Sidecar Baileys caindo durante o dia → mensagens AI ficavam com `delivery_stat
 ### Doc completo
 `/app/memory/WA_SIDECAR_WATCHDOG_AUDIT.md`
 
+
+---
+## [2026-02-19] Sprint 5 · Onda 2 — Normalização Owner/Location ✅
+
+### Mandato
+CEO 18/06/2026: criar esquema canônico cliente↔CTO↔porta no doc `subscribers`
+após auditoria Fase 0 ter revelado 100% dos ativos sem porta vinculada e 2
+órfãos fantasma em `cto_ports`.
+
+### Entrega
+- **Endpoints novos** (`/api/sprint5/onda2/*`, require admin/gestor):
+  - `GET  /status` — métricas atuais de integridade Owner/Location.
+  - `GET  /preview` — dry-run, plano de normalização sem writes.
+  - `POST /normalize-owner-location?dry_run=false` — executa backfill + cura órfãos (idempotente).
+  - `GET  /audit-log?batch_id=...` — trilha de auditoria por batch.
+- **Campos canônicos adicionados em `subscribers`**:
+  `cto_id`, `cto_port_id`, `cto_port_number`, `cto_port_assigned_at`,
+  `cto_port_source`, `owner_normalized_at`.
+- **Índices** sparse criados: `cto_id_1`, `cto_port_id_1`.
+- **Audit log**: collection `sprint5_audit_log` (batch_id, before/after, actor).
+
+### Resultado co-demo (read after write)
+- 1 subscriber normalizado (Vando → CTO-Centro-01 porta 8).
+- 2 órfãos curados via `release_reason=sprint5_onda2_orphan_subscriber` (NÃO deletados).
+- 0 órfãos remanescentes.
+- 4 audit logs persistidos.
+- Cobertura: 0.04% (esperado — gate ≥95% só será atingido pós Onda 4 Genesis SmartOLT).
+
+### Validação
+- ✅ Curl real (super_admin admin@empresa.com) — todos endpoints HTTP 200.
+- ✅ Idempotência: 2ª execução retornou 0 updates.
+- ✅ Banco confirmado: campos persistidos no Vando + portas liberadas.
+- ✅ Super admin bypass validado (TEST A=200, TEST B=403).
+
+### Doc completo
+`/app/memory/SPRINT5_ONDA2_REPORT.md`
