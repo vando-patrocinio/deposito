@@ -8,6 +8,7 @@
  */
 import React, { useEffect, useState, useCallback } from "react";
 import { client } from "./api";
+import WatchtowerEstoqueDiagnostico from "./WatchtowerEstoqueDiagnostico";
 
 const fmtBRL = (v) => {
   if (v == null || Number.isNaN(Number(v))) return "—";
@@ -74,6 +75,7 @@ const Sparkline = ({ data = [], width = 220, height = 48 }) => {
 };
 
 export default function WatchtowerEstoque() {
+  const [tab, setTab] = useState("patrimonio");
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState(null);
@@ -122,12 +124,6 @@ export default function WatchtowerEstoque() {
     );
   }
 
-  const p = data?.patrimonio || {};
-  const op = data?.operacao || {};
-  const q = data?.qualidade || {};
-  const a = data?.alertas || {};
-  const deltaPos = (p.delta_mom_value || 0) >= 0;
-
   return (
     <div className="space-y-6 p-6 bg-slate-950 min-h-screen text-slate-100" data-testid="watchtower-estoque-root">
       {/* Header */}
@@ -153,7 +149,67 @@ export default function WatchtowerEstoque() {
         </button>
       </div>
 
-      {/* Card 1 — Patrimônio HERO */}
+      {/* Tab nav (Onda C P1 — Diagnóstico) */}
+      <div className="flex gap-1 border-b border-slate-800" data-testid="watchtower-estoque-tabs">
+        <button
+          type="button"
+          onClick={() => setTab("patrimonio")}
+          data-testid="watchtower-tab-patrimonio"
+          className={`px-4 py-2.5 text-sm font-semibold border-b-2 transition-colors ${
+            tab === "patrimonio"
+              ? "border-emerald-400 text-emerald-300"
+              : "border-transparent text-slate-400 hover:text-slate-200"
+          }`}
+        >
+          💎 Patrimônio
+        </button>
+        <button
+          type="button"
+          onClick={() => setTab("diagnostico")}
+          data-testid="watchtower-tab-diagnostico"
+          className={`px-4 py-2.5 text-sm font-semibold border-b-2 transition-colors ${
+            tab === "diagnostico"
+              ? "border-emerald-400 text-emerald-300"
+              : "border-transparent text-slate-400 hover:text-slate-200"
+          }`}
+        >
+          🩺 Diagnóstico Lousa Mobile
+        </button>
+      </div>
+
+      {tab === "diagnostico" ? (
+        <WatchtowerEstoqueDiagnostico />
+      ) : (
+        <PatrimonioTabContent data={data} loading={loading} />
+      )}
+
+      {/* Footer info */}
+      <div className="text-xs text-slate-500 text-center font-mono">
+        Sprint 1 (CEO 16/02/2026) · Onda C P1 (18/06/2026) · Backend: <code>/api/watchtower/estoque/*</code>
+      </div>
+    </div>
+  );
+}
+
+// ──────────────────────────────────────────────────────────────────────────
+// PatrimonioTabContent — extraído do render principal pra abrir espaço pra
+// nova aba "Diagnóstico". Comportamento preservado 1:1.
+// ──────────────────────────────────────────────────────────────────────────
+function PatrimonioTabContent({ data, loading }) {
+  const p = data?.patrimonio || {};
+  const op = data?.operacao || {};
+  const q = data?.qualidade || {};
+  const a = data?.alertas || {};
+  const deltaPos = (p.delta_mom_value || 0) >= 0;
+  if (loading && !data) {
+    return (
+      <div className="min-h-[300px] flex items-center justify-center text-slate-400">
+        <div className="animate-pulse">Carregando Watchtower Estoque…</div>
+      </div>
+    );
+  }
+  return (
+    <div className="space-y-6" data-testid="watchtower-tab-content-patrimonio">
       <div
         className="relative overflow-hidden rounded-2xl border border-emerald-500/20 bg-gradient-to-br from-emerald-950/40 via-slate-900 to-slate-900 p-8 md:p-10"
         data-testid="watchtower-card-patrimonio"
@@ -303,11 +359,6 @@ export default function WatchtowerEstoque() {
             })}
           </div>
         </div>
-      </div>
-
-      {/* Footer info */}
-      <div className="text-xs text-slate-500 text-center font-mono">
-        Sprint 1 (CEO 16/02/2026) · Backend: <code>/api/watchtower/estoque/summary</code> · Cache 60s · 12m janela
       </div>
     </div>
   );

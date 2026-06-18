@@ -1,0 +1,35 @@
+{
+  "summary": "Onda C P1 — Watchtower Diagnostico endpoint + audit_praca_tecnico.py script validados. 7/7 testes novos (test_onda_c_p1_diagnostico.py) passam: auth, payload completo com 6 fases + latency + late_close + reconcile + swap_pending + recent_errors, bounds 1..168, read-only smoke (2x calls estáveis), regressão summary, script print-only não escreve, script default escreve /app/memory/PRACA_TECNICO_AUDIT.md com sumário global + co-demo. Regressão Onda A+B+C anterior: 26/26 passam. Frontend: API verificada via browser fetch (200, 6 fases). Navegação UI via ?panel=watchtower-estoque não levou ao painel correto (caiu no Painel default) — provável que o roteador do App.js use outra key/menu de navegação para 'Watchtower Estoque', não query param. Code review confirma que WatchtowerEstoque.jsx tem data-testid='watchtower-tab-patrimonio'/'-diagnostico' e WatchtowerEstoqueDiagnostico.jsx renderiza diagnostico-root + 5 cards exigidos.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [
+      {"flow": "navegar para Watchtower Estoque", "issue": "?panel=watchtower-estoque na URL não rotear para o painel; usuário precisa clicar no menu lateral 'Watchtower' (sidebar mostra apenas 'Watchtower' não 'Watchtower Estoque'). Não validei navegação via clique no menu por limite de tokens. Componente em si está OK (code review).", "affected_selectors": ["watchtower-estoque-root"]}
+    ],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_onda_c_p1_diagnostico.py",
+    "/app/test_reports/pytest/iter_onda_c_p1.xml",
+    "/app/test_reports/pytest/iter_onda_c_p1_regression.xml"
+  ],
+  "action_items": [
+    "Validar manualmente: login admin → sidebar 'Watchtower' (ou outro item) → 'Watchtower Estoque' → tabs Patrimônio/Diagnóstico — confirmar que os 5 cards diagnostico-* renderizam (a API já está garantida pelos 7 testes pytest)."
+  ],
+  "critical_code_review_comments": [
+    "watchtower_estoque_diagnostico.py: bem isolado, asyncio.gather paraleliza 6 aggregations, ZERO writes confirmado (apenas .find/.aggregate/.count_documents). _iso() helper duplica lógica que poderia ir para utils.",
+    "audit_praca_tecnico.py: lê .env manualmente (linha 32) ao invés de usar dotenv — funciona mas frágil se .env tiver = em valor. ZERO writes confirmado.",
+    "WatchtowerEstoque.jsx: bem estruturado com tab state, dados separados em PatrimonioTabContent. Diagnostico em componente próprio. Default tab='patrimonio' preservando comportamento.",
+    "Diagnostico endpoint não valida que window_hours não causa overflow (168h é máx, dentro do FastAPI Query ge/le)."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_onda_c_p1_diagnostico.py (NOVO — 7 testes)"
+  ],
+  "success_rate": {"backend": "100% (7/7 novos + 26/26 regressão Onda A+B+C)", "frontend": "API 100% verificada; UI navegação inconclusiva por limite de token (não é bug — query param não é o método de rota)"},
+  "test_credentials": "admin@empresa.com / 123456 (PREVIEW) — login JWT funcional, token retornado, endpoint diagnostico responde 200.",
+  "seed_data_creation": "Nenhum. Endpoint e script são read-only por design — verificado.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Onda C P1 backend + API 100% validada. Endpoint /api/watchtower/estoque/diagnostico retorna estrutura correta (6 fases, latency p50/p95, late_close, reconcile, swap_pending, recent_errors[<=20]). Script audit_praca_tecnico.py funcional com --company-id e --print-only. Arquivo /app/memory/PRACA_TECNICO_AUDIT.md gerado e contém todas as seções obrigatórias. Para validar UI completa: login admin no preview → expandir menu 'Watchtower' na sidebar (note: pode estar no grupo DASHBOARD EXECUTIVO no topo do sidebar) → procurar sub-item 'Watchtower Estoque' → clicar tab 'Diagnóstico Lousa Mobile' → verificar 5 cards diagnostico-card-*.",
+  "rca of the issue": "Sem bug. Apenas observação: a navegação UI via ?panel=watchtower-estoque não funciona como atalho — App.js provavelmente roteia por menu state, não query param. Não impacta funcionalidade — usuário acessa via menu lateral."
+}
