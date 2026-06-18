@@ -8459,3 +8459,34 @@ Relatório: `/app/docs/RELATORIO_RELACIONAMENTO_360.md`
 ### Tests
 - `tests/test_pj_consultores_v161.py` — 8 testes (PASS): CRUD, validação, round-robin com inativos ignorados, `pj_flow_is_active`.
 - Endpoints validados via curl no preview (admin@empresa.com).
+
+---
+
+## 2026-06-18 · Watchtower IA · Painéis Executivos (P1)
+
+**Feature**: Sub-aba "Watchtower" no menu lateral consolidando 5 painéis executivos (substituindo as 2 entradas separadas anteriores). 2 painéis novos entregues nesta sprint; Patrimônio fica como placeholder bloqueado até validação.
+
+### Backend
+- **Novo**: `routes/isabella_watchtower.py` com 2 endpoints compostos:
+  - `GET /api/isabella/watchtower/ia-presidente?hours=N` — ISABELLA INDEX + autonomy alarms + claims sem evidência (failed/orphan) + promessas (open/overdue/fulfilled) + wa_dispatch (latência avg/p95 + success_rate + falhas).
+  - `GET /api/isabella/watchtower/relacionamento?hours=N` — memórias (total/by_type/samples) + promessas + follow-ups pendentes + top clientes por trust score (proxy memory_count + avg_confidence) + VIPs.
+- Sanitização das `reason` de wa_dispatch_metrics: URLs internas viram `<url-interna>`, tokens/keys redacted (atende feedback do testing agent).
+- Helpers internos: `_claims_no_evidence`, `_promises_stats`, `_wa_dispatch_stats`, `_memories_stats`, `_follow_ups_pending`, `_top_clients_by_memories`, `_vip_clients`.
+- Role gate: admin/gestor/auditor/owner/operator.
+
+### Frontend
+- **Novo**: `Watchtower.jsx` — shell com 5 sub-tabs (IA Presidente · Relacionamento · Recebimentos · Patrimônio · Estoque). Estado persistido em `localStorage.watchtower_active_tab`. Patrimônio mostra placeholder bloqueado.
+- **Novo**: `WatchtowerIaPresidente.jsx` — hero do ISABELLA INDEX (color-coded green/amber/red) + 4 SubScores + 4 KPIs + 4 seções (alarmes autonomia, promessas atrasadas, claims rejeitados, falhas WA). Window picker 1h/6h/24h/7d/30d.
+- **Novo**: `WatchtowerRelacionamento.jsx` — 4 KPIs (memórias/promessas/follow-ups/VIPs) + tabela Top Clientes com TrustBar visual + grid VIP + timeline de memórias com cor por tipo + tabela follow-ups.
+- `App.js`: nav consolidado em 1 entrada "Watchtower" + rotas de compat (ids antigos redirecionam).
+- `TabPermissionsCard.js`: entrada "Watchtower" substituindo as 2 antigas + role gestor atualizado.
+- `api.js`: métodos `watchtowerIaPresidente()` e `watchtowerRelacionamento()`.
+
+### Tests
+- `tests/test_watchtower_ia.py` (helper-level · 5/5 PASS) — claims, promises, dispatch p95, memories aggregation.
+- `tests/test_watchtower_shell_http.py` (HTTP-level · 6/6 PASS · criado pelo testing agent) — shape, auth, window validation.
+- Testing agent v3: **100% backend + 100% frontend** validado ponta-a-ponta no preview (UI navigation + 5 sub-tabs + localStorage persistence + empty-state handling).
+
+### Bloqueado / pendente
+- Patrimônio · placeholder bloqueado por decisão do CTO (só liberar após validação dos 2 primeiros watchtowers).
+- Refactor `whatsapp_baileys.py` (>5400 linhas) · adiado intencionalmente — observabilidade da Isabella tem prioridade primeiro.

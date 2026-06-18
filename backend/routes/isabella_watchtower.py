@@ -55,6 +55,21 @@ def _company_or_param(user: Dict[str, Any], cid: Optional[str]) -> str:
     return out
 
 
+# Sanitiza reasons de falha de envio para esconder URLs/secrets internos
+# antes de devolver pra UI executiva.
+_URL_RE = __import__("re").compile(r"https?://\S+")
+_TOKEN_RE = __import__("re").compile(r"(token|key|secret)=\S+",
+                                          __import__("re").IGNORECASE)
+
+
+def _sanitize_reason(text: str) -> str:
+    if not text:
+        return "—"
+    s = _URL_RE.sub("<url-interna>", str(text))
+    s = _TOKEN_RE.sub(r"\1=<redacted>", s)
+    return s[:200]
+
+
 # ── HELPERS ──────────────────────────────────────────────────────
 
 
@@ -136,13 +151,15 @@ async def _wa_dispatch_stats(company_id: str,
     else:
         avg = 0
         p95 = 0
-    # últimas 5 falhas
+    # últimas 5 falhas (sanitizando reason para evitar leak de URLs internas)
     fail_samples = []
     for r in fails[:5]:
         ts = r.get("ts")
         if hasattr(ts, "isoformat"):
             ts = ts.isoformat()
-        fail_samples.append({"reason": r.get("reason") or "—",
+        raw_reason = r.get("reason") or "—"
+        reason = _sanitize_reason(raw_reason)
+        fail_samples.append({"reason": reason,
                               "latency_ms": r.get("latency_ms"),
                               "ts": ts})
     return {"window_hours": hours, "total": total,
