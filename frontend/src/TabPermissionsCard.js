@@ -26,6 +26,14 @@ export const TAB_DEFINITIONS = [
   { id: "projects",        label: "Acompanhamento",    group: "Operação",
     hint: "Kanban de projetos/obras: início, término, laudos PDF/DOC." },
 
+  // Projetos
+  { id: "projetos",        label: "Projetos",          group: "Projetos" },
+  { id: "propostas",       label: "Propostas (IA)",    group: "Projetos",
+    hint: "Geração de propostas comerciais com IA." },
+
+  // Frota
+  { id: "fleet",           label: "Gestão de Frota",   group: "Frota" },
+
   // Inteligência
   { id: "ai-ranking",      label: "Avaliação IA",      group: "Inteligência" },
   { id: "ai-corrections",  label: "Correções IA",      group: "Inteligência" },
