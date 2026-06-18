@@ -63,21 +63,21 @@ async def test_claims_no_evidence_counts():
     docs = [
         {"_id": f"c-{uuid.uuid4().hex[:6]}", "company_id": CID,
           "audit_passed": False, "consumed_by": None,
-          "claim_type": "smartolt_status",
-          "claim_text": "ONU offline há 1h",
-          "audit_reason": "no evidence found",
-          "created_at": now - timedelta(hours=2)},
+          "domain": "technical",
+          "entity_type": "onu",
+          "warnings": ["no_evidence_found"],
+          "audited_at": (now - timedelta(hours=2)).isoformat()},
         {"_id": f"c-{uuid.uuid4().hex[:6]}", "company_id": CID,
           "audit_passed": False, "consumed_by": None,
-          "claim_type": "subscriber_status",
-          "claim_text": "Plano vencido",
-          "audit_reason": "subscriber not found",
-          "created_at": now - timedelta(hours=5)},
+          "domain": "cadastro",
+          "entity_type": "subscriber",
+          "warnings": ["subscriber_not_found"],
+          "audited_at": (now - timedelta(hours=5)).isoformat()},
         # 1 órfão (passou audit mas não foi consumido)
         {"_id": f"c-{uuid.uuid4().hex[:6]}", "company_id": CID,
           "audit_passed": True, "consumed_by": None,
-          "claim_text": "x", "claim_type": "test",
-          "created_at": now - timedelta(hours=1)},
+          "domain": "financial", "entity_type": "subscriber",
+          "audited_at": (now - timedelta(hours=1)).isoformat()},
     ]
     await db.isabella_factual_claims.insert_many(docs)
     out = await _claims_no_evidence(CID, 24)

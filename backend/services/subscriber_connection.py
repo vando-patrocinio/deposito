@@ -155,6 +155,17 @@ async def check_connection_for_phone(
                 )
 
     if not onu:
+        # V15.3 — Mesmo sem ONU, geramos cadastro_claim para
+        # o subscriber encontrado (alimenta Trust Score)
+        try:
+            from services.isabella_claim_generators import cadastro_claim
+            await cadastro_claim(
+                company_id=company_id, phone="", subscriber=sub,
+            )
+        except Exception as e:  # noqa: BLE001
+            logger.warning(
+                "[subscriber_connection] cadastro_claim sem ONU: %s", e,
+            )
         return {
             "found": False,
             "subscriber_name": sub.get("name"),
@@ -313,6 +324,20 @@ async def check_connection_for_phone(
     except Exception as e:  # noqa: BLE001
         logger.exception("[subscriber_connection] tech claim exc: %s", e)
 
+    # V15.3 — Gera também o cadastro_claim (subscriber_status). Esta
+    # claim cobre a identificação cadastral (nome, plano, endereço) e
+    # passa quase sempre para clientes ativos, alimentando o Trust
+    # Score com evidência real do banco.
+    cadastro_claim_id: Optional[str] = None
+    try:
+        from services.isabella_claim_generators import cadastro_claim
+        res = await cadastro_claim(
+            company_id=company_id, phone="", subscriber=sub,
+        )
+        cadastro_claim_id = res.get("evidence_id")
+    except Exception as e:  # noqa: BLE001
+        logger.warning("[subscriber_connection] cadastro_claim falhou: %s", e)
+
     return {
         "found": True,
         "subscriber_name": sub.get("name"),
@@ -347,6 +372,7 @@ async def check_connection_for_phone(
             len(tech_warnings) == 0
             and all(c.get("ok") for c in tech_checks)),
         "tech_evidence_id": tech_claim_id,
+        "cadastro_evidence_id": cadastro_claim_id,
         "tech_warnings": tech_warnings,
     }
 

@@ -8490,3 +8490,32 @@ Relatório: `/app/docs/RELATORIO_RELACIONAMENTO_360.md`
 ### Bloqueado / pendente
 - Patrimônio · placeholder bloqueado por decisão do CTO (só liberar após validação dos 2 primeiros watchtowers).
 - Refactor `whatsapp_baileys.py` (>5400 linhas) · adiado intencionalmente — observabilidade da Isabella tem prioridade primeiro.
+
+---
+
+## 2026-06-18 · V15.3 · Ciclo de Evidências Completo (P1)
+
+**Feature**: Expansão dos geradores `factual_claim()` + reformulação da fórmula de Trust + tracking de fallback usage. Fecha o ciclo V15 (memória + evidência + medição executiva).
+
+### Resultado mensurado no co-demo
+- **Trust score: 0.0 → 94.2** (Δ +94.2pp)
+- **ISABELLA INDEX: 36.1 vermelho → 71.7 vermelho** (Trust isolado VERDE)
+- **Claims_total 24h: 4 → 44** · passed: 4 → 40 · consumed: 3 → 39
+- **Fallbacks usados corretamente: 0 → 4** (3 financial sync stale + 1 ONU not found)
+- Detalhes em `/app/memory/V153_BEFORE_AFTER.md`
+
+### Backend
+- **NOVO** `services/isabella_claim_generators.py` — 4 generators padronizados: `cadastro_claim`, `smartolt_status_claim`, `ticket_status_claim`, `financial_extended_claim`. Cada um retorna `{evidence_id, claim_type, audit_passed, fallback_required, source, timestamp, evidence, warnings}`.
+- **NOVO** Coleção `isabella_fallback_events` — registra cada vez que a IA foi forçada ao "deixa eu verificar" (audit_passed=False). Sinal positivo: IA não inventou.
+- **EDIT** `services/isabella_confidence.py::trust_score()` — fórmula V15.3: `score = (audit_pass_rate + delivery_rate) / 2 − correction_penalty`. Outbounds não-factuais não entram no denominador.
+- **EDIT** `services/subscriber_connection.py` — gera `cadastro_claim` em todas as identificações de cliente (com e sem ONU).
+- **EDIT** `routes/isabella_watchtower.py` — endpoint expõe `fallbacks` no payload; query de claims corrigida (`audited_at` ao invés de `created_at`); sanitização de reasons.
+- **NOVO** `scripts/seed_v153_demo.py` — seed controlado idempotente (com `seed_tag` para reset).
+
+### Frontend
+- **EDIT** `WatchtowerIaPresidente.jsx` — Trust SubScore mostra `audit_pass_rate` + `delivery_rate`. Nova KPI "Fallbacks usados (✓)". Nova seção exibindo lista de fallbacks com phone/motivo/timestamp.
+
+### Tests
+- `tests/test_v153_claim_generators.py` — 11/11 PASS (cadastro, smartolt, ticket, financial · happy + sad paths · fallback log + stats · trust V15.3 formula).
+- `tests/test_watchtower_ia.py` — atualizado pra usar `audited_at` (5/5 PASS).
+- Total: **16/16 pytest pass**.

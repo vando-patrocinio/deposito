@@ -59,6 +59,7 @@ export default function WatchtowerIaPresidente() {
   const claims = data.claims || {};
   const promises = data.promises || {};
   const dispatch = data.wa_dispatch || {};
+  const fallbacks = data.fallbacks || { total: 0, by_type: {}, samples: [] };
   const color = COLOR_MAP[idx.color] || COLOR_MAP.amber;
 
   return (
@@ -106,7 +107,7 @@ export default function WatchtowerIaPresidente() {
           <SubScore label="Trust"
             score={idx.scores?.trust?.score}
             weight={idx.weights?.trust}
-            detail={`${idx.scores?.trust?.claims_total || 0} claims · ${idx.scores?.trust?.factual_errors_2h || 0} erros 2h`}
+            detail={`audit ${idx.scores?.trust?.audit_pass_rate ?? "—"}% · entrega ${idx.scores?.trust?.delivery_rate ?? "—"}%`}
             testId="wt-iap-sub-trust" />
           <SubScore label="Relacionamento"
             score={idx.scores?.relationship?.score}
@@ -150,6 +151,11 @@ export default function WatchtowerIaPresidente() {
           value={String(dispatch.failures || 0)}
           subtitle={`de ${dispatch.total || 0} tentativas`}
           testId="wt-iap-kpi-failures" />
+        <KpiCard icon={ShieldCheck} color="#16a34a"
+          label="Fallbacks usados (✓)"
+          value={String(fallbacks.total || 0)}
+          subtitle="IA disse 'vou verificar' ao invés de inventar"
+          testId="wt-iap-kpi-fallbacks" />
       </div>
 
       {/* AUTONOMY ALARMS list */}
@@ -169,6 +175,48 @@ export default function WatchtowerIaPresidente() {
                   marginTop: 4 }}>{a.reason}</div>}
               </div>
             ))}
+          </div>
+        )}
+      </Section>
+
+      {/* FALLBACK usage detail */}
+      <Section title="Fallbacks usados corretamente (V15.3)"
+        icon={ShieldCheck} count={fallbacks.total}>
+        {fallbacks.total === 0 ? (
+          <EmptyLine>
+            Nenhum fallback registrado · todos os claims passaram audit
+            (ou nenhuma claim factual foi feita).
+          </EmptyLine>
+        ) : (
+          <div>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap",
+              marginBottom: 10 }}>
+              {Object.entries(fallbacks.by_type || {}).map(([k, v]) => (
+                <span key={k} style={{
+                  padding: "4px 10px", background: "#dcfce7",
+                  color: "#166534", borderRadius: 999,
+                  fontSize: 11, fontWeight: 700,
+                }}>{k}: {v}</span>
+              ))}
+            </div>
+            <table style={tableStyle}>
+              <thead><tr>
+                <th style={th}>Tipo</th>
+                <th style={th}>Phone</th>
+                <th style={th}>Motivo</th>
+                <th style={th}>Quando</th>
+              </tr></thead>
+              <tbody>
+                {(fallbacks.samples || []).map((f, i) => (
+                  <tr key={i} data-testid={`wt-iap-fallback-${i}`}>
+                    <td style={td}>{f.claim_type}</td>
+                    <td style={td}>{f.phone}</td>
+                    <td style={td}>{truncate(f.reason, 80)}</td>
+                    <td style={td}>{fmtDate(f.ts)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         )}
       </Section>

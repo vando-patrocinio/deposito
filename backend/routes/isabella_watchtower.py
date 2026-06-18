@@ -76,23 +76,31 @@ def _sanitize_reason(text: str) -> str:
 async def _claims_no_evidence(company_id: str,
                                   hours: int) -> Dict[str, Any]:
     """Claims que NÃO encontraram evidência (audit_passed=False) ou
-    expiraram sem consumo. Indicador chave de hallucination risk."""
-    since = _now() - timedelta(hours=hours)
+    expiraram sem consumo. Indicador chave de hallucination risk.
+
+    Atenção: a coleção `isabella_factual_claims` usa o campo
+    `audited_at` (string ISO), não `created_at`.
+    """
+    since_iso = (_now() - timedelta(hours=hours)).isoformat()
     q_failed = {"company_id": company_id, "audit_passed": False,
-                 "created_at": {"$gte": since}}
+                 "audited_at": {"$gte": since_iso}}
     q_orphan = {"company_id": company_id, "audit_passed": True,
-                 "consumed_by": None, "created_at": {"$gte": since}}
+                 "consumed_by": None,
+                 "audited_at": {"$gte": since_iso}}
     failed_n = await db.isabella_factual_claims.count_documents(q_failed)
     orphan_n = await db.isabella_factual_claims.count_documents(q_orphan)
     samples = await db.isabella_factual_claims.find(
         q_failed,
-        {"_id": 1, "claim_type": 1, "claim_text": 1, "created_at": 1,
-         "audit_reason": 1},
-    ).sort("created_at", -1).limit(5).to_list(5)
+        {"_id": 0, "id": 1, "domain": 1, "warnings": 1, "audited_at": 1,
+         "entity_type": 1},
+    ).sort("audited_at", -1).limit(5).to_list(5)
     for s in samples:
-        s["id"] = s.pop("_id", None)
-        if hasattr(s.get("created_at"), "isoformat"):
-            s["created_at"] = s["created_at"].isoformat()
+        # padroniza pra UI (que espera created_at + audit_reason)
+        s["created_at"] = s.pop("audited_at", None)
+        warns = s.pop("warnings", []) or []
+        s["audit_reason"] = ", ".join(warns) if warns else "—"
+        s["claim_type"] = f"{s.get('domain')}/{s.get('entity_type')}"
+        s["claim_text"] = s["claim_type"]
     return {"failed": failed_n, "orphan_no_consume": orphan_n,
               "samples": samples}
 
@@ -288,12 +296,14 @@ async def watchtower_ia_presidente(
     company = _company_or_param(user, cid)
 
     from services.isabella_confidence import isabella_index, autonomy_alarms
+    from services.isabella_claim_generators import fallback_stats
 
     index = await isabella_index(company_id=company, hours=hours)
     alarms_doc = await autonomy_alarms(company_id=company, hours=168)
     claims = await _claims_no_evidence(company, hours)
     promises = await _promises_stats(company, hours)
     dispatch = await _wa_dispatch_stats(company, hours)
+    fallbacks = await fallback_stats(company_id=company, hours=hours)
 
     return {
         "company_id": company,
@@ -304,6 +314,7 @@ async def watchtower_ia_presidente(
         "claims": claims,
         "promises": promises,
         "wa_dispatch": dispatch,
+        "fallbacks": fallbacks,
     }
 
 

@@ -73,10 +73,27 @@ def _safe_pct(num: float, den: float) -> float:
 
 # ── 1. TRUST SCORE ───────────────────────────────────────────
 async def trust_score(*, company_id: str, hours: int = 24) -> Dict[str, Any]:
-    """Trust = afirmações com evidência consumida − correções ponderadas."""
+    """Trust = média entre AUDIT PASS RATE e EVIDENCE DELIVERY RATE,
+    penalizada por correções factuais do cliente.
+
+    V15.3 (CTO 2026-06-18): a fórmula antiga dividia claims_consumed por
+    TODOS os outbounds, o que punia injustamente respostas legítimas sem
+    componente factual (saudação, agradecimento, etc.). A nova fórmula
+    mede 2 dimensões PURAS de evidência:
+
+      1. AUDIT PASS RATE = claims_passed / max(claims_total, 1)
+         → "das claims que tentamos, quantas tinham evidência real?"
+      2. DELIVERY RATE = claims_consumed / max(claims_passed, 1)
+         → "das claims com evidência, quantas chegaram ao cliente?"
+
+    `trust_base = (audit + delivery) / 2`, penalizando correções:
+      • factual_errors_2h: penalty 100% por erro
+      • delayed_corrections_7d: penalty 25% por erro
+      (peso aplicado sobre claims_total + 1, não sobre outbounds)
+    """
     cutoff = _cutoff_iso(hours)
 
-    # Factual claims auditados + consumidos
+    # Factual claims auditados
     claims_total = await db.isabella_factual_claims.count_documents({
         "company_id": company_id,
         "audited_at": {"$gte": cutoff},
@@ -92,7 +109,8 @@ async def trust_score(*, company_id: str, hours: int = 24) -> Dict[str, Any]:
         "consumed_by": {"$ne": None},
     })
 
-    # Outbounds totais da Isabella no período
+    # Outbounds (mantido para visibilidade no painel — não é mais
+    # denominador da fórmula de trust, mas continua sendo informação útil)
     outbounds = await db.aihub_wa_messages.count_documents({
         "company_id": company_id,
         "direction": "outbound",
@@ -101,8 +119,7 @@ async def trust_score(*, company_id: str, hours: int = 24) -> Dict[str, Any]:
     })
 
     # Correções: ai_evaluations com nps_motivo contendo "frustração" ou
-    # tags com "factual_error" — sinal de que cliente corrigiu a Isabella.
-    # 3 níveis (factual=2h, state=2-24h, delayed=1-7d):
+    # "errado" / "não era" — sinal de que cliente corrigiu a Isabella.
     cutoff_2h = _cutoff_iso(2)
     cutoff_7d = _cutoff_iso(24 * 7)
     factual_errors_2h = await db.ai_evaluations.count_documents({
@@ -116,19 +133,24 @@ async def trust_score(*, company_id: str, hours: int = 24) -> Dict[str, Any]:
         "nps_motivo": {"$regex": "frustra|errado|nao\\s+era", "$options": "i"},
     })
 
-    # Score: base = taxa de outbounds com claim consumido
-    base_pct = _safe_pct(claims_consumed, outbounds) if outbounds else 0.0
-    # Penaliza correções (peso 100% para 2h, 25% para 7d)
+    # ── Nova fórmula ──────────────────────────────────
+    audit_pass_rate = _safe_pct(claims_passed, claims_total or 1)
+    delivery_rate = _safe_pct(claims_consumed, claims_passed or 1)
+    base_pct = round((audit_pass_rate + delivery_rate) / 2.0, 1)
+
+    # Penalty: usa claims_total como denominador (justo: erros em
+    # respostas factuais penalizam o trust factual)
     penalty_factual = factual_errors_2h * 1.0
     penalty_delayed = delayed_corrections_7d * 0.25
     penalty_pct = _safe_pct(
         penalty_factual + penalty_delayed,
-        max(outbounds, 1),
+        max(claims_total, 1),
     )
     score = max(0.0, min(100.0, base_pct - penalty_pct))
 
-    # Se cliente é novo (zero outbound), o trust default é 100 (sem dado)
-    if outbounds == 0:
+    # Sem dado factual (claims_total=0) → trust default 100 (não há base
+    # pra calcular fabricação porque a IA não fez afirmações factuais)
+    if claims_total == 0:
         score = 100.0
 
     return {
@@ -137,6 +159,8 @@ async def trust_score(*, company_id: str, hours: int = 24) -> Dict[str, Any]:
         "claims_total": claims_total,
         "claims_passed": claims_passed,
         "claims_consumed": claims_consumed,
+        "audit_pass_rate": audit_pass_rate,
+        "delivery_rate": delivery_rate,
         "base_evidence_pct": base_pct,
         "factual_errors_2h": factual_errors_2h,
         "delayed_corrections_7d": delayed_corrections_7d,
