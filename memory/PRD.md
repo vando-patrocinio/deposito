@@ -6093,3 +6093,36 @@ Toda leitura "qual cliente em qual porta" deve partir de UMA fonte.
 ### Doc completo
 - `/app/memory/SPRINT5_ONDA4_RCA.md`
 - `/app/memory/SPRINT5_ONDA4_CERTIDAO.md`
+
+---
+## [2026-02-19] Sprint 5 · Onda 5 — Genesis Audit (Fase 5.0) ✅ READ-ONLY
+
+### Mandato CEO
+ORDEM EXECUTIVA: 4 fases obrigatórias (5.0 Audit / 5.1 Preview / 5.2 Import / 5.3 Certidão).
+"NÃO fazer importação direta de 1.833 ONUs sem Genesis Audit antes."
+
+### Entrega Fase 5.0 + 5.1
+- **Rota** `routes/sprint5_onda5.py` com 4 endpoints: audit, preview, import (com ?confirm=true), certidao + status + audit-log.
+- **Helper** `_classify_confidence()` calcula data_confidence (1.00/0.90/0.70/0.50) via 3 caminhos:
+  - 1.00: pppoe_user → SAP → subscriber_id
+  - 0.90: name fuzzy match (tokens ≥5 chars) → subscribers.name
+  - 0.70: tem SN/MAC mas sem cliente identificado
+  - 0.50: sem dados
+- **GENESIS_AUDIT.md** + **GENESIS_PREVIEW.md** emitidos READ-ONLY.
+
+### Achados críticos (sem writes)
+- 1.833 ONUs no SmartOLT, 1.832 com SN, 870 com MAC, **0 com subscriber_external_id**, **1 com pppoe_user**.
+- 12 SNs já existem em stok_onts (skip), 1 SN duplicado, 1 sem identificador.
+- **Fuzzy match no campo `name`** recuperou 1.445 vínculos (78.83% data_confidence ≥0.9) — sem essa heurística seria 0%.
+- Import success projetado: **99.24%** (gate CEO ≥95% ATINGIDO).
+- Data_confidence ≥0.9 ≥90% **NÃO** atingido (78.83% atual).
+
+### Status
+- Fase 5.0 ✅ Concluída (audit).
+- Fase 5.1 ✅ Concluída (preview).
+- **Fase 5.2 (import) AGUARDA AUTORIZAÇÃO CEO** — 3 opções apresentadas no GENESIS_AUDIT.md seção 9.
+- Fase 5.3 ainda não emitida.
+
+### Docs
+- `/app/memory/GENESIS_AUDIT.md`
+- `/app/memory/GENESIS_PREVIEW.md`
