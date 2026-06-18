@@ -2,6 +2,43 @@
 
 > Documento vivo. Atualizado a cada sprint.
 
+## ✅ ONDA C — BUG #4 + BUG #6 LOUSA MOBILE FINALIZE (18/06/2026 · ENTREGUE)
+
+**CTO 18/06/2026** · 20/20 testes PASS (10 locais + 10 HTTP REST via testing agent) · Lint clean.
+
+### Bug #4 — Validação obrigatória de consumíveis em `public_finalize_ticket`
+Bloqueio HTTP 400 (`detail.error="consumiveis_obrigatorios_faltando"`) quando o técnico tenta finalizar SUCESSO sem registrar materiais consumidos:
+- **Instalação**: exige ONT + qtd_drop>0 + (conectores_fast>0 OU observação ≥10 chars).
+- **Reparo**: exige material consumido OU justificativa (≥10 chars) OU declaração de troca de ONT.
+- **Retirada**: exige ONT recolhida (MAC ou SN) + asset_recovered (ou justificativa).
+- Resposta: `{error, missing[], human_reason}` consumível pelo mobile.
+
+### Bug #6 — Auto-detecção de troca de ONT (AUTO_ONT_SWAP_DETECTED)
+Compara `t.client_snapshot.current_ont` vs `cd.ont` na finalização. Se diferentes:
+- Upsert em `auto_ont_swap_events` (idempotente por `(company_id, ticket_id)`) com status `pending_confirmation`.
+- Preenche `equipment_swap` inicial (source=`auto_detect_snapshot`).
+- Quando `_detect_equipment_swap` (SmartOLT) também detecta, MESCLA dados sem sobrescrever (source vira `auto_detect_snapshot+smartolt`).
+- Persiste em `equipment_swaps` + notification ao gestor (audit completo).
+
+### Regras de ouro respeitadas
+- Zero deletes, zero history loss.
+- Auditoria viva em `auto_ont_swap_events` + `equipment_swaps` + `lousa_finalize_trace` (6-phase Onda B).
+- HTTP 400 com `human_reason` legível → frontend mobile pode exibir direto.
+
+### Files
+- `/app/backend/routes/lousa.py` — `public_finalize_ticket` (blocos Bug #4 linhas ~4214-4262, Bug #6 ~4267-4318, merge ~4690).
+- `/app/backend/tests/test_onda_c_lousa.py` (NOVO · 10 testes locais).
+- `/app/backend/tests/test_onda_c_lousa_http.py` (NOVO · 10 testes HTTP REST via testing agent).
+
+### Code review pendente (P2 backlog)
+- `lousa.py` tem 9224 linhas — split em sub-routers (lousa_finalize.py, lousa_public.py, lousa_admin.py).
+- `public_finalize_ticket` é função >700 linhas — extrair gates de Bug #4/#6 para `services/lousa_finalize_gates.py`.
+- Endpoint público sem JWT (by design mobile) — recomenda rate-limit por IP/collaborator.
+
+---
+
+
+
 ## ✅ FIX RBAC — WATCHTOWER NA TELA DE PERMISSÕES (18/02/2026 · ENTREGUE)
 
 ### Bug reportado
