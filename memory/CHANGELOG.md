@@ -8437,3 +8437,25 @@ Relatório: `/app/docs/RELATORIO_RELACIONAMENTO_360.md`
   3. POST /api/users/set-password com user_id=vando + new_password=021206
   4. Logout admin → login vando / 021206
 - **Reminder**: PREVIEW e PROD têm bancos Mongo separados. Mudanças via script no preview NÃO afetam prod.
+
+---
+
+## 2026-06-18 · Isabella V16.1 — Multi-Consultor PJ
+**Feature**: Cadastro de N consultores PJ em UI (Configurações) + round-robin automático no notify.
+
+### Backend
+- Nova coleção `pj_consultores` com campos `{nome, whatsapp, email, sla_minutos, ativo, last_notified_at, notify_count}`.
+- `services/pj_lead_router.py`: CRUD (`list_consultores`/`create_consultor`/`update_consultor`/`delete_consultor`), seleção round-robin via `_pick_next_consultor` (sort `last_notified_at ASC`, nulls primeiro), `pj_flow_is_active` (True se >=1 consultor ativo OU legado configurado).
+- `notify_consultor` agora prioriza pool multi (round-robin); legado mantido como fallback.
+- `render_client_reply` aceita parâmetro opcional `consultor=...` para personalizar nome/whatsapp.
+- `routes/isabella_pj.py`: endpoints `GET/POST /api/isabella/pj/consultores`, `PUT/DELETE /api/isabella/pj/consultores/{id}` (admin/owner only).
+- `routes/whatsapp_baileys.py`: fluxo PJ usa `pj_flow_is_active` e passa consultor escolhido para `render_client_reply`.
+
+### Frontend
+- Novo `components/IsabellaPjConsultoresCard.jsx` (lista + form inline · create/edit/delete · badge "N ativo(s)" / "NENHUM ATIVO").
+- Importado em `SettingsPanel.js` (logo após `IsabellaNegotiationRulesCard`).
+- `api.js`: métodos `isabellaPjConsultoresList`, `isabellaPjConsultorCreate/Update/Delete`, `isabellaPjConfigGet/Set`, `isabellaPjLeadsList`.
+
+### Tests
+- `tests/test_pj_consultores_v161.py` — 8 testes (PASS): CRUD, validação, round-robin com inativos ignorados, `pj_flow_is_active`.
+- Endpoints validados via curl no preview (admin@empresa.com).

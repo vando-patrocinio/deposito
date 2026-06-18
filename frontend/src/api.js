@@ -1390,6 +1390,21 @@ export const api = {
   isabellaNegotiationAttempts: (params = {}) =>
     client.get(`/isabella/negotiation-attempts`, { params }).then((r) => r.data),
 
+  // ===== Isabella PJ — Consultores (V16.1) =====
+  isabellaPjConfigGet: () => client.get(`/isabella/pj/config`).then((r) => r.data),
+  isabellaPjConfigSet: (body) =>
+    client.put(`/isabella/pj/config`, body).then((r) => r.data),
+  isabellaPjConsultoresList: () =>
+    client.get(`/isabella/pj/consultores`).then((r) => r.data),
+  isabellaPjConsultorCreate: (body) =>
+    client.post(`/isabella/pj/consultores`, body).then((r) => r.data),
+  isabellaPjConsultorUpdate: (id, body) =>
+    client.put(`/isabella/pj/consultores/${id}`, body).then((r) => r.data),
+  isabellaPjConsultorDelete: (id) =>
+    client.delete(`/isabella/pj/consultores/${id}`).then((r) => r.data),
+  isabellaPjLeadsList: (params = {}) =>
+    client.get(`/isabella/pj/leads`, { params }).then((r) => r.data),
+
   // ===== Interactions 360° (P0 CTO 2026-02) =====
   interactions360: (subscriberId, params = {}) =>
     client.get(`/interactions/360/${subscriberId}`, { params }).then((r) => r.data),

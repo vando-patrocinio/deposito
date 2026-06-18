@@ -37,11 +37,14 @@ import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
+from pymongo import ReturnDocument
+
 from database import db
 
 logger = logging.getLogger("ponto.pj_router")
 
 CONFIG_COLL = "pj_consultor_config"
+CONSULTORES_COLL = "pj_consultores"
 LEADS_COLL = "pj_leads"
 
 # ─── PJ detection signals ───────────────────────────────────────
@@ -125,6 +128,132 @@ async def upsert_pj_config(*, company_id: str,
     return await get_pj_config(company_id=company_id)
 
 
+# ─── Multi-consultores PJ (V16.1) ──────────────────────────────
+# Cada empresa pode cadastrar N consultores. O notify_consultor faz
+# round-robin entre os consultores ativos (ordenando por
+# `last_notified_at` ASC). A coleção `pj_consultor_config` continua
+# servindo apenas como fallback legado + flag global de SLA.
+
+def _normalize_phone(raw: str) -> str:
+    """Mantém somente dígitos. Aceita +55 (21) 99999-9999, 5521..., etc."""
+    return re.sub(r"\D", "", raw or "")
+
+
+def _validate_consultor_payload(payload: Dict[str, Any]) -> Dict[str, Any]:
+    nome = str(payload.get("nome") or "").strip()[:120]
+    whatsapp = _normalize_phone(str(payload.get("whatsapp") or ""))
+    email = str(payload.get("email") or "").strip()[:200]
+    try:
+        sla = int(payload.get("sla_minutos", 15))
+    except Exception:
+        sla = 15
+    ativo = bool(payload.get("ativo", True))
+    if not nome:
+        raise ValueError("nome é obrigatório")
+    if not whatsapp or len(whatsapp) < 10:
+        raise ValueError("whatsapp inválido (precisa de DDI+DDD+número)")
+    if not (1 <= sla <= 240):
+        raise ValueError("sla_minutos fora do range 1-240")
+    return {
+        "nome": nome, "whatsapp": whatsapp, "email": email,
+        "sla_minutos": sla, "ativo": ativo,
+    }
+
+
+def _serialize_consultor(doc: Dict[str, Any]) -> Dict[str, Any]:
+    if not doc:
+        return {}
+    out = dict(doc)
+    out["id"] = out.pop("_id", None)
+    # Converte datetimes para ISO string
+    for k in ("created_at", "updated_at", "last_notified_at"):
+        v = out.get(k)
+        if hasattr(v, "isoformat"):
+            out[k] = v.isoformat()
+    return out
+
+
+async def list_consultores(*, company_id: str) -> List[Dict[str, Any]]:
+    cursor = db[CONSULTORES_COLL].find(
+        {"company_id": company_id},
+    ).sort("created_at", 1)
+    items = await cursor.to_list(500)
+    return [_serialize_consultor(d) for d in items]
+
+
+async def create_consultor(
+    *, company_id: str, payload: Dict[str, Any],
+) -> Dict[str, Any]:
+    data = _validate_consultor_payload(payload)
+    now = datetime.now(timezone.utc)
+    cid = f"pjcon-{uuid.uuid4().hex[:12]}"
+    doc = {
+        "_id": cid,
+        "company_id": company_id,
+        **data,
+        "created_at": now,
+        "updated_at": now,
+        "last_notified_at": None,
+        "notify_count": 0,
+    }
+    await db[CONSULTORES_COLL].insert_one(doc)
+    return _serialize_consultor(doc)
+
+
+async def update_consultor(
+    *, company_id: str, consultor_id: str, payload: Dict[str, Any],
+) -> Optional[Dict[str, Any]]:
+    data = _validate_consultor_payload(payload)
+    now = datetime.now(timezone.utc)
+    res = await db[CONSULTORES_COLL].find_one_and_update(
+        {"_id": consultor_id, "company_id": company_id},
+        {"$set": {**data, "updated_at": now}},
+        return_document=ReturnDocument.AFTER,
+    )
+    if not res:
+        return None
+    return _serialize_consultor(res)
+
+
+async def delete_consultor(
+    *, company_id: str, consultor_id: str,
+) -> bool:
+    res = await db[CONSULTORES_COLL].delete_one(
+        {"_id": consultor_id, "company_id": company_id},
+    )
+    return res.deleted_count > 0
+
+
+async def _pick_next_consultor(
+    *, company_id: str,
+) -> Optional[Dict[str, Any]]:
+    """Seleciona o próximo consultor ativo (round-robin via
+    last_notified_at ASC, nulls primeiro)."""
+    cursor = db[CONSULTORES_COLL].find(
+        {"company_id": company_id, "ativo": True},
+    ).sort([("last_notified_at", 1), ("created_at", 1)]).limit(1)
+    items = await cursor.to_list(1)
+    return items[0] if items else None
+
+
+async def pj_flow_is_active(*, company_id: str) -> bool:
+    """PJ flow está ativo se existe pelo menos um consultor ativo no
+    pool multi-consultores (`pj_consultores`) OU se o legado
+    (`pj_consultor_config`) está marcado como ativo + tem telefone."""
+    has_multi = await db[CONSULTORES_COLL].count_documents(
+        {"company_id": company_id, "ativo": True}, limit=1,
+    )
+    if has_multi:
+        return True
+    # Fallback legado
+    cfg = await get_pj_config(company_id=company_id)
+    if not cfg.get("ativo"):
+        return False
+    legacy_phone = (cfg.get("consultor_whatsapp")
+                     or cfg.get("consultor_telefone") or "")
+    return bool(legacy_phone)
+
+
 # ─── Captura e encaminhamento de Lead ──────────────────────────
 async def capture_lead(
     *,
@@ -202,12 +331,33 @@ async def notify_consultor(
     *, company_id: str, lead: Dict[str, Any],
 ) -> Dict[str, Any]:
     """Envia WhatsApp para o Consultor PJ com o briefing do lead.
-    Marca o lead como `consultor_acionado` e seta `sla_target_at`."""
+    Marca o lead como `consultor_acionado` e seta `sla_target_at`.
+
+    V16.1: Primeiro tenta multi-consultores (round-robin). Se nenhum
+    consultor ativo no novo modelo, cai para o legado single-consultor.
+    """
     cfg = await get_pj_config(company_id=company_id)
-    if not cfg.get("ativo"):
-        return {"ok": False, "reason": "consultor_pj_inativo"}
-    consultor_phone = (cfg.get("consultor_whatsapp")
-                        or cfg.get("consultor_telefone") or "").strip()
+
+    # Tenta primeiro o pool multi-consultor (round-robin)
+    chosen = await _pick_next_consultor(company_id=company_id)
+    consultor_nome: str = ""
+    consultor_phone: str = ""
+    consultor_id: Optional[str] = None
+    sla_minutos = int(cfg.get("sla_minutos") or 15)
+
+    if chosen:
+        consultor_id = chosen.get("_id")
+        consultor_nome = chosen.get("nome") or ""
+        consultor_phone = chosen.get("whatsapp") or ""
+        sla_minutos = int(chosen.get("sla_minutos") or sla_minutos)
+    else:
+        # Fallback legado — só usa se ativo
+        if not cfg.get("ativo"):
+            return {"ok": False, "reason": "consultor_pj_inativo"}
+        consultor_nome = cfg.get("consultor_nome") or ""
+        consultor_phone = (cfg.get("consultor_whatsapp")
+                            or cfg.get("consultor_telefone") or "").strip()
+
     if not consultor_phone:
         return {"ok": False, "reason": "consultor_phone_vazio"}
 
@@ -227,7 +377,7 @@ async def notify_consultor(
         f"Cidade: {lead.get('municipio') or '—'}\n\n"
         "Resumo da conversa:\n"
         f"{resumo}\n\n"
-        f"Tempo alvo de retorno: {cfg.get('sla_minutos', 15)} minutos"
+        f"Tempo alvo de retorno: {sla_minutos} minutos"
     )
 
     # Envia via Baileys (default) — reusa wa_dispatcher
@@ -238,26 +388,51 @@ async def notify_consultor(
             text=msg, source="pj_lead_consultor",
         )
         notify_id = send.get("message_id") or f"pj-notify-{uuid.uuid4().hex[:8]}"
+        now = datetime.now(timezone.utc)
         await db[LEADS_COLL].update_one(
             {"_id": lead["_id"]},
             {"$set": {"status": "consultor_acionado",
-                       "consultor_acionado_at": datetime.now(timezone.utc),
+                       "consultor_acionado_at": now,
                        "consultor_notify_msg_id": notify_id,
-                       "consultor_nome": cfg.get("consultor_nome"),
-                       "consultor_telefone": consultor_phone}},
+                       "consultor_id": consultor_id,
+                       "consultor_nome": consultor_nome,
+                       "consultor_telefone": consultor_phone,
+                       "sla_target_at": now + timedelta(minutes=sla_minutos)}},
         )
+        # Atualiza last_notified_at do consultor (round-robin)
+        if consultor_id:
+            await db[CONSULTORES_COLL].update_one(
+                {"_id": consultor_id, "company_id": company_id},
+                {"$set": {"last_notified_at": now},
+                  "$inc": {"notify_count": 1}},
+            )
         return {"ok": True, "notify_msg_id": notify_id,
-                "consultor_nome": cfg.get("consultor_nome"),
-                "consultor_telefone": consultor_phone}
+                "consultor_id": consultor_id,
+                "consultor_nome": consultor_nome,
+                "consultor_telefone": consultor_phone,
+                "sla_minutos": sla_minutos}
     except Exception as e:
         logger.warning("[pj_router] notify consultor falhou: %s", e)
         return {"ok": False, "reason": "dispatch_error", "error": str(e)[:200]}
 
 
-def render_client_reply(*, cfg: Dict[str, Any]) -> str:
-    """Mensagem que o cliente PJ recebe após ser encaminhado."""
-    nome = cfg.get("consultor_nome") or "nossa equipe comercial"
-    phone = cfg.get("consultor_telefone") or ""
+def render_client_reply(
+    *, cfg: Dict[str, Any], consultor: Optional[Dict[str, Any]] = None,
+) -> str:
+    """Mensagem que o cliente PJ recebe após ser encaminhado.
+
+    Se `consultor` (do pool multi) for fornecido, usa nome/whatsapp dele.
+    Caso contrário, cai para os campos legados do `cfg`.
+    """
+    if consultor:
+        nome = consultor.get("nome") or "nossa equipe comercial"
+        phone = consultor.get("whatsapp") or ""
+        sla = int(consultor.get("sla_minutos")
+                  or cfg.get("sla_minutos") or 15)
+    else:
+        nome = cfg.get("consultor_nome") or "nossa equipe comercial"
+        phone = cfg.get("consultor_telefone") or ""
+        sla = int(cfg.get("sla_minutos") or 15)
     # Formata BR: 5521999999999 → (21) 99999-9999
     phone_pretty = phone
     digits = re.sub(r"\D", "", phone or "")
@@ -274,7 +449,7 @@ def render_client_reply(*, cfg: Dict[str, Any]) -> str:
         f"👤 *{nome}*"
         + (f"\n📱 {phone_pretty}" if phone_pretty else "")
         + "\n\nEle vai entrar em contato em até "
-          f"{cfg.get('sla_minutos', 15)} minutos para entender sua necessidade "
+          f"{sla} minutos para entender sua necessidade "
           "e montar a melhor proposta para a sua empresa.\n\n"
           "Enquanto isso, deixei tudo preparado para agilizar seu atendimento. 😊"
     )
@@ -285,6 +460,9 @@ async def ensure_indexes() -> None:
     try:
         await db[CONFIG_COLL].create_index("company_id", unique=True,
                                             name="cfg_cid_uq")
+        await db[CONSULTORES_COLL].create_index(
+            [("company_id", 1), ("ativo", 1), ("last_notified_at", 1)],
+            name="cons_pick_idx")
         await db[LEADS_COLL].create_index(
             [("company_id", 1), ("status", 1), ("created_at", -1)],
             name="leads_st_idx")

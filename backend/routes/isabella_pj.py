@@ -20,7 +20,11 @@ from core import get_current_user
 from database import db
 from services.rate_limit import get_limit, limiter
 from services.pj_lead_router import (
+    create_consultor,
+    delete_consultor,
     get_pj_config,
+    list_consultores,
+    update_consultor,
     upsert_pj_config,
 )
 
@@ -77,6 +81,76 @@ async def put_config(
     if not (1 <= updates["sla_minutos"] <= 240):
         raise HTTPException(400, "sla_minutos fora do range 1-240")
     return await upsert_pj_config(company_id=company, updates=updates)
+
+
+# ─── Multi-consultores PJ (V16.1) ──────────────────────────────
+@router.get("/consultores")
+@limiter.limit(get_limit("isabella_read"))
+async def list_consultores_endpoint(
+    request: Request, cid: Optional[str] = None,
+    user: Dict[str, Any] = Depends(get_current_user),
+):
+    _require_priv(user)
+    company = _company_or_param(user, cid)
+    items = await list_consultores(company_id=company)
+    return {"items": items, "n": len(items)}
+
+
+@router.post("/consultores")
+@limiter.limit(get_limit("isabella_write"))
+async def create_consultor_endpoint(
+    request: Request,
+    payload: dict = Body(...),
+    cid: Optional[str] = None,
+    user: Dict[str, Any] = Depends(get_current_user),
+):
+    _require_priv(user)
+    company = _company_or_param(user, cid)
+    try:
+        doc = await create_consultor(company_id=company, payload=payload)
+    except ValueError as ve:
+        raise HTTPException(400, str(ve))
+    return doc
+
+
+@router.put("/consultores/{consultor_id}")
+@limiter.limit(get_limit("isabella_write"))
+async def update_consultor_endpoint(
+    request: Request,
+    consultor_id: str,
+    payload: dict = Body(...),
+    cid: Optional[str] = None,
+    user: Dict[str, Any] = Depends(get_current_user),
+):
+    _require_priv(user)
+    company = _company_or_param(user, cid)
+    try:
+        doc = await update_consultor(
+            company_id=company, consultor_id=consultor_id, payload=payload,
+        )
+    except ValueError as ve:
+        raise HTTPException(400, str(ve))
+    if not doc:
+        raise HTTPException(404, "consultor não encontrado")
+    return doc
+
+
+@router.delete("/consultores/{consultor_id}")
+@limiter.limit(get_limit("isabella_write"))
+async def delete_consultor_endpoint(
+    request: Request,
+    consultor_id: str,
+    cid: Optional[str] = None,
+    user: Dict[str, Any] = Depends(get_current_user),
+):
+    _require_priv(user)
+    company = _company_or_param(user, cid)
+    ok = await delete_consultor(
+        company_id=company, consultor_id=consultor_id,
+    )
+    if not ok:
+        raise HTTPException(404, "consultor não encontrado")
+    return {"ok": True, "consultor_id": consultor_id}
 
 
 @router.get("/leads")

@@ -1941,12 +1941,12 @@ async def _maybe_auto_reply(cid: str, phone: str, user_text: str,
     try:
         from services.pj_lead_router import (
             detect_pj_signal, get_pj_config, capture_lead,
-            notify_consultor, render_client_reply,
+            notify_consultor, render_client_reply, pj_flow_is_active,
         )
         det = await detect_pj_signal(text=user_text or "")
         if det.get("is_pj") and det.get("confidence", 0) >= 0.85:
-            cfg = await get_pj_config(company_id=cid)
-            if cfg.get("ativo"):
+            if await pj_flow_is_active(company_id=cid):
+                cfg = await get_pj_config(company_id=cid)
                 logger.info(
                     "[wa-baileys] PJ V16: detect conf=%.2f phone=%s signals=%s",
                     det["confidence"], phone, det.get("signals"),
@@ -1960,7 +1960,17 @@ async def _maybe_auto_reply(cid: str, phone: str, user_text: str,
                 notify_res = await notify_consultor(
                     company_id=cid, lead=lead,
                 )
-                client_reply = render_client_reply(cfg=cfg)
+                # Monta dict do consultor escolhido para a resposta ao cliente
+                chosen_consultor = None
+                if notify_res.get("consultor_id"):
+                    chosen_consultor = {
+                        "nome": notify_res.get("consultor_nome"),
+                        "whatsapp": notify_res.get("consultor_telefone"),
+                        "sla_minutos": notify_res.get("sla_minutos"),
+                    }
+                client_reply = render_client_reply(
+                    cfg=cfg, consultor=chosen_consultor,
+                )
                 # Envia a resposta de transferência (não passa pelo LLM)
                 from services.wa_dispatcher import dispatch_wa
                 await dispatch_wa(
@@ -1977,8 +1987,9 @@ async def _maybe_auto_reply(cid: str, phone: str, user_text: str,
                 return client_reply
             else:
                 logger.info(
-                    "[wa-baileys] PJ V16 detectado mas config inativa, "
-                    "seguindo fluxo normal phone=%s", phone,
+                    "[wa-baileys] PJ V16 detectado mas fluxo inativo "
+                    "(sem consultor ou flag global off), seguindo fluxo "
+                    "normal phone=%s", phone,
                 )
     except Exception as e:
         logger.warning("[wa-baileys] PJ V16 flow skip: %s", e)
