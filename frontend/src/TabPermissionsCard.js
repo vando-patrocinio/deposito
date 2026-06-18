@@ -9,6 +9,14 @@ import React, { useMemo } from "react";
 // chato de tab_ids por role.
 // ============================================================
 export const TAB_DEFINITIONS = [
+  // Dashboard Executivo
+  { id: "watchtower-estoque",      label: "Watchtower Estoque",
+    group: "Dashboard Executivo",
+    hint: "Visão patrimonial consolidada do estoque (CEO)." },
+  { id: "watchtower-recebimentos", label: "Watchtower Recebimentos",
+    group: "Dashboard Executivo",
+    hint: "Quem está pagando · KPIs MoM + Top 10 pagadores + drill-down." },
+
   // Operação
   { id: "dashboard",       label: "Painel",            group: "Operação" },
   { id: "lousa",           label: "Chamados",          group: "Operação" },
@@ -70,6 +78,7 @@ export const DEFAULT_TAB_PERMISSIONS = {
   administrador: [...ALL_TAB_IDS],
   auditor:       [...ALL_TAB_IDS],
   gestor: [
+    "watchtower-estoque", "watchtower-recebimentos",
     "dashboard", "lousa", "estoque", "central-compras", "projects",
     "ai-ranking", "ai-corrections", "central-ia", "rede-ia",
     "atendimento", "alvaro-ia", "mass-messaging", "sales-funnel",

@@ -2,6 +2,23 @@
 
 > Documento vivo. Atualizado a cada sprint.
 
+## ✅ FIX RBAC — WATCHTOWER NA TELA DE PERMISSÕES (18/02/2026 · ENTREGUE)
+
+### Bug reportado
+Watchtower Recebimentos (e Estoque) não aparecia na tela **Permissões de abas por perfil** (Configurações). Sem isso, gestores não conseguiam liberar acesso para suas equipes.
+
+### Fix aplicado
+- `TAB_DEFINITIONS` em `/app/frontend/src/TabPermissionsCard.js` ganhou novo grupo **"Dashboard Executivo"** no topo com:
+  - `watchtower-estoque` — "Visão patrimonial consolidada do estoque (CEO)."
+  - `watchtower-recebimentos` — "Quem está pagando · KPIs MoM + Top 10 pagadores + drill-down."
+- `DEFAULT_TAB_PERMISSIONS.gestor` agora inclui as 2 abas (administrador/auditor já tinham via `[...ALL_TAB_IDS]`)
+- Validado via screenshot: as 2 abas aparecem na seção "Dashboard Executivo" da tela de permissões, com checkboxes para cada perfil (Administrador / Auditor / Gestor)
+
+### Files
+- `/app/frontend/src/TabPermissionsCard.js` (+10 LOC)
+
+---
+
 ## ✅ WATCHTOWER RECEBIMENTOS (18/02/2026 · ENTREGUE)
 
 **CTO 18/02/2026** · 36/36 testes globais PASS · Validado em produção com dados reais.
