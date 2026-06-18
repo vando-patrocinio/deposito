@@ -2,6 +2,44 @@
 
 > Documento vivo. Atualizado a cada sprint.
 
+## ✅ ONDA IA-1.6 · Confiabilidade do Custo + CMP Real das Compras — 18/06/2026
+
+**Diretiva CEO**: "não liberar DRE Operacional como indicador executivo ainda · marcar BETA · criar KPI Confiabilidade do Custo · ler purchase_items pra CMP real". Nota CEO da entrega anterior: Valor 8/10 · Confiabilidade 3/10 · Potencial pós-Sprint 5 9,5/10. Essa Onda endereça o Confiabilidade.
+
+### Entregue
+- `services/purchase_price_resolver.py` — engine de Custo Médio Ponderado:
+  - Lê `purchases.items[]` dos últimos 180d, classifica `description` em itens canônicos via keywords
+  - Calcula CMP por item (qty × unit_value somados / total qty)
+  - Confidence escalonado: ≥5 amostras = 1.0 · 2-4 = 0.85 · 1 = 0.65
+  - Cache em memória 5min (não martela Mongo)
+  - `get_blended_catalog()`: real (CMP) > estimado (PRICE_CATALOG)
+- `services/os_cost_engine.py` — atualizado:
+  - `compute_os_cost(blended_catalog=...)` aceita catálogo pré-computado
+  - Inclui `confidence` (5 critérios) em cada OS retornada
+  - Agregador alimenta selo BETA + barra de confiança
+- `frontend/src/WatchtowerOSCost.jsx` — atualizado:
+  - **Selo BETA** automático quando confiabilidade média < 70% (CEO ordem)
+  - **Barra de Confiabilidade do Custo** (tier: alta/média/baixa/crítica · cores)
+  - 5 critérios listados (material identificado · ticket vinculado · estoque rastreado CMP real · técnico identificado · patrimônio rastreado ONT)
+  - Aviso "Preços reais: X% das OS · N itens com CMP de purchases"
+  - Renomeado "Top 5 bairros" → **"Custo por Bairro · top 5 acumulado"**
+
+### Snapshot 60d co-demo
+- 18 OS · R$ 654,70 total
+- **Confiabilidade: 42.4% (baixa)** → selo "BETA · só para tendência"
+- Purchase priced 0% pois 20 compras existentes são de GBIC/equipamento (não drops/fast) — quando entrar compra canônica, CMP automaticamente substitui o estimado
+
+### Como o Confiabilidade sobe
+1. Carregar `purchases` com descriptions matchando keywords (drop, fast, esticador, cabo_rede, conector_rede, caixa_emenda) → +1 critério por OS = +20% confiabilidade
+2. Destravar Onda IA-2 (narrativa real → IA extraction) → outros critérios disparam
+
+### Files
+- NOVOS: `/app/backend/services/purchase_price_resolver.py`
+- MODIFICADOS: `/app/backend/services/os_cost_engine.py` · `/app/frontend/src/WatchtowerOSCost.jsx`
+
+---
+
+
 ## ✅ ONDA IA-1.5 · CUSTO POR OS + DRE OPERACIONAL — 18/06/2026
 
 **Diretiva CEO**: "cada OS vira uma linha do DRE operacional". Extensão da Onda IA-1 que combina extração IA + catálogo de preços para calcular custo material + mão-de-obra por OS.

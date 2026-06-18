@@ -39,8 +39,16 @@ export default function WatchtowerOSCost() {
     <div className="space-y-5" data-testid="watch-oscost-root">
       <div className="flex items-end justify-between flex-wrap gap-3">
         <div>
-          <div className="text-xs uppercase tracking-widest text-emerald-400/80 font-mono">
-            DRE Operacional · Custos via IA Patrimonial · {data.window_days}d
+          <div className="flex items-center gap-2">
+            <div className="text-xs uppercase tracking-widest text-emerald-400/80 font-mono">
+              DRE Operacional · Custos via IA Patrimonial · {data.window_days}d
+            </div>
+            {data.is_beta && (
+              <span data-testid="oscost-beta-badge"
+                className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-amber-500/15 text-amber-300 border border-amber-500/40 tracking-wider">
+                BETA · {data.confidence?.label?.replace(/^BETA\s*·\s*/, "")}
+              </span>
+            )}
           </div>
           <h2 className="text-2xl font-bold text-white">Custo Real por OS</h2>
         </div>
@@ -52,6 +60,37 @@ export default function WatchtowerOSCost() {
           <option value="60">Últimos 60d</option>
           <option value="90">Últimos 90d</option>
         </select>
+      </div>
+
+      {/* Barra de Confiabilidade do Custo */}
+      <div className="rounded-xl border border-slate-800 bg-slate-900/50 p-4"
+        data-testid="oscost-confidence-bar">
+        <div className="flex items-center justify-between mb-2">
+          <span className="text-xs uppercase tracking-wider text-slate-400 font-mono">
+            Confiabilidade do Custo · {data.confidence?.tier}
+          </span>
+          <span data-testid="oscost-confidence-score" className="font-mono text-sm text-white">
+            {data.confidence?.score_pct}%
+          </span>
+        </div>
+        <div className="h-2 bg-slate-800 rounded-full overflow-hidden">
+          <div className={`h-2 ${
+            data.confidence?.score_pct >= 70 ? "bg-emerald-400"
+            : data.confidence?.score_pct >= 50 ? "bg-yellow-400"
+            : data.confidence?.score_pct >= 30 ? "bg-orange-400"
+            : "bg-rose-500"
+          }`} style={{ width: `${data.confidence?.score_pct || 0}%` }} />
+        </div>
+        <div className="mt-2 text-[10px] text-slate-500 grid grid-cols-2 md:grid-cols-5 gap-2">
+          <span>✓ Material identificado</span>
+          <span>✓ Ticket vinculado</span>
+          <span>✓ Estoque rastreado (CMP real)</span>
+          <span>✓ Técnico identificado</span>
+          <span>✓ Patrimônio rastreado (ONT)</span>
+        </div>
+        <div className="mt-2 text-[10px] text-slate-500">
+          Preços reais de compras: <span className="text-cyan-300 font-mono">{data.purchase_priced_pct}%</span> das OS · {data.real_prices_count} itens com CMP de purchases
+        </div>
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
@@ -117,11 +156,11 @@ export default function WatchtowerOSCost() {
           ))}
         </div>
 
-        {/* Top zonas */}
+        {/* Custo por Bairro */}
         <div className="rounded-xl border border-slate-800 bg-slate-900/50 p-5"
           data-testid="oscost-top-zones">
           <div className="text-xs uppercase tracking-widest text-emerald-400/80 font-mono mb-2">
-            Top 5 bairros · custo acumulado
+            Custo por Bairro · top 5 acumulado
           </div>
           {data.top_zones.map((r) => (
             <div key={r.zone} className="flex justify-between py-1.5 border-b border-slate-800 last:border-0">
