@@ -165,6 +165,8 @@ from routes import (
     rede_cell as routes_rede_cell,
     sprint5_onda1 as routes_sprint5_onda1,
     sprint5_onda2 as routes_sprint5_onda2,
+    sprint5_onda3 as routes_sprint5_onda3,
+    sprint5_onda4 as routes_sprint5_onda4,
     sprint5_swap_events as routes_sprint5_swap_events,
     whatsapp_config as routes_whatsapp_config,
     wa_test_mode as routes_wa_test_mode,
@@ -1531,6 +1533,8 @@ app.include_router(routes_ligo_tv.router)
 app.include_router(routes_alvaro.router)
 app.include_router(routes_sprint5_onda1.router)
 app.include_router(routes_sprint5_onda2.router)
+app.include_router(routes_sprint5_onda3.router)
+app.include_router(routes_sprint5_onda4.router)
 app.include_router(routes_sprint5_swap_events.router)
 app.include_router(routes_alvaro_os_summary.router)
 app.include_router(routes_gps_vlan_suggest.router)

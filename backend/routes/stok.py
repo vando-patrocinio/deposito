@@ -2746,6 +2746,50 @@ async def auto_close_service_from_ticket(
         except Exception as e:
             logger.warning("[stok] smartolt cross-check falhou: %s", e)
 
+    # Sprint 5 Onda 3 (CEO 19/02/2026) — BLOQUEIO ANTES DA FINALIZAÇÃO
+    try:
+        from services.os_finalization_validator import (
+            validate_finalization, record_validation,
+        )
+        ok_o3, diag_o3 = await validate_finalization(
+            db,
+            company_id=company_id,
+            service_type=service.get("type") or "",
+            ticket_id=ticket_id,
+            service_id=sid,
+            subscriber_id=service.get("client_id"),
+            collaborator_id=technician_id,
+            completion_data=completion_data,
+        )
+        await record_validation(
+            db, company_id=company_id, ok=ok_o3, diag=diag_o3,
+            ticket_id=ticket_id, service_id=sid,
+            actor_user_id=technician_id,
+            actor_email=technician_name,
+        )
+        if not ok_o3:
+            err_reason = diag_o3.get("reason") or "Onda 3 bloqueio"
+            # registra como erro_estoque com motivo claro
+            await db.stok_services.update_one(
+                {"id": sid, "company_id": company_id},
+                {"$set": {
+                    "status": "bloqueado_onda3",
+                    "ticket_finalized": False,
+                    "error_reason": f"[Onda3] {err_reason}",
+                    "onda3_missing_fields": diag_o3.get("missing"),
+                    "onda3_blocked_at": now_iso(),
+                }},
+            )
+            return {"ok": False, "service_id": sid,
+                    "reason": err_reason,
+                    "onda3_blocked": True,
+                    "missing": diag_o3.get("missing"),
+                    "needs_manual_close": True}
+    except HTTPException:
+        raise
+    except Exception as _o3_err:
+        logger.warning("[onda3.validate] %s", _o3_err)
+
     # Validações em try-block: qualquer erro vira "erro_estoque" sem derrubar
     shortages: List[Dict[str, Any]] = []
     # CTO 2026-02 — Gate anti-dupla-movimentação. Se a OS já passou pelo

@@ -6005,3 +6005,91 @@ swap ↔ stok_history ↔ ticket ↔ subscriber.
 
 ### Doc completo
 `/app/memory/SPRINT5_ONDA2_CERTIDAO.md`
+
+---
+## [2026-02-19] Sprint 5 · Onda 3 — CTO+Porta+ONU Obrigatórios ✅ (5/5 GATES OFICIAIS)
+
+### Mandato
+ORDEM EXECUTIVA CEO 19/02/2026: BLOQUEAR ANTES. Nenhuma OS finalizada
+pode existir sem CTO+Porta+ONU+Ticket+Subscriber+Collaborator. Validação
+ANTES da finalização — não correção depois.
+
+### Entrega
+- **Validator canônico** `services/os_finalization_validator.py`:
+  - `validate_finalization()` — bloqueia OS sem 6 campos obrigatórios.
+  - Validações secundárias: porta existe+pertence à CTO+disponível;
+    ONU consta no estoque OU SmartOLT.
+  - Override gestor via `completion_data.onda3_override_reason` (≥20 chars).
+  - Exempt types: preventiva/vistoria/auditoria.
+- **Integração Lousa**: `auto_close_service_from_ticket` chama o validator
+  ANTES da baixa de estoque. Bloqueio → status="bloqueado_onda3" + missing fields.
+- **Endpoints novos** (`/api/sprint5/onda3/*`):
+  - `status`, `preview-block?ticket_id=...`, `enforcement-stats`,
+    `audit-log?only_blocked=true`, `manual-override-record`, `certidao`.
+- **Audit `audit_source=manual_override`** registrado para alterações pós-finalização.
+
+### Resultado co-demo (medição real)
+- 10 validações executadas (5 OK + 5 bloqueadas — block rate 50%).
+- Top motivos de bloqueio: ont_identifier, cto_port_available_or_own,
+  ont_valid, ticket_id.
+- 1 swap_event REAL-TIME emitido pós-Onda-3 (filtrado por `created_by ~ ^auto_close_lousa`).
+- **Gates oficiais 5/5 atingidos**: CTO 100% · Port 100% · ONU 100% ·
+  Ticket 100% · Subscriber 100%.
+- `gate_95pct_overall = true`.
+
+### Mecanismo de proteção
+- Forward-only: backfill da Onda 2 excluído do gate (created_by ≠ auto_close_lousa).
+- Por construção: toda nova finalização que passa pelo validator
+  terá 100% dos campos preenchidos (caso contrário, é bloqueada).
+
+### ENV vars
+- `SPRINT5_ONDA3_ENFORCE=true` (default — liga enforcement).
+
+### Doc completo
+`/app/memory/SPRINT5_ONDA3_CERTIDAO.md`
+
+---
+## [2026-02-19] Sprint 5 · Onda 4 — Fonte Canônica Única ✅ (5/5 GATES OFICIAIS)
+
+### Mandato
+ORDEM EXECUTIVA CEO 19/02/2026: eliminar múltiplas fontes de verdade.
+Toda leitura "qual cliente em qual porta" deve partir de UMA fonte.
+
+### RCA (Fase 1) — evidência
+- `cto_ports` (263 docs): AUTHORITATIVE — granular, status real-time, compatível Lousa+SmartOLT.
+- `subscribers.cto_id` (2 docs): PROJECTION read-fast — sincronizada pelo canonical_writer.
+- `subscriber_access_points` (5.682 docs): OUT_OF_SCOPE — schema é endereço/plano ATLAZ, NÃO contém cto_id/port/ont.
+
+### Decisão (Fase 2)
+**SOURCE_OF_TRUTH = `cto_ports`**
+
+### Entrega
+- **Helper canônico** `services/network_access_canonical.py`:
+  - `upsert_link()` — única forma autorizada de criar/atualizar link.
+  - `release_link()` — única forma autorizada de liberar porta.
+  - `build_initial_canonical()` — bootstrap idempotente.
+  - `check_consistency()` + `detect_parallel_writes()` — auditoria.
+  - Hash SHA-256 sobre 8 campos canônicos.
+- **Nova collection** `network_access_canonical` (263 docs materializados).
+- **Endpoints REST** `/api/sprint5/onda4/{rca,status,build-canonical,validate-consistency,parallel-writes,resolve/{id},audit-log,certidao}`.
+- **Cross-link bidirecional**: cto_ports.last_updated_via marca writes canônicos; resolver responde Cliente→CTO→Porta→ONU→Ticket→Técnico em UMA consulta.
+
+### Gates oficiais CEO
+- Coverage: **100%** (263/263 portas) ✅
+- Consistency: **100%** (0 divergências) ✅
+- Duplicate truth: **0%** ✅
+- Parallel writes: **0** ✅
+- Canonical source coverage: **100%** ✅
+- `gate_95pct_overall = true`
+
+### Validação
+- Resolver real (Vando) responde com hash SHA-256 de integridade.
+- Idempotência confirmada (2ª execução = 263 docs sincronizados, zero erro).
+- Zero deletes (Golden Rule).
+
+### Próxima Onda
+**Onda 5 — Genesis SmartOLT** (~1.833 ONUs) — DESBLOQUEADA.
+
+### Doc completo
+- `/app/memory/SPRINT5_ONDA4_RCA.md`
+- `/app/memory/SPRINT5_ONDA4_CERTIDAO.md`
