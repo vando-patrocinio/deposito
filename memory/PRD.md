@@ -2,6 +2,38 @@
 
 > Documento vivo. Atualizado a cada sprint.
 
+## ✅ ONDA IA-1 · Parser Narrativo Patrimonial (SHADOW MODE) — 18/06/2026
+
+**Diretiva CEO**: "técnico só explica o que aconteceu; IA transforma em movimentação patrimonial". Lousa Mobile em hold → entrega é backend-only em shadow.
+
+### Entregue (zero writes em produção)
+- `services/ia_patrimonial_extractor.py` — engine modular (regex catálogo + Claude Sonnet 4.5)
+  - Catálogo pt-BR de aliases: drop, conector_fast, esticador, cabo_rede, conector_rede, caixa_emenda
+  - Classifier de service_type (instalacao/reparo/retirada/troca/rompimento/preventiva)
+  - Extrator de SN (regex de SN comuns de ONT: HWTC, FHTT, ITBS, ZNTS, GPLT, CIGG, ALCL…)
+  - Comparador IA × formulário (perfect/only_form/only_ia/qty_mismatch)
+- `routes/ia_patrimonial.py` — `POST /api/lousa/tickets/{id}/ai-extract-materials`
+- `scripts/ia_patrimonial_shadow.py` — batch sobre OS finalizadas, gera relatório md
+- Validação com exemplo do CEO: **3/3 materiais extraídos corretamente** (12m drop, 2 fast, 5 esticadores) com confiança 1.0 cada · service_type=`reparo` conf 1.0 · `has_defect_signal=false`
+
+### Status do hold
+- **Lousa Mobile permanece em hold** (frontend não foi tocado)
+- Próximas ondas IA-2 a IA-5 dependem da decisão do CEO sobre go-live e quem aprova a leitura (3 perguntas pendentes)
+- Defaults defensivos aplicados nesta entrega: shadow only · técnico ainda usa formulário atual · IA apenas observa e compara
+
+### Files
+- NOVOS: `/app/backend/services/ia_patrimonial_extractor.py` · `/app/backend/routes/ia_patrimonial.py` · `/app/backend/scripts/ia_patrimonial_shadow.py` · `/app/memory/IA_PATRIMONIAL_SHADOW_REPORT_2026-06-18.md`
+- MODIFICADOS: `/app/backend/server.py` (registra router)
+
+### Backlog (próximas ondas — aguardando aprovação CEO)
+- IA-2: Tela "Confirma leitura IA" na Lousa Mobile (destrava hold parcialmente)
+- IA-3: Engine de movimentação patrimonial automática (writes em stok_history / client_equipment_history / auto_ont_swap_events)
+- IA-4: Item discovery (cria stok_consumables sob demanda, saldo negativo permitido)
+- IA-5: KPIs no Watchtower (% OS lidas pela IA · itens descobertos · tempo médio de fechamento)
+
+---
+
+
 ## ✅ ONDA C · AJUSTES 1+2 — SmartOLT × Estoque Gate (18/06/2026 · ENTREGUE)
 
 **CEO 18/06/2026 · ordem (b)→(a)→(c)** · 17/17 testes PASS · Lint clean · Frontend verificado.
