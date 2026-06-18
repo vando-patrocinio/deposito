@@ -6165,3 +6165,53 @@ Auto Balanço Patrimonial pode publicar:
 - `/app/memory/GENESIS_PREVIEW.md`
 - `/app/memory/GENESIS_CERTIDAO_OFICIAL.md`
 - `/app/memory/GENESIS_CERTIDAO_QUARENTENA.md`
+
+---
+## [2026-02-19] Sprint 5 · Onda 6 — Auto Balanço Patrimonial Mensal ✅ (STATUS: APROVADA)
+
+### Mandato CEO
+Certidão Patrimonial Automática — todo dia 1 às 00:05 UTC gerar
+`inventory_monthly_balance` com 3 snapshots (Abertura/Movimentação/Fechamento),
+8 KPIs CEO + 1 extra (Índice de Cobertura Operacional), certidão assinada
+com hash SHA-256.
+
+### Entrega
+- **Service** `services/balance_engine.py`: `compute_monthly_balance()`,
+  `_sign_balance()` (SHA-256), `_evaluate_status()` (APROVADA/COM RESSALVAS/REPROVADA).
+- **Rota** `routes/sprint5_onda6.py` com endpoints:
+  - `POST /run-snapshot` — snapshot diário (idempotente).
+  - `POST /close-month?confirm=true` — fechamento mensal oficial.
+  - `GET /latest` — último fechamento.
+  - `GET /history` — histórico de fechamentos.
+  - `GET /current-month-kpis` — KPIs em tempo real (read-only).
+- **Cron `_onda6_daily_snapshot`** registrado em server.py via APScheduler
+  (CronTrigger hour=0 minute=5).
+- **Collection** `inventory_monthly_balance` (snapshots + fechamentos).
+- **Bug fix**: `stok_onts.company_id_1_mac_1` agora usa partialFilterExpression
+  em server.py (evita conflito no startup).
+
+### Primeiro fechamento 2026-06 (co-demo)
+- Status: **APROVADA** ✅
+- Hash SHA-256: c3ea113a1d8cb433b9d344692420c479da15525764ee2a08114e2c192e36c05d
+- Ativos Oficiais: 1.443 · Quarentena: 387 · Total: 1.830
+- Patrimônio Confiável: 1.443 (100%)
+- Operação junho: 13 install + 37 trocas + 2 retiradas + 3 defeitos
+- Rastreabilidade: 100% · Data Confidence: 100% · Compliance: 78.85%
+- Índice Cobertura Operacional: 78.72% (meta ≥98%, gradual conforme promoções)
+
+### Doc
+`/app/memory/CERTIDAO_PATRIMONIAL_2026_06.md`
+
+### Sprint 5 — STATUS FINAL
+**TODAS AS 6 ONDAS CONCLUÍDAS** ✅
+| Onda | Gate | Resultado |
+|------|------|-----------|
+| 1 — Rastreabilidade | ≥95% | 98.01% ✅ |
+| 2 — Swap Events | 5/5 | 100% ✅ |
+| 3 — CTO+Porta obrigatórios | 5/5 | 100% ✅ |
+| 4 — Fonte Canônica Única | 5/5 | 100% ✅ |
+| 5 — Genesis SmartOLT (Opção D) | 5/5 oficial | 100% sobre 1.443 ✅ |
+| 6 — Auto Balanço Patrimonial | APROVADA | hash SHA-256 ✅ |
+
+A Sprint 5 transformou a Ligo de "sem identidade patrimonial" para
+"governança patrimonial certificada" em 6 ondas consecutivas.

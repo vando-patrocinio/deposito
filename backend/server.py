@@ -168,6 +168,7 @@ from routes import (
     sprint5_onda3 as routes_sprint5_onda3,
     sprint5_onda4 as routes_sprint5_onda4,
     sprint5_onda5 as routes_sprint5_onda5,
+    sprint5_onda6 as routes_sprint5_onda6,
     sprint5_swap_events as routes_sprint5_swap_events,
     whatsapp_config as routes_whatsapp_config,
     wa_test_mode as routes_wa_test_mode,
@@ -231,7 +232,11 @@ async def ensure_indexes() -> None:
     await db.atlaz_sync_logs.create_index([("company_id", 1), ("at", -1)])
     await db.tickets.create_index([("company_id", 1), ("atlaz_external_id", 1)])
     # Estoque (stok) — coleções isoladas
-    await db.stok_onts.create_index([("company_id", 1), ("mac", 1)], unique=True)
+    # Sprint 5 Onda 5: partialFilterExpression para evitar conflito com mac=null
+    await db.stok_onts.create_index(
+        [("company_id", 1), ("mac", 1)], unique=True,
+        partialFilterExpression={"mac": {"$exists": True, "$type": "string"}},
+    )
     await db.stok_onts.create_index("location_id")
     # iter162 — indexes para queries de defeituosa e auditoria SN
     await db.stok_onts.create_index([("company_id", 1), ("status", 1)])
@@ -809,6 +814,36 @@ async def _startup() -> None:
             _cash.register_scheduler(scheduler)
         except Exception as e:
             logger.warning("[startup] presidente_cash falhou: %r", e)
+
+        # SPRINT 5 ONDA 6 — Auto Balanço Patrimonial (snapshot diário 00:05)
+        try:
+            async def _onda6_daily_snapshot():
+                from services.balance_engine import (
+                    compute_monthly_balance, _month_key)
+                from datetime import datetime as _dt, timezone as _tz
+                from database import db as _db
+                ym = _month_key(_dt.now(_tz.utc))
+                # Para cada empresa ativa: snapshot
+                companies = await _db.companies.find(
+                    {}, {"_id": 0, "id": 1}).to_list(length=200)
+                for c in companies:
+                    try:
+                        await compute_monthly_balance(
+                            _db, c["id"], ym,
+                            snapshot_only=True,
+                            actor_user_id="cron_onda6")
+                    except Exception as ex:
+                        logger.warning(
+                            "[onda6.cron] %s falhou: %s", c.get("id"), ex)
+            scheduler.add_job(
+                _onda6_daily_snapshot,
+                CronTrigger(hour=0, minute=5),
+                id="onda6_daily_snapshot", replace_existing=True)
+            logger.info("[startup] onda6_daily_snapshot agendado 00:05 UTC")
+        except Exception as e:
+            logger.warning(
+                "[startup] onda6 scheduler falhou: %r", e)
+
         # OPERAÇÃO MATURIDADE COMERCIAL — reconciliador 03:00
         try:
             from services import cash_reconciler as _rec
@@ -1537,6 +1572,7 @@ app.include_router(routes_sprint5_onda2.router)
 app.include_router(routes_sprint5_onda3.router)
 app.include_router(routes_sprint5_onda4.router)
 app.include_router(routes_sprint5_onda5.router)
+app.include_router(routes_sprint5_onda6.router)
 app.include_router(routes_sprint5_swap_events.router)
 app.include_router(routes_alvaro_os_summary.router)
 app.include_router(routes_gps_vlan_suggest.router)
