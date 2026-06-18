@@ -2557,22 +2557,22 @@ async def _maybe_auto_reply(cid: str, phone: str, user_text: str,
     except Exception as e:
         logger.info("[wa-baileys] fragments skip: %s", e)
 
-    # 3i. Isabella V14 — ORÁCULO DE MEMÓRIA RELACIONAL
-    # Injeta promessas em aberto + 1 memória pessoal/comercial recente.
-    # Regra: máximo 2 referências na abertura. Faz a Isabella parecer
-    # uma pessoa que acompanha a história do cliente, não um chatbot.
+    # 3i. Isabella V15 — ORÁCULO RELACIONAL ABSOLUTO
+    # Orquestra as 4 prioridades (promessas, problemas recentes, memória
+    # pessoal, VIP) + Regra de Afirmações (evidências auditadas).
+    # Limita a 2 referências naturais — proíbe afirmação sem evidência.
     try:
-        from services.customer_memory import build_memory_oracle_block
-        oracle_block = await build_memory_oracle_block(
+        from services.customer_memory import build_v15_oracle_block
+        oracle_block = await build_v15_oracle_block(
             company_id=cid, phone=phone, subscriber_id=subscriber_id,
         )
         if oracle_block:
             extra.append(oracle_block)
             logger.info(
-                "[wa-baileys] oracle memory block injetado phone=%s", phone,
+                "[wa-baileys] V15 oracle block injetado phone=%s", phone,
             )
     except Exception as e:
-        logger.info("[wa-baileys] oracle block skip: %s", e)
+        logger.info("[wa-baileys] V15 oracle block skip: %s", e)
 
     sys_prompt += "\n\n" + "\n\n".join(extra)
 

@@ -2,6 +2,56 @@
 
 > Documento vivo. Atualizado a cada sprint.
 
+## ✅ ISABELLA V15 — ORÁCULO RELACIONAL ABSOLUTO (18/02/2026 · ENTREGUE)
+
+**CTO 18/02/2026** · 6/6 testes V15 PASS · 6/6 V14 PASS (regressão zero).
+
+**Evolução do V14**: incorpora Prioridades 2 (problemas técnicos/financeiros), 4 (VIP) e a **Regra de Afirmações com Evidência Auditável**.
+
+### `build_v15_oracle_block()` — função única que orquestra 4 prioridades
+
+1. **Promessas abertas** (`customer_promises`) — P1, sempre primeiro
+2. **Problemas recentes** (`tickets` PT-BR: `aberta/pendente/encerrada/finalizada` + `executive_ledger` financeiro nos últimos 30d) — P2
+3. **Memória pessoal/comercial** (`customer_memory`) — P3
+4. **Cliente VIP** (score via subscribers: tempo de casa ≥ 3a, PJ/empresarial, referrals, plano ≥ R$ 250) — P4
+
+**Enforcement**: máximo **2 referências naturais** na abertura (refs.sort por prioridade, slice [:2]).
+
+### Regra de Afirmações (evidências auditadas)
+
+- Lê `isabella_factual_claims` com `audit_passed=True`, `consumed_by=None`, dentro do `ttl_minutes`.
+- Injeta bloco `EVIDÊNCIAS AUDITADAS DISPONÍVEIS` com `evidence_id` + payload da `evidence`.
+- System prompt instrui Isabella a NUNCA afirmar fora destas evidências → resposta padrão `"deixa eu confirmar isso para você"`.
+
+### Prompt V15 (`isabella_v15.md`, V15_ORACULO_ABSOLUTO)
+
+- Seção 12 reescrita com **Hierarquia de Memória (P1→P4)**, **Regra de Afirmações** crítica, exemplos certo/errado de afirmação sem evidência.
+- Removidas redundâncias do V14.
+
+### Files modificados/criados V15
+
+- `/app/backend/services/customer_memory.py`: +280 LOC (`build_v15_oracle_block`, `_recent_problems_block`, `_vip_block`, `_evidence_block`)
+- `/app/backend/routes/whatsapp_baileys.py`: caller atualizado de V14 → V15
+- `/app/backend/prompts/isabella_v15.md`: novo prompt
+- `/app/backend/services/prompt_loader.py`: aponta para `isabella_v15.md`
+- `/app/backend/tests/test_v15_oracle.py`: 6 testes (promessa, memória pessoal, reparo recente, VIP, sem evidência → permite, com evidência → injeta, máx 2 refs)
+
+### Validações executadas
+
+- ✓ Promessa aberta → bloco contém `PROMESSA EM ABERTO (P1)` + `"sobre o que eu havia ficado"`
+- ✓ Memória pessoal → bloco contém `MEMÓRIA RELACIONAL (pessoal)` + `"vi aqui"`
+- ✓ Reparo aberto (`status="aberta"` PT-BR) → bloco contém `REPARO/OS EM ABERTO` + `atlaz_assunto`
+- ✓ VIP (5 anos + R$ 299/mês) → bloco contém `CLIENTE VIP (score=...)` + tempo + plano
+- ✓ Sem evidência: bloco vazio para cliente novo
+- ✓ Com evidência válida: bloco contém `EVIDÊNCIAS AUDITADAS` + `evidence_id` + `"deixa eu confirmar"`
+- ✓ Todas as prioridades ativas: bloco respeita máximo 2 refs (P1+P2 ganham, P3/P4 suprimidas)
+
+### Próximo passo natural (autorizado quando V15 estabilizar em produção real)
+
+V15.1 — Proatividade: worker scheduler que dispara mensagem Isabella quando: reparo encerrado <24h, instalação concluída <7d, promessa vencida <2d. Respeita business_hours + cooldown.
+
+---
+
 ## ✅ P0 ISABELLA V14 — ORÁCULO RELACIONAL + FIX AGGREGATOR (18/02/2026 · ENTREGUE)
 
 **CTO 18/02/2026** · 6/6 testes PASS · P0 do "Vando case" resolvido.

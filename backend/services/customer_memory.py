@@ -575,3 +575,361 @@ async def build_memory_oracle_block(
           "como alguém da equipe da Ligo que acompanha o cliente — "
           "nunca como um CRM."
     )
+
+
+# ═══════════════════════════════════════════════════════════════
+# V15 — ORÁCULO RELACIONAL ABSOLUTO
+# Adiciona: Prioridade 2 (problemas recentes), Prioridade 4 (VIP),
+#           Regra de Afirmações (evidências auditáveis).
+# ═══════════════════════════════════════════════════════════════
+
+async def _recent_problems_block(
+    *, company_id: str, subscriber_id: Optional[str],
+) -> Optional[str]:
+    """Prioridade 2 — Reparos/instalações/mudanças/financeiro recente.
+
+    Lê `tickets` (últimos 30d) e `executive_ledger` (financeiro).
+    Devolve string curta para Isabella mencionar com naturalidade.
+    """
+    if not subscriber_id:
+        return None
+    try:
+        cutoff_iso = (_now() - timedelta(days=30)).isoformat()
+        # Reparo aberto (prioridade máxima dentro de Problemas)
+        open_tk = await db.tickets.find_one(
+            {"company_id": company_id, "client_id": subscriber_id,
+             "status": {"$in": ["aberta", "pendente",
+                                   "open", "in_progress", "scheduled"]}},
+            {"_id": 0, "id": 1, "type": 1, "status": 1, "created_at": 1,
+             "scheduled_time": 1, "atlaz_assunto": 1},
+            sort=[("created_at", -1)],
+        )
+        if open_tk:
+            typ = open_tk.get("atlaz_assunto") or open_tk.get("type") or "OS"
+            sched = open_tk.get("scheduled_time") or ""
+            when = f"agendada para {sched[:10]}" if sched else "em andamento"
+            return (f"REPARO/OS EM ABERTO: {typ} ({when}). "
+                    "Demonstre que sabe da situação antes do cliente falar. "
+                    "Ex.: «vi que estamos acompanhando seu chamado, "
+                    "queria saber se a equipe já passou aí».")
+
+        # Reparo encerrado recente (≤ 7 dias) → follow-up natural
+        cutoff_7d_iso = (_now() - timedelta(days=7)).isoformat()
+        closed_tk = await db.tickets.find_one(
+            {"company_id": company_id, "client_id": subscriber_id,
+             "status": {"$in": ["encerrada", "finalizada", "closed"]},
+             "closed_at": {"$gte": cutoff_7d_iso}},
+            {"_id": 0, "id": 1, "type": 1, "closed_at": 1,
+             "outcome": 1, "atlaz_assunto": 1},
+            sort=[("closed_at", -1)],
+        )
+        if closed_tk:
+            typ = closed_tk.get("atlaz_assunto") or closed_tk.get("type") or "OS"
+            return (f"REPARO RECENTE ENCERRADO: {typ}. Faça follow-up "
+                    "natural na abertura. Ex.: «vi que tivemos um "
+                    "reparo aí recentemente, ficou tudo certo depois "
+                    "da visita?»")
+
+        # Histórico financeiro: ledger 30d
+        ledger = await db.executive_ledger.find_one(
+            {"company_id": company_id, "subscriber_id": subscriber_id,
+             "created_at": {"$gte": cutoff_iso},
+             "category": {"$in": ["financeiro", "cobranca", "negociacao"]}},
+            {"_id": 0, "kind": 1, "created_at": 1, "actual_BRL": 1},
+            sort=[("created_at", -1)],
+        )
+        if ledger:
+            kind = ledger.get("kind") or "evento"
+            return (f"FINANCEIRO RECENTE: {kind}. Se o cliente tocar "
+                    "no assunto, use o histórico para personalizar.")
+    except Exception as e:
+        logger.info("[v15] recent_problems_block skip: %s", e)
+    return None
+
+
+async def _vip_block(
+    *, company_id: str, subscriber_id: Optional[str],
+) -> Optional[str]:
+    """Prioridade 4 — Reconhecimento de cliente VIP / histórico.
+
+    Critérios (cada um soma pontos; >= 2 pontos = VIP):
+      • Tempo de casa >= 3 anos
+      • Cliente PJ / empresarial
+      • Indicou >= 1 amigo (referral_code presente em outro subscriber)
+      • Plano premium (>= R$ 150/mês)
+      • Zero inadimplência registrada nos últimos 12 meses
+    """
+    if not subscriber_id:
+        return None
+    try:
+        sub = await db.subscribers.find_one(
+            {"company_id": company_id, "id": subscriber_id},
+            {"_id": 0, "name": 1, "activation_date": 1, "plan_price": 1,
+             "plan_name": 1, "tags": 1, "referral_code": 1,
+             "contract_status": 1},
+        )
+        if not sub:
+            return None
+
+        score = 0
+        signals: List[str] = []
+
+        # Tempo de casa
+        activation = sub.get("activation_date")
+        years_with_us = 0.0
+        if activation:
+            try:
+                dt = (datetime.fromisoformat(activation.replace("Z", "+00:00"))
+                      if isinstance(activation, str) else activation)
+                if dt.tzinfo is None:
+                    dt = dt.replace(tzinfo=timezone.utc)
+                years_with_us = (_now() - dt).days / 365.25
+                if years_with_us >= 3:
+                    score += 2
+                    signals.append(
+                        f"está conosco há {years_with_us:.1f} anos")
+                elif years_with_us >= 1:
+                    score += 1
+                    signals.append(
+                        f"está conosco há {years_with_us:.1f} anos")
+            except Exception:
+                pass
+
+        # PJ / empresarial
+        tags = sub.get("tags") or []
+        plan_name = (sub.get("plan_name") or "").lower()
+        if any("empresa" in (t or "").lower() or "pj" in (t or "").lower()
+                for t in tags) or "pj" in plan_name or "dedicado" in plan_name:
+            score += 2
+            signals.append("conta empresarial / PJ")
+
+        # Indicações (referral_code do sub aparece em outros subscribers)
+        ref = sub.get("referral_code")
+        if ref:
+            n_ref = await db.subscribers.count_documents(
+                {"company_id": company_id, "metadata.referred_by": ref})
+            if n_ref >= 1:
+                score += 2
+                signals.append(f"indicou {n_ref} amigo(s)")
+
+        # Plano premium
+        price = sub.get("plan_price") or 0
+        try:
+            price_f = float(price)
+        except (TypeError, ValueError):
+            price_f = 0.0
+        if price_f >= 250:
+            score += 2
+            signals.append(f"plano premium (R$ {price_f:.0f}/mês)")
+        elif price_f >= 150:
+            score += 1
+            signals.append(f"plano de R$ {price_f:.0f}/mês")
+
+        if score < 2:
+            return None
+
+        signals_str = " e ".join(signals[:2])
+        return (
+            f"CLIENTE VIP (score={score}): {signals_str}. "
+            "Reconheça a relação histórica com naturalidade e SEM "
+            "bajulação. Ex.: «você já está conosco há um tempo, "
+            "obrigada pela confiança» — apenas uma vez, sem repetir."
+        )
+    except Exception as e:
+        logger.info("[v15] vip_block skip: %s", e)
+        return None
+
+
+async def _evidence_block(
+    *, company_id: str, subscriber_id: Optional[str],
+) -> Optional[str]:
+    """Regra de Afirmações — Evidências auditáveis disponíveis.
+
+    Lê `isabella_factual_claims` com `audit_passed=True` cuja
+    `audited_at + ttl_minutes >= now` e `consumed_by` ainda NULL.
+    Injeta no prompt como fonte única para afirmações factuais.
+    """
+    if not subscriber_id:
+        return None
+    try:
+        now = _now()
+        cursor = db.isabella_factual_claims.find(
+            {"company_id": company_id, "entity_id": subscriber_id,
+             "audit_passed": True, "consumed_by": None},
+            {"_id": 0, "id": 1, "domain": 1, "evidence": 1,
+             "audited_at": 1, "ttl_minutes": 1},
+        ).sort("audited_at", -1).limit(5)
+        rows = await cursor.to_list(5)
+        valid: List[Dict[str, Any]] = []
+        for r in rows:
+            try:
+                aud = r.get("audited_at")
+                dt = (datetime.fromisoformat(aud.replace("Z", "+00:00"))
+                      if isinstance(aud, str) else aud)
+                if dt.tzinfo is None:
+                    dt = dt.replace(tzinfo=timezone.utc)
+                ttl = int(r.get("ttl_minutes") or 30)
+                if dt + timedelta(minutes=ttl) >= now:
+                    valid.append(r)
+            except Exception:
+                continue
+        if not valid:
+            return None
+
+        lines = ["EVIDÊNCIAS AUDITADAS DISPONÍVEIS (use SOMENTE estas "
+                 "para afirmações factuais):"]
+        for v in valid[:3]:
+            ev_compact = ", ".join(
+                f"{k}={str(val)[:60]}"
+                for k, val in (v.get("evidence") or {}).items()
+                if val is not None
+            )[:280]
+            lines.append(
+                f"  • [{v['domain']}] evidence_id={v['id']}: {ev_compact}"
+            )
+        lines.append(
+            "REGRA DURA: qualquer afirmação técnica/financeira/cadastro "
+            "DEVE vir destas evidências. Se o cliente perguntar algo "
+            "que NÃO está aqui, responda «deixa eu confirmar isso para "
+            "você» — NUNCA invente."
+        )
+        return "\n".join(lines)
+    except Exception as e:
+        logger.info("[v15] evidence_block skip: %s", e)
+        return None
+
+
+async def build_v15_oracle_block(
+    *,
+    company_id: str,
+    phone: str,
+    subscriber_id: Optional[str] = None,
+) -> str:
+    """V15 — Oráculo Relacional Absoluto.
+
+    Orquestra TODAS as 4 prioridades respeitando o limite de 2
+    referências naturais na abertura:
+
+      1. Promessas abertas
+      2. Problemas técnicos/financeiros recentes
+      3. Memória pessoal recente
+      4. VIP / histórico de relacionamento
+
+    Sempre injeta o bloco de Evidências Auditadas (Regra de Afirmações).
+
+    Devolve string vazia se cliente é novo e sem evidências.
+    """
+    references: List[Tuple[int, str]] = []  # (priority, text)
+    extra_blocks: List[str] = []
+
+    try:
+        # Prioridade 1: Promessas
+        promises = await list_open_promises(
+            company_id=company_id, phone=phone, limit=1,
+        )
+        if promises:
+            p = promises[0]
+            references.append((1,
+                f"PROMESSA EM ABERTO (P1): você disse «{p['promise_text']}». "
+                "Comece a conversa por aqui antes do cliente cobrar. "
+                "Ex.: «sobre o que eu havia ficado de verificar...»"))
+            try:
+                await _log_timeline(
+                    company_id=company_id, phone=phone,
+                    subscriber_id=subscriber_id,
+                    kind="promise_recalled",
+                    payload={"promise_id": p["_id"]})
+            except Exception:
+                pass
+
+        # Prioridade 2: Problemas recentes (técnico/financeiro)
+        probs = await _recent_problems_block(
+            company_id=company_id, subscriber_id=subscriber_id,
+        )
+        if probs:
+            references.append((2, probs))
+
+        # Prioridade 3: Memória pessoal (depois comercial)
+        pessoal = await db[MEMORY_COLL].find_one(
+            {"company_id": company_id, "phone": phone,
+             "memory_type": TYPE_PESSOAL,
+             "expires_at": {"$gte": _now()}},
+            sort=[("created_at", -1)],
+        )
+        comercial = None
+        if not pessoal:
+            comercial = await db[MEMORY_COLL].find_one(
+                {"company_id": company_id, "phone": phone,
+                 "memory_type": TYPE_COMERCIAL,
+                 "expires_at": {"$gte": _now()}},
+                sort=[("created_at", -1)],
+            )
+        chosen_mem = pessoal or comercial
+        if chosen_mem:
+            created = chosen_mem["created_at"]
+            if created.tzinfo is None:
+                created = created.replace(tzinfo=timezone.utc)
+            days_ago = (_now() - created).days
+            when = ("hoje" if days_ago == 0 else
+                    "ontem" if days_ago == 1 else
+                    f"há {days_ago} dias")
+            mtype = chosen_mem["memory_type"].lower()
+            references.append((3,
+                f"MEMÓRIA RELACIONAL ({mtype}, {when}): "
+                f"{chosen_mem['title']}. Cliente comentou: "
+                f"«{chosen_mem['description'][:140]}». "
+                "Mencione com naturalidade (\"vi aqui que...\", \"você "
+                "comentou...\"). NUNCA diga \"identifiquei no banco\"."
+            ))
+            await db[MEMORY_COLL].update_one(
+                {"_id": chosen_mem["_id"]},
+                {"$set": {"last_used_at": _now()},
+                 "$inc": {"hit_count": 1}},
+            )
+
+        # Prioridade 4: VIP
+        vip = await _vip_block(
+            company_id=company_id, subscriber_id=subscriber_id,
+        )
+        if vip:
+            references.append((4, vip))
+
+        # Evidências (sempre injetado se houver — regra dura)
+        evid = await _evidence_block(
+            company_id=company_id, subscriber_id=subscriber_id,
+        )
+        if evid:
+            extra_blocks.append(evid)
+
+    except Exception as e:
+        logger.info("[v15] oracle build skip: %s", e)
+
+    # ENFORCE: máximo 2 referências naturais na abertura
+    references.sort(key=lambda x: x[0])  # menor prioridade primeiro
+    chosen_refs = [r[1] for r in references[:2]]
+
+    if not chosen_refs and not extra_blocks:
+        return ""
+
+    out: List[str] = [
+        "=== ORÁCULO RELACIONAL ABSOLUTO (Isabella V15) ===",
+    ]
+    if chosen_refs:
+        out.append("REFERÊNCIAS PRIORITÁRIAS (use no máximo estas DUAS, "
+                   "com naturalidade — não é relatório):")
+        for ref in chosen_refs:
+            out.append("• " + ref)
+    if extra_blocks:
+        out.append("")
+        out.extend(extra_blocks)
+    out.append("")
+    out.append(
+        "REGRAS DE OURO V15:\n"
+        "1. Soe como alguém da Ligo que acompanha o cliente — não CRM.\n"
+        "2. Máx 2 referências. Naturais. Não enumere todas.\n"
+        "3. Afirmações factuais (técnico/financeiro/cadastro) SOMENTE "
+        "vindas das EVIDÊNCIAS acima. Sem evidência → «deixa eu "
+        "confirmar isso para você» (NUNCA inventar).\n"
+        "4. VIP: reconheça com naturalidade, sem bajulação."
+    )
+    return "\n".join(out)
