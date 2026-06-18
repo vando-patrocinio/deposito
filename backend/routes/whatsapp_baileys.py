@@ -1934,6 +1934,55 @@ async def _maybe_auto_reply(cid: str, phone: str, user_text: str,
     except Exception as e:
         logger.warning("[wa-baileys] boleto_flow falhou (segue p/ LLM): %s", e)
 
+    # 1.5 — FLUXO PJ V16 (CTO 18/02/2026)
+    # Se sinal PJ detectado (CNPJ válido OU keywords empresariais),
+    # NUNCA pede selfie / docs. Captura lead + aciona Consultor PJ +
+    # responde com handoff. Encerra a triagem.
+    try:
+        from services.pj_lead_router import (
+            detect_pj_signal, get_pj_config, capture_lead,
+            notify_consultor, render_client_reply,
+        )
+        det = await detect_pj_signal(text=user_text or "")
+        if det.get("is_pj") and det.get("confidence", 0) >= 0.85:
+            cfg = await get_pj_config(company_id=cid)
+            if cfg.get("ativo"):
+                logger.info(
+                    "[wa-baileys] PJ V16: detect conf=%.2f phone=%s signals=%s",
+                    det["confidence"], phone, det.get("signals"),
+                )
+                lead = await capture_lead(
+                    company_id=cid, phone=phone, detection=det,
+                    user_text=user_text or "",
+                    conversation_summary="",
+                )
+                # Aciona consultor (best-effort — não bloqueia resposta cliente)
+                notify_res = await notify_consultor(
+                    company_id=cid, lead=lead,
+                )
+                client_reply = render_client_reply(cfg=cfg)
+                # Envia a resposta de transferência (não passa pelo LLM)
+                from services.wa_dispatcher import dispatch_wa
+                await dispatch_wa(
+                    company_id=cid, phone=phone, text=client_reply,
+                    source="pj_v16_handoff",
+                )
+                logger.info(
+                    "[wa-baileys] PJ V16: handoff completo phone=%s "
+                    "lead=%s consultor=%s notify_ok=%s",
+                    phone, lead.get("_id"),
+                    notify_res.get("consultor_nome"),
+                    notify_res.get("ok"),
+                )
+                return client_reply
+            else:
+                logger.info(
+                    "[wa-baileys] PJ V16 detectado mas config inativa, "
+                    "seguindo fluxo normal phone=%s", phone,
+                )
+    except Exception as e:
+        logger.warning("[wa-baileys] PJ V16 flow skip: %s", e)
+
     # 2. Carrega o agente (Jerusa por padrão, ou outro definido em cfg)
     agent_name = cfg.get("agent_name") or "Jerusa"
     default_agent = await db.aihub_agents.find_one(

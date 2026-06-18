@@ -129,6 +129,7 @@ from routes import (
     field_ops as routes_field_ops,
     isabella_field as routes_isabella_field,
     isabella_commanders as routes_isabella_commanders,
+    isabella_pj as routes_isabella_pj,
     universo_ligo as routes_universo_ligo,
     universo_ligo_curadoria as routes_universo_ligo_curadoria,
     customer_intelligence as routes_customer_intelligence,
@@ -1157,6 +1158,8 @@ async def _startup() -> None:
             from services.isabella_confidence import (
                 ensure_indexes as _ic_idx,
                 register_scheduler as _ic_reg)
+            from services.pj_lead_router import (
+                ensure_indexes as _pj_idx)
             from services.nervous_autodiscovery import (
                 ensure_indexes as _nva_idx, register_scheduler as _nva_reg)
             from services.orphan_event_watcher import (
@@ -1171,6 +1174,7 @@ async def _startup() -> None:
             asyncio.create_task(_cm_idx())
             asyncio.create_task(_ic_idx())
             _ic_reg(scheduler)
+            asyncio.create_task(_pj_idx())
             asyncio.create_task(_nva_idx())
             asyncio.create_task(_oew_idx())
             _sda_reg(scheduler)
@@ -1368,6 +1372,7 @@ app.include_router(routes_aihub_prompts.router)
 app.include_router(routes_user_magic_links.router)
 app.include_router(routes_sala_orphan_health.router)
 app.include_router(routes_isabella_churn.router)
+app.include_router(routes_isabella_pj.router)
 app.include_router(routes_treasury.router)
 app.include_router(routes_audit_log.router)
 app.include_router(routes_backend_health.router)

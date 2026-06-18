@@ -2,6 +2,90 @@
 
 > Documento vivo. Atualizado a cada sprint.
 
+## ✅ V16 — FLUXO PJ DEDICADO (18/02/2026 · ENTREGUE)
+
+**CTO 18/02/2026** · 36/36 testes PASS (V14 + V15 + Sprint B + V15.2 + binder + V16).
+
+### Bug crítico resolvido (caso real reportado)
+
+Isabella estava pedindo selfie com CNPJ para um cliente PJ (V S DO PATROCINIO PROVEDOR DE INTERNET). Isso é desastroso — empresa não funciona assim. V16 garante que PJ JAMAIS entra no fluxo residencial.
+
+### Regra Dura V16
+
+**Pessoa Física = Isabella conclui sozinha.**
+**Pessoa Jurídica = Isabella qualifica e transfere.**
+**O fechamento é do Consultor PJ.**
+
+### Detecção PJ
+
+`detect_pj_signal()` retorna `is_pj=True` se:
+- CNPJ válido extraído (confidence 0.98)
+- 2+ keywords PJ (empresa, LTDA, ME, MEI, EPP, EIRELI, S.A., razão social, nome fantasia, nota fiscal, internet empresarial, link dedicado, sócio) — confidence 0.85
+- 1 keyword apenas — confidence 0.65 (não suficiente para handoff automático)
+
+Ativa apenas com confidence ≥ 0.85.
+
+### O que JAMAIS fazer com PJ
+- ❌ Pedir selfie com CNPJ / contrato social / documento
+- ❌ Pedir validação facial
+- ❌ Continuar o fluxo residencial
+- ❌ Tentar concluir cadastro sozinha
+
+### O que DEVE fazer com PJ
+
+1. **Reconhecimento** — "Perfeito, identifiquei que você está falando em nome de uma empresa."
+2. **Captura mínima** — nome do responsável, melhor telefone, cidade, interesse
+3. **Encaminhamento automático** — aciona Consultor PJ via WhatsApp + responde ao cliente
+4. **Encerra a triagem** — não pede mais nada
+
+### Hook no `_maybe_auto_reply`
+
+Inserido logo após `boleto_flow`, ANTES da carga do agente LLM. Se PJ detectado e `pj_consultor_config.ativo=True`:
+1. `capture_lead()` — persiste em `pj_leads` (dedup 24h)
+2. `notify_consultor()` — envia briefing via `wa_dispatcher` para o WhatsApp do Consultor PJ
+3. `render_client_reply()` — mensagem de transferência ao cliente (formata BR phone, inclui SLA)
+4. `dispatch_wa()` envia a resposta — **NÃO chama LLM**
+5. Marca lead como `consultor_acionado` com `sla_target_at`
+
+### Collections novas
+
+- `pj_consultor_config`: 1 doc por company_id (ativo, nome, telefone, whatsapp, email, sla_minutos)
+- `pj_leads`: 1 doc por lead capturado com TTL 180d
+
+### Endpoints novos
+
+- `GET /api/isabella/pj/config` — config atual do consultor
+- `PUT /api/isabella/pj/config` — admin atualiza (ativo + dados)
+- `GET /api/isabella/pj/leads?status=new|consultor_acionado|fechado|perdido&limit=N`
+- `GET /api/isabella/pj/leads/{lead_id}` — detalhe com timeline de mensagens
+- `POST /api/isabella/pj/leads/{lead_id}/status?new_status=...` — admin muda status
+
+### Prompt V16 (V16_PJ_DEDICADO)
+
+`isabella_v16.md` adiciona seção 13 "REGRA DURA — FLUXO PJ V16" com exemplos certo/errado e a Regra de Ouro. Mantém todo conteúdo V15 (Oráculo Relacional).
+
+### Validações
+
+- ✓ CNPJ válido detectado (Magazine Luiza enriquecido via BrasilAPI)
+- ✓ Keywords detectadas com confidence correta
+- ✓ PF residencial NÃO detectado como PJ (zero falso positivo)
+- ✓ Dedup 24h: 2 capturas = 1 lead com 2 mensagens
+- ✓ Config consultor upsert + GET/PUT via API admin
+- ✓ render_client_reply formata BR phone (5521999990000 → (21) 99999-0000)
+- ✓ E2E: PUT /pj/config + GET /pj/config + GET /pj/leads (4xx → 200)
+
+### Files
+
+- `/app/backend/services/pj_lead_router.py` (~280 LOC novo)
+- `/app/backend/routes/isabella_pj.py` (~150 LOC novo)
+- `/app/backend/routes/whatsapp_baileys.py` (+50 LOC: hook PJ pré-LLM)
+- `/app/backend/prompts/isabella_v16.md` (V16_PJ_DEDICADO)
+- `/app/backend/services/prompt_loader.py` (Isabella → v16)
+- `/app/backend/server.py` (router include + ensure_indexes)
+- `/app/backend/tests/test_pj_v16.py` (7/7 PASS)
+
+---
+
 ## ✅ V15.2.1 — FACTUAL CLAIM BINDER (18/02/2026 · ENTREGUE)
 
 **CTO 18/02/2026** · 29/29 testes PASS (V14 + V15 + Sprint B + V15.2 + binder).
