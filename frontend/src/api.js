@@ -597,7 +597,7 @@ export const api = {
     if (technician_id) body.technician_id = technician_id;
     return client.post(`/stok/consumables/purchase`, body).then((r) => r.data);
   },
-  stokConsumableTransfer: (consumable_id, quantity, technician_id) => client.post(`/stok/consumables/transfer`, { consumable_id, quantity, technician_id }).then((r) => r.data),
+  stokConsumableTransfer: (consumable_id, quantity, technician_id, mode = null) => client.post(`/stok/consumables/transfer`, { consumable_id, quantity, technician_id, mode }).then((r) => r.data),
   stokServices: () => client.get(`/stok/services`).then((r) => r.data),
   stokServiceCreate: (data) => client.post(`/stok/services`, data).then((r) => r.data),
   stokServiceClose: (sid, data) => client.post(`/stok/services/${sid}/close`, data).then((r) => r.data),

@@ -1711,14 +1711,21 @@ function ConsumableTransferDialog({ open, onClose, onDone, consumables, technici
   const [cid, setCid] = useState("");
   const [qty, setQty] = useState(0);
   const [techId, setTechId] = useState("");
+  const [mode, setMode] = useState(""); // "" = auto | "reposicao" | "credito"
+  const [lastResult, setLastResult] = useState(null);
   const submit = asyncCall(async () => {
     if (!cid || qty <= 0 || !techId) return await window.alert("Preencha todos os campos.");
-    await api.stokConsumableTransfer(cid, parseInt(qty, 10), techId);
-    setCid(""); setQty(0); setTechId(""); onClose();
-  }, onDone, "Erro na transferência");
+    const res = await api.stokConsumableTransfer(
+      cid, parseInt(qty, 10), techId, mode || null,
+    );
+    setLastResult(res);
+    setCid(""); setQty(0); setTechId(""); setMode("");
+    onDone && onDone();
+  }, undefined, "Erro na transferência");
   return (
-    <Modal open={open} onClose={onClose} title="↗ Transferir insumo para técnico" data-testid="cons-transfer-dialog"
-      footer={<><button style={btnSec} onClick={onClose}>Cancelar</button>
+    <Modal open={open} onClose={() => { setLastResult(null); onClose(); }}
+      title="↗ Transferir insumo para técnico" data-testid="cons-transfer-dialog"
+      footer={<><button style={btnSec} onClick={() => { setLastResult(null); onClose(); }}>Fechar</button>
         <button style={btnPrimary} onClick={submit} data-testid="cons-transfer-submit">Transferir</button></>}
     >
       <div style={{ marginBottom: 12 }}>
@@ -1732,13 +1739,41 @@ function ConsumableTransferDialog({ open, onClose, onDone, consumables, technici
         <label style={labelStyle}>Quantidade</label>
         <input data-testid="cons-transfer-qty" type="number" min="1" style={inputStyle} value={qty} onChange={(e) => setQty(e.target.value)} />
       </div>
-      <div>
+      <div style={{ marginBottom: 12 }}>
         <label style={labelStyle}>Técnico</label>
         <select data-testid="cons-transfer-tech" style={inputStyle} value={techId} onChange={(e) => setTechId(e.target.value)}>
           <option value="">Selecione…</option>
           {technicians.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
         </select>
       </div>
+      <div style={{ marginBottom: 8 }}>
+        <label style={labelStyle}>Modo de transferência</label>
+        <select data-testid="cons-transfer-mode" style={inputStyle}
+          value={mode} onChange={(e) => setMode(e.target.value)}>
+          <option value="">Automático (recomendado: zera deficit se houver)</option>
+          <option value="reposicao">Reposição (força zerar deficit antes de creditar)</option>
+          <option value="credito">Crédito (legado · $inc cego, mantém deficit)</option>
+        </select>
+        <div style={{ fontSize: 11, color: "#64748b", marginTop: 6,
+          lineHeight: 1.4 }}>
+          💡 Se o técnico está com saldo negativo, o modo <strong>Reposição</strong> usa
+          a transferência primeiro para cobrir o deficit anterior — sobra vira saldo positivo.
+        </div>
+      </div>
+      {lastResult && (
+        <div data-testid="cons-transfer-result" style={{
+          marginTop: 12, padding: 10, borderRadius: 8,
+          background: lastResult.deficit_zeroed > 0 ? "#fef3c7" : "#dcfce7",
+          color: lastResult.deficit_zeroed > 0 ? "#92400e" : "#166534",
+          fontSize: 12,
+        }}>
+          ✓ Transferência registrada · modo <strong>{lastResult.mode_effective}</strong>
+          {" · saldo "}<strong>{lastResult.qty_before} → {lastResult.qty_after}</strong>
+          {lastResult.deficit_zeroed > 0 && (
+            <> · empresa absorveu {lastResult.deficit_zeroed} unidades de deficit anterior</>
+          )}
+        </div>
+      )}
     </Modal>
   );
 }

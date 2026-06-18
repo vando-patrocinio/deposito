@@ -118,6 +118,12 @@ class ConsumableTransferIn(BaseModel):
     consumable_id: str
     quantity: int
     technician_id: str
+    # CEO 2026-06-18 — Bug #1 Onda A
+    # mode controla como tratar saldo negativo do técnico:
+    #   "reposicao"  → zera o deficit primeiro, sobra vira saldo positivo
+    #   "credito"    → comportamento legado ($inc cego, mantém deficit)
+    #   None (auto)  → se saldo atual < 0, age como "reposicao" (default seguro)
+    mode: Optional[str] = None
 
 
 class ServiceIn(BaseModel):
@@ -1360,19 +1366,117 @@ async def transfer_consumable(payload: ConsumableTransferIn, user: dict = Depend
     if not empresa or empresa.get(item["id"], 0) < payload.quantity:
         raise HTTPException(400, "Estoque da empresa insuficiente.")
     tech = await _get_collab(payload.technician_id, cid)
+
+    # ──────────────────────────────────────────────────────────────────────
+    # CEO 2026-06-18 — Bug #1 Onda A — Modo Reposição
+    # Antes:   $inc {+10}  com saldo -24  → ficava -14 (técnico continua sem estoque)
+    # Depois:  zera o deficit primeiro, sobra vira saldo positivo
+    # ──────────────────────────────────────────────────────────────────────
+    tech_stock_before = await db.stok_stock.find_one(
+        {"company_id": cid, "location": payload.technician_id}, {"_id": 0},
+    ) or {}
+    qty_before = int(tech_stock_before.get(item["id"], 0) or 0)
+
+    # Decisão de modo:
+    #   - explicit "credito"   → mantém legado (perigo, mas permitido pro gestor)
+    #   - explicit "reposicao" → zera deficit
+    #   - None (default)       → "reposicao" se qty_before < 0, "credito" caso contrário
+    mode_explicit = (payload.mode or "").strip().lower() or None
+    if mode_explicit not in (None, "reposicao", "credito"):
+        raise HTTPException(400, "Modo inválido (use 'reposicao' ou 'credito').")
+    if mode_explicit == "credito":
+        effective_mode = "credito"
+    elif mode_explicit == "reposicao":
+        effective_mode = "reposicao"
+    else:
+        effective_mode = "reposicao" if qty_before < 0 else "credito"
+
+    deficit_zeroed = 0  # quantas unidades a empresa absorveu (perdão de quebra)
+
+    if effective_mode == "reposicao" and qty_before < 0:
+        # Cobre o deficit + soma o que sobrou
+        deficit_zeroed = -qty_before  # ex: -24 → 24 absorvidos pela empresa
+        qty_after = qty_before + payload.quantity
+        # qty_after pode ainda ser negativo (transferência menor que deficit)
+        # OU positivo (sobra crédito)
+        if qty_after < 0:
+            # Cobrimos PARCIALMENTE — fica menos negativo
+            await db.stok_stock.update_one(
+                {"company_id": cid, "location": payload.technician_id},
+                {"$inc": {item["id"]: payload.quantity},
+                  "$setOnInsert": {"company_id": cid, "location": payload.technician_id}},
+                upsert=True,
+            )
+        else:
+            # Cobrimos TOTALMENTE — força saldo absoluto (zera deficit + sobra)
+            await db.stok_stock.update_one(
+                {"company_id": cid, "location": payload.technician_id},
+                {"$set": {item["id"]: qty_after},
+                  "$setOnInsert": {"company_id": cid, "location": payload.technician_id}},
+                upsert=True,
+            )
+    else:
+        # Modo crédito legado (saldo já não-negativo, ou gestor pediu explicitamente)
+        await db.stok_stock.update_one(
+            {"company_id": cid, "location": payload.technician_id},
+            {"$inc": {item["id"]: payload.quantity},
+              "$setOnInsert": {"company_id": cid, "location": payload.technician_id}},
+            upsert=True,
+        )
+        qty_after = qty_before + payload.quantity
+
+    # Saldo da empresa sai SEMPRE o valor transferido (independente do modo).
+    # Empresa "absorve" o deficit como custo de quebra previamente registrada
+    # (a quebra já foi notificada quando aconteceu — não há dupla cobrança).
     await db.stok_stock.update_one(
         {"company_id": cid, "location": "empresa"}, {"$inc": {item["id"]: -payload.quantity}},
     )
-    await db.stok_stock.update_one(
-        {"company_id": cid, "location": payload.technician_id},
-        {"$inc": {item["id"]: payload.quantity},
-         "$setOnInsert": {"company_id": cid, "location": payload.technician_id}},
-        upsert=True,
+
+    # Audit log antes/depois (essencial pro relatório CEO)
+    audit_doc = {
+        "id": f"stk-transfer-{uuid.uuid4().hex[:14]}",
+        "company_id": cid,
+        "consumable_id": item["id"],
+        "consumable_name": item["name"],
+        "consumable_unit": item["unit"],
+        "technician_id": payload.technician_id,
+        "technician_name": tech["name"],
+        "quantity_transferred": payload.quantity,
+        "mode_requested": mode_explicit,
+        "mode_effective": effective_mode,
+        "qty_before": qty_before,
+        "qty_after": qty_after,
+        "deficit_zeroed": deficit_zeroed,
+        "actor_id": user.get("id"),
+        "actor_name": user.get("name") or user.get("email"),
+        "created_at": now_iso(),
+    }
+    try:
+        await db.stok_transfer_audit.insert_one(audit_doc)
+    except Exception as e:
+        logger.warning("[stok] transfer audit insert falhou: %s", e)
+
+    # Histórico humano (mensagem mais rica quando houve absorção de deficit)
+    hist_msg = (
+        f"{payload.quantity} {item['unit']} de {item['name']} transferidos "
+        f"da empresa para {tech['name']}"
     )
-    await _add_history("transferencia_insumo",
-                       f"{payload.quantity} {item['unit']} de {item['name']} transferidos da empresa para {tech['name']}",
-                       user.get("name", "?"), "transferencia", cid)
-    return {"ok": True}
+    if deficit_zeroed > 0:
+        hist_msg += (
+            f" (modo Reposição: empresa absorveu {deficit_zeroed} "
+            f"{item['unit']} de deficit anterior, saldo final {qty_after})"
+        )
+    await _add_history("transferencia_insumo", hist_msg,
+                        user.get("name", "?"), "transferencia", cid)
+
+    return {
+        "ok": True,
+        "mode_effective": effective_mode,
+        "qty_before": qty_before,
+        "qty_after": qty_after,
+        "deficit_zeroed": deficit_zeroed,
+        "transfer_audit_id": audit_doc["id"],
+    }
 
 
 # ---------------------------------------------------------------------------

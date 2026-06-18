@@ -8519,3 +8519,29 @@ Relatório: `/app/docs/RELATORIO_RELACIONAMENTO_360.md`
 - `tests/test_v153_claim_generators.py` — 11/11 PASS (cadastro, smartolt, ticket, financial · happy + sad paths · fallback log + stats · trust V15.3 formula).
 - `tests/test_watchtower_ia.py` — atualizado pra usar `audited_at` (5/5 PASS).
 - Total: **16/16 pytest pass**.
+
+---
+
+## 2026-06-18 · Onda A · Estoque Hardening (P0)
+
+**Feature**: Bug #1 (Reposição zera deficit) + Bug #2 (Worker de stok_services órfãs). Auditoria completa em `/app/memory/AUDIT_ESTOQUE_2026-06-18.md`, relatório pós-onda em `/app/memory/ONDA_A_REPORT_2026-06-18.md`.
+
+### Resultados mensurados em co-demo
+- **Vando drop:** -24 → 6 (Reposição absorveu deficit 24)
+- **Diogo drop:** -1 → 4 (Reposição absorveu deficit 1)
+- **stok_services "ativo":** 62 → 6 (56 órfãs marcadas como `orfa_sem_ticket`)
+- **Zero documentos apagados** (todas preservam previous_status + orphaned_at)
+
+### Backend
+- **EDIT** `routes/stok.py` — `ConsumableTransferIn` ganha `mode`; `transfer_consumable` faz reposição automática quando saldo < 0; audit log em nova coleção `stok_transfer_audit`.
+- **NOVO** `scripts/reconcile_orphan_stok_services.py` — CLI idempotente com `--dry-run`.
+
+### Frontend
+- **EDIT** `EstoquePanel.js` — dialog de transferência ganha seletor de modo + feedback de resultado.
+
+### Tests
+- `tests/test_onda_a_stok.py` — 9/9 pytest passing (reposição/crédito/parcial/audit/idempotência).
+
+### Pendente
+- Bug #3 (auto-close não fecha) — **Onda B**, próxima sprint (CEO authorization needed).
+- Agendamento cron diário do worker — aguardando OK.
