@@ -2868,6 +2868,62 @@ async def auto_close_service_from_ticket(
         collaborator_id=technician_id,
         subscriber_id=service.get("client_id"),
     )
+
+    # Sprint 5 Onda 2 (CEO 19/02/2026) — emite swap_event canônico
+    try:
+        from services.swap_event_writer import (
+            write_swap_event, capture_smartolt_snapshot)
+        event_type_map = {"instalacao": "install", "retirada": "removal",
+                          "troca": "replacement", "reparo": "swap"}
+        ev_type = event_type_map.get(service["type"], "install")
+        # CTO/porta canônicos via subscriber
+        cto_id = None
+        port_number = None
+        if service.get("client_id"):
+            sub = await db.subscribers.find_one(
+                {"id": service["client_id"], "company_id": company_id},
+                {"_id": 0, "cto_id": 1, "cto_port_number": 1})
+            if sub:
+                cto_id = sub.get("cto_id")
+                port_number = sub.get("cto_port_number")
+        # Para removal: ont vai como old; para install/swap/replacement: como new
+        ont_old_mac = ont_mac if ev_type in ("removal", "swap") else None
+        ont_new_mac = ont_mac if ev_type in ("install", "swap",
+                                                 "replacement") else None
+        ont_new_sn = ont_sn if ev_type in ("install", "swap",
+                                                "replacement") else None
+        sm_snap = None
+        if smartolt_validation:
+            sm_snap = {"new" if ev_type != "removal" else "old":
+                          smartolt_validation,
+                       "captured_at": now_iso()}
+        # Procura o stok_history_id recém-criado (último doc do company)
+        last_hist = await db.stok_history.find_one(
+            {"company_id": company_id, "service_id": sid},
+            {"_id": 0, "id": 1}, sort=[("created_at", -1)])
+        await write_swap_event(
+            db,
+            company_id=company_id,
+            event_type=ev_type,
+            ticket_id=ticket_id,
+            service_id=sid,
+            subscriber_id=service.get("client_id"),
+            collaborator_id=technician_id,
+            cto_id=cto_id,
+            port_number=port_number,
+            ont_old_mac=ont_old_mac,
+            ont_new_mac=ont_new_mac,
+            ont_new_sn=ont_new_sn,
+            swap_reason=(service.get("reason")
+                            if ev_type in ("swap", "replacement") else None),
+            destino=("estoque_tecnico" if ev_type == "removal" else None),
+            smartolt_snapshot=sm_snap,
+            stok_history_id=last_hist.get("id") if last_hist else None,
+            created_by=f"auto_close_lousa:{technician_id}",
+            allow_missing=True,
+        )
+    except Exception as _swap_err:  # pragma: no cover — não quebra finalize
+        logger.warning("[stok][swap_event] emissão falhou: %s", _swap_err)
     return {"ok": True, "service_id": sid,
             "used_items": [ui.model_dump() for ui in used_items],
             "ont_mac": ont_mac}

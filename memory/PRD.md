@@ -5956,3 +5956,52 @@ apenas em description. Backfill obrigatório dos 149 events órfãos.
 
 ### Doc completo
 `/app/memory/SPRINT5_ONDA1_CERTIDAO.md`
+
+---
+## [2026-02-19] Sprint 5 · Onda 2 — Swap Events Reais ✅ (5/5 GATES OFICIAIS)
+
+### Mandato
+ORDEM EXECUTIVA CEO 19/02/2026: criar trilha auditável completa de
+swap/install/replacement/removal de ONUs. Collection oficial
+`auto_ont_swap_events` (até então vazia). Vínculo cruzado obrigatório:
+swap ↔ stok_history ↔ ticket ↔ subscriber.
+
+### Entrega
+- **Helper canônico** `services/swap_event_writer.py`:
+  - `write_swap_event()` — validação por event_type, hash SHA-256, 14 campos canônicos.
+  - `capture_smartolt_snapshot()` — snapshot best-effort dos ONUs old/new.
+  - Confirmation states fixos (CEO list — não criar novos).
+- **Endpoints novos** (`/api/sprint5/swap-events/*`):
+  - `status`, `preview-backfill`, `backfill-from-history`, `metrics-operational`,
+    `{id}/confirm`, `{id}/dispute`, `audit-log`, `certidao`.
+- **Backfill retroativo**: 87 swap_events criados a partir de stok_history
+  (33 install + 36 swap + 18 removal).
+- **Integração Lousa auto-finalize**: `auto_close_service_from_ticket`
+  agora emite swap_event automaticamente ao fechar OS. **Trilha futura
+  100% automática**.
+- **Cross-link bidirecional**: `stok_history.swap_event_id` + `swap_event.stok_history_id`.
+
+### Resultado co-demo (medição real)
+- 87 swap_events total · 51 eligible · 36 irrecuperáveis (svc destruído / OS sem ticket fonte).
+- **Gates oficiais CEO**: 5/5 atingidos (coverage 100% · ticket 100% ·
+  subscriber 100% · collaborator 100% · stok_history 100% · smartolt 100%).
+- `gate_95pct_overall = true`.
+
+### Casos irrecuperáveis (preservados — Golden Rule)
+- 20 `terminal_source_destroyed`: stok_services removido (sem fonte).
+- 16 `no_ticket_in_source`: auto_opened legado nasceu sem ticket.
+- Marcados com `data_quality` + `irrecoverable=true`. Excluídos do gate.
+
+### Validação
+- ✅ Idempotência (2ª execução = 0 candidates).
+- ✅ Confirm endpoint OK (status → confirmed, confirmed_at populado).
+- ✅ Audit log com 3 batches rastreáveis.
+- ✅ Hash SHA-256 calculado em todos os 87 docs.
+
+### NOTA
+- CTO/Port linkage estão baixos (1.96%/0%) — esperado: são gates da
+  **Onda 3** (CTO obrigatório no completion_data), não da Onda 2.
+- Nenhum dashboard novo criado, em respeito à regra de ouro do CEO.
+
+### Doc completo
+`/app/memory/SPRINT5_ONDA2_CERTIDAO.md`
