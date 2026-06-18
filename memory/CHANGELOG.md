@@ -8545,3 +8545,35 @@ Relatório: `/app/docs/RELATORIO_RELACIONAMENTO_360.md`
 ### Pendente
 - Bug #3 (auto-close não fecha) — **Onda B**, próxima sprint (CEO authorization needed).
 - Agendamento cron diário do worker — aguardando OK.
+
+---
+
+## 2026-06-18 · Onda B · Auto-Close Bug #3 + Cron Diário (P0)
+
+**Resultado:** stok_services "ativo" em co-demo: 62 → 6 (Onda A) → **1** (Onda B). Único restante = ticket realmente aberto. Relatório completo em `/app/memory/ONDA_B_REPORT_2026-06-18.md`.
+
+### Diagnóstico (regra dura aplicada)
+1. ✓ Instrumentou 6 fases em `public_finalize_ticket` via `lousa_finalize_trace` (TTL 7d).
+2. ✓ Disparou close de teste → todas as 6 fases passaram com `outcome=ok`.
+3. ✓ Confirmou que `auto_close_service_from_ticket` JÁ funcionava no código atual — bugs históricos eram de versões anteriores.
+4. ✓ Removido try/except silencioso (CEO rule): exceptions agora viram `logger.exception` + `error` no trace fase 05.
+5. ✓ Worker `late_close` capturou 5 OS antigas órfãs e fechou todas (rede de segurança).
+
+### Backend (NOVO)
+- `services/lousa_finalize_trace.py` — 6 fases + TTL 7d.
+- `services/late_close_worker.py` — scan stok_services ativo + ticket finalizado há > 60s → fecha via auto_close. Idempotente. Grava relatório em `late_close_runs`.
+- `services/stok_reconcile_job.py` — cron diário 03:00 UTC, roda em todas as empresas, grava `stok_reconcile_runs`, gera alerta `ai_notifications` se órfãs ≥ STOK_ORPHAN_ALERT_THRESHOLD (default 20).
+- `scripts/late_close_run.py` — CLI dry-run/exec.
+
+### Backend (EDIT)
+- `routes/lousa.py::public_finalize_ticket` — 6 traces injetados + try/except silencioso REMOVIDO.
+- `server.py` — agenda `stok_late_close_5m` (interval 5min) + `stok_orphan_reconcile_daily` (cron 03:00).
+
+### Tests
+- `tests/test_onda_b_late_close.py` — 7/7 PASS (trace, find, grace, dry-run, idempotência, run report).
+- Total Onda A+B: **16/16 pytest passing**.
+
+### Pendente
+- Endpoint JWT `finalize_ticket` (linha 5170 lousa.py) ainda tem try/except silencioso — recomendado aplicar mesmo padrão.
+- Botão "Reconciliar agora" — Onda C ou logo após.
+- **Onda C**: Bug #4 (validar consumíveis mobile) + Bug #5 (praça/técnico) + Bug #6 (auto-detect troca ONT).

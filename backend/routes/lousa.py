@@ -4067,6 +4067,19 @@ async def public_finalize_ticket(ticket_id: str, payload: PublicFinalizeIn,
         raise HTTPException(404, "Nota não encontrada")
     if (not is_admin_test) and t.get("assigned_collaborator_id") != cid:
         raise HTTPException(404, "Nota não encontrada")
+    # ─── Onda B Bug #3 ─── Trace fase 01 (entry confirmado) ───
+    from services.lousa_finalize_trace import (
+        trace_phase, PHASE_ENTRY, PHASE_GUARDRAIL_DECISION,
+        PHASE_TICKET_UPDATED, PHASE_PRE_AUTO_CLOSE,
+        PHASE_POST_AUTO_CLOSE, PHASE_EXIT,
+    )
+    _trace_cid = t.get("company_id") or DEMO_COMPANY_ID
+    await trace_phase(
+        ticket_id=ticket_id, company_id=_trace_cid, phase=PHASE_ENTRY,
+        details={"type": t.get("type"), "outcome": payload.outcome,
+                  "is_admin_test": is_admin_test,
+                  "collaborator_id": cid},
+    )
     if t["status"] != "aberta":
         raise HTTPException(400, "Somente notas abertas podem ser finalizadas")
 
@@ -4676,6 +4689,15 @@ async def public_finalize_ticket(ticket_id: str, payload: PublicFinalizeIn,
         }
         guardrail_result = await enforce_os_inventory_movement(
             t, comp_g, actor_g)
+        # ── Onda B trace fase 02 (decisão guardrail) ──
+        await trace_phase(
+            ticket_id=ticket_id, company_id=_trace_cid,
+            phase=PHASE_GUARDRAIL_DECISION,
+            outcome="allowed" if guardrail_result["allowed"] else "blocked",
+            details={"classification": guardrail_result.get("classification"),
+                      "movements_n": len(guardrail_result.get("movements") or []),
+                      "blocked_reasons": guardrail_result.get("blocked_reasons", [])},
+        )
         if not guardrail_result["allowed"]:
             raise HTTPException(403, {
                 "error": "os_inventory_guardrail_bloqueou",
@@ -4733,6 +4755,18 @@ async def public_finalize_ticket(ticket_id: str, payload: PublicFinalizeIn,
                     and guardrail_result.get("os_pending_conciliation"))
                 else {}),
         }},
+    )
+    # ── Onda B trace fase 03 (ticket atualizado para finalizada) ──
+    await trace_phase(
+        ticket_id=ticket_id, company_id=company_id,
+        phase=PHASE_TICKET_UPDATED,
+        details={"new_status": ("pendente_conciliacao"
+                                  if (guardrail_result
+                                      and guardrail_result.get("os_pending_conciliation"))
+                                  else "finalizada"),
+                  "had_guardrail": bool(guardrail_result),
+                  "is_smartolt_managed": is_smartolt_client,
+                  "equipment_swap_present": bool(equipment_swap)},
     )
     # Vincula cliente à porta da CTO (instalação/reparo).
     # iter215aa — Agora usa _smart_link_client_to_port que valida:
@@ -4850,18 +4884,52 @@ async def public_finalize_ticket(ticket_id: str, payload: PublicFinalizeIn,
             company_id=company_id, severity="warning",
         )
     # Bridge Estoque ↔ Lousa: AUTO-BAIXA do estoque a partir do completion_data
+    # ─── Onda B Bug #3 ─── instrumentação 6 fases ───
+    # CEO 18/06/2026: NADA de try/except silencioso. O guardião late_close
+    # captura serviços não-fechados; aqui registramos a fase REAL para
+    # diagnóstico.
+    await trace_phase(
+        ticket_id=ticket_id, company_id=company_id,
+        phase=PHASE_PRE_AUTO_CLOSE,
+        details={"completion_data_summary": {
+            "qtd_drop": cd_dump.get("qtd_drop"),
+            "esticadores": cd_dump.get("esticadores"),
+            "conectores_fast": cd_dump.get("conectores_fast"),
+            "cabo_rede": cd_dump.get("cabo_rede"),
+            "conectores_rede": cd_dump.get("conectores_rede"),
+            "ont": cd_dump.get("ont"),
+        }},
+    )
+    auto_close_result: Dict[str, Any] = {}
+    auto_close_error: Optional[str] = None
     try:
         from routes.stok import auto_close_service_from_ticket
-        await auto_close_service_from_ticket(
+        auto_close_result = await auto_close_service_from_ticket(
             ticket_id=ticket_id,
             company_id=company_id,
             completion_data=cd.model_dump(),
             technician_id=cid,
             technician_name=coll_name,
             caller="lousa.public_finalize_ticket",
-        )
+        ) or {}
     except Exception as e:
-        logger.warning("[lousa] auto_close_service_from_ticket falhou: %s", e)
+        auto_close_error = f"{type(e).__name__}: {str(e)[:300]}"
+        # Logger.exception (NÃO warning) — pra ficar no err.log com traceback
+        logger.exception(
+            "[lousa] auto_close_service_from_ticket falhou ticket=%s: %s",
+            ticket_id, e,
+        )
+    # ── Trace fase 05 (post auto_close, sempre roda) ──
+    await trace_phase(
+        ticket_id=ticket_id, company_id=company_id,
+        phase=PHASE_POST_AUTO_CLOSE,
+        outcome="error" if auto_close_error
+                  else ("ok" if auto_close_result.get("ok")
+                         else "not_ok"),
+        details={"result": auto_close_result,
+                  "result_reason": auto_close_result.get("reason")},
+        error=auto_close_error,
+    )
 
     # Coaching automático — alerta quando técnico fecha N bolhas seguidas sem ping
     try:
@@ -4955,6 +5023,13 @@ async def public_finalize_ticket(ticket_id: str, payload: PublicFinalizeIn,
             "sinal": cd.sinal,
         } if is_bad_signal else None,
     }
+    # ── Onda B trace fase 06 (exit) — confirma que handler finalizou ──
+    await trace_phase(
+        ticket_id=ticket_id, company_id=company_id,
+        phase=PHASE_EXIT,
+        details={"has_warnings": bool(result.get("_warnings")),
+                  "_warnings_keys": list((result.get("_warnings") or {}).keys())},
+    )
     return result
 
 

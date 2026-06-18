@@ -868,6 +868,23 @@ async def _startup() -> None:
                           id="wifi_mark_abandoned", replace_existing=True)
         scheduler.add_job(retarget_abandoned_sessions_job, "interval", hours=1,
                           id="wifi_retarget_48h", replace_existing=True)
+        # ── Onda B (CEO 2026-06-18) — Late close worker + reconciliação ──
+        # Late close worker: roda a cada 5min, fecha stok_services em "ativo"
+        # cujo ticket está finalizado há > 60s. Rede de segurança contra
+        # qualquer falha do auto_close inicial.
+        from services.late_close_worker import scheduled_late_close_tick
+        scheduler.add_job(scheduled_late_close_tick, "interval", minutes=5,
+                          id="stok_late_close_5m", replace_existing=True,
+                          max_instances=1)
+        # Cron diário 03:00 UTC — reconciliação de stok_services órfãs
+        # (ticket não existe mais). Idempotente, sem delete, com alerta.
+        from services.stok_reconcile_job import (
+            daily_reconcile_orphans_job,
+        )
+        scheduler.add_job(daily_reconcile_orphans_job,
+                          CronTrigger(hour=3, minute=0),
+                          id="stok_orphan_reconcile_daily",
+                          replace_existing=True, max_instances=1)
         # FASE 10 sprint final V5.0 — Autonomy scheduler integrado
         if os.environ.get("AUTONOMY_SCHEDULER_DISABLED", "0") != "1":
             from services import autonomy_scheduler_jobs as _autosch
