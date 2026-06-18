@@ -85,6 +85,7 @@ import OSHealthDashboard from "@/OSHealthDashboard";
 import DashboardPanel from "@/DashboardPanel";
 import WatchtowerEstoque from "@/WatchtowerEstoque";
 import WatchtowerRecebimentos from "@/WatchtowerRecebimentos";
+import Watchtower from "@/Watchtower";
 import PracasPanel from "@/PracasPanel";
 import LogsPanel from "@/LogsPanel";
 import ClientErrorsPanel from "@/ClientErrorsPanel";
@@ -217,10 +218,7 @@ const NAV_GROUPS = [
     // entram nas próximas sprints.
     label: "Dashboard Executivo",
     items: [
-      { id: "watchtower-estoque", icon: BarChart3, label: "Watchtower Estoque",
-        roles: ["gestor", "administrador", "auditor"] },
-      { id: "watchtower-recebimentos", icon: BarChart3,
-        label: "Watchtower Recebimentos",
+      { id: "watchtower", icon: BarChart3, label: "Watchtower",
         roles: ["gestor", "administrador", "auditor"] },
     ],
   },
@@ -1280,8 +1278,10 @@ function AppContent() {
         <ErrorBoundary key={view} name={view || "view"} variant="fullscreen">
           <>
           {view === "dashboard" && <DashboardPanel />}
-          {view === "watchtower-estoque" && <WatchtowerEstoque />}
-          {view === "watchtower-recebimentos" && <WatchtowerRecebimentos />}
+          {view === "watchtower" && <Watchtower />}
+          {/* Compat: rotas antigas redirecionam pro shell */}
+          {view === "watchtower-estoque" && <Watchtower />}
+          {view === "watchtower-recebimentos" && <Watchtower />}
           {view === "lousa" && <LousaAdminPanel systemStatus={systemStatus} currentUser={user} />}
           {view === "field-ops" && <FieldOpsManagerPanel />}
           {view === "isabella-console" && <IsabellaConsole />}

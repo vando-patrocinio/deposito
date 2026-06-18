@@ -1405,6 +1405,14 @@ export const api = {
   isabellaPjLeadsList: (params = {}) =>
     client.get(`/isabella/pj/leads`, { params }).then((r) => r.data),
 
+  // ===== Watchtower IA — Painéis Executivos (P1 2026-06-18) =====
+  watchtowerIaPresidente: (hours = 24) =>
+    client.get(`/isabella/watchtower/ia-presidente`,
+      { params: { hours } }).then((r) => r.data),
+  watchtowerRelacionamento: (hours = 168) =>
+    client.get(`/isabella/watchtower/relacionamento`,
+      { params: { hours } }).then((r) => r.data),
+
   // ===== Interactions 360° (P0 CTO 2026-02) =====
   interactions360: (subscriberId, params = {}) =>
     client.get(`/interactions/360/${subscriberId}`, { params }).then((r) => r.data),

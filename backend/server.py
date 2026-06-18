@@ -130,6 +130,7 @@ from routes import (
     isabella_field as routes_isabella_field,
     isabella_commanders as routes_isabella_commanders,
     isabella_pj as routes_isabella_pj,
+    isabella_watchtower as routes_isabella_watchtower,
     universo_ligo as routes_universo_ligo,
     universo_ligo_curadoria as routes_universo_ligo_curadoria,
     customer_intelligence as routes_customer_intelligence,
@@ -1373,6 +1374,7 @@ app.include_router(routes_user_magic_links.router)
 app.include_router(routes_sala_orphan_health.router)
 app.include_router(routes_isabella_churn.router)
 app.include_router(routes_isabella_pj.router)
+app.include_router(routes_isabella_watchtower.router)
 app.include_router(routes_treasury.router)
 app.include_router(routes_audit_log.router)
 app.include_router(routes_backend_health.router)

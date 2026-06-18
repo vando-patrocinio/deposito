@@ -10,12 +10,9 @@ import React, { useMemo } from "react";
 // ============================================================
 export const TAB_DEFINITIONS = [
   // Dashboard Executivo
-  { id: "watchtower-estoque",      label: "Watchtower Estoque",
+  { id: "watchtower", label: "Watchtower",
     group: "Dashboard Executivo",
-    hint: "Visão patrimonial consolidada do estoque (CEO)." },
-  { id: "watchtower-recebimentos", label: "Watchtower Recebimentos",
-    group: "Dashboard Executivo",
-    hint: "Quem está pagando · KPIs MoM + Top 10 pagadores + drill-down." },
+    hint: "Painéis executivos: IA Presidente, Relacionamento, Recebimentos, Patrimônio, Estoque (sub-abas internas)." },
 
   // Operação
   { id: "dashboard",       label: "Painel",            group: "Operação" },
@@ -86,7 +83,7 @@ export const DEFAULT_TAB_PERMISSIONS = {
   administrador: [...ALL_TAB_IDS],
   auditor:       [...ALL_TAB_IDS],
   gestor: [
-    "watchtower-estoque", "watchtower-recebimentos",
+    "watchtower",
     "dashboard", "lousa", "estoque", "central-compras", "projects",
     "ai-ranking", "ai-corrections", "central-ia", "rede-ia",
     "atendimento", "alvaro-ia", "mass-messaging", "sales-funnel",
