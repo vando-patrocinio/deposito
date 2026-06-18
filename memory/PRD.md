@@ -2,6 +2,63 @@
 
 > Documento vivo. Atualizado a cada sprint.
 
+## ✅ V15.2 — ISABELLA INDEX + AUTONOMY ALARM (18/02/2026 · ENTREGUE)
+
+**CTO 18/02/2026** · 24/24 testes PASS (V14 + V15 + Sprint B + V15.2).
+
+### Confidence Score com 4 sub-scores → ISABELLA INDEX composite
+
+| Sub-score | Peso | Fórmula |
+|---|---:|---|
+| **Trust** | 40% | claims consumidos / outbounds Isabella − correções ponderadas |
+| **Relationship** | 20% | memórias usadas / disponíveis + bônus por recalls (timeline) |
+| **Resolution** | 20% | outcomes positivos (resolveu/vendeu/reteve/agendou) / turnos |
+| **Promise** | 20% | promises resolved / created − penalty overdue |
+
+**ISABELLA INDEX** = média ponderada. Cores: 🟢 ≥95 · 🟡 ≥90 · 🔴 <90
+
+### Regra de Correções (peso na Trust)
+
+- `factual_error` (0-2h, severity=high) → -100% peso
+- `state_changed` (2-24h, severity=none) → 0% (não é erro)
+- `delayed_resolution` (1-7d, severity=low) → -25% peso
+
+Detecção via regex em `ai_evaluations.nps_motivo` (frustra|errado|nao era).
+
+### AUTONOMY ALARM
+
+Worker scheduler horário:
+- Snapshot do `ISABELLA INDEX` em `isabella_index_snapshots` (TTL 90d)
+- Snapshot do `AUTONOMY INDEX` em `isabella_autonomy_snapshots`
+- Se autonomy cai >5pp em 24h → grava em `isabella_autonomy_alarms` com `severity=high` (>10pp) ou `medium` (5-10pp)
+
+### Endpoints novos
+
+- `GET /api/isabella/confidence/index?hours=24` — ISABELLA INDEX completo
+- `GET /api/isabella/confidence/autonomy-alarms?hours=168` — alarmes recentes
+
+### Estado real em produção (co-demo, 30d)
+
+**ISABELLA INDEX: 36% (RED)** — KPI revelou onde a Isabella está fraca:
+- Trust 0% — 14.959 outbounds com **0 claims consumidos** (link claim→outbound nunca implementado de fato)
+- Relationship 0% — V14/V15 recém-ativado, sem memórias acumuladas
+- Resolution 80% — saudável
+- Promise 100% — saudável (sem pendentes)
+
+### Próximos action items revelados pelo KPI
+
+1. **P0**: implementar `mark_consumed(claim_id, message_id)` em todos os caminhos onde a Isabella faz afirmação factual (boleto_flow, smartolt_status, subscriber_status) — sem isso o Trust nunca sobe.
+2. **P1**: validar que `customer_memory.capture_from_inbound` está sendo chamado em produção (logs mostram que sim, mas precisa confirmar volume).
+
+### Files
+
+- `/app/backend/services/isabella_confidence.py` (~370 LOC novo)
+- `/app/backend/routes/isabella_commanders.py` (+2 endpoints)
+- `/app/backend/server.py` (startup: ensure_indexes + register_scheduler)
+- `/app/backend/tests/test_isabella_confidence.py` (6/6 PASS)
+
+---
+
 ## ✅ SPRINT B — OPPORTUNITY EXECUTOR + PIPELINE HEALTH (18/02/2026 · ENTREGUE)
 
 **CTO 18/02/2026** · 6/6 testes Sprint B PASS · V14/V15 sem regressão (12/12).

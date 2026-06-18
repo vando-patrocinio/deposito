@@ -224,6 +224,41 @@ async def executor_run(
 
 
 # ---------------------------------------------------------------------------
+# V15.2 — ISABELLA INDEX (Trust + Relationship + Resolution + Promise)
+# ---------------------------------------------------------------------------
+@router.get("/confidence/index")
+@limiter.limit(get_limit("isabella_read"))
+async def confidence_index(
+    request: Request,
+    hours: int = Query(24, ge=1, le=720),
+    cid: Optional[str] = None,
+    user: dict = Depends(get_current_user),
+):
+    """ISABELLA INDEX — composite das 4 sub-scores.
+
+    Devolve trust/relationship/resolution/promise + ISABELLA INDEX final
+    + cor (green ≥95 / amber ≥90 / red <90).
+    """
+    company = _company_or_param(user, cid)
+    from services.isabella_confidence import isabella_index
+    return await isabella_index(company_id=company, hours=hours)
+
+
+@router.get("/confidence/autonomy-alarms")
+@limiter.limit(get_limit("isabella_read"))
+async def confidence_autonomy_alarms(
+    request: Request,
+    hours: int = Query(168, ge=1, le=720),
+    cid: Optional[str] = None,
+    user: dict = Depends(get_current_user),
+):
+    """Lista alarmes de queda do AUTONOMY INDEX (>5pp em 24h)."""
+    company = _company_or_param(user, cid)
+    from services.isabella_confidence import autonomy_alarms
+    return await autonomy_alarms(company_id=company, hours=hours)
+
+
+# ---------------------------------------------------------------------------
 # Commanders — scans
 # ---------------------------------------------------------------------------
 @router.post("/churn/scan")

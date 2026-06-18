@@ -1154,6 +1154,9 @@ async def _startup() -> None:
                 start_worker as _wrs_start)
             from services.customer_memory import (
                 ensure_indexes as _cm_idx)
+            from services.isabella_confidence import (
+                ensure_indexes as _ic_idx,
+                register_scheduler as _ic_reg)
             from services.nervous_autodiscovery import (
                 ensure_indexes as _nva_idx, register_scheduler as _nva_reg)
             from services.orphan_event_watcher import (
@@ -1166,6 +1169,8 @@ async def _startup() -> None:
             asyncio.create_task(_wrs_idx())
             asyncio.create_task(_wrs_start())
             asyncio.create_task(_cm_idx())
+            asyncio.create_task(_ic_idx())
+            _ic_reg(scheduler)
             asyncio.create_task(_nva_idx())
             asyncio.create_task(_oew_idx())
             _sda_reg(scheduler)
