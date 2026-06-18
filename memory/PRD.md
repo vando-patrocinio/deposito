@@ -2,6 +2,44 @@
 
 > Documento vivo. Atualizado a cada sprint.
 
+## ✅ ONDA C P1 — Watchtower Diagnóstico + Auditoria Praça x Técnico (18/06/2026 · ENTREGUE)
+
+**CTO 18/06/2026** · 33/33 testes PASS (7 novos P1 + 26 regressão Onda A+B+C) · Lint clean · Zero writes confirmado.
+
+### Entregas
+1. **Backend novo** `GET /api/watchtower/estoque/diagnostico?window_hours=1..168` (`routes/watchtower_estoque_diagnostico.py` · 310 linhas)
+   - 6-Phase EKG (`lousa_finalize_trace`) + latência p50/p95 + late_close 7d + reconcile 7d + auto_ont_swap pending + últimos 20 erros.
+   - 6 aggregations paralelas via `asyncio.gather` — READ-ONLY (`.find/.aggregate/.count_documents` apenas).
+2. **Frontend novo** `WatchtowerEstoqueDiagnostico.jsx` + tabs em `WatchtowerEstoque.jsx`
+   - 5 cards com data-testids completos (`diagnostico-card-{phases,swap,late-close,reconcile,errors}`).
+   - Janela ajustável 1h/6h/24h/72h/7d.
+3. **Script de auditoria** `/app/backend/scripts/audit_praca_tecnico.py` (READ-ONLY · 360 linhas)
+   - Saída: `/app/memory/PRAÇA_TECNICO_AUDIT.md` (on-demand).
+   - Detecta 7 categorias de inconsistência: saldos negativos · locations duplicadas · praça misturada com técnico · ONTs órfãs · serviços sem técnico · defeituosas sem motivo · órfãos remanescentes.
+   - Modos: default · `--company-id X` · `--print-only`.
+
+### Decisão arquitetural (aprovada CEO)
+- Alerta `auto_ont_swap_events pending_confirmation` posicionado no **Watchtower Diagnóstico** (operação de campo/estoque), NÃO no Watchtower IA Presidente (saúde de IA).
+
+### Critérios CEO atendidos
+- ✅ P1 sem quebrar fluxo atual (26/26 regressão verde).
+- ✅ Nenhum delete (read-only confirmado).
+- ✅ Testes verdes (33/33).
+- ✅ Relatório executivo antes/depois → `/app/memory/ONDA_C_P1_REPORT_2026-06-18.md`.
+
+### Code review crítico (P2)
+- `_iso()` helper duplicado → extrair para `services/datetime_utils.py`.
+- `audit_praca_tecnico.py` parser `.env` manual → trocar por `python-dotenv`.
+- `WatchtowerEstoque.jsx` sem deep-link → criar rotas `/watchtower/estoque/{patrimonio|diagnostico}` (Sprint 5).
+
+### Files
+- NOVOS: `/app/backend/routes/watchtower_estoque_diagnostico.py` · `/app/backend/scripts/audit_praca_tecnico.py` · `/app/frontend/src/WatchtowerEstoqueDiagnostico.jsx` · `/app/backend/tests/test_onda_c_p1_diagnostico.py` · `/app/memory/PRAÇA_TECNICO_AUDIT.md` · `/app/memory/ONDA_C_P1_REPORT_2026-06-18.md`
+- MODIFICADOS: `/app/frontend/src/WatchtowerEstoque.jsx` · `/app/backend/server.py`
+
+---
+
+
+
 ## ✅ ONDA C — BUG #4 + BUG #6 LOUSA MOBILE FINALIZE (18/06/2026 · ENTREGUE)
 
 **CTO 18/06/2026** · 20/20 testes PASS (10 locais + 10 HTTP REST via testing agent) · Lint clean.
