@@ -162,6 +162,7 @@ from routes import (
     alvaro_os_summary as routes_alvaro_os_summary,
     gps_vlan_suggest as routes_gps_vlan_suggest,
     smartolt_push_ctos as routes_smartolt_push_ctos,
+    rede_cell as routes_rede_cell,
     whatsapp_config as routes_whatsapp_config,
     wa_test_mode as routes_wa_test_mode,
     mass_messaging as routes_mass_messaging,
@@ -1270,6 +1271,8 @@ dashboard_overtime = routes_clock.dashboard_overtime  # routes/dashboard.py impo
 
 # Inclui todos os routers (cada um já vem com prefix="/api")
 app.include_router(routes_users.router)
+app.include_router(routes_rede_cell.router)
+app.include_router(routes_rede_cell.watch_router)
 from routes import audit_users as routes_audit_users  # noqa: E402
 app.include_router(routes_audit_users.router)
 from routes import os_lifecycle as routes_os_lifecycle  # noqa: E402

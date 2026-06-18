@@ -27,6 +27,7 @@ import {
   AdminFinalizeModal,
 } from "./lousa-admin/modals";
 import { ClosedNotesPdfPopover } from "./lousa-admin/report";
+import EscalateToRedeModal from "./EscalateToRedeModal";
 
 const TYPE_LABELS = {
   reparo: "Reparo",
@@ -2138,6 +2139,7 @@ function BubbleCard({ ticket, slotHour, blinkOverdue, isDragging, onDragStart, o
   const [aiOpen, setAiOpen] = useState(false);
   const [aiDetail, setAiDetail] = useState(null);
   const [aiBusy, setAiBusy] = useState(false);
+  const [redeOpen, setRedeOpen] = useState(false);
   const isSelectable = selectMode && ["pendente", "aberta", "aguardando_atendimento"].includes(ticket.status);
 
   async function runAiAnalysis() {
@@ -2476,8 +2478,27 @@ function BubbleCard({ ticket, slotHour, blinkOverdue, isDragging, onDragStart, o
           <button data-testid={`admin-details-${ticket.id}`}
             onClick={() => setShowDetails(true)}
             style={btnSm("#8b5cf6")}>Detalhes</button>
-          <button data-testid={`ai-evaluate-${ticket.id}`} disabled={aiBusy}
-            onClick={runAiAnalysis} style={btnSm("#0d9488")}>IA {aiBusy ? "..." : ""}</button>
+          {["reparo", "instalacao", "rompimento"].includes(ticket.type)
+            && !ticket.rede_escalation_id && (
+            <button data-testid={`admin-rede-${ticket.id}`} disabled={busy}
+              onClick={() => setRedeOpen(true)}
+              title="Escalar para a célula de REDE (Tier 2). A IA vai te ajudar a avaliar antes."
+              style={btnSm("#06b6d4")}>
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none"
+                stroke="currentColor" strokeWidth="2.5" style={{verticalAlign:"-1px", marginRight:3}}>
+                <circle cx="12" cy="5" r="2"/><circle cx="5" cy="19" r="2"/>
+                <circle cx="19" cy="19" r="2"/>
+                <path d="M12 7v4M12 11l-7 6M12 11l7 6"/>
+              </svg>
+              REDE
+            </button>
+          )}
+          {ticket.rede_escalation_id && (
+            <span data-testid={`admin-rede-badge-${ticket.id}`}
+              style={{...btnSm("#06b6d4"), cursor:"default", opacity:0.75}}>
+              ↑ REDE
+            </span>
+          )}
           <button data-testid={`admin-close-${ticket.id}`} disabled={busy}
             onClick={() => onAdminClose(ticket, "encerrar")}
             style={btnSm("#64748b")}>✓ Encerrar</button>
@@ -2489,6 +2510,13 @@ function BubbleCard({ ticket, slotHour, blinkOverdue, isDragging, onDragStart, o
       )}
       {aiOpen && aiDetail && (
         <AiDetailModal detail={aiDetail} onClose={() => setAiOpen(false)} />
+      )}
+      {redeOpen && (
+        <EscalateToRedeModal
+          ticket={ticket}
+          onClose={() => setRedeOpen(false)}
+          onEscalated={() => { setRedeOpen(false); window.location.reload(); }}
+        />
       )}
       {showDetails && (
         <ClosedTicketDetailModal

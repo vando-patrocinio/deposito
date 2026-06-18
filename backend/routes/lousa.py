@@ -1185,6 +1185,33 @@ async def lousa_grid(
     if sala_doc:
         collabs.insert(0, sala_doc)
 
+    # REDE — coluna FIXA (após SALA). Tier 2 — recebe escalonamentos do campo.
+    # Idempotente: cria o virtual se não existir (inline para evitar circular import).
+    rede_cid = f"col-rede-{company_id_for_sala}"
+    rede_existing = await db.collaborators.find_one(
+        {"company_id": company_id_for_sala, "id": rede_cid})
+    if not rede_existing:
+        await db.collaborators.insert_one({
+            "id": rede_cid,
+            "company_id": company_id_for_sala,
+            "name": "REDE",
+            "cargo": "rede",
+            "cpf": f"virt-rede-{company_id_for_sala}",  # único, não null
+            "is_virtual": True,
+            "virtual_kind": "rede_cell",
+            "active": True,
+            "avatar_data_url": None,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            "created_by": "rede_cell_bootstrap",
+        })
+    rede_doc = await db.collaborators.find_one(
+        {"company_id": company_id_for_sala, "is_virtual": True,
+         "virtual_kind": "rede_cell"}, {"_id": 0})
+    if rede_doc:
+        # Insere após a SALA (índice 1) ou no topo se SALA não existe
+        idx = 1 if sala_doc else 0
+        collabs.insert(idx, rede_doc)
+
     cids = [c["id"] for c in collabs]
     is_historical = bool(date_from or date_to)
 
