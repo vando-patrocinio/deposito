@@ -242,7 +242,7 @@ export default function WatchtowerEstoqueDiagnostico() {
         </div>
       </div>
 
-      {/* Block 2 — ONT Swap pending (Onda C Bug #6) */}
+      {/* Block 2 — ONT Swap pending (Onda C Bug #6 + P1 Confirmação) */}
       <div
         className={`rounded-2xl border p-6 ${
           swap.total_pending > 0
@@ -254,10 +254,10 @@ export default function WatchtowerEstoqueDiagnostico() {
         <div className="flex items-center justify-between mb-3">
           <div>
             <div className="text-xs uppercase tracking-widest text-amber-400/80 font-mono">
-              Onda C · Bug #6 · Auto-detect ONT Swap
+              Onda C · Bug #6 + P1 Confirmação Patrimonial WhatsApp
             </div>
             <h2 className="text-lg font-semibold text-white mt-0.5">
-              Trocas detectadas · aguardando confirmação
+              Trocas de ONT · ciclo de confirmação
             </h2>
           </div>
           <div
@@ -267,6 +267,16 @@ export default function WatchtowerEstoqueDiagnostico() {
             {fmtInt(swap.total_pending)}
           </div>
         </div>
+
+        {/* Breakdown por status (Onda C P1) */}
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-2 mb-4">
+          <KPI label="Pending" value={fmtInt(swap.breakdown?.pending_confirmation)} testid="swap-status-pending" color="text-amber-300" />
+          <KPI label="WhatsApp enviado" value={fmtInt(swap.breakdown?.sent_to_technician)} testid="swap-status-sent" color="text-sky-300" />
+          <KPI label="Confirmado" value={fmtInt(swap.breakdown?.confirmed)} testid="swap-status-confirmed" color="text-emerald-300" />
+          <KPI label="Contestado" value={fmtInt(swap.breakdown?.disputed)} testid="swap-status-disputed" color="text-rose-300" />
+          <KPI label="Revisar" value={fmtInt(swap.breakdown?.needs_review)} testid="swap-status-review" color="text-violet-300" />
+        </div>
+
         {swap.total_pending === 0 ? (
           <div className="text-sm text-slate-400">
             ✅ Nenhuma troca pendente de confirmação.
@@ -275,7 +285,7 @@ export default function WatchtowerEstoqueDiagnostico() {
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mt-2">
             <div>
               <div className="text-xs text-slate-400 mb-2 uppercase tracking-wider">
-                Top 5 técnicos
+                Top 5 técnicos com pendências
               </div>
               <div className="space-y-1.5">
                 {(swap.top_techs || []).map((t) => (
@@ -294,28 +304,11 @@ export default function WatchtowerEstoqueDiagnostico() {
             </div>
             <div>
               <div className="text-xs text-slate-400 mb-2 uppercase tracking-wider">
-                Últimos eventos
+                Últimos eventos pendentes
               </div>
               <div className="space-y-1.5 max-h-64 overflow-auto pr-1">
                 {(swap.last_events || []).map((evt) => (
-                  <div
-                    key={evt.id}
-                    data-testid={`diagnostico-swap-event-${evt.id}`}
-                    className="px-3 py-2 bg-slate-800/40 rounded text-xs"
-                  >
-                    <div className="flex justify-between text-slate-400 font-mono">
-                      <span>{evt.ticket_type}</span>
-                      <span>{fmtDate(evt.detected_at)}</span>
-                    </div>
-                    <div className="text-slate-200 mt-0.5">
-                      <code className="text-rose-300/80">{evt.ont_anterior}</code>
-                      {" → "}
-                      <code className="text-emerald-300/80">{evt.ont_atual}</code>
-                    </div>
-                    <div className="text-slate-500 mt-0.5">
-                      {evt.technician_name}
-                    </div>
-                  </div>
+                  <SwapEventRow key={evt.id} evt={evt} />
                 ))}
               </div>
             </div>
@@ -525,6 +518,79 @@ function KPI({ label, value, testid, color = "text-white" }) {
     <div data-testid={testid}>
       <div className="text-xs text-slate-400 uppercase tracking-wider">{label}</div>
       <div className={`text-xl font-bold tabular-nums mt-0.5 ${color}`}>{value}</div>
+    </div>
+  );
+}
+
+function SwapEventRow({ evt }) {
+  const [sending, setSending] = useState(false);
+  const [feedback, setFeedback] = useState(null);
+  const statusColor = {
+    pending_confirmation: "text-amber-300",
+    sent_to_technician: "text-sky-300",
+    confirmed: "text-emerald-300",
+    disputed: "text-rose-300",
+    needs_review: "text-violet-300",
+  }[evt.status] || "text-slate-300";
+
+  const handleSend = async () => {
+    setSending(true);
+    setFeedback(null);
+    try {
+      const res = await client.post(`/swap-confirmation/send/${evt.id}`);
+      setFeedback({
+        ok: res.data.ok,
+        msg: res.data.ok
+          ? "WhatsApp enviado ao técnico"
+          : `Falhou: ${res.data.send_error || "erro"}`,
+      });
+    } catch (e) {
+      setFeedback({
+        ok: false,
+        msg: e?.response?.data?.detail?.human_reason
+          || e?.response?.data?.detail
+          || e.message
+          || "Falha ao enviar",
+      });
+    } finally {
+      setSending(false);
+    }
+  };
+
+  return (
+    <div
+      data-testid={`diagnostico-swap-event-${evt.id}`}
+      className="px-3 py-2 bg-slate-800/40 rounded text-xs space-y-1"
+    >
+      <div className="flex justify-between text-slate-400 font-mono">
+        <span>{evt.ticket_type} · <span className={statusColor}>{evt.status}</span></span>
+        <span>{fmtDate(evt.detected_at)}</span>
+      </div>
+      <div className="text-slate-200">
+        <code className="text-rose-300/80">{evt.ont_anterior}</code>
+        {" → "}
+        <code className="text-emerald-300/80">{evt.ont_atual}</code>
+      </div>
+      <div className="text-slate-500 flex justify-between">
+        <span>{evt.technician_name}</span>
+        <button
+          type="button"
+          data-testid={`diagnostico-swap-send-${evt.id}`}
+          onClick={handleSend}
+          disabled={sending}
+          className="px-2 py-0.5 bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/30 text-emerald-300 rounded text-[10px] font-semibold disabled:opacity-50"
+        >
+          {sending ? "Enviando…" : "📲 Enviar WhatsApp"}
+        </button>
+      </div>
+      {feedback && (
+        <div
+          data-testid={`diagnostico-swap-feedback-${evt.id}`}
+          className={`text-[10px] font-mono mt-1 ${feedback.ok ? "text-emerald-300" : "text-rose-300"}`}
+        >
+          {feedback.ok ? "✓" : "✗"} {feedback.msg}
+        </div>
+      )}
     </div>
   );
 }

@@ -2,6 +2,45 @@
 
 > Documento vivo. Atualizado a cada sprint.
 
+## ✅ ONDA C P1 — Solicitação de Confirmação Patrimonial via WhatsApp (18/06/2026 · ENTREGUE)
+
+**CEO order 18/06/2026** · 54/54 testes PASS (13 novos + 41 regressão) · Lint clean.
+
+### Entrega
+4 endpoints novos em `/app/backend/routes/swap_confirmation.py`:
+- `POST /api/swap-confirmation/send/{event_id}` — gestor/admin envia WhatsApp ao técnico (com 3 links HMAC)
+- `GET /api/swap-confirmation/respond/{event_id}/{token}/{choice}` — endpoint clicável do link (HTML simples)
+- `POST /api/swap-confirmation/respond` — REST público com HMAC
+- `GET /api/swap-confirmation/list` — lista eventos com `counts_by_status`
+
+### Collection nova: `auto_ont_swap_confirmations` (append-only)
+Grava por resposta: técnico, ticket, ONT anterior, ONT atual, resposta, timestamp, `confirmation_audit_id`, origem (`whatsapp_patrimonial_confirmation`), `origin_hint`, `raw_text`, `idempotent_skip`.
+
+### Máquina de estados em `auto_ont_swap_events`
+`pending_confirmation → sent_to_technician → {confirmed | disputed | needs_review}`. `total_pending` exclui `confirmed`.
+
+### Watchtower Diagnóstico atualizado
+Card "Trocas de ONT · ciclo de confirmação" com 5 KPIs por status + botão **📲 Enviar WhatsApp** inline em cada evento + feedback humano.
+
+### Regras de ouro CEO respeitadas (auditadas via testes)
+- ✅ Aplica somente em `pending_confirmation`/`sent_to_technician`.
+- ✅ Toda resposta grava 8+ campos de auditoria.
+- ✅ CONFIRMO → some do contador pendente (status=confirmed).
+- ✅ NÃO HOUVE TROCA → marca disputed (gestor revisa).
+- ✅ PRECISO REVISAR → marca needs_review (gestor revisa).
+- ✅ **NÃO altera estoque** (validado por `test_no_stock_collection_touched` que audita count_documents pré/pós em stok_stock, stok_history e stok_services).
+- ✅ Token HMAC contra forjar (constant-time compare_digest).
+- ✅ Idempotência em duplo clique (audit append-only).
+- ✅ Multi-tenant isolation.
+
+### Files
+- NOVOS: `/app/backend/routes/swap_confirmation.py` · `/app/backend/tests/test_swap_confirmation.py` · `/app/memory/SWAP_CONFIRMATION_P1_REPORT.md`
+- MODIFICADOS: `/app/backend/server.py` · `/app/backend/routes/watchtower_estoque_diagnostico.py` (`_agg_swap_pending` com breakdown) · `/app/frontend/src/WatchtowerEstoqueDiagnostico.jsx` (5 KPIs + componente `SwapEventRow`)
+
+---
+
+
+
 ## ✅ ONDA C P0.2 + P0.3 — RECONCILIAÇÃO LEGADO ÓRFÃS (18/06/2026 · EXECUTADO)
 
 **CTO 18/06/2026 · CEO approved combo 1a+2a+3d** · Tag oficial `legacy_orphan_consumption_recovery_20260618` · Idempotente (SHA256 audit_ids).

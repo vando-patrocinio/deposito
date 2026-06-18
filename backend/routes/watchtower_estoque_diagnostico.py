@@ -221,18 +221,38 @@ async def _agg_reconcile(since: datetime) -> Dict[str, Any]:
 # ─────────────────────── ONT SWAP PENDING ────────────────────────────────
 
 async def _agg_swap_pending(cid: str) -> Dict[str, Any]:
-    """Eventos AUTO_ONT_SWAP_DETECTED que ainda estão pending_confirmation."""
-    base_match = {"company_id": cid, "status": "pending_confirmation"}
-    total = await db.auto_ont_swap_events.count_documents(base_match)
-    # Top 5 técnicos
+    """Eventos AUTO_ONT_SWAP_DETECTED — breakdown por status (Onda C P1).
+
+    Status possíveis:
+      - pending_confirmation: ainda não foi enviado WhatsApp
+      - sent_to_technician:   WhatsApp enviado, aguardando resposta
+      - confirmed:            técnico confirmou (sai do "pendente")
+      - disputed:             técnico negou (gestor revisa)
+      - needs_review:         técnico pediu revisão (gestor revisa)
+    """
+    # Contagens por status
     pipeline = [
+        {"$match": {"company_id": cid}},
+        {"$group": {"_id": "$status", "n": {"$sum": 1}}},
+    ]
+    by_status: Dict[str, int] = {}
+    async for r in db.auto_ont_swap_events.aggregate(pipeline):
+        by_status[r["_id"] or "unknown"] = int(r["n"])
+
+    pending_states = ("pending_confirmation", "sent_to_technician",
+                      "disputed", "needs_review")
+    total_pending = sum(by_status.get(s, 0) for s in pending_states)
+
+    base_match = {"company_id": cid,
+                  "status": {"$in": list(pending_states)}}
+    # Top 5 técnicos
+    tech_pipe = [
         {"$match": base_match},
         {"$group": {"_id": "$technician_id", "n": {"$sum": 1}}},
         {"$sort": {"n": -1}},
         {"$limit": 5},
     ]
-    by_tech_rows = await db.auto_ont_swap_events.aggregate(pipeline).to_list(10)
-    # Resolve nomes
+    by_tech_rows = await db.auto_ont_swap_events.aggregate(tech_pipe).to_list(10)
     tech_ids = [r["_id"] for r in by_tech_rows if r.get("_id")]
     tech_docs = {}
     if tech_ids:
@@ -244,12 +264,13 @@ async def _agg_swap_pending(cid: str) -> Dict[str, Any]:
         "technician_name": tech_docs.get(r["_id"], "—"),
         "pending_count": r["n"],
     } for r in by_tech_rows]
-    # Últimos 10 eventos
+
+    # Últimos 10 eventos pendentes
     last_cur = db.auto_ont_swap_events.find(
         base_match,
         {"_id": 0, "id": 1, "ticket_id": 1, "ont_anterior": 1,
          "ont_atual": 1, "technician_id": 1, "detected_at": 1,
-         "ticket_type": 1},
+         "ticket_type": 1, "status": 1, "confirmation_audit_id": 1},
     ).sort("detected_at", -1).limit(10)
     last_events = []
     async for d in last_cur:
@@ -258,7 +279,15 @@ async def _agg_swap_pending(cid: str) -> Dict[str, Any]:
             "technician_name": tech_docs.get(d.get("technician_id"), "—"),
         })
     return {
-        "total_pending": total,
+        "total_pending": total_pending,
+        "by_status": by_status,
+        "breakdown": {
+            "pending_confirmation": by_status.get("pending_confirmation", 0),
+            "sent_to_technician":   by_status.get("sent_to_technician", 0),
+            "disputed":             by_status.get("disputed", 0),
+            "needs_review":         by_status.get("needs_review", 0),
+            "confirmed":            by_status.get("confirmed", 0),
+        },
         "top_techs": top_techs,
         "last_events": last_events,
     }
