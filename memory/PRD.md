@@ -2,6 +2,46 @@
 
 > Documento vivo. Atualizado a cada sprint.
 
+## ✅ FINANCEIRO V16.1 — DRILL-DOWN POR CLIENTE (18/02/2026 · ENTREGUE)
+
+**CTO 18/02/2026** · 36/36 testes globais PASS · regressão zero.
+
+### Bug resolvido (caso real reportado)
+
+O painel financeiro mostrava apenas agregados por dia. Faltava a informação CRÍTICA: **qual cliente pagou**. A API Atlaz já retorna `nome_assinante`, `cpf_cnpj`, `id_assinante` (já persistidos em `subscriber_invoices`), mas o frontend ignorava.
+
+### Backend
+
+**`/api/financeiro/analytics`** (estendido):
+- Mantém série temporal existente
+- Adiciona `top_payers` (top 10 do período com nome, total pago, nº faturas, último pagamento)
+- Adiciona `unique_payers_count`
+
+**`/api/financeiro/payers`** (NOVO):
+- Lista detalhada de pagadores no período
+- Params: `range` ou `from_date`+`to_date`, `target_date` (drill-down por dia), `search` (nome/doc), `sort` (total_paid_desc, last_payment_desc, name_asc), `limit`
+- Retorna por cliente: `subscriber_name`, `subscriber_document`, `total_paid`, `invoices_count`, `last_payment_at`, `first_payment_at`, `invoices[]` (até 20 detalhes)
+
+### Frontend (`FinanceiroAnalyticsChart.js`)
+
+1. **`TopPayersPanel`** abaixo do gráfico — top 10 com ranking visual + total e nº de faturas + contagem de pagadores únicos no período
+2. **Click em ponto verde do gráfico** abre `PayersDrillDownModal` com lista completa daquela data
+3. **Busca dentro do modal** por nome ou documento (CPF/CNPJ)
+4. **Botão "Ver lista completa"** abre modal com TODOS os pagadores do período
+
+### Validações em produção (co-demo, 30d)
+
+- 2.484 pagadores únicos detectados
+- R$ 263.243,13 em recebimentos rastreados por cliente
+- Top: DRACHMA MND E SERVICOS LTDA (R$ 511,28 · 2 faturas), MERCADO SANTO ALEIXO RJ LTDA, MARIA DE LOURDES CARREIRAS, SERGIO AGOSTINHO, TOTAL DYNAMICS
+
+### Files
+
+- `/app/backend/routes/financeiro_analytics.py` (+150 LOC: top_payers + endpoint /payers)
+- `/app/frontend/src/FinanceiroAnalyticsChart.js` (+220 LOC: TopPayersPanel + PayersDrillDownModal + click drill-down)
+
+---
+
 ## ✅ V16 — FLUXO PJ DEDICADO (18/02/2026 · ENTREGUE)
 
 **CTO 18/02/2026** · 36/36 testes PASS (V14 + V15 + Sprint B + V15.2 + binder + V16).

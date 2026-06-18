@@ -172,6 +172,173 @@ async def analytics(
         "income_metrics": metric(income_vals),
         "expense_metrics": metric(expense_vals),
         "buckets": len(series),
+        # Top 10 pagadores e contagem de pagadores únicos no período.
+        # Permite ao painel mostrar QUEM pagou, não apenas o agregado.
+        **(await _top_payers_block(cid, from_date, to_date)),
+    }
+
+
+async def _top_payers_block(cid: str, from_date: str,
+                                  to_date: str) -> Dict[str, Any]:
+    """Retorna `top_payers` (top 10) e `unique_payers_count` no período.
+
+    Lê `subscriber_invoices` agrupando por subscriber.
+    """
+    try:
+        pipeline = [
+            {"$match": {"company_id": cid,
+                          "paid_date": {"$ne": None,
+                                         "$gte": from_date,
+                                         "$lte": to_date}}},
+            {"$group": {
+                "_id": {
+                    "sid": "$subscriber_external_id",
+                    "name": "$subscriber_name",
+                },
+                "total_paid": {"$sum": {"$ifNull": [
+                    "$amount_paid", "$amount"]}},
+                "invoices_count": {"$sum": 1},
+                "last_payment_at": {"$max": "$paid_date"},
+            }},
+            {"$sort": {"total_paid": -1}},
+        ]
+        all_payers: List[Dict[str, Any]] = []
+        async for r in db.subscriber_invoices.aggregate(pipeline):
+            sid = (r["_id"] or {}).get("sid") or ""
+            name = (r["_id"] or {}).get("name") or ""
+            all_payers.append({
+                "subscriber_external_id": sid,
+                "subscriber_name": name or "(sem nome)",
+                "total_paid": round(float(r["total_paid"] or 0), 2),
+                "invoices_count": r["invoices_count"],
+                "last_payment_at": r["last_payment_at"],
+            })
+        return {
+            "top_payers": all_payers[:10],
+            "unique_payers_count": len(all_payers),
+        }
+    except Exception as e:
+        logger.warning("[analytics] top_payers skip: %s", e)
+        return {"top_payers": [], "unique_payers_count": 0}
+
+
+# ---------------------------------------------------------------------------
+# Drill-down: lista detalhada de pagamentos
+# ---------------------------------------------------------------------------
+@router.get("/payers")
+async def payers(
+    range_: str = Query("30d", alias="range",
+                         pattern="^(1d|7d|30d|3m|6m|1y|all|custom)$"),
+    from_date: Optional[str] = Query(None,
+        pattern="^\\d{4}-\\d{2}-\\d{2}$"),
+    to_date: Optional[str] = Query(None,
+        pattern="^\\d{4}-\\d{2}-\\d{2}$"),
+    target_date: Optional[str] = Query(None,
+        pattern="^\\d{4}-\\d{2}-\\d{2}$",
+        description="Filtra apenas pagamentos desta data específica "
+                     "(usado para drill-down do gráfico)"),
+    search: Optional[str] = Query(None, max_length=120,
+        description="Busca por nome/documento do cliente"),
+    sort: str = Query("total_paid_desc",
+        pattern="^(total_paid_desc|total_paid_asc|last_payment_desc|name_asc)$"),
+    limit: int = Query(100, ge=1, le=500),
+    user: dict = Depends(require_finance()),
+):
+    """Drill-down: lista de pagamentos no período, agrupados por cliente.
+
+    Inclui nome, documento, total pago, nº de faturas, última data.
+    Suporta filtro por data específica (drill-down do gráfico diário) e
+    busca por nome/documento.
+    """
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+    # Resolve range
+    if range_ == "custom":
+        if not from_date or not to_date:
+            from fastapi import HTTPException
+            raise HTTPException(400,
+                "range=custom exige from_date e to_date")
+    else:
+        from_date, to_date = _range_for(range_)
+
+    # Filtro de data: target_date sobrescreve
+    if target_date:
+        date_filter: Dict[str, Any] = {"$eq": target_date}
+    else:
+        date_filter = {"$gte": from_date, "$lte": to_date}
+
+    match: Dict[str, Any] = {
+        "company_id": cid,
+        "paid_date": {"$ne": None, **date_filter},
+    }
+    if search:
+        search_re = {"$regex": search, "$options": "i"}
+        match["$or"] = [
+            {"subscriber_name": search_re},
+            {"subscriber_document": search_re},
+            {"subscriber_external_id": search_re},
+        ]
+
+    pipeline: List[Dict[str, Any]] = [
+        {"$match": match},
+        {"$group": {
+            "_id": {
+                "sid": "$subscriber_external_id",
+                "name": "$subscriber_name",
+                "doc": "$subscriber_document",
+            },
+            "total_paid": {"$sum": {"$ifNull": ["$amount_paid", "$amount"]}},
+            "invoices_count": {"$sum": 1},
+            "last_payment_at": {"$max": "$paid_date"},
+            "first_payment_at": {"$min": "$paid_date"},
+            "invoices": {"$push": {
+                "external_id": "$external_id",
+                "paid_date": "$paid_date",
+                "amount_paid": {"$ifNull": ["$amount_paid", "$amount"]},
+                "amount": "$amount",
+                "due_date": "$due_date",
+                "description": "$description",
+            }},
+        }},
+    ]
+
+    sort_map = {
+        "total_paid_desc": {"total_paid": -1},
+        "total_paid_asc": {"total_paid": 1},
+        "last_payment_desc": {"last_payment_at": -1},
+        "name_asc": {"_id.name": 1},
+    }
+    pipeline.append({"$sort": sort_map[sort]})
+    pipeline.append({"$limit": limit})
+
+    items: List[Dict[str, Any]] = []
+    total_geral = 0.0
+    async for r in db.subscriber_invoices.aggregate(pipeline):
+        sid = (r["_id"] or {}).get("sid") or ""
+        name = (r["_id"] or {}).get("name") or ""
+        doc = (r["_id"] or {}).get("doc") or ""
+        invs = sorted(r.get("invoices") or [],
+                       key=lambda x: x.get("paid_date") or "",
+                       reverse=True)
+        total = round(float(r["total_paid"] or 0), 2)
+        total_geral += total
+        items.append({
+            "subscriber_external_id": sid,
+            "subscriber_name": name or "(sem nome)",
+            "subscriber_document": doc or "",
+            "total_paid": total,
+            "invoices_count": r["invoices_count"],
+            "last_payment_at": r["last_payment_at"],
+            "first_payment_at": r["first_payment_at"],
+            "invoices": invs[:20],  # cap pra payload
+        })
+
+    return {
+        "from_date": from_date, "to_date": to_date,
+        "target_date": target_date,
+        "search": search, "sort": sort, "limit": limit,
+        "items": items,
+        "n": len(items),
+        "total_paid_period": round(total_geral, 2),
     }
 
 
