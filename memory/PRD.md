@@ -2,6 +2,79 @@
 
 > Documento vivo. Atualizado a cada sprint.
 
+## ✅ ONDA C P0.2 + P0.3 — RECONCILIAÇÃO LEGADO ÓRFÃS (18/06/2026 · EXECUTADO)
+
+**CTO 18/06/2026 · CEO approved combo 1a+2a+3d** · Tag oficial `legacy_orphan_consumption_recovery_20260618` · Idempotente (SHA256 audit_ids).
+
+### Entregas
+- **P0.2 (script + relatório)**: `/app/backend/scripts/recompute_tecnicos_dry_run.py` (read-only) → `/app/memory/TECNICOS_NEGATIVOS_DIFF.md`.
+- **P0.3 (script + CSV)**: `/app/backend/scripts/export_orfas_csv.py` (read-only) → `/app/memory/STOK_SERVICES_ORFAOS.csv` (56 linhas).
+- **Reconciliação (combo 1a+2a+3d)**: `/app/backend/scripts/reconcile_legacy_orphan.py` + certidão oficial `/app/memory/LEGACY_ORPHAN_RECONCILIATION_CERTIDAO.md`.
+
+### Insight chave
+Os 2 técnicos com saldo negativo do P0.2 (DIOGO + VANDO) são exatamente os **top 2 com mais órfãs** do P0.3 (15+13 = 28/56). Os "déficits legados" 🔴 do P0.2 explicam-se pelos tickets deletados que viraram órfãs. **Não é furto, não é bug ativo** — é contaminação histórica por deleção indevida pré-Onda A (vetor já bloqueado).
+
+### Execução real
+- **Técnicos processados**: 2 (DIOGO + VANDO).
+- **Órfãs vinculadas**: 28 (15 + 13) via `stok_history type=legacy_orphan_link`.
+- **Unidades patrimoniais recuperadas**: 42 (cabo, conectores, esticadores).
+- **Saldos zerados**: DIOGO cabo_rede `-10→0` · conector_fast `-2→0` · conector_rede `-2→0` · esticador `-1→0`; VANDO cabo_rede `-10→0` · conector_fast `-4→0` · conector_rede `-2→0` · esticador `-11→0`.
+- **stok_history**: 8 docs `recovery` + 28 docs `legacy_orphan_link` (todos com tag oficial).
+- **Master log**: `adm-master-1702bb1b46b2` em `stok_admin_log` (action=`legacy_orphan_reconciliation_20260618`).
+- **Validação**: ✅ todos os negativos zerados pós-execução nos técnicos reconciliados. Zero deletes.
+
+### Trilha auditável (top-down)
+master_log → recovery_history → orphan_link_history → stok_services (preservados) → tickets deletados → RCA docs (4).
+
+### Fora desta certidão (registrado, não executado)
+- 🟡 `praca:prc-5160ebf92d` (drop -240m, conector -6): permanece para decisão futura.
+- ⚪ 28 órfãs sem técnico atribuído ou de outros técnicos: permanecem como evidência histórica.
+
+---
+
+## 🎯 SPRINT 5.1 APROVADA — Auto Balanço Patrimonial (roadmap)
+
+**CEO 18/06/2026 — aprovado como próxima sprint após Sprint 5 estrutural.**
+
+### Escopo
+Snapshot patrimonial mensal automático (último dia do mês 23:59:59 + fechamento dia 1 às 00:05), sem zerar estoque físico. Apenas fotografia imutável.
+
+### Collection nova
+`inventory_monthly_balance` (balance_id, company_id, month, year, opened_at, closed_at, total_items, total_onts, total_consumables, patrimonio_total, patrimonio_auditavel, patrimonio_especulativo, confidence_score, created_by, generated_at).
+
+### Snapshots por localização (5)
+Empresa · Técnicos · Clientes · Defeito · Descarte.
+
+### KPIs (5 grupos)
+Patrimônio · Operacional · Consumíveis · Qualidade · Auditoria.
+
+### Fechamento automático (todo dia 1, 00:05)
+Fecha mês anterior → calcula KPIs → snapshot → PDF executivo → CSV detalhado → salva em `inventory_monthly_balance` → atualiza Watchtower Patrimônio.
+
+### Frontend
+Nova aba `Patrimônio → Fechamentos Mensais` no Watchtower (mês atual, últimos 12 meses, comparativo anual, evolução, consumo por técnico/praça).
+
+### Alertas automáticos
+Variação >20% em qualquer KPI principal → alerta CEO no Watchtower.
+
+### Certidão de fechamento
+Texto assinado "SmartProv Patrimônio Engine · Versão Estoque OS V2" gerado por mês.
+
+### Ordem oficial aprovada
+P1 (WhatsApp confirmação) → P2 (Patrimônio Consolidado + Export CSV + seed E2E) → **Sprint 5** (Owner & Location Normalization) → **Sprint 5.1** (Auto Balanço Patrimonial).
+
+### Files (novos / criados nesta entrega)
+- `/app/backend/scripts/recompute_tecnicos_dry_run.py` (NOVO)
+- `/app/backend/scripts/export_orfas_csv.py` (NOVO)
+- `/app/backend/scripts/reconcile_legacy_orphan.py` (NOVO · idempotente · dry-run + execute)
+- `/app/memory/TECNICOS_NEGATIVOS_DIFF.md` (NOVO)
+- `/app/memory/STOK_SERVICES_ORFAOS.csv` (NOVO · 56 linhas)
+- `/app/memory/LEGACY_ORPHAN_RECONCILIATION_CERTIDAO.md` (NOVO · certidão oficial)
+
+---
+
+
+
 ## ✅ AUDITORIA E2E LOUSA MOBILE (18/06/2026 · ordem CEO · APROVADO)
 
 **Pen-test funcional REAL** (HTTP + Mongo, sem mocks) cobrindo 8 fluxos críticos. Resultado: **7/8 PASS, 1 SKIP esperado** (defesa de inventário funcionando — não é bug).
