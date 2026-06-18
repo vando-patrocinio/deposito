@@ -885,6 +885,14 @@ async def _startup() -> None:
                           CronTrigger(hour=3, minute=0),
                           id="stok_orphan_reconcile_daily",
                           replace_existing=True, max_instances=1)
+        # Onda C P1 V2.0 — Confirmação Patrimonial SLA Worker (CEO 18/06/2026)
+        # Roda a cada 30min: lembrete 4h + escalonamento 24h.
+        from services.patrimonial_confirmation_worker import (
+            patrimonial_sla_tick,
+        )
+        scheduler.add_job(patrimonial_sla_tick, "interval", minutes=30,
+                          id="patrimonial_sla_30m",
+                          replace_existing=True, max_instances=1)
         # FASE 10 sprint final V5.0 — Autonomy scheduler integrado
         if os.environ.get("AUTONOMY_SCHEDULER_DISABLED", "0") != "1":
             from services import autonomy_scheduler_jobs as _autosch

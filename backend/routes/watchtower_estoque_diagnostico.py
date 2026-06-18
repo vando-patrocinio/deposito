@@ -240,7 +240,7 @@ async def _agg_swap_pending(cid: str) -> Dict[str, Any]:
         by_status[r["_id"] or "unknown"] = int(r["n"])
 
     pending_states = ("pending_confirmation", "sent_to_technician",
-                      "disputed", "needs_review")
+                      "disputed", "needs_review", "overdue_confirmation")
     total_pending = sum(by_status.get(s, 0) for s in pending_states)
 
     base_match = {"company_id": cid,
@@ -287,6 +287,7 @@ async def _agg_swap_pending(cid: str) -> Dict[str, Any]:
             "disputed":             by_status.get("disputed", 0),
             "needs_review":         by_status.get("needs_review", 0),
             "confirmed":            by_status.get("confirmed", 0),
+            "overdue_confirmation": by_status.get("overdue_confirmation", 0),
         },
         "top_techs": top_techs,
         "last_events": last_events,
@@ -313,6 +314,52 @@ async def _recent_errors(cid: str, since: datetime, limit: int = 20) -> List[Dic
             "result_reason": (d.get("details") or {}).get("result_reason"),
         })
     return out
+
+
+async def _agg_patrimonial_kpis(cid: str, days: int = 30) -> Dict[str, Any]:
+    """Onda C P1 V2.0 — KPIs executivos da governança patrimonial.
+
+    Inclui: trocas detectadas/confirmadas/contestadas/em revisão/sem resposta,
+    tempo médio de confirmação (sent_at → response_at) e Compliance Patrimonial.
+    Cobre últimos `days` dias.
+    """
+    from services.patrimonial_confirmation_worker import (
+        compute_compliance_score, _parse_iso, REMINDER_AFTER,
+    )
+    score = await compute_compliance_score(cid, days=days)
+    # Tempo médio de confirmação (em minutos)
+    since = (_now() - timedelta(days=days)).isoformat()
+    durations_min = []
+    on_time_count = late_count = 0
+    cur = db.auto_ont_swap_events.find({
+        "company_id": cid,
+        "status": "confirmed",
+        "confirmation_sent_at": {"$gte": since, "$ne": None},
+        "confirmation_response_at": {"$ne": None},
+    }, {"_id": 0, "confirmation_sent_at": 1,
+        "confirmation_response_at": 1})
+    async for d in cur:
+        a = _parse_iso(d.get("confirmation_sent_at"))
+        b = _parse_iso(d.get("confirmation_response_at"))
+        if a and b and b >= a:
+            mins = (b - a).total_seconds() / 60.0
+            durations_min.append(mins)
+            if (b - a) < REMINDER_AFTER:
+                on_time_count += 1
+            else:
+                late_count += 1
+    avg_min = (sum(durations_min) / len(durations_min)
+               if durations_min else None)
+    return {
+        "window_days": days,
+        "overall_compliance_score": score.get("overall_score"),
+        "events_total": score.get("events_total"),
+        "events_decided": score.get("events_decided"),
+        "ranking_top5_worst": score.get("ranking", [])[:5],
+        "avg_confirmation_minutes": round(avg_min, 1) if avg_min else None,
+        "responses_on_time": on_time_count,
+        "responses_late": late_count,
+    }
 
 
 # ─────────────────────── ANOMALOUS MOVEMENTS (Onda C P0.1) ───────────────
@@ -401,7 +448,7 @@ async def watchtower_estoque_diagnostico(
 
     import asyncio
     (phases, latency, late_close, reconcile, swap_pending,
-     recent_errors, anomalous) = await asyncio.gather(
+     recent_errors, anomalous, patrimonial_kpis) = await asyncio.gather(
         _agg_phases(cid, since),
         _agg_latency(cid, since),
         _agg_late_close(cid, since_7d),
@@ -409,6 +456,7 @@ async def watchtower_estoque_diagnostico(
         _agg_swap_pending(cid),
         _recent_errors(cid, since, limit=20),
         _agg_anomalous_movements(cid, since_7d * 1 if False else since_7d),
+        _agg_patrimonial_kpis(cid, days=30),
         return_exceptions=False,
     )
 
@@ -423,4 +471,5 @@ async def watchtower_estoque_diagnostico(
         "swap_pending": swap_pending,
         "recent_errors": recent_errors,
         "anomalous_movements": anomalous,
+        "patrimonial_kpis": patrimonial_kpis,
     }

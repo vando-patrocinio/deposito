@@ -96,6 +96,7 @@ export default function WatchtowerEstoqueDiagnostico() {
   const swap = data?.swap_pending || {};
   const errors = data?.recent_errors || [];
   const anomalous = data?.anomalous_movements || {};
+  const patrimonialKpis = data?.patrimonial_kpis || {};
 
   return (
     <div className="space-y-6" data-testid="diagnostico-root">
@@ -276,6 +277,11 @@ export default function WatchtowerEstoqueDiagnostico() {
           <KPI label="Contestado" value={fmtInt(swap.breakdown?.disputed)} testid="swap-status-disputed" color="text-rose-300" />
           <KPI label="Revisar" value={fmtInt(swap.breakdown?.needs_review)} testid="swap-status-review" color="text-violet-300" />
         </div>
+        {(swap.breakdown?.overdue_confirmation || 0) > 0 && (
+          <div className="mb-3 px-3 py-2 bg-rose-950/40 border border-rose-500/40 rounded text-sm" data-testid="swap-status-overdue-banner">
+            🚨 <span className="font-semibold text-rose-200">{fmtInt(swap.breakdown.overdue_confirmation)} confirmações em atraso (≥24h sem resposta).</span> Gestores foram notificados.
+          </div>
+        )}
 
         {swap.total_pending === 0 ? (
           <div className="text-sm text-slate-400">
@@ -457,6 +463,71 @@ export default function WatchtowerEstoqueDiagnostico() {
                   </div>
                   <div className="text-slate-400 mt-0.5">
                     razão: {c.anulado_reason}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Block 4b — Compliance Patrimonial (Onda C P1 V2.0) */}
+      <div
+        className="rounded-2xl border border-emerald-500/30 bg-emerald-500/5 p-6"
+        data-testid="diagnostico-card-compliance"
+      >
+        <div className="flex items-center justify-between mb-3">
+          <div>
+            <div className="text-xs uppercase tracking-widest text-emerald-400/80 font-mono">
+              Onda C P1 V2.0 · Governança Patrimonial · {patrimonialKpis.window_days || 30}d
+            </div>
+            <h2 className="text-lg font-semibold text-white mt-0.5">
+              Compliance Patrimonial
+            </h2>
+          </div>
+          <div className="text-right">
+            <div
+              className="text-3xl font-bold text-emerald-300 tabular-nums"
+              data-testid="diagnostico-compliance-overall"
+            >
+              {patrimonialKpis.overall_compliance_score != null
+                ? patrimonialKpis.overall_compliance_score
+                : "—"}
+            </div>
+            <div className="text-xs text-slate-400">score geral</div>
+          </div>
+        </div>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-2">
+          <KPI label="Eventos totais"     value={fmtInt(patrimonialKpis.events_total)}     testid="kpi-events-total" />
+          <KPI label="Decididos"          value={fmtInt(patrimonialKpis.events_decided)}   testid="kpi-events-decided" />
+          <KPI label="No prazo (<4h)"      value={fmtInt(patrimonialKpis.responses_on_time)} testid="kpi-on-time" color="text-emerald-300" />
+          <KPI label="Tempo médio (min)"  value={patrimonialKpis.avg_confirmation_minutes != null ? patrimonialKpis.avg_confirmation_minutes : "—"} testid="kpi-avg-min" />
+        </div>
+        {(patrimonialKpis.ranking_top5_worst || []).length > 0 && (
+          <div className="mt-4">
+            <div className="text-xs text-slate-400 uppercase tracking-wider mb-2">
+              Ranking · top 5 piores (ação prioritária)
+            </div>
+            <div className="space-y-1.5">
+              {(patrimonialKpis.ranking_top5_worst || []).map((t) => (
+                <div
+                  key={t.technician_id}
+                  data-testid={`compliance-rank-${t.technician_id}`}
+                  className="flex items-center justify-between px-3 py-2 bg-slate-800/40 rounded text-sm"
+                >
+                  <div>
+                    <div className="text-slate-200">{t.technician_name}</div>
+                    <div className="text-xs text-slate-500 font-mono">
+                      total={fmtInt(t.events_total)} · decididos={fmtInt(t.events_decided)} · overdue={fmtInt(t.events_overdue)}
+                    </div>
+                  </div>
+                  <div className={`text-lg font-bold tabular-nums ${
+                    t.score == null ? "text-slate-500"
+                    : t.score >= 90 ? "text-emerald-300"
+                    : t.score >= 70 ? "text-amber-300"
+                    : "text-rose-300"
+                  }`}>
+                    {t.score != null ? t.score : "—"}
                   </div>
                 </div>
               ))}

@@ -2,6 +2,43 @@
 
 > Documento vivo. Atualizado a cada sprint.
 
+## ✅ ONDA C P1 V2.0 — Ciclo Fechado de Confirmação Patrimonial (18/06/2026 · ENTREGUE)
+
+**CEO order V2.0 18/06/2026** · 63/63 testes PASS (9 novos V2 + 54 regressão) · Lint clean.
+
+### 4 níveis do ciclo
+- **Nível 1**: Bug #6 cria evento → gestor envia WhatsApp → `sent_to_technician`.
+- **Nível 2 (4h)**: Worker cron `patrimonial_sla_tick` (30min) reenvia 1x único + marca `reminder_sent_at`/`reminder_count=1`.
+- **Nível 3 (24h)**: Worker muda status → `overdue_confirmation` + cria 1 notification por gestor (`type=patrimonial_confirmation_overdue`).
+- **Nível 4**: `compute_compliance_score(company, days=30)` calcula score 0-100 por técnico (100 pontual, 60 atrasado, 85 dispute/review, 0 overdue) + ranking pior→melhor.
+
+### Endpoints novos
+- `GET /api/swap-confirmation/compliance?days=30` — overall + ranking.
+- `POST /api/swap-confirmation/sla-tick` — trigger manual admin.
+
+### Watchtower atualizado
+- Banner vermelho destacado quando `breakdown.overdue_confirmation > 0`.
+- Novo card `diagnostico-card-compliance` com score geral colorido + 4 KPIs + ranking top 5 piores técnicos.
+- Endpoint diagnostico devolve novo `patrimonial_kpis` (overall_compliance_score, events_total, events_decided, avg_confirmation_minutes, responses_on_time/late, ranking_top5_worst).
+
+### Regras de ouro (auditadas)
+- ✅ Cron idempotente (rodar 2x não duplica reminder nem escalonamento).
+- ✅ Notificação por gestor (não broadcast).
+- ✅ Run log em `patrimonial_sla_runs` (observabilidade total).
+- ✅ Token HMAC determinístico reutilizado no lembrete.
+- ✅ Worker NUNCA toca estoque (regra CEO mantida do V1).
+
+### Integração Sprint 5.1 (registrada)
+Grupo `confiabilidade_patrimonial` deve ser adicionado ao schema `inventory_monthly_balance` na Sprint 5.1. Função `compute_compliance_score()` já está pronta para ser chamada por mês fechado.
+
+### Files
+- NOVOS: `/app/backend/services/patrimonial_confirmation_worker.py` (235 linhas · worker SLA + Compliance) · `/app/backend/tests/test_swap_sla_v2.py` (9 testes) · `/app/memory/SWAP_CONFIRMATION_V2_REPORT.md`
+- MODIFICADOS: `/app/backend/routes/swap_confirmation.py` (2 endpoints) · `/app/backend/routes/watchtower_estoque_diagnostico.py` (`_agg_patrimonial_kpis` + overdue em pending_states) · `/app/backend/server.py` (cron 30min `patrimonial_sla_30m`) · `/app/frontend/src/WatchtowerEstoqueDiagnostico.jsx` (banner overdue + card Compliance)
+
+---
+
+
+
 ## ✅ ONDA C P1 — Solicitação de Confirmação Patrimonial via WhatsApp (18/06/2026 · ENTREGUE)
 
 **CEO order 18/06/2026** · 54/54 testes PASS (13 novos + 41 regressão) · Lint clean.

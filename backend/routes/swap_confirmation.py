@@ -331,6 +331,38 @@ async def respond_swap_confirmation_post(
 
 # ────────────────────────── List / Status (admin) ────────────────────────
 
+@router.get("/api/swap-confirmation/compliance")
+async def patrimonial_compliance(
+    user: dict = Depends(require_role("gestor", "administrador", "auditor")),
+    days: int = 30,
+) -> Dict[str, Any]:
+    """Onda C P1 V2.0 — Compliance Patrimonial (CEO 18/06/2026).
+
+    Score 0-100 por técnico nos últimos N dias:
+      - Resposta <4h (sem precisar de lembrete) → 100 pts
+      - Resposta 4-24h (após lembrete)          →  60 pts
+      - disputed/needs_review                   →  85 pts (transparência)
+      - overdue (sem resposta em 24h)           →   0 pts
+      - pending/sent (sem decisão ainda)        → não pontua
+
+    Ranking ordenado pelo PIOR score (pra ação imediata).
+    """
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+    from services.patrimonial_confirmation_worker import (
+        compute_compliance_score,
+    )
+    return await compute_compliance_score(cid, days=days)
+
+
+@router.post("/api/swap-confirmation/sla-tick")
+async def trigger_sla_tick(
+    user: dict = Depends(require_role("administrador")),
+) -> Dict[str, Any]:
+    """Manual trigger do SLA tick (apenas para admin testar)."""
+    from services.patrimonial_confirmation_worker import patrimonial_sla_tick
+    return await patrimonial_sla_tick()
+
+
 @router.get("/api/swap-confirmation/list")
 async def list_swap_confirmations(
     user: dict = Depends(require_role("gestor", "administrador", "auditor")),
