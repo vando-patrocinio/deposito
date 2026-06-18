@@ -1,0 +1,36 @@
+{
+  "summary": "Onda C Lousa Mobile finalize hardening — Bug #4 (consumíveis obrigatórios) e Bug #6 (auto-detect troca de ONT) validados via HTTP REST contra REACT_APP_BACKEND_URL externo. Criado test_onda_c_lousa_http.py com 10 testes. Suite local existente (test_onda_c_lousa.py) também rodada para baseline. Resultado: 20/20 passando (10 locais + 10 HTTP).",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_onda_c_lousa.py",
+    "/app/backend/tests/test_onda_c_lousa_http.py",
+    "/app/test_reports/pytest/onda_c_http.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "lousa.py tem 9224 linhas — viola regra de file size (<700). Recomenda-se split em sub-routers (lousa_finalize.py, lousa_public.py, lousa_admin.py).",
+    "public_finalize_ticket é uma função muito longa (>700 linhas em si). Considerar extrair gates (Bug #4 validador, Bug #6 swap detector) para services/ dedicados para facilitar teste unitário.",
+    "Endpoint público /api/lousa/public/tickets/{id}/finalize não exige autenticação JWT — atualmente protegido apenas por collaborator_id + assigned_collaborator_id match. OK pelo design (app mobile do técnico), mas merece rate-limit por IP/collaborator para evitar abuso."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_onda_c_lousa_http.py (NOVO)"
+  ],
+  "success_rate": {
+    "backend": "100%",
+    "frontend": "n/a (testing_type=backend only)"
+  },
+  "test_credentials": "Endpoint público — usado collaborator_id sintético col-ondac-agent + company_id TEST-ONDA-C-AGENT. Sem JWT.",
+  "seed_data_creation": "Cada teste cria/remove via Mongo: tickets, collaborators, clients, stok_services, equipment_swaps, auto_ont_swap_events, lousa_finalize_trace, notifications com company_id=TEST-ONDA-C-AGENT. Cleanup idempotente em setup e teardown — zero side-effect em prod.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Onda C 100% validada via HTTP REST + chamada direta. Bug #4: gate consumiveis_obrigatorios_faltando confirmado em instalação (ONT/DROP/Conector), retirada (ONT recolhida) e reparo (sem material+sem justificativa). Bug #4 NÃO bloqueia quando há justificativa >=10 chars no reparo, nem quando instalação completa. Bug #6: auto_ont_swap_events upserta exatamente 1 doc por ticket_id, status='pending_confirmation', detected_by='auto_detect_v1', ont_anterior/ont_atual corretos. Não dispara quando ONTs são iguais. Idempotência via upsert verificada com 2 chamadas → 1 documento. Pronto para Onda D/produção.",
+  "rca of the issue": "Não houve bug — testes confirmam que implementação atual de Onda C em /app/backend/routes/lousa.py (linhas 4214-4262 Bug#4 e 4267-4318 Bug#6) está correta tanto via chamada direta quanto via HTTP REST (ingress k8s → uvicorn → router)."
+}

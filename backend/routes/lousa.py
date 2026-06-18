@@ -4083,6 +4083,10 @@ async def public_finalize_ticket(ticket_id: str, payload: PublicFinalizeIn,
     if t["status"] != "aberta":
         raise HTTPException(400, "Somente notas abertas podem ser finalizadas")
 
+    # Onda C — `ticket_company_id` precisa existir antes de qualquer
+    # bloco de validação/auditoria (Bug #4 + Bug #6 escrevem com ele).
+    ticket_company_id = t.get("company_id") or DEMO_COMPANY_ID
+
     # ======================================================================
     # REGRA: técnico/instalador/reparador NÃO PODE finalizar OS "informada"
     # (sem execução). Apenas o gestor pode encerrar essa OS após contatar
@@ -4107,7 +4111,7 @@ async def public_finalize_ticket(ticket_id: str, payload: PublicFinalizeIn,
         snap = t.get("client_snapshot") or {}
         req_id = f"mcr-{uuid.uuid4().hex[:12]}"
         now = datetime.now(timezone.utc)
-        ticket_company_id = t.get("company_id") or DEMO_COMPANY_ID
+        # ticket_company_id já foi resolvido acima (Onda C)
         await db.lousa_manager_callback_requests.insert_one({
             "id": req_id,
             "company_id": ticket_company_id,
@@ -4209,6 +4213,109 @@ async def public_finalize_ticket(ticket_id: str, payload: PublicFinalizeIn,
     if t["type"] == "instalacao" and not cd.ont:
         raise HTTPException(400, "ONT é obrigatório para instalação")
 
+    # ─── Onda C Bug #4 — Validação obrigatória de consumíveis (CEO 2026-06-18) ───
+    # Regra de ouro: Zero leakage de patrimônio. Bloqueia finalização de OS
+    # quando o técnico esquece de registrar materiais utilizados. Aceita
+    # justificativa textual (≥10 chars em observacoes) para os campos
+    # opcionais (conectores/asset_recovered) — NUNCA para a ONT.
+    if not is_admin_test and payload.outcome == "sucesso":
+        _valid_errors: List[str] = []
+        _just = (cd.observacoes or "").strip()
+        _has_just = len(_just) >= 10
+        if t["type"] == "instalacao":
+            if not cd.ont:
+                _valid_errors.append("ONT")
+            if (cd.qtd_drop or 0) <= 0:
+                _valid_errors.append("DROP (metragem usada)")
+            _conec_sum = (cd.conectores_fast or 0) + (cd.conectores_rede or 0)
+            if _conec_sum <= 0 and not _has_just:
+                _valid_errors.append(
+                    "Conector (ou justificativa em observações ≥10 caracteres)")
+        elif t["type"] == "reparo":
+            # Reparo pode não consumir drop/conector (problema lógico, swap, etc.),
+            # mas se NENHUM material foi mexido E NÃO houve justificativa,
+            # bloqueia. ONT é exigida quando houve troca declarada manualmente.
+            _conec_sum = (cd.conectores_fast or 0) + (cd.conectores_rede or 0)
+            _drop = (cd.qtd_drop or 0)
+            _has_swap_decl = bool(
+                cd.new_ont_sn or cd.new_ont_mac
+                or cd.old_ont_sn or cd.old_ont_mac)
+            if _conec_sum <= 0 and _drop <= 0 and not _has_just and not _has_swap_decl:
+                _valid_errors.append(
+                    "Material consumido OU justificativa (>=10 chars) "
+                    "OU declaração de troca de ONT"
+                )
+        elif t["type"] == "retirada":
+            if not cd.ont and not cd.ont_sn:
+                _valid_errors.append("ONT recolhida (MAC ou SN)")
+            _asset = cd.asset_recovered
+            if _asset is None and not _has_just:
+                _valid_errors.append(
+                    "Indicação asset_recovered (ou justificativa)")
+        if _valid_errors:
+            raise HTTPException(400, {
+                "error": "consumiveis_obrigatorios_faltando",
+                "missing": _valid_errors,
+                "human_reason": (
+                    "Não é possível finalizar. Material obrigatório não "
+                    "informado: " + ", ".join(_valid_errors)
+                ),
+            })
+
+    # ─── Onda C Bug #6 — Auto-detecção de troca de ONT ───
+    # Compara ONT atual no snapshot do cliente (no momento da abertura) com a
+    # ONT informada na finalização. Se diferente E sem `_detect_equipment_swap`
+    # mais à frente, gera evento AUTO_ONT_SWAP_DETECTED + audit. O
+    # `equipment_swap` formal continua sendo computado abaixo via SmartOLT
+    # (linha ~4645) — esta checagem é uma rede de segurança adicional.
+    equipment_swap: Optional[Dict[str, Any]] = None
+    _auto_swap_event: Optional[Dict[str, Any]] = None
+    if t["type"] in ("reparo", "instalacao", "troca_endereco"):
+        _ont_anterior = ((t.get("client_snapshot") or {}).get("current_ont")
+                          or t.get("client_current_ont_at_open"))
+        _ont_atual_raw = (cd.ont or cd.ont_sn or "").strip()
+        def _norm_ont(x):
+            return "".join(c for c in (x or "").lower() if c.isalnum())
+        if (_ont_anterior and _ont_atual_raw
+                and _norm_ont(_ont_anterior) != _norm_ont(_ont_atual_raw)):
+            _auto_swap_event = {
+                "id": f"auto-swap-{uuid.uuid4().hex[:12]}",
+                "ticket_id": ticket_id,
+                "company_id": ticket_company_id,
+                "ont_anterior": _ont_anterior,
+                "ont_atual": _ont_atual_raw,
+                "detected_at": now_iso(),
+                "detected_by": "auto_detect_v1",
+                "technician_id": cid,
+                "ticket_type": t["type"],
+                "client_id": (t.get("client_snapshot") or {}).get("id"),
+                "status": "pending_confirmation",
+            }
+            try:
+                await db.auto_ont_swap_events.update_one(
+                    {"company_id": ticket_company_id, "ticket_id": ticket_id},
+                    {"$set": _auto_swap_event},
+                    upsert=True,
+                )
+            except Exception as e:  # noqa: BLE001
+                logger.warning(
+                    "[lousa] auto_swap event upsert falhou: %s", e)
+            equipment_swap = {
+                "old_mac": _ont_anterior,
+                "new_mac": _ont_atual_raw,
+                "old_sn": _ont_anterior,
+                "new_sn": _ont_atual_raw,
+                "source": "auto_detect_snapshot",
+                "auto_detected": True,
+                "auto_swap_event_id": _auto_swap_event["id"],
+                "confirmed": False,
+                "detected_at": now_iso(),
+            }
+            logger.info(
+                "[lousa] AUTO_ONT_SWAP_DETECTED ticket=%s "
+                "anterior=%s atual=%s",
+                ticket_id, _ont_anterior, _ont_atual_raw,
+            )
     # iter215z — Porta da CTO OBRIGATÓRIA em instalação e reparo (regra
     # global pedida pelo user 2026-06). Bloqueia o fechamento se cto_id
     # ou cto_port_number ausentes. Admin/auditor (is_admin_test) e
@@ -4571,8 +4678,24 @@ async def public_finalize_ticket(ticket_id: str, payload: PublicFinalizeIn,
             pass
 
     # === Detecta troca de ONT/ONU (reparo/troca_endereco) e persiste
-    # MAC retirado + MAC novo no completion_data + auditoria global. ===
-    equipment_swap = _detect_equipment_swap(t, cd, smartolt_onu)
+    # MAC retirado + MAC novo no completion_data + auditoria global.
+    # Onda C: se Bug #6 já preencheu via auto_detect_snapshot, preserva e
+    # apenas COMPLEMENTA com dados do SmartOLT (não sobrescreve). ===
+    _smartolt_swap = _detect_equipment_swap(t, cd, smartolt_onu)
+    if _smartolt_swap:
+        if equipment_swap and equipment_swap.get("source") == "auto_detect_snapshot":
+            # Mescla: preserva auto_detect mas anexa SN/MAC reais do SmartOLT
+            equipment_swap = {
+                **equipment_swap,
+                "old_mac": _smartolt_swap.get("old_mac") or equipment_swap.get("old_mac"),
+                "old_sn":  _smartolt_swap.get("old_sn")  or equipment_swap.get("old_sn"),
+                "new_mac": _smartolt_swap.get("new_mac") or equipment_swap.get("new_mac"),
+                "new_sn":  _smartolt_swap.get("new_sn")  or equipment_swap.get("new_sn"),
+                "source": "auto_detect_snapshot+smartolt",
+                "smartolt_confirmed": True,
+            }
+        else:
+            equipment_swap = _smartolt_swap
     # Verifica via uptime do SmartOLT — se a ONU está online há > 10min sem
     # reboot, a troca é considerada SUSPEITA (provavelmente não houve
     # substituição física). Auditado no card mensal.
