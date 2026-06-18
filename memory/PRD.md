@@ -2,6 +2,57 @@
 
 > Documento vivo. Atualizado a cada sprint.
 
+## ✅ ONDA C · AJUSTES 1+2 — SmartOLT × Estoque Gate (18/06/2026 · ENTREGUE)
+
+**CEO 18/06/2026 · ordem (b)→(a)→(c)** · 17/17 testes PASS · Lint clean · Frontend verificado.
+
+### Achados-chave (relatório `/app/memory/SMARTOLT_RECONCILIATION_2026-06-18.md`)
+- **SmartOLT**: 1.833 ONUs (1.559 Online · 155 LOS · 108 Power fail · 10 Offline · 213 arquivadas).
+- **Estoque (`stok_onts`)**: 32 ONTs (1 cliente · 12 técnico · 19 empresa).
+- **Interseção real (mac/sn)**: 12 → Cobertura Patrimonial = **0.65%**.
+- **Δ docs Estoque vs SmartOLT**: **98.3%** → CRÍTICO (Sprint 5 fundacional).
+- **Rastreabilidade real das 32**: ZERO trilha em `stok_history` joinável · 31 são `synthetic_backfill_onda2` · 149 eventos `stok_history` órfãos.
+
+### RCA Delta 98% (`/app/memory/RCA_DELTA_98_SMARTOLT_VS_ESTOQUE.md`)
+- **Cenário A confirmado**: nunca existiu integração SmartOLT → Estoque.
+- Cenários B/C descartados (sem vestígios de quebra ou migração).
+- Causa: pipeline `stok_onts` foi desenhado para inventário NOVO, sem fase 0 de *genesis-from-network*.
+- Nada para reparar — pipeline precisa ser **criado** na Sprint 5 Fase 0.
+
+### Ajuste 2 · Split Recuperações Operacional × Extraordinária
+Backend `/app/backend/services/patrimonio_consolidado.py`:
+- `recuperacoes_operacional` = swaps/reuso normal (type=recovery sem tag `rca_*`/`legacy_orphan_*`).
+- `recuperacoes_extraordinaria` = RCA, estornos forenses (type=rede_estorno OU tag `rca_*`/`legacy_orphan_*`).
+- `recuperacoes_breakdown` = breakdown por tag dentro de cada bucket.
+- Retro-compat: `recuperacoes_total` mantido = soma dos dois.
+
+Snapshot `co-demo`:
+- Operacional: **R$ 0,00**
+- Extraordinária: **R$ 2.127.808,80** (rca_fibra=R$ 2.127.704,80 + legacy_orphan=R$ 104,00)
+- → KPI antigo estava **100% contaminado** pela RCA Fibra.
+
+### Novo KPI primário: Cobertura Patrimonial
+`ONTs_estoque ∩ SmartOLT / SmartOLT_total` · meta de desbloqueio Sprint 5.1 = **≥ 95%**.
+Hoje co-demo: 0.65% → tier vermelho → `auto_balanco_bloqueado=true`.
+Exposto em `cobertura_patrimonial` no payload `/api/watchtower/estoque/patrimonio-consolidado`.
+
+### Frontend
+`/app/frontend/src/WatchtowerPatrimonioConsolidado.jsx`:
+- Novo card hero "Cobertura Patrimonial · KPI PRIMÁRIO" (Sprint 5.1 BLOQUEADO/LIBERADO).
+- Card "Valor Patrimonial" agora tem 2 sub-cards: 🟢 Operacional × 🟡 Extraordinária com breakdown por tag.
+
+### Files
+- NOVOS: `/app/memory/SMARTOLT_RECONCILIATION_2026-06-18.md` · `/app/memory/RCA_DELTA_98_SMARTOLT_VS_ESTOQUE.md`
+- MODIFICADOS: `/app/backend/scripts/audit_smartolt_vs_estoque.py` (read-only, 95% Δ classifier) · `/app/backend/services/patrimonio_consolidado.py` (split + cobertura) · `/app/backend/tests/test_patrimonio_consolidado.py` (+7 testes: 17/17) · `/app/frontend/src/WatchtowerPatrimonioConsolidado.jsx` (KPI Cobertura + split UI)
+
+### Bloqueios ativos
+- Sprint 5 — vira **Sprint 5 Fundacional** (não é mais normalização de owner/location)
+- Sprint 5.1 (Auto Balanço) — BLOQUEADA até Cobertura ≥ 95%
+- Próximo passo: **PLANEJAR Sprint 5 Fase 0** (`bulk_import_smartolt_to_stok`) — NÃO executar antes da aprovação CEO.
+
+---
+
+
 ## ✅ ONDA C P2 — Watchtower Patrimônio Consolidado (18/06/2026 · ENTREGUE)
 
 **CEO 18/06/2026 · combo aprovado 1c+2b+3c com ajustes** · 73/73 testes PASS (10 novos P2 + 63 regressão) · Lint clean.

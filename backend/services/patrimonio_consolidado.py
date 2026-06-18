@@ -191,36 +191,67 @@ async def _agg_valor_patrimonial(cid: str,
     # Perdas (estimadas): ONTs defeituosas no preço
     perdas = ativos["em_defeito"] * ont_meta["value"]
 
-    # Recuperações: stok_history type in (recovery, rede_estorno) com delta positivo
+    # Recuperações — split Operacional vs Extraordinária (Ajuste 2 · CEO 18/06/2026)
+    # Operacional: swaps, reuso normal (type=recovery sem tag rca_*/legacy_orphan_*)
+    # Extraordinária: RCA, estornos forenses (type=rede_estorno OU tag rca_*/legacy_orphan_*)
+    EXTRA_TAG_PREFIXES = ("rca_", "legacy_orphan_")
+
+    def _is_extraordinaria(doc: Dict[str, Any]) -> bool:
+        if doc.get("type") == "rede_estorno":
+            return True
+        tag = (doc.get("tag") or "").lower()
+        return any(tag.startswith(p) for p in EXTRA_TAG_PREFIXES)
+
+    rec_operacional = 0.0
+    rec_extraordinaria = 0.0
+    rec_breakdown_op: Dict[str, float] = defaultdict(float)
+    rec_breakdown_ex: Dict[str, float] = defaultdict(float)
+
+    # Itens unitários (delta_signed)
     rec_pipe = [
         {"$match": {
             "company_id": cid,
             "type": {"$in": ["recovery", "rede_estorno"]},
             "delta_signed": {"$gt": 0},
         }},
-        {"$group": {"_id": "$consumable_id", "qty": {"$sum": "$delta_signed"}}},
+        {"$group": {"_id": {"type": "$type", "tag": "$tag",
+                              "cons": "$consumable_id"},
+                     "qty": {"$sum": "$delta_signed"}}},
     ]
-    recuperacoes_total = 0.0
     async for r in db.stok_history.aggregate(rec_pipe):
-        cons_id = r.get("_id") or "drop"
+        key = r["_id"]
+        cons_id = key.get("cons") or "drop"
         qty = r.get("qty") or 0
         meta = _price_for(cons_id)
-        recuperacoes_total += qty * meta["value"]
-    # Estornos de fibra também contam (rede_estorno usa `delta_meters_signed`)
+        valor = qty * meta["value"]
+        if _is_extraordinaria({"type": key.get("type"),
+                                "tag": key.get("tag")}):
+            rec_extraordinaria += valor
+            rec_breakdown_ex[key.get("tag") or key.get("type") or "?"] += valor
+        else:
+            rec_operacional += valor
+            rec_breakdown_op[key.get("tag") or key.get("type") or "?"] += valor
+
+    # Estornos de fibra (delta_meters_signed) — sempre extraordinária
     rec_pipe2 = [
         {"$match": {
             "company_id": cid,
             "type": "rede_estorno",
             "delta_meters_signed": {"$gt": 0},
         }},
-        {"$group": {"_id": "$consumable_id",
-                    "qty": {"$sum": "$delta_meters_signed"}}},
+        {"$group": {"_id": {"tag": "$tag", "cons": "$consumable_id"},
+                     "qty": {"$sum": "$delta_meters_signed"}}},
     ]
     async for r in db.stok_history.aggregate(rec_pipe2):
-        cons_id = r.get("_id") or "fibra_12fo"
+        key = r["_id"]
+        cons_id = key.get("cons") or "fibra_12fo"
         qty = r.get("qty") or 0
         meta = _price_for(cons_id)
-        recuperacoes_total += qty * meta["value"]
+        valor = qty * meta["value"]
+        rec_extraordinaria += valor
+        rec_breakdown_ex[key.get("tag") or "rede_estorno"] += valor
+
+    recuperacoes_total = rec_operacional + rec_extraordinaria
 
     # Depreciação linear simples (média 5a pra ONTs)
     # ONT: assume idade média 1 ano (conservador). Refina com Sprint 5.
@@ -247,7 +278,17 @@ async def _agg_valor_patrimonial(cid: str,
         "depreciacao_total": round(depreciacao_total, 2),
         "valor_atual": round(valor_atual, 2),
         "perdas_estimadas": round(perdas, 2),
+        # ⚠️ recuperacoes_total mantido por retro-compat — preferir split
         "recuperacoes_total": round(recuperacoes_total, 2),
+        # Ajuste 2 · CEO 18/06/2026 · split obrigatório
+        "recuperacoes_operacional": round(rec_operacional, 2),
+        "recuperacoes_extraordinaria": round(rec_extraordinaria, 2),
+        "recuperacoes_breakdown": {
+            "operacional": {k: round(v, 2)
+                             for k, v in rec_breakdown_op.items()},
+            "extraordinaria": {k: round(v, 2)
+                                for k, v in rec_breakdown_ex.items()},
+        },
         "confiabilidade_financeira_pct": round(
             confiabilidade_financeira * 100, 1),
         "confidence_breakdown": {
@@ -335,6 +376,76 @@ async def _agg_rastreabilidade(cid: str) -> Dict[str, Any]:
     }
 
 
+# ─── Cobertura Patrimonial (Ajuste 2 · CEO 18/06/2026) ────────────────────
+
+async def _agg_cobertura_patrimonial(cid: str) -> Dict[str, Any]:
+    """KPI primário: ONTs do estoque com correspondência no SmartOLT / total SmartOLT.
+
+    Meta de desbloqueio Sprint 5.1: ≥ 95%.
+    Hoje (co-demo): ~0.65% — gap fundacional confirmado pela RCA Δ 98%.
+    """
+    def _norm(v: str | None) -> str | None:
+        if not v:
+            return None
+        return "".join(c for c in str(v).lower() if c.isalnum())
+
+    # SmartOLT — universo mac∪sn
+    smartolt_ids: set[str] = set()
+    smartolt_docs = 0
+    async for d in db.smartolt_onus.find(
+            {"company_id": cid},
+            {"_id": 0, "mac": 1, "sn": 1}):
+        smartolt_docs += 1
+        m, s = _norm(d.get("mac")), _norm(d.get("sn"))
+        if m:
+            smartolt_ids.add(m)
+        if s:
+            smartolt_ids.add(s)
+
+    # Estoque — universo mac∪sn
+    estoque_ids: set[str] = set()
+    estoque_docs = 0
+    async for d in db.stok_onts.find(
+            {"company_id": cid},
+            {"_id": 0, "mac": 1, "sn": 1, "scan_sn": 1}):
+        estoque_docs += 1
+        m = _norm(d.get("mac"))
+        s = _norm(d.get("sn") or d.get("scan_sn"))
+        if m:
+            estoque_ids.add(m)
+        if s:
+            estoque_ids.add(s)
+
+    intersect = len(smartolt_ids & estoque_ids)
+    cobertura_pct = (
+        round(intersect / max(smartolt_docs, 1) * 100, 2)
+        if smartolt_docs else 0.0
+    )
+    cobertura_universo_pct = (
+        round(intersect / max(len(smartolt_ids), 1) * 100, 2)
+        if smartolt_ids else 0.0
+    )
+
+    return {
+        "smartolt_total_docs": smartolt_docs,
+        "smartolt_universe_count": len(smartolt_ids),
+        "estoque_total_docs": estoque_docs,
+        "estoque_universe_count": len(estoque_ids),
+        "intersect_count": intersect,
+        "cobertura_pct": cobertura_pct,
+        "cobertura_universo_pct": cobertura_universo_pct,
+        "meta_desbloqueio_sprint_51_pct": 95.0,
+        "gap_para_meta_pct": round(95.0 - cobertura_pct, 2),
+        "tier": (
+            "excelencia" if cobertura_pct >= 95
+            else "verde" if cobertura_pct >= 80
+            else "amarelo" if cobertura_pct >= 50
+            else "vermelho"
+        ),
+        "auto_balanco_bloqueado": cobertura_pct < 95.0,
+    }
+
+
 # ─── Patrimônio Confiável ─────────────────────────────────────────────────
 
 def _compute_patrimonio_confiavel(rast: Dict[str, Any],
@@ -363,9 +474,10 @@ def _compute_patrimonio_confiavel(rast: Dict[str, Any],
 async def compute_patrimonio_consolidado(cid: str) -> Dict[str, Any]:
     """Pacote único que responde as 5 perguntas do CEO."""
     import asyncio
-    ativos, consumiveis = await asyncio.gather(
+    ativos, consumiveis, cobertura = await asyncio.gather(
         _agg_ativos_ont(cid),
         _agg_consumiveis(cid),
+        _agg_cobertura_patrimonial(cid),
     )
     valor = await _agg_valor_patrimonial(cid, ativos, consumiveis)
     rast = await _agg_rastreabilidade(cid)
@@ -382,6 +494,8 @@ async def compute_patrimonio_consolidado(cid: str) -> Dict[str, Any]:
         "rastreabilidade": rast,
         # KPI compound: Patrimônio Confiável
         "patrimonio_confiavel": confiavel,
+        # Ajuste 2 · KPI primário: Cobertura Patrimonial (gate Sprint 5.1)
+        "cobertura_patrimonial": cobertura,
         # Catálogo usado (transparência)
         "price_catalog_meta": {
             "items_count": len(PRICE_CATALOG),

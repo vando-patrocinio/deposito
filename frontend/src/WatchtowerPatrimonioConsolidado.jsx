@@ -50,10 +50,32 @@ export default function WatchtowerPatrimonioConsolidado() {
   const valor = data?.valor || {};
   const rast = data?.rastreabilidade || {};
   const confiavel = data?.patrimonio_confiavel || {};
+  const cobertura = data?.cobertura_patrimonial || {};
+  const recBreak = valor.recuperacoes_breakdown || { operacional: {}, extraordinaria: {} };
   const dist = rast.distribution || {};
 
   return (
     <div className="space-y-6" data-testid="patcons-root">
+      {/* KPI PRIMÁRIO — Cobertura Patrimonial (Ajuste 2 · gate Sprint 5.1) */}
+      <div className={`rounded-2xl border p-6 ${tierColor(cobertura.tier)}`} data-testid="patcons-card-cobertura">
+        <div className="flex items-end justify-between gap-4 flex-wrap">
+          <div>
+            <div className="text-xs uppercase tracking-widest font-mono opacity-80">Cobertura Patrimonial · KPI PRIMÁRIO (gate Sprint 5.1)</div>
+            <div className="text-6xl font-bold tabular-nums mt-1" data-testid="patcons-cobertura-pct">{fmtPct(cobertura.cobertura_pct)}</div>
+            <div className="text-sm opacity-80 mt-1">
+              {fmtInt(cobertura.intersect_count)} ONTs do estoque ∩ {fmtInt(cobertura.smartolt_total_docs)} ONUs no SmartOLT · Meta de desbloqueio ≥ {fmtPct(cobertura.meta_desbloqueio_sprint_51_pct)}
+            </div>
+          </div>
+          <div className="text-right">
+            <div className="text-xs uppercase tracking-widest opacity-80">Auto Balanço (Sprint 5.1)</div>
+            <div className="text-2xl font-bold tabular-nums" data-testid="patcons-auto-balanco-status">
+              {cobertura.auto_balanco_bloqueado ? "BLOQUEADO" : "LIBERADO"}
+            </div>
+            <div className="text-xs opacity-70">gap: {fmtPct(cobertura.gap_para_meta_pct)}</div>
+          </div>
+        </div>
+      </div>
+
       {/* HERO — KPI compound: Patrimônio Confiável */}
       <div className={`rounded-2xl border p-6 ${tierColor(confiavel.tier)}`} data-testid="patcons-card-hero">
         <div className="flex items-end justify-between gap-4 flex-wrap">
@@ -102,9 +124,47 @@ export default function WatchtowerPatrimonioConsolidado() {
           <KPI label="Depreciação"   value={fmtBRL(valor.depreciacao_total)} testid="valor-depreciacao" color="text-amber-300" />
           <KPI label="Valor Atual"   value={fmtBRL(valor.valor_atual)}      testid="valor-atual" color="text-emerald-300" />
           <KPI label="Perdas (est.)" value={fmtBRL(valor.perdas_estimadas)} testid="valor-perdas" color="text-rose-300" />
-          <KPI label="Recuperações"  value={fmtBRL(valor.recuperacoes_total)} testid="valor-recuperacoes" color="text-emerald-300" />
           <KPI label="Confiab. Financeira" value={fmtPct(valor.confiabilidade_financeira_pct)} testid="valor-confiab-fin" />
         </div>
+
+        {/* Ajuste 2 · Split Recuperações Operacional × Extraordinária */}
+        <div className="mt-5 grid grid-cols-1 md:grid-cols-2 gap-3" data-testid="patcons-card-recuperacoes-split">
+          <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-4" data-testid="rec-operacional">
+            <div className="text-xs uppercase tracking-widest text-emerald-300/80 font-mono">Recuperação Operacional</div>
+            <div className="text-2xl font-bold tabular-nums text-emerald-200 mt-1" data-testid="rec-operacional-valor">
+              {fmtBRL(valor.recuperacoes_operacional)}
+            </div>
+            <div className="text-[11px] text-slate-400 mt-1">Swaps, reuso normal de equipamento, devoluções de campo.</div>
+            {Object.keys(recBreak.operacional || {}).length > 0 && (
+              <div className="mt-2 space-y-0.5 text-[11px] font-mono">
+                {Object.entries(recBreak.operacional).map(([k, v]) => (
+                  <div key={k} data-testid={`rec-op-${k}`} className="flex justify-between">
+                    <span className="text-slate-400 truncate pr-2">{k}</span>
+                    <span className="text-emerald-300 tabular-nums">{fmtBRL(v)}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+          <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-4" data-testid="rec-extraordinaria">
+            <div className="text-xs uppercase tracking-widest text-amber-300/80 font-mono">Recuperação Extraordinária</div>
+            <div className="text-2xl font-bold tabular-nums text-amber-200 mt-1" data-testid="rec-extraordinaria-valor">
+              {fmtBRL(valor.recuperacoes_extraordinaria)}
+            </div>
+            <div className="text-[11px] text-slate-400 mt-1">Estornos RCA, ajustes forenses, reconciliações legacy. NÃO contamina KPI operacional.</div>
+            {Object.keys(recBreak.extraordinaria || {}).length > 0 && (
+              <div className="mt-2 space-y-0.5 text-[11px] font-mono">
+                {Object.entries(recBreak.extraordinaria).map(([k, v]) => (
+                  <div key={k} data-testid={`rec-ex-${k}`} className="flex justify-between">
+                    <span className="text-slate-400 truncate pr-2">{k}</span>
+                    <span className="text-amber-300 tabular-nums">{fmtBRL(v)}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+
         <div className="mt-3 text-xs text-slate-500">
           Catálogo: <code>{data.price_catalog_meta?.source}</code> · {data.price_catalog_meta?.note}
         </div>
