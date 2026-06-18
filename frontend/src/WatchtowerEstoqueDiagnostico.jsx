@@ -95,6 +95,7 @@ export default function WatchtowerEstoqueDiagnostico() {
   const reconcile = data?.reconcile || {};
   const swap = data?.swap_pending || {};
   const errors = data?.recent_errors || [];
+  const anomalous = data?.anomalous_movements || {};
 
   return (
     <div className="space-y-6" data-testid="diagnostico-root">
@@ -370,7 +371,108 @@ export default function WatchtowerEstoqueDiagnostico() {
         </div>
       </div>
 
-      {/* Block 4 — Recent errors */}
+      {/* Block 4 — Movimentos Anômalos (Onda C P0.1 RCA Fibra) */}
+      <div
+        className="rounded-2xl border border-slate-800 bg-slate-900/60 p-6"
+        data-testid="diagnostico-card-anomalous"
+      >
+        <div className="flex items-center justify-between mb-3">
+          <div>
+            <div className="text-xs uppercase tracking-widest text-fuchsia-400/80 font-mono">
+              Onda C P0.1 · RCA Fibra · 7d
+            </div>
+            <h2 className="text-lg font-semibold text-white mt-0.5">
+              Movimentos anômalos · Rede / Estoque
+            </h2>
+          </div>
+        </div>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-2">
+          <KPI
+            label="Cabos > 5km"
+            value={fmtInt(anomalous.cables_anomalous_count)}
+            testid="anomalous-cables-count"
+            color={anomalous.cables_anomalous_count > 0 ? "text-amber-300" : "text-slate-300"}
+          />
+          <KPI
+            label="Cabos anulados RCA"
+            value={fmtInt(anomalous.cables_anulados_count)}
+            testid="anomalous-anulados-count"
+            color={anomalous.cables_anulados_count > 0 ? "text-rose-300" : "text-slate-300"}
+          />
+          <KPI
+            label="Estornos 7d"
+            value={fmtInt(anomalous.estornos_count)}
+            testid="anomalous-estornos-count"
+            color={anomalous.estornos_count > 0 ? "text-fuchsia-300" : "text-slate-300"}
+          />
+          <KPI
+            label="Admin overrides"
+            value={fmtInt(anomalous.admin_overrides_count)}
+            testid="anomalous-overrides-count"
+            color={anomalous.admin_overrides_count > 0 ? "text-amber-300" : "text-slate-300"}
+          />
+        </div>
+
+        {(anomalous.cables_anomalous || []).length > 0 && (
+          <div className="mt-4">
+            <div className="text-xs text-slate-400 uppercase tracking-wider mb-1">
+              Cabos com comprimento incomum
+            </div>
+            <div className="space-y-1 max-h-44 overflow-auto pr-1">
+              {(anomalous.cables_anomalous || []).map((c) => (
+                <div
+                  key={c.id}
+                  data-testid={`anomalous-cable-${c.id}`}
+                  className="px-3 py-1.5 bg-slate-800/40 rounded text-xs flex justify-between"
+                >
+                  <span className="font-mono text-slate-300">
+                    {c.id} · {c.type} · {fmtInt(Math.round((c.length_m || 0)))}m
+                  </span>
+                  <span className={
+                    c.guardrail_length_tier === "length_block_tier" ? "text-rose-300"
+                      : c.guardrail_length_tier === "length_confirm_tier" ? "text-amber-300"
+                      : "text-yellow-200"
+                  }>
+                    {c.guardrail_length_tier}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {(anomalous.cables_anulados || []).length > 0 && (
+          <div className="mt-4">
+            <div className="text-xs text-slate-400 uppercase tracking-wider mb-1">
+              Cabos anulados via RCA
+            </div>
+            <div className="space-y-1 max-h-44 overflow-auto pr-1">
+              {(anomalous.cables_anulados || []).map((c) => (
+                <div
+                  key={c.id}
+                  data-testid={`anomalous-anulado-${c.id}`}
+                  className="px-3 py-2 bg-rose-950/30 border border-rose-500/20 rounded text-xs"
+                >
+                  <div className="flex justify-between">
+                    <span className="font-mono text-rose-300">
+                      {c.id} · {c.type} · {fmtInt(Math.round((c.length_m || 0)))}m
+                    </span>
+                    <span className="text-slate-400">{fmtDate(c.anulado_at)}</span>
+                  </div>
+                  <div className="text-slate-500 mt-0.5 font-mono">
+                    by: {c.anulado_by} · audit: {c.anulado_audit_id}
+                  </div>
+                  <div className="text-slate-400 mt-0.5">
+                    razão: {c.anulado_reason}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Block 5 — Recent errors */}
       <div
         className="rounded-2xl border border-slate-800 bg-slate-900/60 p-6"
         data-testid="diagnostico-card-errors"

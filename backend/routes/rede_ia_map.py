@@ -67,6 +67,107 @@ _CABLE_TYPE_TO_STOK_ID = {
     "96fo": "fibra_96fo",
 }
 
+# ─── Onda C P0.1 — RCA Fibra Guardrails (CEO 18/06/2026) ───────────────────
+# Palavras proibidas em serial/invoice/purchase_id em produção. Previne
+# contaminação de dados de teste como aconteceu em 02/06/2026 (cabo de
+# 364km debitado por engano). Match case-insensitive em qualquer posição.
+_FORBIDDEN_TEST_TOKENS = ("TEST", "TST", "ABCD", "DUMMY", "FAKE", "MOCK")
+
+# Tiers de comprimento (em metros). Calibrado para fibra urbana brasileira.
+_LEN_WARN_M = 5_000     # >5km — registra warning (não bloqueia)
+_LEN_CONFIRM_M = 20_000  # >20km — exige confirm_unusual_length=true
+_LEN_BLOCK_M = 50_000    # >50km — bloqueio para todos (exige override admin)
+
+
+def _check_forbidden_tokens(*values: str) -> Optional[str]:
+    """Retorna a primeira palavra proibida encontrada, ou None se limpo."""
+    for v in values:
+        if not v:
+            continue
+        upper = v.upper()
+        for token in _FORBIDDEN_TEST_TOKENS:
+            if token in upper:
+                return f"{token} (campo='{v[:60]}')"
+    return None
+
+
+def _validate_cable_guardrails(body: "CableIn", user: dict,
+                                computed_length_m: Optional[float]) -> None:
+    """Aplica 4 guardrails antes de criar cabo. Raises HTTPException 400."""
+    # Drop não tem guardrail forte (volume pequeno, custo baixo, alta
+    # frequência). Só fibra é regulada aqui.
+    if body.type == "drop":
+        return
+
+    # Guardrail 1 — Tokens de teste em prod
+    forbidden = _check_forbidden_tokens(
+        body.cable_serial, body.invoice_number, body.purchase_id)
+    if forbidden:
+        raise HTTPException(400, {
+            "error": "guardrail_test_token_blocked",
+            "human_reason": (
+                "Cabo bloqueado: serial/NF/compra contém termo de teste em "
+                f"produção ({forbidden}). Use dados reais ou peça override "
+                "administrativo."
+            ),
+            "rule": "Onda C P0.1 guardrail #1",
+        })
+
+    # Guardrail 2 — Comprimento anormal (tiered)
+    length = (computed_length_m or 0)
+    if length >= _LEN_BLOCK_M:
+        if not (body.admin_override_reason or "").strip() or \
+                len((body.admin_override_reason or "").strip()) < 20:
+            raise HTTPException(400, {
+                "error": "guardrail_length_block",
+                "human_reason": (
+                    f"Cabo bloqueado: {length/1000:.1f}km excede o limite "
+                    f"administrativo de {_LEN_BLOCK_M/1000:.0f}km. Para "
+                    "lançar, envie 'admin_override_reason' (mín 20 chars) "
+                    "justificando."
+                ),
+                "rule": "Onda C P0.1 guardrail #2 (block tier)",
+            })
+    elif length >= _LEN_CONFIRM_M:
+        if not body.confirm_unusual_length:
+            raise HTTPException(400, {
+                "error": "guardrail_length_confirm_required",
+                "human_reason": (
+                    f"Cabo com {length/1000:.1f}km exige confirmação dupla. "
+                    "Reenvie com 'confirm_unusual_length: true' para "
+                    "confirmar o lançamento."
+                ),
+                "rule": "Onda C P0.1 guardrail #2 (confirm tier)",
+                "length_m": length,
+                "threshold_m": _LEN_CONFIRM_M,
+            })
+
+    # Guardrail 3 — purchase_id obrigatório OU admin_override_reason
+    # (fibra debita patrimônio; débito sem origem fiscal é proibido).
+    purchase_id_clean = (body.purchase_id or "").strip()
+    override_clean = (body.admin_override_reason or "").strip()
+    if not purchase_id_clean and len(override_clean) < 20:
+        raise HTTPException(400, {
+            "error": "guardrail_purchase_id_required",
+            "human_reason": (
+                "Cabo de fibra sem 'purchase_id' (compra) só pode ser "
+                "lançado com 'admin_override_reason' (mín 20 chars) "
+                "justificando."
+            ),
+            "rule": "Onda C P0.1 guardrail #3",
+        })
+
+
+def _length_warning_tier(length_m: Optional[float]) -> Optional[str]:
+    """Tag de alerta para card 'Movimentos Anômalos' do Watchtower."""
+    if not length_m or length_m < _LEN_WARN_M:
+        return None
+    if length_m >= _LEN_BLOCK_M:
+        return "length_block_tier"
+    if length_m >= _LEN_CONFIRM_M:
+        return "length_confirm_tier"
+    return "length_warn_tier"
+
 
 async def _debit_fiber_for_cable(
     company_id: str, user: dict, cable_type: str, meters: Optional[float],
@@ -169,6 +270,12 @@ class CableIn(BaseModel):
     cable_serial: Optional[str] = None
     invoice_number: Optional[str] = None
     purchase_id: Optional[str] = None  # link opcional à compra na DB
+    # Onda C P0.1 — RCA Fibra Guardrails (18/06/2026)
+    # Confirmação extra para cabos com comprimento incomum (20-50km).
+    confirm_unusual_length: bool = False
+    # Justificativa administrativa quando não há purchase_id mas há débito real.
+    # Mínimo 20 caracteres. Apenas administradores podem usar.
+    admin_override_reason: Optional[str] = None
 
 
 class PositionIn(BaseModel):
@@ -792,6 +899,12 @@ async def create_cable(body: CableIn,
     length_m = body.length_m
     if length_m is None and len(segments) >= 2:
         length_m = _calculate_cable_length(segments)
+
+    # Onda C P0.1 — RCA Fibra Guardrails (CEO 18/06/2026)
+    # Aplica DEPOIS do cálculo de length_m para validar valor real.
+    _validate_cable_guardrails(body, user, length_m)
+    length_tier = _length_warning_tier(length_m)
+
     doc = {
         "id": f"cab-{uuid.uuid4().hex[:10]}",
         "company_id": cid,
@@ -806,6 +919,12 @@ async def create_cable(body: CableIn,
         "cable_serial": (body.cable_serial or "").strip() or None,
         "invoice_number": (body.invoice_number or "").strip() or None,
         "purchase_id": body.purchase_id,
+        # Onda C P0.1 — guardrail audit (override e tier de comprimento)
+        "guardrail_length_tier": length_tier,
+        "admin_override_reason": (
+            (body.admin_override_reason or "").strip() or None),
+        "admin_override_by": (
+            user.get("name") if (body.admin_override_reason or "").strip() else None),
         # iter211c — cabo sem from/to vira `cabo_solto`
         "status": ("cabo_solto"
                     if not body.from_id or not body.to_id else "active"),

@@ -2,6 +2,41 @@
 
 > Documento vivo. Atualizado a cada sprint.
 
+## ✅ ONDA C P0.1 — RCA Fibra Estorno + 4 Guardrails (18/06/2026 · EXECUTADO)
+
+**CTO 18/06/2026 · CEO approved (rca_20260618_ceo_approved)** · 41/41 testes PASS (15 novos guardrails + 26 regressão) · Lint clean.
+
+### Origem
+Auditoria Praça x Técnico revelou anomalia em `stok_stock.empresa.fibra_12fo = -366.356` (≈366 km negativos). RCA forensic em `/app/memory/FIBRA_12FO_RCA.md` provou que é **contaminação de dados de teste em produção**, não bug estrutural.
+
+### Causa raiz (resumo)
+- 02/06/2026 14:01-14:23 UTC: usuário `Administrador` criou 4 cabos de teste no módulo Rede.
+- `cab-4f21e3e0f7` (12fo, 364.356m, serial `ABCD-TEST-001`, invoice `12345`) + 3 menores.
+- Sistema funcionou conforme designed: debitou corretamente o estoque empresa.
+- Cabos nunca foram apagados nem marcados como teste, e o estoque negativo persistiu.
+
+### Estorno auditável executado
+- **fibra_12fo**: `-366.356 → 0` (incremento +366.356m).
+- **fibra_48fo**: `-200 → 0` (incremento +200m).
+- 4 cabos marcados `status="anulado_admin_test_rca_20260618"` com `previous_status`, `anulado_by`, `anulado_audit_id`, `anulado_rca_doc` preservados.
+- 4 docs em `stok_history` (`type=rede_estorno`, `tag=rca_fibra_20260618`, `delta_meters_signed > 0`).
+- 1 doc master em `stok_admin_log` (`action=fibra_rca_estorno`, lista completa de cabos/history_ids).
+- **Zero deletes** em todas as collections.
+
+### 4 Guardrails implantados
+1. **Tokens proibidos** (`TEST/TST/ABCD/DUMMY/FAKE/MOCK`) em `cable_serial/invoice_number/purchase_id` (não-drop). Erro: `guardrail_test_token_blocked`.
+2. **Tiers de comprimento**: <5km OK · 5-20km warn (silencioso) · 20-50km exige `confirm_unusual_length=true` · >50km exige `admin_override_reason` (≥20 chars).
+3. **purchase_id obrigatório** OU `admin_override_reason` (≥20 chars) para cabos de fibra.
+4. **Card Watchtower "Movimentos Anômalos"** (sub-aba Diagnóstico) com 4 KPIs: cabos anômalos + cabos anulados RCA + estornos 7d + admin overrides.
+
+### Files
+- NOVOS: `/app/backend/scripts/rca_fibra_estorno.py` · `/app/backend/tests/test_rca_fibra_guardrails.py` (15 testes) · `/app/memory/FIBRA_12FO_RCA.md` · `/app/memory/RCA_ESTORNO_RELATORIO_FINAL.md` · `/app/memory/PRACA_TECNICO_RESUMO_EXECUTIVO.md`
+- MODIFICADOS: `/app/backend/routes/rede_ia_map.py` (CableIn + 4 guardrails) · `/app/backend/routes/watchtower_estoque_diagnostico.py` (`_agg_anomalous_movements`) · `/app/frontend/src/WatchtowerEstoqueDiagnostico.jsx` (card Movimentos Anômalos)
+
+---
+
+
+
 ## ✅ ONDA C P1 — Watchtower Diagnóstico + Auditoria Praça x Técnico (18/06/2026 · ENTREGUE)
 
 **CTO 18/06/2026** · 33/33 testes PASS (7 novos P1 + 26 regressão Onda A+B+C) · Lint clean · Zero writes confirmado.

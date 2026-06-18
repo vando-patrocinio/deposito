@@ -286,6 +286,59 @@ async def _recent_errors(cid: str, since: datetime, limit: int = 20) -> List[Dic
     return out
 
 
+# ─────────────────────── ANOMALOUS MOVEMENTS (Onda C P0.1) ───────────────
+
+async def _agg_anomalous_movements(cid: str, since: datetime) -> Dict[str, Any]:
+    """Card 'Movimentos Anômalos' do Watchtower (CEO 18/06/2026).
+
+    Inclui:
+      • Cabos com `guardrail_length_tier` setado (>5km).
+      • Cabos anulados via RCA (status=anulado_admin_test_rca_*).
+      • Estornos em stok_history (type=rede_estorno).
+      • Lançamentos manuais (admin_override_reason setado).
+    """
+    # 1) Cabos warn/confirm/block tiers
+    cables_anomalous = await db.network_cables.find(
+        {"company_id": cid, "guardrail_length_tier": {"$ne": None}},
+        {"_id": 0, "id": 1, "type": 1, "length_m": 1,
+         "guardrail_length_tier": 1, "cable_serial": 1,
+         "invoice_number": 1, "created_at": 1, "created_by": 1,
+         "admin_override_reason": 1, "status": 1},
+    ).sort("created_at", -1).limit(20).to_list(20)
+    # 2) Cabos anulados RCA
+    cables_anulados = await db.network_cables.find(
+        {"company_id": cid,
+         "status": {"$regex": "^anulado_admin_test_rca"}},
+        {"_id": 0, "id": 1, "type": 1, "length_m": 1,
+         "anulado_reason": 1, "anulado_at": 1, "anulado_by": 1,
+         "anulado_rca_doc": 1, "anulado_audit_id": 1},
+    ).sort("anulado_at", -1).limit(20).to_list(20)
+    # 3) Estornos recentes
+    estornos = await db.stok_history.find(
+        {"company_id": cid, "type": "rede_estorno",
+         "created_at": {"$gte": since.isoformat()}},
+        {"_id": 0, "id": 1, "consumable_id": 1, "delta_meters_signed": 1,
+         "original_cable_id": 1, "rca_ref": 1, "user": 1, "created_at": 1},
+    ).sort("created_at", -1).limit(20).to_list(20)
+    # 4) Admin overrides
+    admin_overrides = await db.network_cables.find(
+        {"company_id": cid, "admin_override_reason": {"$ne": None}},
+        {"_id": 0, "id": 1, "type": 1, "length_m": 1,
+         "admin_override_reason": 1, "admin_override_by": 1,
+         "created_at": 1},
+    ).sort("created_at", -1).limit(20).to_list(20)
+    return {
+        "cables_anomalous_count": len(cables_anomalous),
+        "cables_anomalous": cables_anomalous,
+        "cables_anulados_count": len(cables_anulados),
+        "cables_anulados": cables_anulados,
+        "estornos_count": len(estornos),
+        "estornos": estornos,
+        "admin_overrides_count": len(admin_overrides),
+        "admin_overrides": admin_overrides,
+    }
+
+
 # ─────────────────────── HELPERS ─────────────────────────────────────────
 
 def _iso(v: Any) -> Optional[str]:
@@ -319,13 +372,14 @@ async def watchtower_estoque_diagnostico(
 
     import asyncio
     (phases, latency, late_close, reconcile, swap_pending,
-     recent_errors) = await asyncio.gather(
+     recent_errors, anomalous) = await asyncio.gather(
         _agg_phases(cid, since),
         _agg_latency(cid, since),
         _agg_late_close(cid, since_7d),
         _agg_reconcile(since_7d),
         _agg_swap_pending(cid),
         _recent_errors(cid, since, limit=20),
+        _agg_anomalous_movements(cid, since_7d * 1 if False else since_7d),
         return_exceptions=False,
     )
 
@@ -339,4 +393,5 @@ async def watchtower_estoque_diagnostico(
         "reconcile": reconcile,
         "swap_pending": swap_pending,
         "recent_errors": recent_errors,
+        "anomalous_movements": anomalous,
     }
