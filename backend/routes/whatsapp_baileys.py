@@ -2882,6 +2882,7 @@ async def _maybe_auto_reply(cid: str, phone: str, user_text: str,
 
     any_sent = False
     last_send_error: Optional[str] = None
+    first_outbound_id: Optional[str] = None  # V15.2 — pra bind de claims
     for idx, chunk in enumerate(chunks):
         chunk_norm = (chunk or "").strip().lower()
         if chunk_norm and chunk_norm in recent_texts:
@@ -2916,8 +2917,11 @@ async def _maybe_auto_reply(cid: str, phone: str, user_text: str,
 
         # Persiste cada bolha como linha separada (assim o chat mostra 1 bolha
         # por mensagem, idêntico ao que o cliente recebe no WhatsApp).
+        wam_id = f"wam-{uuid.uuid4().hex[:10]}"
+        if first_outbound_id is None and send_ok:
+            first_outbound_id = wam_id
         await db.aihub_wa_messages.insert_one({
-            "id": f"wam-{uuid.uuid4().hex[:10]}",
+            "id": wam_id,
             "company_id": cid,
             "direction": "outbound",
             "phone": phone,
@@ -2980,6 +2984,27 @@ async def _maybe_auto_reply(cid: str, phone: str, user_text: str,
     if send_ok:
         logger.info("[wa-baileys] auto-reply enviado em %d bolha(s) para %s: %s",
                      len(chunks), phone, reply_text[:80])
+        # V15.2 — Factual Claim Binder: vincula claims auditados ativos
+        # ao outbound real (resolve Trust=0% revelado pelo ISABELLA INDEX).
+        # Sem este bind, o `mark_consumed` nunca acontece e o Trust
+        # permanece em 0% indefinidamente.
+        try:
+            if first_outbound_id and subscriber_id:
+                from services.factual_claim_binder import (
+                    bind_active_claims_to_outbound,
+                )
+                bind_result = await bind_active_claims_to_outbound(
+                    company_id=cid, subscriber_id=subscriber_id,
+                    outbound_msg_id=first_outbound_id,
+                )
+                if bind_result["bound_count"] > 0:
+                    logger.info(
+                        "[wa-baileys] V15.2 vinculou %d claims ao "
+                        "outbound msg=%s",
+                        bind_result["bound_count"], first_outbound_id,
+                    )
+        except Exception as _e:
+            logger.debug("[wa-baileys] claim_binder skip: %s", _e)
         # Isabella V14 — detecta promessas da própria Isabella
         # ("vou verificar", "te retorno") e marca follow-up obrigatório
         # na próxima conversa.

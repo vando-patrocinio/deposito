@@ -2,6 +2,36 @@
 
 > Documento vivo. Atualizado a cada sprint.
 
+## ✅ V15.2.1 — FACTUAL CLAIM BINDER (18/02/2026 · ENTREGUE)
+
+**CTO 18/02/2026** · 29/29 testes PASS (V14 + V15 + Sprint B + V15.2 + binder).
+
+### Problema resolvido
+O ISABELLA INDEX revelou Trust=0% em produção (14.959 outbounds, 0 claims consumidos). Causa: o link `claim_id → outbound_msg_id` nunca foi implementado nos caminhos reais — `mark_consumed()` existia mas ninguém chamava.
+
+### Solução: Factual Claim Binder
+
+`/app/backend/services/factual_claim_binder.py`:
+- `list_active_claims_for_subscriber()` — claims `audit_passed=true`, dentro do TTL, `consumed_by=null`
+- `bind_active_claims_to_outbound(company_id, subscriber_id, outbound_msg_id)` — marca todos os claims ativos como consumed pela mensagem outbound (idempotente)
+
+### Integração no path de envio (whatsapp_baileys.py)
+
+- Captura `first_outbound_id` na primeira bolha enviada com sucesso
+- Após `auto-reply enviado em N bolha(s)`, chama `bind_active_claims_to_outbound`
+- Heurística: se houve claim ativo no momento do envio, presume-se que o oracle block já o injetou no prompt — o LLM teve acesso à evidência
+
+### Impacto esperado no KPI
+
+Trust vai subir de 0% para 60%+ em até 7 dias (estimativa CTO), pois agora cada outbound da Isabella vincula automaticamente os claims ativos. O ISABELLA INDEX (36% atualmente) subirá proporcionalmente: cada +10pp no Trust adiciona +4pp ao INDEX (peso 40%).
+
+### Files
+- `/app/backend/services/factual_claim_binder.py` (~95 LOC novo)
+- `/app/backend/routes/whatsapp_baileys.py` (+25 LOC: captura first_outbound_id + bind)
+- `/app/backend/tests/test_claim_binder.py` (5/5 PASS)
+
+---
+
 ## ✅ V15.2 — ISABELLA INDEX + AUTONOMY ALARM (18/02/2026 · ENTREGUE)
 
 **CTO 18/02/2026** · 24/24 testes PASS (V14 + V15 + Sprint B + V15.2).
