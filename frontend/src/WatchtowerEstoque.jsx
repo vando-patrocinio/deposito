@@ -9,6 +9,7 @@
 import React, { useEffect, useState, useCallback } from "react";
 import { client } from "./api";
 import WatchtowerEstoqueDiagnostico from "./WatchtowerEstoqueDiagnostico";
+import WatchtowerPatrimonioConsolidado from "./WatchtowerPatrimonioConsolidado";
 
 const fmtBRL = (v) => {
   if (v == null || Number.isNaN(Number(v))) return "—";
@@ -175,10 +176,24 @@ export default function WatchtowerEstoque() {
         >
           🩺 Diagnóstico Lousa Mobile
         </button>
+        <button
+          type="button"
+          onClick={() => setTab("patrimonio_consolidado")}
+          data-testid="watchtower-tab-patrimonio-consolidado"
+          className={`px-4 py-2.5 text-sm font-semibold border-b-2 transition-colors ${
+            tab === "patrimonio_consolidado"
+              ? "border-emerald-400 text-emerald-300"
+              : "border-transparent text-slate-400 hover:text-slate-200"
+          }`}
+        >
+          🧮 Patrimônio Consolidado
+        </button>
       </div>
 
       {tab === "diagnostico" ? (
         <WatchtowerEstoqueDiagnostico />
+      ) : tab === "patrimonio_consolidado" ? (
+        <WatchtowerPatrimonioConsolidado />
       ) : (
         <PatrimonioTabContent data={data} loading={loading} />
       )}

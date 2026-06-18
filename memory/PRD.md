@@ -2,6 +2,50 @@
 
 > Documento vivo. Atualizado a cada sprint.
 
+## ✅ ONDA C P2 — Watchtower Patrimônio Consolidado (18/06/2026 · ENTREGUE)
+
+**CEO 18/06/2026 · combo aprovado 1c+2b+3c com ajustes** · 73/73 testes PASS (10 novos P2 + 63 regressão) · Lint clean.
+
+### Responde 5 perguntas em <30s
+- **P1) Quanto patrimônio existe?** → bloco "ATIVOS TOTAIS" (ONTs por localização + sem_localização + sintéticas + defeito).
+- **P2) Quanto vale?** → bloco "VALOR PATRIMONIAL" (aquisição/depreciação/valor atual/perdas/recuperações).
+- **P3) Quanto é auditável?** → KPI HERO "Patrimônio Confiável" (Rastreabilidade × Confiabilidade Financeira).
+- **P4) Onde está?** → mesmo bloco P1 com breakdown por location_type.
+- **P5) O que não consigo rastrear?** → drill-down "Top 50 piores" com missing_fields explícitos.
+
+### Camada `asset_category` (independente de consumable_id)
+Para Sprint 5 não retrabalhar: ont/fibra/cto/splitter/consumivel/ferramenta/veiculo com `lifetime_years` e flag `depreciate` por categoria.
+
+### Catálogo de preços com metadata
+Cada item tem `{value, source, confidence}`:
+- `catalog_estimated_v1_20260618` (confidence 0.50-0.70).
+- Confiabilidade Financeira = média ponderada por valor.
+- Pronto para evolução: `purchase_real → invoice_real → manual_override`.
+
+### Índice de Rastreabilidade Patrimonial (5 campos × 20%)
+Campos: Origem (purchase_id) · Localização (location_id) · Responsável (owner_id) · Última Movimentação (updated_at) · Ticket/Evento (last_ticket_id).
+Tiers: ≥98% verde · ≥95% amarelo · <95% vermelho · 100% excelência.
+
+### KPI compound: Patrimônio Confiável
+`Rastreabilidade × Confiabilidade Financeira` = % do patrimônio que pode ser defendido em auditoria.
+Inclui `valor_defendvel_estimado = valor_atual × patrimonio_confiavel_pct`.
+
+### Snapshot atual `co-demo`
+- 32 ONTs · 45.6% rastreabilidade · 61% confiabilidade financeira → **Patrimônio Confiável 27.5% (vermelho)**.
+- Recuperações: R$ 2.127.808 (estorno RCA Fibra 12FO contou corretamente).
+- Números honestos — quando Sprint 5 normalizar owner_type/location_type, a rastreabilidade deve subir pra ≥80%.
+
+### Files
+- NOVOS: `/app/backend/services/patrimonio_consolidado.py` (310 linhas) · `/app/backend/routes/watchtower_patrimonio_consolidado.py` · `/app/backend/tests/test_patrimonio_consolidado.py` (10 testes) · `/app/frontend/src/WatchtowerPatrimonioConsolidado.jsx`
+- MODIFICADOS: `/app/backend/server.py` (include_router) · `/app/frontend/src/WatchtowerEstoque.jsx` (3ª aba "🧮 Patrimônio Consolidado")
+
+### Endpoint
+`GET /api/watchtower/estoque/patrimonio-consolidado` (gestor/admin/auditor) — payload completo com `ativos`, `valor`, `rastreabilidade`, `patrimonio_confiavel`, `asset_categories`, `price_catalog_meta`, `consumiveis_qty`.
+
+---
+
+
+
 ## ✅ ONDA C P1 V2.0 — Ciclo Fechado de Confirmação Patrimonial (18/06/2026 · ENTREGUE)
 
 **CEO order V2.0 18/06/2026** · 63/63 testes PASS (9 novos V2 + 54 regressão) · Lint clean.
