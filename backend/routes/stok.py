@@ -160,16 +160,57 @@ def normalize_mac(mac: str) -> str:
     return mac.strip().upper()
 
 
-async def _add_history(htype: str, description: str, user: str, tag: str, company_id: str) -> None:
-    await db.stok_history.insert_one({
-        "id": str(uuid.uuid4()),
-        "company_id": company_id,
-        "date": now_iso(),
-        "type": htype,
-        "description": description,
-        "user": user,
-        "tag": tag,
-    })
+async def _add_history(htype: str, description: str, user: str, tag: str, company_id: str,
+                          *, ticket_id: str | None = None,
+                          service_id: str | None = None,
+                          collaborator_id: str | None = None,
+                          subscriber_id: str | None = None) -> None:
+    """Grava em stok_history com rastreabilidade Sprint 5 Onda 1 (CEO 19/02/2026).
+
+    Tenta resolver via stok_services se service_id ou ticket_id estiverem
+    presentes. Se nada bater, grava com allow_missing=True (legado) e
+    sinaliza `traceability_status=partial`.
+    """
+    # Tenta extrair OS-XXXX da description (legado) para descobrir service_id
+    if not service_id and description:
+        from services.stok_history_writer import extract_os_short
+        os_short = extract_os_short(description)
+        if os_short:
+            svc = await db.stok_services.find_one(
+                {"company_id": company_id,
+                 "id": {"$regex": f"OS-{os_short}", "$options": "i"}},
+                {"_id": 0, "id": 1, "ticket_id": 1, "type": 1,
+                 "client_id": 1, "technician_id": 1},
+            )
+            if svc:
+                service_id = svc["id"]
+                ticket_id = ticket_id or svc.get("ticket_id")
+                subscriber_id = subscriber_id or svc.get("client_id")
+                collaborator_id = collaborator_id or svc.get("technician_id")
+    # Fallback collaborator via tickets.assigned_to
+    if ticket_id and not collaborator_id:
+        tk = await db.tickets.find_one(
+            {"company_id": company_id, "id": ticket_id},
+            {"_id": 0, "assigned_to": 1, "client_id": 1},
+        )
+        if tk:
+            collaborator_id = collaborator_id or tk.get("assigned_to")
+            subscriber_id = subscriber_id or tk.get("client_id")
+
+    from services.stok_history_writer import write_stok_event
+    await write_stok_event(
+        db,
+        company_id=company_id,
+        event_type=htype,
+        ticket_id=ticket_id,
+        service_id=service_id,
+        collaborator_id=collaborator_id,
+        subscriber_id=subscriber_id,
+        description=description,
+        actor_user_label=user,
+        tag=tag,
+        allow_missing=True,  # legado: não quebra fluxo se algo faltar
+    )
 
 
 async def _get_collab(cid: str, company_id: str) -> dict:
@@ -2776,6 +2817,9 @@ async def auto_close_service_from_ticket(
             "erro_baixa",
             f"{sid} — Auto-baixa FALHOU: {err_reason}. Técnico {technician_name}. Gestor precisa fechar manualmente.",
             technician_name, "auto_finalize_lousa", company_id,
+            ticket_id=ticket_id, service_id=sid,
+            collaborator_id=technician_id,
+            subscriber_id=service.get("client_id"),
         )
         # Notifica gestores
         try:
@@ -2820,6 +2864,9 @@ async def auto_close_service_from_ticket(
         htype,
         f"{sid} (auto-baixa Lousa) - {' | '.join(parts) if parts else 'Sem materiais'} - Técnico {technician_name}{sm_suffix}",
         technician_name, "auto_finalize_lousa", company_id,
+        ticket_id=ticket_id, service_id=sid,
+        collaborator_id=technician_id,
+        subscriber_id=service.get("client_id"),
     )
     return {"ok": True, "service_id": sid,
             "used_items": [ui.model_dump() for ui in used_items],

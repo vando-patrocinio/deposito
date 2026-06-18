@@ -163,6 +163,7 @@ from routes import (
     gps_vlan_suggest as routes_gps_vlan_suggest,
     smartolt_push_ctos as routes_smartolt_push_ctos,
     rede_cell as routes_rede_cell,
+    sprint5_onda1 as routes_sprint5_onda1,
     sprint5_onda2 as routes_sprint5_onda2,
     whatsapp_config as routes_whatsapp_config,
     wa_test_mode as routes_wa_test_mode,
@@ -1527,6 +1528,7 @@ app.include_router(routes_atlaz_financeiro.router)
 app.include_router(routes_atlaz_webhooks.router)
 app.include_router(routes_ligo_tv.router)
 app.include_router(routes_alvaro.router)
+app.include_router(routes_sprint5_onda1.router)
 app.include_router(routes_sprint5_onda2.router)
 app.include_router(routes_alvaro_os_summary.router)
 app.include_router(routes_gps_vlan_suggest.router)

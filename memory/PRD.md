@@ -5923,3 +5923,36 @@ após auditoria Fase 0 ter revelado 100% dos ativos sem porta vinculada e 2
 
 ### Doc completo
 `/app/memory/SPRINT5_ONDA2_REPORT.md`
+
+---
+## [2026-02-19] Sprint 5 · Onda 1 — Recuperação de Rastreabilidade ✅ (GATE ATINGIDO)
+
+### Mandato
+ORDEM EXECUTIVA CEO 19/02/2026: garantir que toda movimentação futura
+em `stok_history` possua vínculo permanente. PROIBIDO depender de `OS-XXXX`
+apenas em description. Backfill obrigatório dos 149 events órfãos.
+
+### Entrega
+- **Novo helper canônico** `services/stok_history_writer.py`:
+  - `write_stok_event(db, *, company_id, event_type, ticket_id, service_id, collaborator_id, subscriber_id, ...)`
+  - Validação obrigatória de 6 campos (allow_missing=False default).
+  - Regex multi-formato: OS-XXXX, test-iter*-svc-*, srv-*, svc-*.
+- **Refatoração** `routes/stok.py::_add_history()` — aceita kwargs explícitos + resolução automática via stok_services/tickets.
+- **Endpoints novos** (`/api/sprint5/onda1/*`):
+  - `GET /status`, `GET /preview`, `POST /backfill-orphans`, `GET /certidao`, `GET /audit-log`.
+- **Auto-finalize Lousa** (`auto_close_service_from_ticket`) agora passa explicitamente ticket_id+service_id+collaborator_id+subscriber_id.
+
+### Resultado co-demo (medição real)
+- 149 events processados.
+- Antes: 0% rastreáveis. Depois: **97.99% efetiva** (gate ≥95% ✅).
+- 51 OS 5/5 + 50 non-OS válidos + 45 partial OS + 0 unknown.
+- 100% com `event_type` canônico e `event_timestamp`.
+
+### Validação
+- ✅ Curl real super_admin — todos endpoints HTTP 200.
+- ✅ Idempotência: 3ª execução = 0 orphans.
+- ✅ Banco confirmado (campos persistidos + `traceability_status` em todos).
+- ✅ Audit em `sprint5_audit_log` com batch_id rastreável.
+
+### Doc completo
+`/app/memory/SPRINT5_ONDA1_CERTIDAO.md`
