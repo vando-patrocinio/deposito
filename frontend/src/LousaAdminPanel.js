@@ -876,6 +876,7 @@ export default function LousaAdminPanel({ systemStatus = { offline: false, drift
               {techMenuOpen && (
                 <TechFilterMenu
                   columns={grid.columns}
+                  allCollaborators={collabs}
                   focusTechId={focusTechId}
                   visibleTechIds={visibleTechIds}
                   onSelectFocus={(id) => { setFocusTechId(id); setTechMenuOpen(false); }}
@@ -886,9 +887,11 @@ export default function LousaAdminPanel({ systemStatus = { offline: false, drift
                                           : [...arr, id]);
                   }}
                   onClearVisible={() => setVisibleTechIds([])}
-                  onSelectAllVisible={() => {
+                  onSelectAllVisible={(ids) => {
                     setFocusTechId("");
-                    setVisibleTechIds(grid.columns.map((c) => c.collaborator.id));
+                    setVisibleTechIds(Array.isArray(ids) && ids.length
+                      ? ids
+                      : grid.columns.map((c) => c.collaborator.id));
                   }}
                   onClose={() => setTechMenuOpen(false)}
                 />
@@ -3337,15 +3340,68 @@ function ToolbarBtn({ children, accent = "neutral", disabled, style, ...rest }) 
   );
 }
 
-function TechFilterMenu({ columns, focusTechId, visibleTechIds = [],
+function TechFilterMenu({ columns, allCollaborators = [], focusTechId,
+                            visibleTechIds = [],
                             onSelectFocus, onToggleVisible,
                             onClearVisible, onSelectAllVisible, onClose }) {
   const [search, setSearch] = useState("");
+
+  // Unifica: técnicos com bolha (de `columns`) + técnicos cadastrados sem
+  // bolha hoje (de `allCollaborators`). Ordem: com-bolha primeiro,
+  // depois sem-bolha (cinza), ambos alfabéticos. Cargo filter já aplicado
+  // pelo backend em `columns`; para `allCollaborators` filtramos cargos
+  // de Lousa (tecnico/auxiliar/etc) — outros (vendedor sem cargo de
+  // campo) seguem ocultos do mesmo jeito que o backend faz.
+  const rows = useMemo(() => {
+    const colById = new Map();
+    for (const col of columns) {
+      if (col?.collaborator?.id) colById.set(col.collaborator.id, col);
+    }
+    const withBubbles = columns.map((col) => ({
+      kind: "active",
+      id: col.collaborator.id,
+      collaborator: col.collaborator,
+      total: (col.tickets || []).length,
+      overdue: (col.tickets || []).filter((t) => t.sla?.status === "overdue").length,
+    }));
+    // Cargos exibíveis (mesmo critério do backend `LOUSA_CARGOS`). Sem
+    // cargo definido também aparece (compatibilidade legada).
+    const LOUSA_CARGOS = new Set([
+      "tecnico", "técnico", "auxiliar", "auxiliar_tecnico",
+      "auxiliar_técnico", "auxiliar_de_tecnico",
+      "instalador", "supervisor_campo", "supervisor_de_campo",
+    ]);
+    const withoutBubbles = [];
+    for (const c of allCollaborators) {
+      if (!c?.id || colById.has(c.id)) continue;
+      // Pula colaboradores arquivados/inativos
+      if (c.active === false) continue;
+      // Pula virtuais que não sejam SALA (SALA já vem em columns)
+      if (c.is_virtual) continue;
+      const cargo = (c.cargo || "").trim().toLowerCase();
+      if (cargo && !LOUSA_CARGOS.has(cargo)) continue;
+      withoutBubbles.push({
+        kind: "idle",
+        id: c.id,
+        collaborator: {
+          id: c.id, name: c.name || "",
+          avatar: c.avatar_data_url,
+          praca: c.praca_name || c.city || "",
+        },
+        total: 0, overdue: 0,
+      });
+    }
+    withoutBubbles.sort((a, b) =>
+      (a.collaborator.name || "").localeCompare(b.collaborator.name || ""));
+    return [...withBubbles, ...withoutBubbles];
+  }, [columns, allCollaborators]);
+
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
-    if (!q) return columns;
-    return columns.filter((c) => (c.collaborator.name || "").toLowerCase().includes(q));
-  }, [columns, search]);
+    if (!q) return rows;
+    return rows.filter((r) =>
+      (r.collaborator.name || "").toLowerCase().includes(q));
+  }, [rows, search]);
 
   // Fecha ao clicar fora
   useEffect(() => {
@@ -3356,7 +3412,7 @@ function TechFilterMenu({ columns, focusTechId, visibleTechIds = [],
     return () => document.removeEventListener("mousedown", onDoc);
   }, [onClose]);
 
-  const allTechIds = columns.map((c) => c.collaborator.id);
+  const allTechIds = rows.map((r) => r.id);
   const allSelected = visibleTechIds.length > 0
     && visibleTechIds.length === allTechIds.length
     && allTechIds.every((id) => visibleTechIds.includes(id));
@@ -3391,7 +3447,7 @@ function TechFilterMenu({ columns, focusTechId, visibleTechIds = [],
       <div style={{ display: "flex", gap: 6, padding: "0 4px 6px" }}>
         <button
           data-testid="lousa-tech-filter-select-all"
-          onClick={() => allSelected ? onClearVisible() : onSelectAllVisible()}
+          onClick={() => allSelected ? onClearVisible() : onSelectAllVisible(allTechIds)}
           style={{
             flex: 1, padding: "6px 8px", border: "1px solid #cbd5e1",
             borderRadius: 6, background: "#f8fafc", color: "#0f172a",
@@ -3433,7 +3489,7 @@ function TechFilterMenu({ columns, focusTechId, visibleTechIds = [],
         }}></span>
         <span style={{ flex: 1 }}>Todos os técnicos</span>
         <span style={{ fontSize: 10, color: "#94a3b8", fontWeight: 600 }}>
-          {columns.length}
+          {rows.length}
         </span>
         {(!focusTechId && visibleTechIds.length === 0)
           && <span style={{ color: "#22c55e", fontSize: 13 }}>✓</span>}
@@ -3453,12 +3509,13 @@ function TechFilterMenu({ columns, focusTechId, visibleTechIds = [],
           Nenhum técnico bate com “{search}”
         </div>
       )}
-      {filtered.map((col) => {
-        const c = col.collaborator;
+      {filtered.map((row) => {
+        const c = row.collaborator;
         const isFocused = focusTechId === c.id;
         const isChecked = visibleTechIds.includes(c.id);
-        const total = col.tickets?.length || 0;
-        const overdue = (col.tickets || []).filter((t) => t.sla?.status === "overdue").length;
+        const total = row.total;
+        const overdue = row.overdue;
+        const isIdle = row.kind === "idle";
         return (
           <div
             key={c.id}
@@ -3467,6 +3524,7 @@ function TechFilterMenu({ columns, focusTechId, visibleTechIds = [],
               display: "flex", alignItems: "center", gap: 8,
               padding: "6px 8px",
               background: isFocused ? "#e0f2fe" : isChecked ? "#f0fdf4" : "transparent",
+              opacity: isIdle && !isChecked && !isFocused ? 0.62 : 1,
               borderRadius: 7, marginBottom: 2,
             }}
           >
@@ -3515,11 +3573,19 @@ function TechFilterMenu({ columns, focusTechId, visibleTechIds = [],
                   {c.name}
                 </div>
                 <div style={{ fontSize: 10.5, color: "#64748b", marginTop: 1 }}>
-                  {total} ativo{total === 1 ? "" : "s"}
-                  {overdue > 0 && (
-                    <span style={{ marginLeft: 5, color: "#dc2626", fontWeight: 700 }}>
-                      · {overdue} atrasada{overdue === 1 ? "" : "s"}
+                  {isIdle ? (
+                    <span style={{ color: "#94a3b8", fontStyle: "italic" }}>
+                      sem bolha hoje
                     </span>
+                  ) : (
+                    <>
+                      {total} ativo{total === 1 ? "" : "s"}
+                      {overdue > 0 && (
+                        <span style={{ marginLeft: 5, color: "#dc2626", fontWeight: 700 }}>
+                          · {overdue} atrasada{overdue === 1 ? "" : "s"}
+                        </span>
+                      )}
+                    </>
                   )}
                 </div>
               </div>

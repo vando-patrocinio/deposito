@@ -482,9 +482,10 @@ def compute_locked_positions(tickets_sorted: List[Dict[str, Any]]) -> set:
     """Posições travadas: 'horario'/'prioridade' + a anterior a 'horario'."""
     locked = set()
     for i, t in enumerate(tickets_sorted):
-        if t["priority"] in ("horario", "prioridade"):
+        prio = t.get("priority")
+        if prio in ("horario", "prioridade"):
             locked.add(i)
-            if t["priority"] == "horario" and i - 1 >= 0:
+            if prio == "horario" and i - 1 >= 0:
                 locked.add(i - 1)
     return locked
 
