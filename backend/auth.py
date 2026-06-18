@@ -298,6 +298,10 @@ def make_dependencies(get_db_callable):
 
     def require_role(*roles: str):
         async def _dep(user: dict = Depends(get_current_user)) -> dict:
+            # REGRA GLOBAL (CEO 18/06/2026): super_admin tem acesso FULL,
+            # sempre, em qualquer endpoint protegido.
+            if user.get("is_super_admin") is True:
+                return user
             # administrador e auditor têm acesso completo (super-roles)
             if user["role"] in ("administrador", "auditor"):
                 return user
@@ -308,12 +312,15 @@ def make_dependencies(get_db_callable):
 
     def require_tag(*tags: str):
         """Exige que o usuário tenha PELO MENOS UMA das tags listadas em
-        `access_tags`. Admins/Auditores sempre passam. Para outros papéis:
+        `access_tags`. Admins/Auditores/Super_admin sempre passam. Para outros papéis:
         - Se o user não tem `access_tags` setado (None/vazio), aplica
           o default do papel a partir de access_tags.DEFAULT_TAGS_BY_ROLE.
         - Se tem `access_tags` setado, verifica se intersecta com `tags`.
         """
         async def _dep(user: dict = Depends(get_current_user)) -> dict:
+            # REGRA GLOBAL (CEO 18/06/2026): super_admin tem acesso FULL.
+            if user.get("is_super_admin") is True:
+                return user
             if user["role"] in ("administrador", "auditor"):
                 return user
             try:
