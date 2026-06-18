@@ -1506,6 +1506,19 @@ async def inbound_webhook(payload: InboundIn,
             inbound_doc["vision_summary"] = vision_summary
             inbound_doc["vision_engine"] = "gemini-2.5-flash"
     await db.aihub_wa_messages.insert_one(inbound_doc)
+    # Isabella V14 — Oráculo de Memória Relacional: captura acontecimentos
+    # relevantes do user_text (regex L1 + Claude L2 quando ambíguo).
+    try:
+        if not is_group and (payload.text or transcript):
+            from services.customer_memory import capture_from_inbound
+            asyncio.create_task(capture_from_inbound(
+                company_id=cid, phone=effective_phone,
+                subscriber_id=subscriber_id,
+                user_text=(payload.text or transcript or ""),
+                source_msg_id=payload.message_id,
+            ))
+    except Exception as _e:
+        logger.debug("[wa-baileys] customer_memory capture skip: %s", _e)
     # Marca o último canal por onde o cliente falou (UI mostra badge)
     try:
         await db.wa_conversations.update_one(
@@ -1744,43 +1757,67 @@ async def _schedule_debounced_auto_reply(
     subscriber_ctx: Optional[str],
     inbound_was_voice: bool = False,
 ) -> None:
-    """Agenda o auto-reply com debounce. Múltiplas chamadas em sequência
-    rápida resultam em UMA execução (a última)."""
-    # Cancela qualquer task pendente desse phone
-    prev = _pending_tasks.get(phone)
-    if prev and not prev.done():
-        prev.cancel()
-        logger.info("[wa-debounce] cancelando reply pendente phone=%s "
-                    "(nova msg chegou)", phone)
+    """Agenda o auto-reply via scheduler PERSISTENTE em MongoDB.
 
-    async def _run_after_debounce():
-        try:
-            await asyncio.sleep(DEBOUNCE_SECONDS)
-        except asyncio.CancelledError:
-            return
-        lock = _get_phone_lock(phone)
-        # Se outro lock está em uso, espera (mas não cancela — se já tá
-        # processando algo pra esse phone, deixa terminar primeiro).
-        async with lock:
-            try:
-                await _maybe_auto_reply(
-                    cid=cid, phone=phone, user_text=user_text,
-                    subscriber_id=subscriber_id,
-                    subscriber_ctx=subscriber_ctx,
-                    inbound_was_voice=inbound_was_voice,
-                )
-            except Exception as e:
-                logger.warning(
-                    "[wa-debounce] _maybe_auto_reply falhou phone=%s: %s",
-                    phone, e,
-                )
-            finally:
-                # Limpa entry se ainda for o task atual
-                if _pending_tasks.get(phone) is task:
-                    _pending_tasks.pop(phone, None)
+    FIX P0 (Vando case): antes, o debounce era `asyncio.create_task` +
+    dict in-memory (`_pending_tasks`). Em todo restart do backend
+    (hot reload, deploy, crash), as tasks pendentes morriam e o cliente
+    NUNCA recebia a resposta — só ao reenviar uma mensagem.
 
-    task = asyncio.create_task(_run_after_debounce())
-    _pending_tasks[phone] = task
+    Agora: `wa_reply_pending` (Mongo) + worker de recovery garante que
+    nenhuma mensagem fica órfã, mesmo com restart no meio da janela.
+    """
+    try:
+        from services.wa_reply_scheduler import schedule as _wrp_schedule
+        await _wrp_schedule(
+            company_id=cid, phone=phone, user_text=user_text,
+            subscriber_id=subscriber_id, subscriber_ctx=subscriber_ctx,
+            inbound_was_voice=inbound_was_voice,
+        )
+        logger.info(
+            "[wa-debounce] agendado (persistente) phone=%s text=%r",
+            phone, (user_text or "")[:60],
+        )
+    except Exception as e:
+        logger.exception(
+            "[wa-debounce] schedule persistente falhou phone=%s: %s",
+            phone, e,
+        )
+
+
+async def _wa_reply_handler(
+    *, cid: str, phone: str, user_text: str,
+    subscriber_id: Optional[str], subscriber_ctx: Optional[str],
+    inbound_was_voice: bool = False,
+    metrics: Optional[Dict[str, Any]] = None,
+) -> Optional[str]:
+    """Adapter: scheduler persistente → _maybe_auto_reply.
+
+    O scheduler chama esta função com timestamps já populados em `metrics`.
+    Aqui adicionamos `llm_finish_at` e `send_finish_at` no melhor esforço
+    (refinamento mais granular pode ser feito dentro de _maybe_auto_reply).
+    """
+    lock = _get_phone_lock(phone)
+    async with lock:
+        result = await _maybe_auto_reply(
+            cid=cid, phone=phone, user_text=user_text,
+            subscriber_id=subscriber_id,
+            subscriber_ctx=subscriber_ctx,
+            inbound_was_voice=inbound_was_voice,
+        )
+        if metrics is not None:
+            now = datetime.now(timezone.utc)
+            metrics.setdefault("llm_finish_at", now)
+            metrics.setdefault("send_finish_at", now)
+        return result
+
+
+# Registra o handler no scheduler persistente (idempotente)
+try:
+    from services.wa_reply_scheduler import register_handler as _wrs_register
+    _wrs_register(_wa_reply_handler)
+except Exception as _e:
+    logger.warning("[wa-baileys] register scheduler handler skip: %s", _e)
 
 
 async def _maybe_auto_reply(cid: str, phone: str, user_text: str,
@@ -2520,6 +2557,23 @@ async def _maybe_auto_reply(cid: str, phone: str, user_text: str,
     except Exception as e:
         logger.info("[wa-baileys] fragments skip: %s", e)
 
+    # 3i. Isabella V14 — ORÁCULO DE MEMÓRIA RELACIONAL
+    # Injeta promessas em aberto + 1 memória pessoal/comercial recente.
+    # Regra: máximo 2 referências na abertura. Faz a Isabella parecer
+    # uma pessoa que acompanha a história do cliente, não um chatbot.
+    try:
+        from services.customer_memory import build_memory_oracle_block
+        oracle_block = await build_memory_oracle_block(
+            company_id=cid, phone=phone, subscriber_id=subscriber_id,
+        )
+        if oracle_block:
+            extra.append(oracle_block)
+            logger.info(
+                "[wa-baileys] oracle memory block injetado phone=%s", phone,
+            )
+    except Exception as e:
+        logger.info("[wa-baileys] oracle block skip: %s", e)
+
     sys_prompt += "\n\n" + "\n\n".join(extra)
 
     # ════════════════════════════════════════════════════════════════
@@ -2926,6 +2980,29 @@ async def _maybe_auto_reply(cid: str, phone: str, user_text: str,
     if send_ok:
         logger.info("[wa-baileys] auto-reply enviado em %d bolha(s) para %s: %s",
                      len(chunks), phone, reply_text[:80])
+        # Isabella V14 — detecta promessas da própria Isabella
+        # ("vou verificar", "te retorno") e marca follow-up obrigatório
+        # na próxima conversa.
+        try:
+            from services.customer_memory import (
+                detect_promise, register_promise,
+            )
+            promise_text = detect_promise(reply_text)
+            if promise_text:
+                await register_promise(
+                    company_id=cid, phone=phone,
+                    subscriber_id=subscriber_id,
+                    promise_text=promise_text,
+                    context_user_text=user_text,
+                )
+                logger.info(
+                    "[wa-baileys] promessa registrada phone=%s: %s",
+                    phone, promise_text[:80],
+                )
+        except Exception as _e:
+            logger.debug(
+                "[wa-baileys] promise capture skip: %s", _e,
+            )
     else:
         logger.warning("[wa-baileys] auto-reply gerado mas envio falhou (%s): %s",
                         send_error, reply_text[:80])

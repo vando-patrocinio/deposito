@@ -1149,6 +1149,11 @@ async def _startup() -> None:
             from services.shield_daily_audit import (
                 ensure_indexes as _sda_idx, register_scheduler as _sda_reg)
             from services.message_aggregator import ensure_indexes as _ma_idx
+            from services.wa_reply_scheduler import (
+                ensure_indexes as _wrs_idx,
+                start_worker as _wrs_start)
+            from services.customer_memory import (
+                ensure_indexes as _cm_idx)
             from services.nervous_autodiscovery import (
                 ensure_indexes as _nva_idx, register_scheduler as _nva_reg)
             from services.orphan_event_watcher import (
@@ -1158,6 +1163,9 @@ async def _startup() -> None:
             asyncio.create_task(_oi())
             asyncio.create_task(_sda_idx())
             asyncio.create_task(_ma_idx())
+            asyncio.create_task(_wrs_idx())
+            asyncio.create_task(_wrs_start())
+            asyncio.create_task(_cm_idx())
             asyncio.create_task(_nva_idx())
             asyncio.create_task(_oew_idx())
             _sda_reg(scheduler)

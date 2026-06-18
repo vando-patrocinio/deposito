@@ -2,6 +2,65 @@
 
 > Documento vivo. Atualizado a cada sprint.
 
+## ✅ P0 ISABELLA V14 — ORÁCULO RELACIONAL + FIX AGGREGATOR (18/02/2026 · ENTREGUE)
+
+**CTO 18/02/2026** · 6/6 testes PASS · P0 do "Vando case" resolvido.
+
+### 1. FIX P0 — Aggregator delay de 12-16 min (causa raiz: in-memory state)
+
+**RCA**: O fluxo Baileys usava `asyncio.create_task` + dict in-memory
+(`_pending_tasks`) para debounce. Restarts do backend (hot reload,
+deploy, crash) matavam as tasks silenciosamente. O cliente NUNCA
+recebia resposta — só ao reenviar uma mensagem ("?").
+
+**Fix arquitetural** (`/app/backend/services/wa_reply_scheduler.py`):
+- Persistência em MongoDB: collection `wa_reply_pending` com 1 doc por (cid, phone).
+- Worker assíncrono polla a cada 500ms; processa quem chegou no prazo.
+- Restart do backend ⇒ na próxima inicialização o worker recupera pendings órfãos automaticamente.
+- **Métricas obrigatórias persistidas** em `wa_reply_latency` (TTL 30d):
+  `received_at`, `released_at`, `llm_start_at`, `llm_finish_at`,
+  `send_start_at`, `send_finish_at` + deltas calculados.
+- Endpoint helper: `services.wa_reply_scheduler.latency_stats(hours=24)` → p50/p95/p99.
+
+**Integração**: `whatsapp_baileys.py:_schedule_debounced_auto_reply` agora delega ao scheduler persistente. `_pending_tasks` dict descontinuado.
+
+### 2. V14 — Oráculo de Memória Relacional
+
+**Filosofia** (CTO): "A Isabella não atende chamados. A Isabella acompanha pessoas."
+
+**3 collections** (separadas para escalar Watchtower, Score Relacional, Churn Emocional futuro):
+- `customer_memory`: acontecimentos relevantes por tipo (TECNICA/COMERCIAL/FINANCEIRA/PESSOAL) com TTL diferenciado (30/30/90/180 dias).
+- `customer_promises`: promessas Isabella (`vou verificar`, `te retorno`) com `status=pending` até resolução.
+- `customer_timeline`: log cronológico (matéria-prima para features futuras).
+
+**Extração híbrida** (estratégia CTO — minimiza custo):
+- **Nível 1 — Regex L1** (sempre, custo zero): cobre prova/aniversário/viagem/casamento/mudança/empresa/filho/cirurgia + promessas + comercial + financeiro.
+- **Nível 2 — Claude Sonnet 4.5 via Emergent Key** (somente quando L1 detecta `possible_memory=True` com confidence<0.80): ~$0.0003/turno amortizado.
+
+**Filtro de relevância**: "Nossa internet caiu" NÃO vira memória. "Minha filha vai fazer prova" SIM.
+
+**Regra de Abertura**: máximo 2 referências no system prompt (1 memória pessoal OU 1 pendência). NUNCA "identifiquei em meu banco de dados" → "vi aqui que…".
+
+**Promessas com Follow-up**: detector regex no outbound. Próxima conversa começa com "Sobre o que eu havia ficado de verificar…".
+
+**Files**:
+- `/app/backend/services/customer_memory.py` (~480 LOC)
+- `/app/backend/services/wa_reply_scheduler.py` (~330 LOC)
+- `/app/backend/prompts/isabella_v14.md` (V14_ORACULO_RELACIONAL)
+- `/app/backend/tests/test_customer_memory.py` (6/6 passing)
+- `/app/backend/routes/whatsapp_baileys.py` (inbound capture + outbound promise + oracle block injection)
+- `/app/backend/server.py` (startup: ensure_indexes + start_worker)
+
+**Validações**:
+- Burst de 3 msgs em ~1.4s → debounce desliza, processa após 2s de silêncio = total 3.8s ✓
+- Msg única "Oi" → processada em 2.01s (antes: 12-16min ou nunca) ✓
+- Restart durante debounce → pending recuperado pelo worker no próximo poll ✓
+- Memória pessoal "filha + prova" → confidence 0.85, persistida ✓
+- "Internet caiu" → ignorado (filtro de relevância) ✓
+- Promessa "vou verificar" → bloco do oráculo inclui PROMESSA EM ABERTO ✓
+
+---
+
 ## ✅ P1 CEO — SPRINT 3 BACKFILL ÓRFÃOS ONDA 2 + REFACTOR ROTAS AI (16/02/2026 · ENTREGUE)
 
 **Aprovação CEO 16/02/2026** · Iteration 248 · 16/16 testes PASS · zero bug crítico.
