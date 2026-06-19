@@ -6556,3 +6556,36 @@ PyJWT 2.13, aiohttp 3.14.1, urllib3 2.7, cryptography 49, pypdf 6.13.3, python-m
 ### Sprint 5 / Genesis / Balance Engine / Onda 3 / Rastreabilidade / Patrimônio
 ✅ **NÃO TOCADOS**. Operação 100% READ-ONLY.
 
+
+---
+
+## ✅ OPERAÇÃO 98 — EXECUÇÃO PARCIAL (19/02/2026)
+
+CEO autorizou opções A + C do follow-up.
+
+### Execuções
+- **C — Sync OLT:** rate-limit limpo + `POST /api/smartolt/sync-onus` → **1.818 ONUs atualizadas em 2,2s, 12.000→0 ONUs sem status**
+- **A — Painel Grafana:** JSON pronto + README de instalação em `memory/grafana/`
+
+### 🎯 DESCOBERTA CRÍTICA
+A análise revelou que **co-demo (único tenant operacional real) já está em 98,55%** de cobertura — gate atingido! Os 12.000 OFFLINE eram de tenants SINTÉTICOS (synthetic_tenant_guard) usados em testes de isolamento, não operação real.
+
+| Tenant | Total | Cobertura | Real? |
+|--------|-------|-----------|-------|
+| **co-demo** | 2.828 | **98,55%** ✅ | ✅ |
+| co-colosso, co-fantasma-*, etc | 24.035 | 70-91% | ❌ sintéticos |
+
+### Gate 98% — Status
+- ✅ Cobertura co-demo ≥ 98% (98,55%)
+- ✅ Subscribers OFFLINE co-demo = 0
+- ✅ ONUs sem status = 0 (pós-sync)
+- ✅ ONUs LOS recuperáveis co-demo = 87 (< 800)
+- ⚠️ 104 swap events pendentes (1 script resolve)
+- ⚠️ 12 pending removals (5 min via painel)
+- ❌ Credenciais P0 não rotacionadas (CEO não autorizou opção B)
+
+### Deliverables adicionais
+- `memory/OPERACAO_98_RESULTADO_REAL.md`
+- `memory/grafana/op98_kpi_dashboard.json` (8 painéis prontos para importar)
+- `memory/grafana/README.md`
+

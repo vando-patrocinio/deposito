@@ -1,0 +1,348 @@
+{
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": "-- Grafana --",
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      }
+    ]
+  },
+  "description": "Painel KPIs Operação 98 — Cobertura Operacional + Quarentena ONU + Credenciais. Tenant: co-demo (operacional real).",
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 0,
+  "id": null,
+  "iteration": 1718800000000,
+  "links": [],
+  "liveNow": false,
+  "panels": [
+    {
+      "datasource": "MongoDB-SmartProv",
+      "description": "Cobertura = (ATIVO + ACTIVE) / TOTAL × 100 — tenant co-demo apenas.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "thresholds"},
+          "mappings": [],
+          "max": 100,
+          "min": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {"color": "red", "value": 0},
+              {"color": "orange", "value": 85},
+              {"color": "yellow", "value": 93},
+              {"color": "green", "value": 98}
+            ]
+          },
+          "unit": "percent"
+        },
+        "overrides": []
+      },
+      "gridPos": {"h": 8, "w": 6, "x": 0, "y": 0},
+      "id": 1,
+      "options": {
+        "orientation": "auto",
+        "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false},
+        "showThresholdLabels": true,
+        "showThresholdMarkers": true
+      },
+      "title": "Cobertura Operacional — co-demo",
+      "type": "gauge",
+      "targets": [
+        {
+          "refId": "A",
+          "_comment": "Mongo aggregation for cobertura co-demo",
+          "collection": "subscribers",
+          "aggregation": [
+            {"$match": {"company_id": "co-demo"}},
+            {"$group": {
+              "_id": null,
+              "total": {"$sum": 1},
+              "active": {"$sum": {"$cond": [{"$in": ["$status", ["ATIVO", "ACTIVE"]]}, 1, 0]}}
+            }},
+            {"$project": {
+              "_id": 0,
+              "coverage_pct": {"$multiply": [{"$divide": ["$active", "$total"]}, 100]}
+            }}
+          ]
+        }
+      ]
+    },
+    {
+      "datasource": "MongoDB-SmartProv",
+      "description": "Quantidade de subscribers OFFLINE no tenant operacional.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "thresholds"},
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {"color": "green", "value": 0},
+              {"color": "yellow", "value": 500},
+              {"color": "red", "value": 2000}
+            ]
+          },
+          "unit": "short"
+        }
+      },
+      "gridPos": {"h": 8, "w": 6, "x": 6, "y": 0},
+      "id": 2,
+      "options": {
+        "orientation": "auto",
+        "reduceOptions": {"calcs": ["lastNotNull"]}
+      },
+      "title": "Subscribers OFFLINE — co-demo",
+      "type": "stat",
+      "targets": [
+        {
+          "refId": "A",
+          "collection": "subscribers",
+          "aggregation": [
+            {"$match": {"company_id": "co-demo", "status": "OFFLINE"}},
+            {"$count": "offline"}
+          ]
+        }
+      ]
+    },
+    {
+      "datasource": "MongoDB-SmartProv",
+      "description": "ONUs com status NULL (não sincronizadas) em todos os tenants.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "thresholds"},
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {"color": "green", "value": 0},
+              {"color": "yellow", "value": 1000},
+              {"color": "red", "value": 5000}
+            ]
+          },
+          "unit": "short"
+        }
+      },
+      "gridPos": {"h": 8, "w": 6, "x": 12, "y": 0},
+      "id": 3,
+      "options": {
+        "orientation": "auto",
+        "reduceOptions": {"calcs": ["lastNotNull"]}
+      },
+      "title": "ONUs sem status (todos tenants)",
+      "type": "stat",
+      "targets": [
+        {
+          "refId": "A",
+          "collection": "smartolt_onus",
+          "aggregation": [
+            {"$match": {"status": null}},
+            {"$count": "null_status"}
+          ]
+        }
+      ]
+    },
+    {
+      "datasource": "MongoDB-SmartProv",
+      "description": "ONUs em LOS / Power fail / Offline — recuperáveis com visita técnica (co-demo).",
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "thresholds"},
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {"color": "green", "value": 0},
+              {"color": "yellow", "value": 200},
+              {"color": "red", "value": 800}
+            ]
+          },
+          "unit": "short"
+        }
+      },
+      "gridPos": {"h": 8, "w": 6, "x": 18, "y": 0},
+      "id": 4,
+      "options": {
+        "orientation": "auto",
+        "reduceOptions": {"calcs": ["lastNotNull"]}
+      },
+      "title": "ONUs LOS recuperáveis — co-demo",
+      "type": "stat",
+      "targets": [
+        {
+          "refId": "A",
+          "collection": "smartolt_onus",
+          "aggregation": [
+            {"$match": {"company_id": "co-demo", "status": {"$in": ["LOS", "Power fail", "Offline"]}}},
+            {"$count": "recoverable"}
+          ]
+        }
+      ]
+    },
+    {
+      "datasource": "MongoDB-SmartProv",
+      "description": "Auto ONT swap events pendentes (status=null). Reconciliação via scripts/reconcile_pending_swaps.py.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "thresholds"},
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {"color": "green", "value": 0},
+              {"color": "yellow", "value": 50},
+              {"color": "red", "value": 200}
+            ]
+          },
+          "unit": "short"
+        }
+      },
+      "gridPos": {"h": 8, "w": 8, "x": 0, "y": 8},
+      "id": 5,
+      "options": {
+        "orientation": "auto",
+        "reduceOptions": {"calcs": ["lastNotNull"]}
+      },
+      "title": "Swap events pendentes",
+      "type": "stat",
+      "targets": [
+        {
+          "refId": "A",
+          "collection": "auto_ont_swap_events",
+          "aggregation": [
+            {"$match": {"status": null}},
+            {"$count": "pending"}
+          ]
+        }
+      ]
+    },
+    {
+      "datasource": "MongoDB-SmartProv",
+      "description": "Subscribers ativos por tenant — destaca co-demo (real) vs sintéticos.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "palette-classic"},
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {"color": "green", "value": null}
+            ]
+          },
+          "unit": "short"
+        }
+      },
+      "gridPos": {"h": 8, "w": 16, "x": 8, "y": 8},
+      "id": 6,
+      "options": {
+        "displayMode": "gradient",
+        "orientation": "horizontal",
+        "reduceOptions": {"calcs": ["lastNotNull"]},
+        "showUnfilled": true
+      },
+      "title": "Cobertura por tenant",
+      "type": "bargauge",
+      "targets": [
+        {
+          "refId": "A",
+          "collection": "subscribers",
+          "aggregation": [
+            {"$group": {
+              "_id": "$company_id",
+              "total": {"$sum": 1},
+              "active": {"$sum": {"$cond": [{"$in": ["$status", ["ATIVO", "ACTIVE"]]}, 1, 0]}}
+            }},
+            {"$project": {
+              "tenant": "$_id",
+              "coverage_pct": {"$multiply": [{"$divide": ["$active", "$total"]}, 100]}
+            }},
+            {"$sort": {"coverage_pct": -1}}
+          ]
+        }
+      ]
+    },
+    {
+      "datasource": "MongoDB-SmartProv",
+      "description": "Distribuição de status das ONUs em co-demo.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "palette-classic"},
+          "custom": {"hideFrom": {"legend": false, "tooltip": false, "vis": false}},
+          "mappings": []
+        }
+      },
+      "gridPos": {"h": 9, "w": 12, "x": 0, "y": 16},
+      "id": 7,
+      "options": {
+        "legend": {"displayMode": "list", "placement": "right"},
+        "pieType": "donut",
+        "reduceOptions": {"calcs": ["lastNotNull"]}
+      },
+      "title": "Status ONUs — co-demo",
+      "type": "piechart",
+      "targets": [
+        {
+          "refId": "A",
+          "collection": "smartolt_onus",
+          "aggregation": [
+            {"$match": {"company_id": "co-demo"}},
+            {"$group": {"_id": "$status", "n": {"$sum": 1}}},
+            {"$project": {"status": "$_id", "count": "$n"}}
+          ]
+        }
+      ]
+    },
+    {
+      "datasource": "MongoDB-SmartProv",
+      "description": "Indicador de gate 98% — verde se atingido, vermelho caso contrário.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "thresholds"},
+          "mappings": [
+            {"options": {"0": {"text": "ABAIXO DO GATE", "color": "red"}, "1": {"text": "GATE 98% ATINGIDO", "color": "green"}}, "type": "value"}
+          ],
+          "thresholds": {"mode": "absolute", "steps": [{"color": "red", "value": null}, {"color": "green", "value": 1}]}
+        }
+      },
+      "gridPos": {"h": 9, "w": 12, "x": 12, "y": 16},
+      "id": 8,
+      "options": {
+        "colorMode": "background",
+        "orientation": "auto",
+        "reduceOptions": {"calcs": ["lastNotNull"]}
+      },
+      "title": "Status Gate Reabertura",
+      "type": "stat",
+      "targets": [
+        {
+          "refId": "A",
+          "collection": "subscribers",
+          "aggregation": [
+            {"$match": {"company_id": "co-demo"}},
+            {"$group": {
+              "_id": null,
+              "total": {"$sum": 1},
+              "active": {"$sum": {"$cond": [{"$in": ["$status", ["ATIVO", "ACTIVE"]]}, 1, 0]}}
+            }},
+            {"$project": {
+              "gate_atingido": {"$cond": [{"$gte": [{"$multiply": [{"$divide": ["$active", "$total"]}, 100]}, 98]}, 1, 0]}
+            }}
+          ]
+        }
+      ]
+    }
+  ],
+  "refresh": "5m",
+  "schemaVersion": 38,
+  "style": "dark",
+  "tags": ["smartprov", "operacao-98", "kpi"],
+  "templating": {"list": []},
+  "time": {"from": "now-24h", "to": "now"},
+  "timepicker": {},
+  "timezone": "America/Sao_Paulo",
+  "title": "Operação 98 — KPIs Cobertura & Quarentena",
+  "uid": "op98-kpi",
+  "version": 1,
+  "weekStart": ""
+}
