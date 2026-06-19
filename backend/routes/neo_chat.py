@@ -54,6 +54,25 @@ router = APIRouter(prefix="/api/neo-chat", tags=["neo-chat"])
 
 
 # ---------------------------------------------------------------------------
+# Knowledge Base de navegação (carregada uma vez no startup).
+# Permite ao NEO responder "Onde eu faço X?" usando o mapa em
+# /app/memory/neo_navigation_kb.md.
+# ---------------------------------------------------------------------------
+def _load_navigation_kb() -> str:
+    try:
+        kb_path = os.environ.get(
+            "NEO_KB_PATH", "/app/memory/neo_navigation_kb.md")
+        with open(kb_path, "r", encoding="utf-8") as f:
+            return f.read()
+    except Exception as e:
+        logger.warning("[neo-chat] KB navegação ausente: %s", e)
+        return ""
+
+
+_NAV_KB: str = _load_navigation_kb()
+
+
+# ---------------------------------------------------------------------------
 # Models
 # ---------------------------------------------------------------------------
 class AskIn(BaseModel):
@@ -279,15 +298,28 @@ Ferramentas disponíveis:
 - neo_reports_recent()           — Últimos relatórios agendados executados
 - list_schedules()               — Agendamentos ativos
 
-Se a pergunta NÃO precisar de dados (cumprimento, ajuda, off-topic), responda:
+Se a pergunta NÃO precisar de DADOS (cumprimento, ajuda, "onde fica X?", "qual
+aba", "como faço Y?"), responda:
 { "tool": "freeform", "answer": "<resposta direta em PT-BR>" }
+
+Para perguntas de NAVEGAÇÃO ("onde", "qual aba", "como acesso", "em que menu"),
+use o mapa abaixo (KB de Navegação) e devolva resposta direta no `answer`,
+sempre no formato:
+  "Sidebar > Caminho > Aba/Botão"
+e adicione 1 dica útil quando aplicável.
+
+==================== KB DE NAVEGAÇÃO SmartProv ====================
+{NAV_KB}
+==================== FIM KB ====================
 
 Regras:
 - Sempre PT-BR.
 - Se a pergunta envolver telefone/CPF, extraia só dígitos e use customer_timeline.
 - Se a pergunta mencionar "última semana" use days=7; "mês" use days=30; "hoje" use days=1.
+- Se a pergunta for de NAVEGAÇÃO, use freeform com resposta baseada no KB.
+- Se NÃO houver mapeamento no KB, responda "Não tenho mapeamento exato. Verifique em <sugestão>".
 - Apenas UM JSON, sem markdown.
-"""
+""".replace("{NAV_KB}", _NAV_KB or "(KB de navegação indisponível neste ambiente)")
 
 
 SUMMARIZE_PROMPT = """
