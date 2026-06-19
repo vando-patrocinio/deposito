@@ -2,6 +2,34 @@
 
 > Documento vivo. Atualizado a cada sprint.
 
+## ✅ POST-SPRINT 5 PHASE A + B · Auditoria Operacional + Validador E2E — 19/06/2026
+
+**Diretiva CEO**: Estabelecer "exame de sangue" operacional semanal + simular ciclo completo de cliente E2E (Install→Repair→Swap→Move Porta→Move CTO→Retirada). Critério Phase C: score ≥ 8.5/10 E E2E ≥ 5/6.
+
+### Entregue
+- `routes/sprint5_audit_operacional.py` — 13 perguntas/2 percentuais sobre Lousa+Patrimônio+Rede + nota 0-10 + status APROVADA/COM RESSALVAS/REPROVADA + hash SHA-256 (registrada em server.py)
+- `routes/sprint5_e2e_validator.py` — 6 cenários sintéticos com 8 checks cada (Cliente, CTO, Porta, ONU, Técnico, Ticket, Estoque, SmartOLT) + RCA automática
+- Bug fix: `doc.pop("_id", None)` antes do return (ObjectId não serializável)
+
+### Resultado em co-demo
+- **Phase A**: 7.35/10 — COM RESSALVAS. Cobertura Operacional 78.83 %, Compliance 78.85 %, 5 OS bloqueadas semana, 1 override manual, 87 swap_events pendentes (backfill).
+- **Phase B**: 6/6 PASS (100 %). Stack canônica íntegra.
+
+### 🔴 P0 — 2 bypass paths encontrados
+1. `lousa_rompimento.py:345/412` — finaliza OS sem chamar `validate_finalization` (4 OS últimos 30 d)
+2. `lousa_manager_callbacks.py:152` (resolved_close) — gestor finaliza sem Onda 3 (2 OS últimos 30 d)
+
+### Próximas fases
+- **P0 (2.5h)**: fechar 2 bypasses + re-rodar Phase A
+- **Phase C (~9h)**: subir Cobertura Operacional 78.83 % → 90 % (PPPoE sync + 87 swap confirmations + Genesis v2)
+- **Phase D (BLOQUEADA)**: Gauge Watchtower "Cobertura Operacional" — só após ≥ 90 %
+
+### Files
+- NOVOS: `/app/memory/POST_SPRINT5_PHASE_AB_REPORT.md`
+- MODIFICADOS: `/app/backend/routes/sprint5_audit_operacional.py` · `/app/backend/routes/sprint5_e2e_validator.py` · `/app/backend/server.py`
+
+---
+
 ## ✅ ONDA IA-1.6 · Confiabilidade do Custo + CMP Real das Compras — 18/06/2026
 
 **Diretiva CEO**: "não liberar DRE Operacional como indicador executivo ainda · marcar BETA · criar KPI Confiabilidade do Custo · ler purchase_items pra CMP real". Nota CEO da entrega anterior: Valor 8/10 · Confiabilidade 3/10 · Potencial pós-Sprint 5 9,5/10. Essa Onda endereça o Confiabilidade.

@@ -292,6 +292,7 @@ async def simulate_journey(
         "executed_at": _now_iso(),
     }
     await db.sprint5_e2e_validations.insert_one(final)
+    final.pop("_id", None)
     return final
 
 

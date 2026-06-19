@@ -158,6 +158,7 @@ async def _build_weekly_report(cid: str) -> Dict[str, Any]:
         json.dumps(doc, sort_keys=True, default=str).encode()
     ).hexdigest()
     await db.sprint5_audit_operacional.insert_one(doc)
+    doc.pop("_id", None)
     return doc
 
 
