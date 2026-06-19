@@ -46,7 +46,8 @@ SUPER_ADMINS = [
 ]
 
 
-async def main() -> int:
+async def seed_super_admins() -> dict:
+    """Reutilizável — chamado por CLI ou via endpoint HTTP `/api/admin/seed-super-admins`."""
     now_iso = datetime.now(timezone.utc).isoformat()
     results = []
 
@@ -75,36 +76,47 @@ async def main() -> int:
             upsert=True,
         )
         op = "UPDATED" if existing else "CREATED"
-        results.append((u["email"], op, user_id))
+        results.append({"email": u["email"], "op": op, "id": user_id})
 
-    print("=" * 60)
-    print(" SEED — Super Admins (Production)")
-    print("=" * 60)
-    for email, op, uid in results:
-        print(f"  {op:8} {email:30} id={uid}")
-
-    print()
-    print("=== Validação ===")
-    ok = 0
+    # Validação
+    validated = []
     for u in SUPER_ADMINS:
         d = await db.users.find_one(
             {"email": u["email"]},
             {"_id": 0, "email": 1, "role": 1, "is_super_admin": 1, "active": 1},
         )
-        if d and d.get("is_super_admin") and d.get("active"):
-            print(f"  ✅ {d['email']:30} role={d['role']:14} super=True active=True")
-            ok += 1
-        else:
-            print(f"  ❌ FALHA: {u['email']} — {d}")
+        validated.append({
+            "email": u["email"],
+            "ok": bool(d and d.get("is_super_admin") and d.get("active")),
+            "role": d.get("role") if d else None,
+        })
 
-    if ok == len(SUPER_ADMINS):
-        print()
-        print(f"✅ SUCESSO — {ok}/{len(SUPER_ADMINS)} super admins prontos.")
+    return {
+        "results": results,
+        "validated": validated,
+        "all_ok": all(v["ok"] for v in validated),
+        "executed_at": now_iso,
+    }
+
+
+async def main() -> int:
+    summary = await seed_super_admins()
+    print("=" * 60)
+    print(" SEED — Super Admins (Production)")
+    print("=" * 60)
+    for r in summary["results"]:
+        print(f"  {r['op']:8} {r['email']:30} id={r['id']}")
+    print()
+    print("=== Validação ===")
+    for v in summary["validated"]:
+        mark = "✅" if v["ok"] else "❌"
+        print(f"  {mark} {v['email']:30} role={v.get('role')}")
+    print()
+    if summary["all_ok"]:
+        print(f"✅ SUCESSO — {len(summary['validated'])} super admins prontos.")
         print("   Pode testar login agora em: https://universoligo.com")
         return 0
-
-    print()
-    print(f"❌ FALHA — apenas {ok}/{len(SUPER_ADMINS)} OK.")
+    print("❌ FALHA — verificar logs.")
     return 1
 
 

@@ -389,3 +389,34 @@ async def _log_auth_recovery(email: str, ip: str, status: str) -> None:
         })
     except Exception:
         pass
+
+
+
+# ---------------------------------------------------------------------------
+# Seed Super Admins via HTTP — Evita acesso ao shell em produção.
+# Executive Order 19/02/2026: garantir que vando@/isaac@ligotelecom.com
+# sejam super admins em qualquer ambiente.
+# ---------------------------------------------------------------------------
+@router.post("/admin/seed-super-admins")
+async def seed_super_admins_endpoint(user: dict = Depends(require_role("administrador"))):
+    """Cria/atualiza os 2 super admins masters por Executive Order.
+
+    Idempotente: pode ser chamado quantas vezes for necessário.
+    Apenas administrador (com ou sem is_super_admin) — em produção, recomenda-se
+    que apenas super_admin tenha esse acesso (já é o caso pelo role check).
+    """
+    import sys as _sys
+    # Import dinâmico para evitar circular import
+    _sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "scripts"))
+    from seed_super_admins import seed_super_admins  # type: ignore
+    try:
+        result = await seed_super_admins()
+        logger.info(
+            "[seed-super-admins] executed by user=%s all_ok=%s",
+            user.get("email"), result.get("all_ok"),
+        )
+        return result
+    except Exception as e:
+        logger.exception("[seed-super-admins] failed")
+        raise HTTPException(500, safe_detail(500, e, "seed_super_admins"))
+
