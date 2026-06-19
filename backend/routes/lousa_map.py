@@ -24,6 +24,7 @@ Schema usado:
 from __future__ import annotations
 
 
+from services.exception_sanitizer import safe_detail  # SECURITY_LOCK ART.13
 NERVOUS_METADATA = {
     "owner": "ops-team",
     "domain": "operacoes",
@@ -119,7 +120,7 @@ def _period_range(period: str, start: Optional[str],
             e = datetime.fromisoformat(end)
             return s, e + timedelta(days=1)
         except Exception as ex:
-            raise HTTPException(400, f"start/end inválidos: {ex}")
+            raise HTTPException(400, safe_detail(400, ex, "start/end inválidos"))
     # default: hoje
     return today_start, today_start + timedelta(days=1)
 
@@ -446,7 +447,7 @@ async def search_address(
             data = r.json() or []
     except Exception as e:
         logger.warning("[lousa-map] search-address err: %s", e)
-        raise HTTPException(502, f"Falha ao consultar Nominatim: {e}")
+        raise HTTPException(502, safe_detail(502, e, "Falha ao consultar Nominatim:"))
 
     results = []
     for item in data:

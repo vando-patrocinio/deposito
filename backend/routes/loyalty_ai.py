@@ -18,6 +18,7 @@ configurada em Configurações → AI Keys). Não usa Emergent LLM Key.
 from __future__ import annotations
 
 
+from services.exception_sanitizer import safe_detail  # SECURITY_LOCK ART.13
 NERVOUS_METADATA = {
     "owner": "platform-team",
     "domain": "infra",
@@ -280,7 +281,7 @@ async def _run_claude(company_id: str, prompt: str) -> dict:
         )
     except Exception as e:
         logger.exception("[loyalty-ai] Falha chamando Claude via OpenRouter")
-        raise HTTPException(502, f"Falha no LLM: {e}")
+        raise HTTPException(502, safe_detail(502, e, "Falha no LLM:"))
     text = result.get("content") or ""
     parsed = _parse_json_response(text)
     if not parsed:

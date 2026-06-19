@@ -5,6 +5,7 @@ Endpoints REST do Data Quality v2.
 from __future__ import annotations
 
 
+from services.exception_sanitizer import safe_detail  # SECURITY_LOCK ART.13
 NERVOUS_METADATA = {
     "owner": "ai-team",
     "domain": "isabella",
@@ -186,4 +187,4 @@ async def run_backfill(
                 after["overall_score"] - before["overall_score"], 2),
         }
     except Exception as e:
-        raise HTTPException(500, f"backfill_failed: {e}")
+        raise HTTPException(500, safe_detail(500, e, "backfill_failed:"))

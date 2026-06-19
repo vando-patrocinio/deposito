@@ -12,6 +12,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from core import require_role
 from services.wa_sidecar_health import restart_all_sidecars
 
+from services.exception_sanitizer import safe_detail  # SECURITY_LOCK ART.13
 log = logging.getLogger("admin_wa_sidecar")
 
 router = APIRouter(prefix="/api/admin/wa-sidecar", tags=["admin-wa-sidecar"])
@@ -32,7 +33,7 @@ async def admin_restart_all_sidecars(
         result = await restart_all_sidecars()
     except Exception as e:  # noqa: BLE001
         log.exception("[admin] restart-all falhou: %s", e)
-        raise HTTPException(500, f"Falha ao reiniciar sidecars: {e}")
+        raise HTTPException(500, safe_detail(500, e, "Falha ao reiniciar sidecars:"))
 
     if not result.get("ok"):
         # Não é 500 — o endpoint conseguiu chamar; alguns sidecars falharam

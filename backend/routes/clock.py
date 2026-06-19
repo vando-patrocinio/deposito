@@ -6,6 +6,7 @@ pelo routes/dashboard.py para tendência/range.
 from __future__ import annotations
 
 
+from services.exception_sanitizer import safe_detail  # SECURITY_LOCK ART.13
 NERVOUS_METADATA = {
     "owner": "platform-team",
     "domain": "infra",
@@ -677,7 +678,7 @@ async def create_collaborator(payload: CollaboratorIn, user: dict = Depends(requ
     try:
         await db.collaborators.insert_one(doc)
     except Exception as e:
-        raise HTTPException(400, f"Erro ao criar (CPF duplicado?): {e}")
+        raise HTTPException(400, safe_detail(400, e, "Erro ao criar (CPF duplicado?):"))
     # CTO 12/06/2026 — atribui code LIGO-NNNN ao novo colaborador
     try:
         from services.collaborator_code import get_or_assign_code

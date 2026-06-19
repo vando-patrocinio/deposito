@@ -1,3 +1,5 @@
+import os, sys; sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from _test_secrets import TEST_ADMIN_PASSWORD, TEST_AUDITOR_PASSWORD  # noqa: E402
 """
 Iteration 19 — Backend regression after MASSIVE server.py refactor (2688 -> 208 lines).
 All endpoints redistributed across /app/backend/routes/*.py.
@@ -24,7 +26,7 @@ BASE_URL = os.environ.get("REACT_APP_BACKEND_URL").rstrip("/")
 API = f"{BASE_URL}/api"
 
 AUDITOR = {"email": "vando@example.com", "password": "123456"}
-ADMIN = {"email": "admin@example.com", "password": "admin123"}
+ADMIN = {"email": "admin@example.com", "password": TEST_ADMIN_PASSWORD}
 
 
 @pytest.fixture(scope="module")

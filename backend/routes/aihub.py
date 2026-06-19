@@ -12,6 +12,7 @@ Tudo usa o EMERGENT_LLM_KEY já configurado no app (sem chaves externas).
 from __future__ import annotations
 
 
+from services.exception_sanitizer import safe_detail  # SECURITY_LOCK ART.13
 NERVOUS_METADATA = {
     "owner": "ai-team",
     "domain": "isabella",
@@ -342,7 +343,7 @@ async def playground(aid: str, payload: PlaygroundIn,
     try:
         from services.motor_ia import chat_completion
     except ImportError as e:
-        raise HTTPException(500, f"motor_ia indisponível: {e}")
+        raise HTTPException(500, safe_detail(500, e, "motor_ia indisponível:"))
 
     # Histórico curto da sessão (últimas 10 mensagens) para manter contexto
     history = await db.aihub_messages.find(
@@ -365,7 +366,7 @@ async def playground(aid: str, payload: PlaygroundIn,
         text = (result.get("content") or "").strip()
     except Exception as e:
         logger.warning("[aihub] LLM error session=%s: %s", session_id, e)
-        raise HTTPException(502, f"Falha ao chamar LLM: {e}") from e
+        raise HTTPException(502, safe_detail(502, e, "Falha ao chamar LLM:")) from e
 
     # Persiste resposta
     await db.aihub_messages.insert_one({
@@ -778,7 +779,7 @@ async def _mb_request(cid: str, path: str, params: Optional[dict] = None,
         except Exception:
             return {"raw": r.text}
     except httpx.HTTPError as e:
-        raise HTTPException(502, f"MagnusBilling unreachable: {e}") from e
+        raise HTTPException(502, safe_detail(502, e, "MagnusBilling unreachable:")) from e
 
 
 @router.get("/magnusbilling/dids")
@@ -1057,7 +1058,7 @@ async def agent_text_gen(payload: TextGenIn,
     try:
         from services.motor_ia import chat_completion
     except ImportError as e:
-        raise HTTPException(500, f"motor_ia indisponível: {e}") from e
+        raise HTTPException(500, safe_detail(500, e, "motor_ia indisponível:")) from e
 
     guide = _FIELD_GUIDES.get(payload.field, "")
     if payload.mode == "aprimorar" and not payload.current_text.strip():
@@ -1102,7 +1103,7 @@ async def agent_text_gen(payload: TextGenIn,
         text = (result.get("content") or "").strip().strip('"\'')
     except Exception as e:
         logger.warning("[aihub.textgen] falhou: %s", e)
-        raise HTTPException(502, f"LLM falhou: {e}") from e
+        raise HTTPException(502, safe_detail(502, e, "LLM falhou:")) from e
 
     return {"text": text, "field": payload.field, "mode": payload.mode}
 

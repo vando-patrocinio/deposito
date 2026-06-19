@@ -1,3 +1,5 @@
+import os, sys; sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from _test_secrets import TEST_ADMIN_PASSWORD, TEST_AUDITOR_PASSWORD  # noqa: E402
 """Tests for iter117 - Acompanhamento (Kanban Trello-style) module.
 
 Covers /api/projects endpoints: CRUD, checklist, file upload, activity feed,
@@ -13,7 +15,7 @@ import pytest
 BASE_URL = os.environ.get("PUBLIC_BACKEND_URL") or "https://dual-combine-3.preview.emergentagent.com"
 BASE_URL = BASE_URL.rstrip("/")
 
-AUDITOR = {"email": "auditor@example.com", "password": "auditor123"}
+AUDITOR = {"email": "auditor@example.com", "password": TEST_AUDITOR_PASSWORD}
 COLAB = {"email": "colaborador@empresa.com", "password": "123456"}
 SUPER = {"email": "admin@empresa.com", "password": "123456"}
 

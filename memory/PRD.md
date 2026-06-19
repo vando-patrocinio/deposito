@@ -6413,3 +6413,35 @@ com hash SHA-256.
 
 A Sprint 5 transformou a Ligo de "sem identidade patrimonial" para
 "governança patrimonial certificada" em 6 ondas consecutivas.
+
+
+---
+
+## 🔒 SECURITY LOCK V1 — CONCLUÍDO (19/02/2026)
+
+**Executive Order do CEO:** remediar todas as 14 ARTs do `SECURITY_LOCK.md`.
+
+### Resultado
+- ✅ `bash scripts/security_gate/security_gate.sh` → **GATE APROVADO** (0 violações)
+- ✅ `pytest backend/tests/test_security_lock_v1.py` → **12/12 PASSED**
+- ✅ Sprint 5 não tocado (lousa, baileys, Genesis, Balance Engine intactos)
+- ✅ 1 EXCEPTION formal aprovada (ART.14 `emergentintegrations`)
+
+### Deliverables gerados
+- `memory/SECURITY_REMEDIATION_FINAL_REPORT.md`
+- `memory/SECURITY_LOCK_CERTIFICATE.md`
+- `memory/SECURITY_ART13_DIFF.md` (134 → 0 exception leaks)
+- `memory/PII_CLEANUP_REPORT.md` (47 arquivos PII removidos do git)
+- `backend/tests/test_security_lock_v1.py` (12 testes)
+
+### Refactor em massa
+- 58 arquivos: `HTTPException(..., str(e))` → `safe_detail()` helper
+- 20 arquivos: literais `admin123/auditor123` em testes → env vars
+- 47 PII binaries: `git rm --cached` + `.gitignore`
+- `routes/auth_debug.py` → quarentena em `scripts/_debug_quarantine`
+
+### Próximos passos (fora do escopo deste lock)
+- PWA HTTP 400 retry loop (Issue 2 do handoff) — aguardando aprovação do CEO
+- `whatsapp-service` Dockerfile (Issue 3) — aguardando aprovação do CEO
+- Re-audit em 60 dias
+

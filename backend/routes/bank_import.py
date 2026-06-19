@@ -20,6 +20,7 @@ Coleções:
 from __future__ import annotations
 
 
+from services.exception_sanitizer import safe_detail  # SECURITY_LOCK ART.13
 NERVOUS_METADATA = {
     "owner": "platform-team",
     "domain": "infra",
@@ -117,7 +118,7 @@ def _parse_ofx_bytes(data: bytes) -> List[Dict[str, Any]]:
     try:
         ofx = OfxParser.parse(f)
     except Exception as e:
-        raise HTTPException(400, f"OFX inválido: {e}")
+        raise HTTPException(400, safe_detail(400, e, "OFX inválido:"))
     out: List[Dict[str, Any]] = []
     for account in (ofx.accounts or []):
         st = getattr(account, "statement", None)
@@ -447,7 +448,7 @@ async def upload_extract(file: UploadFile = File(...),
         try:
             txs = parse_sicoob_pdf(raw)
         except ValueError as e:
-            raise HTTPException(400, str(e))
+            raise HTTPException(400, safe_detail(400, e))
         except Exception as e:
             logger.exception("Erro ao processar PDF Sicoob")
             raise HTTPException(

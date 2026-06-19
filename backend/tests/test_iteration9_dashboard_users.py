@@ -1,3 +1,5 @@
+import os, sys; sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from _test_secrets import TEST_ADMIN_PASSWORD, TEST_AUDITOR_PASSWORD  # noqa: E402
 """Iteration 9: Tests for /dashboard/overtime/trend, vando login, PUT /users with email/password."""
 import os
 import uuid
@@ -26,14 +28,14 @@ def test_vando_login_returns_token_and_role_auditor():
 
 
 def test_admin_login_baseline():
-    r = _login("admin@example.com", "admin123")
+    r = _login("admin@example.com", TEST_ADMIN_PASSWORD)
     assert r.status_code == 200
     assert r.json()["user"]["role"] == "gestor"
 
 
 @pytest.fixture(scope="module")
 def admin_token():
-    r = _login("admin@example.com", "admin123")
+    r = _login("admin@example.com", TEST_ADMIN_PASSWORD)
     assert r.status_code == 200
     return r.json()["access_token"]
 

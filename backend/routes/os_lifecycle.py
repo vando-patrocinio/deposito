@@ -17,6 +17,7 @@ from pydantic import BaseModel
 
 from core import DEMO_COMPANY_ID, is_super_admin, now_iso, require_role
 from database import db
+from services.exception_sanitizer import safe_detail  # SECURITY_LOCK ART.13
 from services.os_lifecycle import (
     ALLOWED_TRANSITIONS,
     LIFECYCLE_STATES,
@@ -157,7 +158,7 @@ async def transition_ticket(ticket_id: str, payload: TransitionReq,
             force=payload.force,
         )
     except ValueError as e:
-        raise HTTPException(400, str(e))
+        raise HTTPException(400, safe_detail(400, e))
     return r
 
 

@@ -13,6 +13,7 @@
 from __future__ import annotations
 
 
+from services.exception_sanitizer import safe_detail  # SECURITY_LOCK ART.13
 NERVOUS_METADATA = {
     "owner": "platform-team",
     "domain": "infra",
@@ -130,7 +131,7 @@ async def generate_suggestions(payload: GenerateIn = GenerateIn(),
         return result
     except Exception as e:
         logger.exception("[disparo] generate falhou: %s", e)
-        raise HTTPException(502, f"Disparo IA falhou: {e}") from e
+        raise HTTPException(502, safe_detail(502, e, "Disparo IA falhou:")) from e
 
 
 # ---------------------------------------------------------------------------

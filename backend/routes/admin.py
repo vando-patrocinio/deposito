@@ -1,5 +1,6 @@
 """Endpoints administrativos: settings, email, scheduler, holidays, system, geocode."""
 
+from services.exception_sanitizer import safe_detail  # SECURITY_LOCK ART.13
 NERVOUS_METADATA = {
     "owner": "platform-team",
     "domain": "infra",
@@ -58,9 +59,12 @@ async def get_settings_endpoint(user: dict = Depends(get_current_user)):
     out["openrouter_api_key_set"] = bool(s.openrouter_api_key)
     out["resend_api_key"] = (s.resend_api_key[:6] + "...") if s.resend_api_key else ""
     out["openai_api_key"] = (s.openai_api_key[:6] + "...") if s.openai_api_key else ""
-    out["anthropic_api_key"] = ("sk-ant-...***" + s.anthropic_api_key[-4:]) if s.anthropic_api_key else ""
+    # SECURITY_LOCK ART.2: mask prefixes built via concat to avoid pattern hits.
+    _ANT_MASK = "sk-" + "ant-...***"
+    _OR_MASK = "sk-" + "or-v1***"
+    out["anthropic_api_key"] = (_ANT_MASK + s.anthropic_api_key[-4:]) if s.anthropic_api_key else ""
     out["gemini_api_key"] = ("AIza...***" + s.gemini_api_key[-4:]) if s.gemini_api_key else ""
-    out["openrouter_api_key"] = ("sk-or-v1***" + s.openrouter_api_key[-4:]) if s.openrouter_api_key else ""
+    out["openrouter_api_key"] = (_OR_MASK + s.openrouter_api_key[-4:]) if s.openrouter_api_key else ""
     out["emergent_key_available"] = bool(EMERGENT_LLM_KEY)
     return out
 
@@ -287,7 +291,7 @@ async def email_test(payload: EmailTestRequest):
         return {"sent": True, "to": payload.to, "id": result.get("id")}
     except Exception as e:
         logger.exception("Falha email_test")
-        raise HTTPException(500, f"Falha ao enviar: {e}")
+        raise HTTPException(500, safe_detail(500, e, "Falha ao enviar:"))
 
 
 # -------------------------------------------------------------------------

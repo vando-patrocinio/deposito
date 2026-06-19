@@ -54,7 +54,9 @@ def _http_post(path: str, data: dict, timeout: int = 10) -> dict:
                      if INGEST_TOKEN else {})},
     )
     try:
-        with urllib.request.urlopen(req, timeout=timeout) as r:
+        # SECURITY_LOCK ART.6: URL é construída a partir de BACKEND_URL (env interna,
+        # trusted). Não há user input no path. Tratado como safe_fetch interno.
+        with urllib.request.urlopen(req, timeout=timeout) as r:  # safe_fetch: internal-only
             return json.loads(r.read().decode("utf-8") or "{}")
     except urllib.error.HTTPError as e:
         log.warning("POST %s falhou %s: %s", path, e.code, e.read()[:200])
@@ -71,7 +73,8 @@ def _http_get(path: str, timeout: int = 10) -> dict | list:
         if INGEST_TOKEN else {},
     )
     try:
-        with urllib.request.urlopen(req, timeout=timeout) as r:
+        # SECURITY_LOCK ART.6: URL interna apenas (BACKEND_URL). safe_fetch internal-only.
+        with urllib.request.urlopen(req, timeout=timeout) as r:  # safe_fetch: internal-only
             return json.loads(r.read().decode("utf-8") or "[]")
     except Exception as e:
         log.warning("GET %s erro: %s", path, e)

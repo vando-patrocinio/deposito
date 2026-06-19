@@ -13,6 +13,7 @@ Endpoints:
 from __future__ import annotations
 
 
+from services.exception_sanitizer import safe_detail  # SECURITY_LOCK ART.13
 NERVOUS_METADATA = {
     "owner": "platform-team",
     "domain": "ceo_digital",
@@ -711,7 +712,7 @@ async def decisions_create(payload: dict):
     try:
         doc = await exd.create_decision(CO, payload or {})
     except ValueError as e:
-        raise HTTPException(400, str(e))
+        raise HTTPException(400, safe_detail(400, e))
     return {"ok": True, "decision": doc, "source": dp.current_source()}
 
 
@@ -720,7 +721,7 @@ async def decisions_list(status: Optional[str] = None, limit: int = 50):
     try:
         items = await exd.list_decisions(CO, status=status, limit=limit)
     except ValueError as e:
-        raise HTTPException(400, str(e))
+        raise HTTPException(400, safe_detail(400, e))
     return {"count": len(items), "items": items,
             "source": dp.current_source(),
             "kind": "registry"}
@@ -731,9 +732,9 @@ async def decisions_update(decision_id: str, payload: dict):
     try:
         doc = await exd.update_status(CO, decision_id, payload or {})
     except ValueError as e:
-        raise HTTPException(400, str(e))
+        raise HTTPException(400, safe_detail(400, e))
     except LookupError as e:
-        raise HTTPException(404, str(e))
+        raise HTTPException(404, safe_detail(404, e))
     return {"ok": True, "decision": doc}
 
 

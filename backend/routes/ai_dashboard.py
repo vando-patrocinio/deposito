@@ -12,6 +12,7 @@ Endpoints:
 from __future__ import annotations
 
 
+from services.exception_sanitizer import safe_detail  # SECURITY_LOCK ART.13
 NERVOUS_METADATA = {
     "owner": "platform-team",
     "domain": "infra",
@@ -698,7 +699,7 @@ async def generate_insight(payload: InsightRequest,
     try:
         data = await collector(cid, payload.context_days)
     except Exception as e:
-        raise HTTPException(500, f"Falha ao coletar dados: {e}") from e
+        raise HTTPException(500, safe_detail(500, e, "Falha ao coletar dados:")) from e
 
     from services.motor_ia import chat_completion
     system_msg = (
@@ -722,7 +723,7 @@ async def generate_insight(payload: InsightRequest,
         )
         text = result.get("content") or ""
     except Exception as e:
-        raise HTTPException(502, f"LLM falhou: {e}") from e
+        raise HTTPException(502, safe_detail(502, e, "LLM falhou:")) from e
 
     rec = {
         "id": f"insight-{uuid.uuid4().hex[:10]}",

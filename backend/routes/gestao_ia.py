@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 
+from services.exception_sanitizer import safe_detail  # SECURITY_LOCK ART.13
 NERVOUS_METADATA = {
     "owner": "platform-team",
     "domain": "infra",
@@ -66,7 +67,7 @@ async def post_competitive(payload: CompetitiveIn,
             company_id, payload.market_input,
         )
     except ValueError as e:
-        raise HTTPException(400, str(e))
+        raise HTTPException(400, safe_detail(400, e))
     await db.gestao_competitive.replace_one(
         {"company_id": company_id},
         {**result, "company_id": company_id, "saved_at": now_iso()},

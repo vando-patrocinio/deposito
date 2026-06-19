@@ -16,6 +16,7 @@ Webhook interno (chamado pelo sidecar):
 from __future__ import annotations
 
 
+from services.exception_sanitizer import safe_detail  # SECURITY_LOCK ART.13
 NERVOUS_METADATA = {
     "owner": "isabella-team",
     "domain": "whatsapp",
@@ -219,7 +220,7 @@ async def reload_sidecar(user: dict = Depends(require_role("gestor"))):
         return {"ok": True, "sidecar_response": out}
     except Exception as e:
         logger.exception("[wa-baileys] reload failed")
-        raise HTTPException(500, f"Falha ao reload: {e}")
+        raise HTTPException(500, safe_detail(500, e, "Falha ao reload:"))
 
 
 class SendIn(BaseModel):
@@ -560,7 +561,7 @@ async def polish_text(payload: PolishTextIn,
             polished = raw
     except Exception as e:
         logger.warning("[wa-baileys] polish-text falhou: %s", e)
-        raise HTTPException(502, f"Falha ao polir texto: {e}")
+        raise HTTPException(502, safe_detail(502, e, "Falha ao polir texto:"))
     return {"original": raw, "polished": polished}
 
 
@@ -4512,7 +4513,7 @@ async def subscribe_presence(phone: str,
                                 json={"phone": phone})
             return r.json()
     except Exception as e:
-        raise HTTPException(503, f"Sidecar indisponível: {e}")
+        raise HTTPException(503, safe_detail(503, e, "Sidecar indisponível:"))
 
 
 # ---------------------------------------------------------------------------

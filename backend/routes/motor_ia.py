@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 
+from services.exception_sanitizer import safe_detail  # SECURITY_LOCK ART.13
 NERVOUS_METADATA = {
     "owner": "ai-team",
     "domain": "isabella",
@@ -645,7 +646,7 @@ async def toggle_agent(agent_id: str, payload: AgentSwitchIn,
             paused_until=paused_until,
         )
     except ValueError as e:
-        raise HTTPException(404, str(e)) from e
+        raise HTTPException(404, safe_detail(404, e)) from e
     return {"ok": True, **result}
 
 

@@ -16,6 +16,7 @@ Endpoints:
 from __future__ import annotations
 
 
+from services.exception_sanitizer import safe_detail  # SECURITY_LOCK ART.13
 NERVOUS_METADATA = {
     "owner": "ai-team",
     "domain": "isabella",
@@ -378,7 +379,7 @@ async def actions_approve(
             action_id, user.get("email") or "system",
             body.get("justification", ""))
     except ValueError as e:
-        raise HTTPException(400, str(e))
+        raise HTTPException(400, safe_detail(400, e))
     await _audit(user, "ia", "action_approved", target=action_id)
     return act
 
@@ -398,7 +399,7 @@ async def actions_execute(
         act = await ex.execute_action(
             action_id, user.get("email") or "system", dry_run=dry_run)
     except ValueError as e:
-        raise HTTPException(400, str(e))
+        raise HTTPException(400, safe_detail(400, e))
     await _audit(user, "ia", "action_executed", target=action_id,
                     data={"dry_run": dry_run,
                             "roi_brl": act.get("roi_brl")})
@@ -417,7 +418,7 @@ async def actions_cancel(
             action_id, user.get("email") or "system",
             body.get("reason", ""))
     except ValueError as e:
-        raise HTTPException(400, str(e))
+        raise HTTPException(400, safe_detail(400, e))
     await _audit(user, "ia", "action_cancelled", target=action_id)
     return act
 
@@ -446,7 +447,7 @@ async def actions_ledger(
     try:
         return await ex.get_action_ledger(action_id)
     except ValueError as e:
-        raise HTTPException(404, str(e))
+        raise HTTPException(404, safe_detail(404, e))
 
 
 @router.get("/memory/{categoria}")
@@ -836,7 +837,7 @@ async def gov_create_goal(
             ia_responsavel=body.get("ia_responsavel"),
             description=body.get("description") or "")
     except (KeyError, ValueError) as e:
-        raise HTTPException(400, str(e))
+        raise HTTPException(400, safe_detail(400, e))
 
 
 @router.get("/governador/goals")
@@ -861,7 +862,7 @@ async def gov_refresh_goal(
     try:
         return await gov.update_goal_progress(goal_id)
     except ValueError as e:
-        raise HTTPException(404, str(e))
+        raise HTTPException(404, safe_detail(404, e))
 
 
 @router.get("/governador/ia-scorecard")
@@ -951,7 +952,7 @@ async def brain_causality(action_id: str,
     try:
         return await br.causality_for_action(action_id)
     except ValueError as e:
-        raise HTTPException(404, str(e))
+        raise HTTPException(404, safe_detail(404, e))
 
 
 @router.get("/brain/causality-summary")
@@ -970,7 +971,7 @@ async def brain_twin_subscriber(
     try:
         return await br.digital_twin_subscriber(subscriber_id)
     except ValueError as e:
-        raise HTTPException(404, str(e))
+        raise HTTPException(404, safe_detail(404, e))
 
 
 @router.get("/brain/twin/global")

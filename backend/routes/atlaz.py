@@ -19,6 +19,7 @@ Fluxos suportados:
 from __future__ import annotations
 
 
+from services.exception_sanitizer import safe_detail  # SECURITY_LOCK ART.13
 NERVOUS_METADATA = {
     "owner": "platform-team",
     "domain": "infra",
@@ -905,7 +906,7 @@ async def atlaz_backfill_dates(
     try:
         chamados = await _fetch_chamados(cfg)
     except Exception as e:
-        raise HTTPException(502, f"Falha ao consultar Atlaz: {e}")
+        raise HTTPException(502, safe_detail(502, e, "Falha ao consultar Atlaz:"))
     by_ext = {str(c.get("id")): c for c in chamados if c.get("id") is not None}
 
     pending_by_ext = {str(t["atlaz_external_id"]): t for t in pending}
@@ -1268,7 +1269,7 @@ async def preview_customers(user: dict = Depends(require_role("gestor"))):
     try:
         page1 = await _fetch_assinantes_page(cfg, 1)
     except Exception as e:
-        raise HTTPException(502, f"Falha ao consultar Atlaz: {e}")
+        raise HTTPException(502, safe_detail(502, e, "Falha ao consultar Atlaz:"))
     items = []
     for entry in (page1.get("assinantes") or {}).values():
         a = entry.get("assinante") or {}

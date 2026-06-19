@@ -1,3 +1,5 @@
+import os, sys; sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from _test_secrets import TEST_ADMIN_PASSWORD, TEST_AUDITOR_PASSWORD  # noqa: E402
 """Iteration 14 — Role-based access restrictions.
 
 Validates:
@@ -24,7 +26,7 @@ def _login(email: str, password: str) -> str:
 
 @pytest.fixture(scope="module")
 def gestor_token():
-    return _login("admin@example.com", "admin123")
+    return _login("admin@example.com", TEST_ADMIN_PASSWORD)
 
 
 @pytest.fixture(scope="module")

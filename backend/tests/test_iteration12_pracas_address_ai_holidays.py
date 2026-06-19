@@ -1,3 +1,5 @@
+import os, sys; sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from _test_secrets import TEST_ADMIN_PASSWORD, TEST_AUDITOR_PASSWORD  # noqa: E402
 """Iteration 12 — Praças endereço completo + IA de feriados (discover/apply)."""
 import os
 import time
@@ -11,7 +13,7 @@ API = f"{BASE_URL}/api"
 # ---------- auth ----------
 @pytest.fixture(scope="module")
 def admin_headers():
-    r = requests.post(f"{API}/auth/login", json={"email": "admin@example.com", "password": "admin123"})
+    r = requests.post(f"{API}/auth/login", json={"email": "admin@example.com", "password": TEST_ADMIN_PASSWORD})
     assert r.status_code == 200, r.text
     return {"Authorization": f"Bearer {r.json()['access_token']}"}
 

@@ -12,6 +12,7 @@ pra não quebrar fluxos que ainda não passam `channel_id`.
 from __future__ import annotations
 
 
+from services.exception_sanitizer import safe_detail  # SECURITY_LOCK ART.13
 NERVOUS_METADATA = {
     "owner": "isabella-team",
     "domain": "whatsapp",
@@ -108,7 +109,7 @@ def _evolution_client(channel: dict) -> EvolutionClient:
             basic_auth=channel.get("evolution_basic_auth") or None,
         )
     except ValueError as e:
-        raise HTTPException(400, f"Canal mal configurado para Evolution: {e}")
+        raise HTTPException(400, safe_detail(400, e, "Canal mal configurado para Evolution:"))
 
 
 # --------------------------------------------------------------------------- #
@@ -342,7 +343,7 @@ async def patch_provider(
             evolution_instance_name=payload.evolution_instance_name,
         )
     except ValueError as e:
-        raise HTTPException(400, str(e))
+        raise HTTPException(400, safe_detail(400, e))
     if not updated:
         raise HTTPException(404, "Canal não encontrado")
     safe = dict(updated)
@@ -422,7 +423,7 @@ async def migrate_provider(
             evolution_instance_name=payload.evolution_instance_name,
         )
     except ValueError as e:
-        raise HTTPException(400, str(e))
+        raise HTTPException(400, safe_detail(400, e))
 
     # Step 3: limpa cache de phone/status (canal precisa reconectar)
     await update_channel_runtime(
@@ -488,7 +489,7 @@ async def channel_qr(
     try:
         data = await _proxy_get(channel_id, "/qr")
     except httpx.HTTPError as e:
-        raise HTTPException(502, f"Sidecar do {channel_id} inacessível: {e}")
+        raise HTTPException(502, safe_detail(502, e, "Sidecar do {channel_id} inacessível:"))
 
     # Auto-heal: se o Baileys esgotou as tentativas de QR (sidecar fica
     # com last_disconnect.reason == "QR refs attempts ended"), dispara
@@ -523,7 +524,7 @@ async def channel_reload(
     try:
         return await _proxy_post(channel_id, "/reload", {})
     except httpx.HTTPError as e:
-        raise HTTPException(502, f"Sidecar inacessível: {e}")
+        raise HTTPException(502, safe_detail(502, e, "Sidecar inacessível:"))
 
 
 @router.get("/{channel_id}/status")
@@ -561,7 +562,7 @@ async def channel_status(
     try:
         data = await _proxy_get(channel_id, "/status")
     except httpx.HTTPError as e:
-        raise HTTPException(502, f"Sidecar inacessível: {e}")
+        raise HTTPException(502, safe_detail(502, e, "Sidecar inacessível:"))
     me_obj = (data or {}).get("me") or {}
     me_id = (me_obj.get("id") or "").split(":")[0]
     await update_channel_runtime(
@@ -587,12 +588,12 @@ async def channel_send(
             evo = _evolution_client(ch)
             return await evo.send_text(payload.phone, payload.text)
         except httpx.HTTPError as e:
-            raise HTTPException(502, f"Evolution API inacessível: {e}")
+            raise HTTPException(502, safe_detail(502, e, "Evolution API inacessível:"))
     try:
         return await _proxy_post(channel_id, "/send",
                                   {"phone": payload.phone, "text": payload.text})
     except httpx.HTTPError as e:
-        raise HTTPException(502, f"Sidecar inacessível: {e}")
+        raise HTTPException(502, safe_detail(502, e, "Sidecar inacessível:"))
 
 
 @router.post("/{channel_id}/logout")
@@ -624,7 +625,7 @@ async def channel_logout(
         try:
             result = await _proxy_post(channel_id, "/logout", {})
         except httpx.HTTPError as e:
-            raise HTTPException(502, f"Sidecar inacessível: {e}")
+            raise HTTPException(502, safe_detail(502, e, "Sidecar inacessível:"))
     await update_channel_runtime(
         db, cid, channel_id,
         phone_number=None, status="disconnected",

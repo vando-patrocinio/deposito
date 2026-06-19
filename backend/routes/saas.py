@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 
+from services.exception_sanitizer import safe_detail  # SECURITY_LOCK ART.13
 NERVOUS_METADATA = {
     "owner": "platform-team",
     "domain": "infra",
@@ -404,7 +405,7 @@ async def create_checkout(payload: CheckoutIn, user: dict = Depends(get_current_
         session = await stripe.create_checkout_session(req)
     except Exception as e:
         logger.exception("[stripe] create_checkout_session falhou")
-        raise HTTPException(502, f"Falha ao criar checkout Stripe: {e}")
+        raise HTTPException(502, safe_detail(502, e, "Falha ao criar checkout Stripe:"))
 
     # Registra transação pendente
     await db.payment_transactions.insert_one({
@@ -450,7 +451,7 @@ async def checkout_status(session_id: str, user: dict = Depends(get_current_user
     # 2. Em ambiente test (sk_test_emergent), o proxy retorna 404 mesmo para sessions
     #    recém-criadas — então em test mode, se a session existe em payment_transactions
     #    e não conseguimos consultar o Stripe, assumimos "paid" como fallback de
-    #    desenvolvimento. Em produção (sk_test_/sk_live_ real) o status flui normalmente.
+    #    desenvolvimento. Em produção (chaves Stripe reais), o status flui normalmente.
     payment_status = None
     status_str = None
     amount_total = None
@@ -477,7 +478,7 @@ async def checkout_status(session_id: str, user: dict = Depends(get_current_user
             currency = tx.get("currency", "brl")
         else:
             logger.exception("[stripe] checkout_status falhou (modo produção)")
-            raise HTTPException(502, f"Falha ao consultar Stripe: {e}")
+            raise HTTPException(502, safe_detail(502, e, "Falha ao consultar Stripe:"))
 
     update = {
         "payment_status": payment_status,

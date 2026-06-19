@@ -62,7 +62,7 @@ export default function AdminLogin({ onSuccess }) {
           </Button>
         </form>
         <p style={{ color: "#94a3b8", fontSize: 12, marginTop: 16 }}>
-          Senha padrão: <code>admin123</code> (altere em <code>backend/.env → ADMIN_PASSWORD</code> e reinicie o backend).
+          Use a senha de administrador configurada em <code>backend/.env → ADMIN_PASSWORD</code>.
         </p>
       </Card>
     </div>

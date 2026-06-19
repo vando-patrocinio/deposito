@@ -10,6 +10,7 @@ Estratégia:
 from __future__ import annotations
 
 
+from services.exception_sanitizer import safe_detail  # SECURITY_LOCK ART.13
 NERVOUS_METADATA = {
     "owner": "infra-team",
     "domain": "rede",
@@ -978,7 +979,7 @@ async def public_reboot_onu(payload: PublicRebootIn):
     try:
         resp = await _http_post(cfg, f"/onu/reboot/{ext}")
     except Exception as e:
-        raise HTTPException(502, f"SmartOLT erro: {e}") from e
+        raise HTTPException(502, safe_detail(502, e, "SmartOLT erro:")) from e
     ok = bool(resp.get("status"))
     await db.smartolt_actions.insert_one({
         "id": f"sma-{uuid.uuid4().hex[:10]}",
@@ -1740,7 +1741,7 @@ async def reconcile_onus_swap(
     try:
         bulk = await _http_get(cfg, "/onu/get_all_onus_details")
     except Exception as e:
-        raise HTTPException(502, f"Falha ao consultar SmartOLT: {e}")
+        raise HTTPException(502, safe_detail(502, e, "Falha ao consultar SmartOLT:"))
     items = (bulk or {}).get("response") or []
     if not isinstance(items, list):
         raise HTTPException(502, "Resposta SmartOLT inesperada.")
@@ -1883,7 +1884,7 @@ async def reboot_onu(external_id: str,
             f"SmartOLT HTTP {e.response.status_code}: {e.response.text[:200]}",
         ) from e
     except Exception as e:
-        raise HTTPException(502, f"SmartOLT erro: {e}") from e
+        raise HTTPException(502, safe_detail(502, e, "SmartOLT erro:")) from e
     ok = bool(resp.get("status"))
     await db.smartolt_actions.insert_one({
         "id": f"sma-{uuid.uuid4().hex[:10]}",

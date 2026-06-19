@@ -21,6 +21,7 @@ Cada fragment tem:
 from __future__ import annotations
 
 
+from services.exception_sanitizer import safe_detail  # SECURITY_LOCK ART.13
 NERVOUS_METADATA = {
     "owner": "ai-team",
     "domain": "isabella",
@@ -274,7 +275,7 @@ async def refine_agents_v680(user: dict = Depends(require_role("administrador"))
         }
     except Exception as e:
         logger.exception("[isabella-prompt] migration v680 falhou: %s", e)
-        raise HTTPException(500, f"Falha ao rodar migration: {e}")
+        raise HTTPException(500, safe_detail(500, e, "Falha ao rodar migration:"))
 
 
 # ---------------------------------------------------------------------------
@@ -361,7 +362,7 @@ async def isabella_test(payload: IsabellaTestIn,
         used_model = result.get("model") or model_name
     except Exception as e:
         logger.warning("[isabella-test] LLM falhou: %s", e)
-        raise HTTPException(502, f"Falha ao chamar IA: {e}")
+        raise HTTPException(502, safe_detail(502, e, "Falha ao chamar IA:"))
     elapsed_ms = int((time.monotonic() - started) * 1000)
 
     # 4. Aplica _split_ai_reply
@@ -494,7 +495,7 @@ async def alvaro_test(payload: AlvaroTestIn,
         used_model = result.get("model") or model_name
     except Exception as e:
         logger.warning("[alvaro-test] LLM falhou: %s", e)
-        raise HTTPException(502, f"Falha ao chamar IA: {e}")
+        raise HTTPException(502, safe_detail(502, e, "Falha ao chamar IA:"))
     elapsed_ms = int((time.monotonic() - started) * 1000)
 
     try:

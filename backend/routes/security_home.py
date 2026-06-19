@@ -59,6 +59,7 @@ Endpoints do PORTAL cliente final (token security_portal):
 from __future__ import annotations
 
 
+from services.exception_sanitizer import safe_detail  # SECURITY_LOCK ART.13
 NERVOUS_METADATA = {
     "owner": "platform-team",
     "domain": "shield",
@@ -569,7 +570,7 @@ async def get_portal_user(authorization: Optional[str] =
     try:
         payload = jwt.decode(token, _jwt_secret(), algorithms=[JWT_ALGO])
     except jwt.PyJWTError as e:
-        raise HTTPException(401, f"Token inválido: {e}")
+        raise HTTPException(401, safe_detail(401, e, "Token inválido:"))
     if payload.get("type") != "security_portal":
         raise HTTPException(403, "Token não é do portal")
     return payload

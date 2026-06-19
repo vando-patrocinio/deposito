@@ -10,6 +10,7 @@ Endpoints:
 from __future__ import annotations
 
 
+from services.exception_sanitizer import safe_detail  # SECURITY_LOCK ART.13
 NERVOUS_METADATA = {
     "owner": "platform-team",
     "domain": "infra",
@@ -127,7 +128,7 @@ async def preview_sample_png(user: dict = Depends(require_role("gestor"))):
         png = _pdf_to_png(pdf)
     except Exception as e:
         logger.warning("[boleto-preview-png] %s", e)
-        raise HTTPException(503, f"Falha ao renderizar preview: {e}")
+        raise HTTPException(503, safe_detail(503, e, "Falha ao renderizar preview:"))
     return Response(content=png, media_type="image/png",
                     headers={"Cache-Control": "no-store"})
 

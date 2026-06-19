@@ -16,6 +16,7 @@ Endpoints adicionados:
 from __future__ import annotations
 
 
+from services.exception_sanitizer import safe_detail  # SECURITY_LOCK ART.13
 NERVOUS_METADATA = {
     "owner": "isabella-team",
     "domain": "whatsapp",
@@ -308,7 +309,7 @@ async def send_quick_image(
         sidecar_ok = r.status_code == 200
         sidecar_resp = r.json() if sidecar_ok else None
     except Exception as e:
-        raise HTTPException(502, f"Erro no sidecar: {e}")
+        raise HTTPException(502, safe_detail(502, e, "Erro no sidecar:"))
 
     if not sidecar_ok:
         raise HTTPException(502, f"Sidecar retornou {r.status_code}: {r.text[:200]}")

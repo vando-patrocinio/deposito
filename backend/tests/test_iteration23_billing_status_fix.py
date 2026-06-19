@@ -1,3 +1,4 @@
+from __future__ import annotations
 """Iteration 23 — validates fix for GET /api/saas/billing/status/{session_id}.
 
 Bug (iteration 22): endpoint returned 502 due to Pydantic vs StripeObject metadata
@@ -9,8 +10,9 @@ Tests:
 2. Billing status: no more 502; returns payment_status; when 'paid' credits 30 days
    and is idempotent on subsequent calls.
 """
-from __future__ import annotations
 
+import os, sys; sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from _test_secrets import TEST_ADMIN_PASSWORD, TEST_AUDITOR_PASSWORD  # noqa: E402
 import os
 import time
 import uuid
@@ -79,7 +81,7 @@ def test_health():
 
 def test_demo_login():
     r = requests.post(f"{API}/auth/login", json={
-        "email": "admin@example.com", "password": "admin123"
+        "email": "admin@example.com", "password": TEST_ADMIN_PASSWORD
     }, timeout=20)
     assert r.status_code == 200, r.text
     assert r.json().get("access_token")
@@ -116,7 +118,7 @@ def test_tenant_isolation_collabs(company_a, company_b):
 def test_holidays_2026():
     # login as auditor (full access)
     r = requests.post(f"{API}/auth/login", json={
-        "email": "auditor@example.com", "password": "auditor123"
+        "email": "auditor@example.com", "password": TEST_AUDITOR_PASSWORD
     }, timeout=20)
     assert r.status_code == 200
     token = r.json()["access_token"]

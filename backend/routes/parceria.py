@@ -71,6 +71,7 @@ Endpoints do PORTAL DO CLIENTE (?portal=cliente):
 from __future__ import annotations
 
 
+from services.exception_sanitizer import safe_detail  # SECURITY_LOCK ART.13
 NERVOUS_METADATA = {
     "owner": "platform-team",
     "domain": "infra",
@@ -1011,7 +1012,7 @@ async def get_partner_user(authorization: Optional[str] =
     try:
         p = jwt.decode(token, _jwt_secret(), algorithms=[JWT_ALGO])
     except jwt.PyJWTError as e:
-        raise HTTPException(401, f"Token inválido: {e}")
+        raise HTTPException(401, safe_detail(401, e, "Token inválido:"))
     if p.get("type") != "partner_portal":
         raise HTTPException(403, "Token não é do portal parceiro")
     return p
@@ -1079,7 +1080,7 @@ async def partner_upload_image(payload: dict,
     try:
         data = base64.b64decode(b64)
     except Exception as e:
-        raise HTTPException(400, f"base64 inválido: {e}") from e
+        raise HTTPException(400, safe_detail(400, e, "base64 inválido:")) from e
     if len(data) > 5 * 1024 * 1024:
         raise HTTPException(400, "Imagem maior que 5MB")
     folder = "/app/backend/uploads/parcerias"
@@ -1608,7 +1609,7 @@ async def get_client_user(authorization: Optional[str] =
     try:
         p = jwt.decode(token, _jwt_secret(), algorithms=[JWT_ALGO])
     except jwt.PyJWTError as e:
-        raise HTTPException(401, f"Token inválido: {e}")
+        raise HTTPException(401, safe_detail(401, e, "Token inválido:"))
     if p.get("type") != "client_portal":
         raise HTTPException(403, "Token não é do portal cliente")
     return p

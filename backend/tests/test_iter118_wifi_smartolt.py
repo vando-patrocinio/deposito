@@ -1,3 +1,4 @@
+from __future__ import annotations
 """Iteration 118 — Wi-Fi self-service via SmartOLT TR-069.
 
 Cobre todos os gates pedidos pela review_request: status, link/unlink,
@@ -11,8 +12,9 @@ Pré-requisito de ambiente:
     vinculado à ONU 4954425332697d69 (Online), plano plan-1b0578d85d
     (Fibra 1 Giga com premium_features=['wifi_self_service']).
 """
-from __future__ import annotations
 
+import os, sys; sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from _test_secrets import TEST_ADMIN_PASSWORD, TEST_AUDITOR_PASSWORD  # noqa: E402
 import os
 import time
 from datetime import datetime, timedelta, timezone
@@ -81,7 +83,7 @@ def tok_super():
 
 @pytest.fixture(scope="session")
 def tok_atendente():
-    return _login("auditor@example.com", "auditor123")
+    return _login("auditor@example.com", TEST_AUDITOR_PASSWORD)
 
 
 @pytest.fixture(scope="session")

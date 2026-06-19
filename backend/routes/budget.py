@@ -15,6 +15,7 @@ Acesso: administrador · gestor · financeiro.
 from __future__ import annotations
 
 
+from services.exception_sanitizer import safe_detail  # SECURITY_LOCK ART.13
 NERVOUS_METADATA = {
     "owner": "platform-team",
     "domain": "infra",
@@ -476,7 +477,7 @@ def _extract_pdf_text(raw: bytes) -> str:
                             out_lines.append(line)
     except Exception as e:
         logger.warning("[budget] PDF extract falhou: %s", e)
-        raise HTTPException(422, f"Falha ao ler PDF: {e}")
+        raise HTTPException(422, safe_detail(422, e, "Falha ao ler PDF:"))
     text = "\n".join(out_lines).strip()
     if not text:
         raise HTTPException(422, "PDF sem texto extraível (talvez seja imagem "
@@ -503,7 +504,7 @@ def _extract_docx_text(raw: bytes) -> str:
                     out_lines.append(line)
     except Exception as e:
         logger.warning("[budget] DOCX extract falhou: %s", e)
-        raise HTTPException(422, f"Falha ao ler DOCX: {e}")
+        raise HTTPException(422, safe_detail(422, e, "Falha ao ler DOCX:"))
     text = "\n".join(out_lines).strip()
     if not text:
         raise HTTPException(422, "DOCX vazio ou sem texto extraível.")
@@ -551,7 +552,7 @@ async def _extract_items_via_vision(cid: str, raw: bytes,
         content = (result.get("content") or "").strip()
     except Exception as e:
         logger.exception("[budget] Vision extract falhou: %s", e)
-        raise HTTPException(503, f"Orçamento_IA Vision indisponível: {e}")
+        raise HTTPException(503, safe_detail(503, e, "Orçamento_IA Vision indisponível:"))
 
     m = re.search(r"\{[\s\S]*\}", content)
     if not m:
@@ -559,7 +560,7 @@ async def _extract_items_via_vision(cid: str, raw: bytes,
     try:
         parsed = json.loads(m.group(0))
     except json.JSONDecodeError as e:
-        raise HTTPException(422, f"JSON inválido da IA: {e}")
+        raise HTTPException(422, safe_detail(422, e, "JSON inválido da IA:"))
 
     items: List[Dict[str, Any]] = []
     for it in parsed.get("items", []):
@@ -629,7 +630,7 @@ async def _extract_items_via_ai(cid: str, text: str,
         content = (result.get("content") or "").strip()
     except Exception as e:
         logger.exception("[budget] AI extract falhou: %s", e)
-        raise HTTPException(503, f"Orçamento_IA indisponível: {e}")
+        raise HTTPException(503, safe_detail(503, e, "Orçamento_IA indisponível:"))
 
     m = re.search(r"\{[\s\S]*\}", content)
     if not m:
@@ -638,7 +639,7 @@ async def _extract_items_via_ai(cid: str, text: str,
     try:
         parsed = json.loads(m.group(0))
     except json.JSONDecodeError as e:
-        raise HTTPException(422, f"JSON inválido da IA: {e}")
+        raise HTTPException(422, safe_detail(422, e, "JSON inválido da IA:"))
 
     items: List[Dict[str, Any]] = []
     for it in parsed.get("items", []):
@@ -731,7 +732,7 @@ async def analyze_budget(bid: str,
         content = (result.get("content") or "").strip()
     except Exception as e:
         logger.exception("[budget] Claude falhou: %s", e)
-        raise HTTPException(503, f"Orçamento_IA indisponível: {e}")
+        raise HTTPException(503, safe_detail(503, e, "Orçamento_IA indisponível:"))
 
     # Tenta extrair JSON (Claude às vezes vem com ```json ... ```)
     m = re.search(r"\{[\s\S]*\}", content)
@@ -740,7 +741,7 @@ async def analyze_budget(bid: str,
     try:
         parsed = json.loads(m.group(0))
     except json.JSONDecodeError as e:
-        raise HTTPException(502, f"JSON inválido da IA: {e}")
+        raise HTTPException(502, safe_detail(502, e, "JSON inválido da IA:"))
 
     ai_items = {it.get("id"): it for it in parsed.get("items", []) if it.get("id")}
     # Atualiza cada item com prices + avg

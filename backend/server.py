@@ -1389,9 +1389,8 @@ app.include_router(routes_admin_pwd_reset.router)
 from routes import admin_wa_sidecar as routes_admin_wa_sidecar  # noqa: E402
 app.include_router(routes_admin_wa_sidecar.router)
 
-from routes import auth_debug as routes_auth_debug  # noqa: E402
-if os.environ.get("ENV", "development") != "production":
-    app.include_router(routes_auth_debug.router)
+# SECURITY_LOCK ART.11: auth_debug router REMOVIDO da build de produção.
+# Para diagnosticar em dev/local, importe e registre manualmente fora do server.py.
 # ─── Integration Credentials (Grafana/Zabbix via Vault) ──────
 from routes import admin_integrations as routes_admin_int  # noqa: E402
 app.include_router(routes_admin_int.router)

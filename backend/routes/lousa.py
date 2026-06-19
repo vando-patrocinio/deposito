@@ -14,6 +14,7 @@ Integração com clock.py:
 from __future__ import annotations
 
 
+from services.exception_sanitizer import safe_detail  # SECURITY_LOCK ART.13
 NERVOUS_METADATA = {
     "owner": "ops-team",
     "domain": "operacoes",
@@ -6754,8 +6755,7 @@ async def public_ocr_sn(payload: OcrSnIn):
             ImageContent, LlmChat, UserMessage,
         )
     except Exception as e:
-        raise HTTPException(503,
-                              f"emergentintegrations indisponível: {e}") from e
+        raise HTTPException(503, safe_detail(503, e, "emergentintegrations indisponível:")) from e
 
     system = (
         "Você é um leitor de etiquetas de ONT/ONU (fibra óptica). "
@@ -6780,7 +6780,7 @@ async def public_ocr_sn(payload: OcrSnIn):
         resp = await chat.send_message(user_msg)
     except Exception as e:
         logger.exception("[lousa] ocr-sn LLM falhou: %s", e)
-        raise HTTPException(502, f"OCR falhou: {e}") from e
+        raise HTTPException(502, safe_detail(502, e, "OCR falhou:")) from e
 
     txt = (resp or "").strip()
     if txt.startswith("```"):

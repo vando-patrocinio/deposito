@@ -1,3 +1,5 @@
+import os, sys; sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from _test_secrets import TEST_ADMIN_PASSWORD, TEST_AUDITOR_PASSWORD  # noqa: E402
 """End-to-end backend tests for Ponto do Colaborador app.
 
 Covers: health, collaborators CRUD, geofences, clock-records with face validation,
@@ -21,7 +23,7 @@ class TestHealth:
 # ---------- Admin auth ----------
 class TestAdminAuth:
     def test_admin_login_success(self, api, base_url):
-        r = api.post(f"{base_url}/api/auth/admin-login", json={"password": "admin123"})
+        r = api.post(f"{base_url}/api/auth/admin-login", json={"password": TEST_ADMIN_PASSWORD})
         assert r.status_code == 200
         assert r.json().get("ok") is True
 

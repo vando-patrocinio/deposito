@@ -520,7 +520,15 @@ async def get_event(
     user: Dict[str, Any] = Depends(
         require_roles("administrador", "auditor")),
 ):
-    d = await db.audit_log.find_one({"id": aid})
+    # SECURITY_LOCK ART.10 — IDOR: super_admin vê todos; demais ficam restritos
+    # ao próprio company_id. Bloqueio fail-closed (sem company_id → 404).
+    flt: Dict[str, Any] = {"id": aid}
+    if not _is_super(user):
+        cid = user.get("company_id")
+        if not cid:
+            raise HTTPException(404, "Evento não encontrado")
+        flt["company_id"] = cid
+    d = await db.audit_log.find_one(flt)
     if not d:
         raise HTTPException(404, "Evento não encontrado")
     # detalhe: admin/auditor podem ver email/IP completos

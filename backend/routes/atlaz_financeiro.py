@@ -14,6 +14,7 @@ ENDPOINTS DA API ATLAZ V2 (descobertos via /probe):
 Estratégia: pull /faturas com janela móvel + bulk_write (1k+ docs eficiente).
 """
 
+from services.exception_sanitizer import safe_detail  # SECURITY_LOCK ART.13
 NERVOUS_METADATA = {
     "owner": "billing-team",
     "domain": "financeiro",
@@ -347,7 +348,7 @@ async def sync_clients_delta(
             "details": str(e)[:300],
             "at": now_iso(),
         })
-        raise HTTPException(502, f"Atlaz delta sync falhou: {e}")
+        raise HTTPException(502, safe_detail(502, e, "Atlaz delta sync falhou:"))
 
 
 @router.get("/sync-clients-delta/state")

@@ -11,6 +11,7 @@ Endpoints:
 from __future__ import annotations
 
 
+from services.exception_sanitizer import safe_detail  # SECURITY_LOCK ART.13
 NERVOUS_METADATA = {
     "owner": "platform-team",
     "domain": "infra",
@@ -377,7 +378,7 @@ REGRAS:
         )
     except Exception as e:
         logger.exception("[winback-ready] LLM err")
-        raise HTTPException(502, f"LLM err: {e}")
+        raise HTTPException(502, safe_detail(502, e, "LLM err:"))
     text = result.get("content") or ""
     insights = _parse_json_response(text)
     if not insights:

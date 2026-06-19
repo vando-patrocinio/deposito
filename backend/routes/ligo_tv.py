@@ -36,6 +36,7 @@ from pydantic import BaseModel, Field
 from services import pluto_tv
 from services import ligo_tv_catalog
 
+from services.exception_sanitizer import safe_detail  # SECURITY_LOCK ART.13
 log = logging.getLogger("ponto.ligo_tv")
 
 router = APIRouter(prefix="/api/ligo-tv", tags=["ligo-tv"])
@@ -458,7 +459,7 @@ async def stream_master(slug: str, request: Request):
             r = await cli.get(target, follow_redirects=True)
             r.raise_for_status()
         except httpx.HTTPError as e:
-            raise HTTPException(502, f"Pluto TV indisponível: {e}")
+            raise HTTPException(502, safe_detail(502, e, "Pluto TV indisponível:"))
     rewritten = _rewrite_manifest(r.text, str(r.url), request)
     return Response(
         content=rewritten,
@@ -540,4 +541,4 @@ async def stream_proxy(u: str = Query(..., description="base64url da URL alvo"))
         raise
     except Exception as e:
         await client.aclose()
-        raise HTTPException(502, f"falha proxy: {e}")
+        raise HTTPException(502, safe_detail(502, e, "falha proxy:"))

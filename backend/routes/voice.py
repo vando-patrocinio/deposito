@@ -14,6 +14,7 @@ Tudo via EMERGENT_LLM_KEY (Whisper + LLM + TTS). Sem chaves extras.
 from __future__ import annotations
 
 
+from services.exception_sanitizer import safe_detail  # SECURITY_LOCK ART.13
 NERVOUS_METADATA = {
     "owner": "platform-team",
     "domain": "infra",
@@ -124,10 +125,10 @@ async def _stt_transcribe(audio_bytes: bytes, filename: str,
         return (await transcribe_audio(company_id or DEMO_COMPANY_ID,
                                           audio_bytes, filename) or "").strip()
     except RuntimeError as e:
-        raise HTTPException(503, str(e)) from e
+        raise HTTPException(503, safe_detail(503, e)) from e
     except Exception as e:
         logger.warning("[voice.stt] falhou: %s", e)
-        raise HTTPException(502, f"STT falhou: {e}") from e
+        raise HTTPException(502, safe_detail(502, e, "STT falhou:")) from e
 
 
 async def _tts_speak(text: str, voice: Optional[str] = None,
@@ -140,10 +141,10 @@ async def _tts_speak(text: str, voice: Optional[str] = None,
         return await text_to_speech(company_id or DEMO_COMPANY_ID,
                                        text[:4000], voice=voice)
     except RuntimeError as e:
-        raise HTTPException(503, str(e)) from e
+        raise HTTPException(503, safe_detail(503, e)) from e
     except Exception as e:
         logger.warning("[voice.tts] falhou: %s", e)
-        raise HTTPException(502, f"TTS falhou: {e}") from e
+        raise HTTPException(502, safe_detail(502, e, "TTS falhou:")) from e
 
 
 async def _llm_reply(agent: dict, session_id: str, user_text: str,
@@ -152,7 +153,7 @@ async def _llm_reply(agent: dict, session_id: str, user_text: str,
     try:
         from services.motor_ia import chat_completion
     except ImportError as e:
-        raise HTTPException(500, f"motor_ia indisponível: {e}") from e
+        raise HTTPException(500, safe_detail(500, e, "motor_ia indisponível:")) from e
     # Personalidade & Expertise — injeta blocos de info da empresa
     sys_prompt = agent["system_prompt"]
     extra = []
@@ -196,7 +197,7 @@ async def _llm_reply(agent: dict, session_id: str, user_text: str,
         return (result.get("content") or "").strip()
     except Exception as e:
         logger.warning("[voice.llm] session=%s falhou: %s", session_id, e)
-        raise HTTPException(502, f"LLM falhou: {e}") from e
+        raise HTTPException(502, safe_detail(502, e, "LLM falhou:")) from e
 
 
 # ---------------------------------------------------------------------------

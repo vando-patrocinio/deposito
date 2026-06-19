@@ -12,6 +12,7 @@ Adaptado do projeto stok-main:
 from __future__ import annotations
 
 
+from services.exception_sanitizer import safe_detail  # SECURITY_LOCK ART.13
 NERVOUS_METADATA = {
     "owner": "platform-team",
     "domain": "infra",
@@ -2496,7 +2497,7 @@ async def export_history(
             SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer,
         )
     except ImportError as e:
-        raise HTTPException(500, f"reportlab indisponível: {e}")
+        raise HTTPException(500, safe_detail(500, e, "reportlab indisponível:"))
 
     pdf_buf = io.BytesIO()
     doc = SimpleDocTemplate(

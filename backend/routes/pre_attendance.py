@@ -14,6 +14,7 @@ Endpoints:
 from __future__ import annotations
 
 
+from services.exception_sanitizer import safe_detail  # SECURITY_LOCK ART.13
 NERVOUS_METADATA = {
     "owner": "ops-team",
     "domain": "atendimento",
@@ -188,7 +189,7 @@ async def upload_image(payload: ImageUploadIn,
         raise
     except Exception as e:
         logger.error("[pre-attendance] upload-image falhou: %s", e)
-        raise HTTPException(400, f"upload falhou: {e}")
+        raise HTTPException(400, safe_detail(400, e, "upload falhou:"))
 
 
 @router.get("/image/{filename}")

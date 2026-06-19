@@ -30,6 +30,7 @@ Endpoints:
 """
 from __future__ import annotations
 
+from services.exception_sanitizer import safe_detail  # SECURITY_LOCK ART.13
 NERVOUS_METADATA = {
     "owner": "platform-team",
     "domain": "infra",
@@ -402,7 +403,7 @@ async def send_magic_link(
         result = await _sidecar_post_silent("/send", {"phone": phone, "text": text})
     except Exception as e:
         log.warning("magic-link send falhou: %s", e)
-        raise HTTPException(502, f"Falha ao enviar via WhatsApp: {e}")
+        raise HTTPException(502, safe_detail(502, e, "Falha ao enviar via WhatsApp:"))
 
     # Audit
     try:

@@ -12,6 +12,7 @@ notificação e regulariza posteriormente com lançamento de entrada.
 from __future__ import annotations
 
 
+from services.exception_sanitizer import safe_detail  # SECURITY_LOCK ART.13
 NERVOUS_METADATA = {
     "owner": "ops-team",
     "domain": "operacoes",
@@ -128,7 +129,7 @@ async def _call_claude_for_items(report_text: str) -> Dict[str, Any]:
     try:
         from emergentintegrations.llm.chat import LlmChat, UserMessage
     except Exception as e:
-        raise HTTPException(503, f"emergentintegrations indisponível: {e}") from e
+        raise HTTPException(503, safe_detail(503, e, "emergentintegrations indisponível:")) from e
 
     chat = LlmChat(
         api_key=key,
@@ -142,7 +143,7 @@ async def _call_claude_for_items(report_text: str) -> Dict[str, Any]:
         raw = await chat.send_message(msg)
     except Exception as e:
         logger.exception("[lousa-rompimento] Claude falhou: %s", e)
-        raise HTTPException(502, f"Falha ao consultar IA: {e}") from e
+        raise HTTPException(502, safe_detail(502, e, "Falha ao consultar IA:")) from e
     parsed = _parse_ai_response(str(raw or ""))
     return parsed
 
@@ -662,7 +663,7 @@ async def suggest_links(ticket_id: str, payload: RompimentoSuggestLinksIn):
     try:
         from emergentintegrations.llm.chat import LlmChat, UserMessage
     except Exception as e:
-        raise HTTPException(503, f"emergentintegrations indisponível: {e}") from e
+        raise HTTPException(503, safe_detail(503, e, "emergentintegrations indisponível:")) from e
 
     chat = LlmChat(
         api_key=key,
@@ -675,7 +676,7 @@ async def suggest_links(ticket_id: str, payload: RompimentoSuggestLinksIn):
         raw = await chat.send_message(msg)
     except Exception as e:
         logger.exception("[lousa-rompimento] suggest-links falhou: %s", e)
-        raise HTTPException(502, f"Falha ao consultar IA: {e}") from e
+        raise HTTPException(502, safe_detail(502, e, "Falha ao consultar IA:")) from e
 
     parsed = _parse_ai_response(str(raw or ""))
     valid_ids = {c["id"] for c in candidates}

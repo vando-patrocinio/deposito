@@ -1,3 +1,4 @@
+from __future__ import annotations
 """Iteration 18 — backend-only tests for refactored routes (push, locations, dashboard)
 and the new dwell-heatmap endpoint, plus regression of legacy/non-refactored endpoints.
 
@@ -11,8 +12,9 @@ Covers:
 - Regression on critical endpoints kept in server.py (auth, users, pracas,
   collaborators, clock-records, timesheets, holidays, settings).
 """
-from __future__ import annotations
 
+import os, sys; sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from _test_secrets import TEST_ADMIN_PASSWORD, TEST_AUDITOR_PASSWORD  # noqa: E402
 import os
 import time
 import uuid
@@ -23,7 +25,7 @@ import requests
 BASE_URL = os.environ.get("REACT_APP_BACKEND_URL", "").rstrip("/")
 assert BASE_URL, "REACT_APP_BACKEND_URL is not set"
 
-ADMIN = {"email": "admin@example.com", "password": "admin123"}
+ADMIN = {"email": "admin@example.com", "password": TEST_ADMIN_PASSWORD}
 AUDITOR = {"email": "vando@example.com", "password": "123456"}
 
 

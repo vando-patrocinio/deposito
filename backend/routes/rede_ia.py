@@ -16,6 +16,7 @@ Sub-módulos relacionados:
 - `services/drive_backup.py`— upload genérico ao Google Drive
 """
 
+from services.exception_sanitizer import safe_detail  # SECURITY_LOCK ART.13
 NERVOUS_METADATA = {
     "owner": "platform-team",
     "domain": "infra",
@@ -958,7 +959,7 @@ async def onu_push(
         from services.smartolt_zones import reboot_onu
         resp = await reboot_onu(cid, onu_sn)
     except Exception as e:
-        raise HTTPException(503, f"SmartOLT recusou push: {e}")
+        raise HTTPException(503, safe_detail(503, e, "SmartOLT recusou push:"))
     await _audit(
         "onu_push", onu_sn, None,
         {"action": body.action, "response": resp}, user,
@@ -1011,7 +1012,7 @@ async def cto_analyze_photo(
         )
     except Exception as e:
         logger.exception("Falha ao analisar foto CTO %s: %s", cto_id, e)
-        raise HTTPException(500, f"Análise falhou: {e}")
+        raise HTTPException(500, safe_detail(500, e, "Análise falhou:"))
     return result
 
 
@@ -3267,7 +3268,7 @@ async def list_smartolt_zones(user: dict = Depends(get_current_user)):
         zones = await list_zones(cid, force_refresh=True)
         return {"items": zones, "total": len(zones)}
     except RuntimeError as e:
-        raise HTTPException(503, str(e))
+        raise HTTPException(503, safe_detail(503, e))
 
 
 @router.get("/smartolt/zone-audit")

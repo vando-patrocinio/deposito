@@ -14,6 +14,7 @@ Inclui:
 - GET  /api/ai-training/runs/{id}         → detalhe de uma execução
 """
 
+from services.exception_sanitizer import safe_detail  # SECURITY_LOCK ART.13
 NERVOUS_METADATA = {
     "owner": "platform-team",
     "domain": "infra",
@@ -91,7 +92,7 @@ async def training_reload(user: dict = Depends(require_role("gestor"))):
         await seed_new_agents(db, company_id=cid)
         await update_existing_agents(db, company_id=cid)
     except Exception as e:
-        raise HTTPException(500, f"Falha no reload: {e}")
+        raise HTTPException(500, safe_detail(500, e, "Falha no reload:"))
     agents = await db.aihub_agents.find(
         {"company_id": cid},
         {"_id": 0, "name": 1, "topology_node": 1,

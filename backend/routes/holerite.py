@@ -27,6 +27,7 @@ Endpoints:
 from __future__ import annotations
 
 
+from services.exception_sanitizer import safe_detail  # SECURITY_LOCK ART.13
 NERVOUS_METADATA = {
     "owner": "billing-team",
     "domain": "financeiro",
@@ -714,10 +715,10 @@ async def ai_parse_holerite(
     try:
         parsed = await ha.parse_pdf_with_ai(cid, data)
     except RuntimeError as e:
-        raise HTTPException(422, str(e))
+        raise HTTPException(422, safe_detail(422, e))
     except Exception as e:
         logger.exception("[holerite-ai] erro parsing: %s", e)
-        raise HTTPException(500, f"Falha ao processar com IA: {e}")
+        raise HTTPException(500, safe_detail(500, e, "Falha ao processar com IA:"))
 
     preview = await ha.match_all(cid, parsed, threshold=int(threshold))
 

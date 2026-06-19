@@ -1,3 +1,4 @@
+from __future__ import annotations
 """Iteration 20: Tests for new collaborator-auth (Emergent Google Auth) endpoints
 + regression for legacy endpoints after adding routes_collab_auth router.
 
@@ -8,8 +9,9 @@ Strategy:
   unbind-device behaviors.
 - Cleanup at end of class via fixture.
 """
-from __future__ import annotations
 
+import os, sys; sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from _test_secrets import TEST_ADMIN_PASSWORD, TEST_AUDITOR_PASSWORD  # noqa: E402
 import os
 import sys
 import uuid
@@ -69,7 +71,7 @@ def auditor_token():
     if r.status_code != 200:
         # try seeded auditor
         r = requests.post(f"{API}/auth/login",
-                          json={"email": "auditor@example.com", "password": "auditor123"},
+                          json={"email": "auditor@example.com", "password": TEST_AUDITOR_PASSWORD},
                           timeout=10)
     assert r.status_code == 200, f"login fail {r.status_code}: {r.text}"
     return r.json()["access_token"]

@@ -12,6 +12,7 @@ Fluxo:
 from __future__ import annotations
 
 
+from services.exception_sanitizer import safe_detail  # SECURITY_LOCK ART.13
 NERVOUS_METADATA = {
     "owner": "platform-team",
     "domain": "infra",
@@ -109,7 +110,7 @@ async def _do_scan_ont(payload: ScanIn) -> Dict[str, Any]:
             b64 = b64.split(",", 1)[1]
         base64.b64decode(b64, validate=True)
     except (binascii.Error, ValueError) as e:
-        raise HTTPException(400, f"Imagem base64 inválida: {e}")
+        raise HTTPException(400, safe_detail(400, e, "Imagem base64 inválida:"))
 
     try:
         from emergentintegrations.llm.chat import (
@@ -135,7 +136,7 @@ async def _do_scan_ont(payload: ScanIn) -> Dict[str, Any]:
         parsed = _parse_json_loose(raw_resp)
     except Exception as e:
         logger.exception("[ont-scan] LLM error: %s", e)
-        raise HTTPException(502, f"Falha na leitura IA: {e}")
+        raise HTTPException(502, safe_detail(502, e, "Falha na leitura IA:"))
 
     mac = _normalize_mac(parsed.get("mac") or "")
     sn = _clean_sn(parsed.get("sn") or "")

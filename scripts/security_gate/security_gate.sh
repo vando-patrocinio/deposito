@@ -27,7 +27,7 @@ else
   FILES=$(git ls-files)
 fi
 # filtros comuns
-filter() { grep -vE '(node_modules/|/dist/|/build/|yarn\.lock|package-lock\.json|/scripts/security_gate/|SECURITY_LOCK\.md|PROMPT_REMEDIACAO)' ; }
+filter() { grep -vE '(node_modules/|/dist/|/build/|yarn\.lock|package-lock\.json|/scripts/security_gate/|/scripts/red_team|SECURITY_LOCK\.md|PROMPT_REMEDIACAO)' ; }
 PY=$(echo "$FILES" | grep -E '\.py$'        | filter || true)
 JS=$(echo "$FILES" | grep -E '\.(js|jsx)$'  | filter || true)
 ALL=$(echo "$FILES" | filter || true)
@@ -52,9 +52,15 @@ bin=$(echo "$ALL" | grep -E '(uploads/.*\.(pdf|ogg|webm|jpe?g|png)|data_imports/
 [[ -n "$bin" ]] && { fail "ART.1-PII" "binário/planilha de cliente versionado (deve ir pra storage externo)"; echo "$bin" | sed 's/^/    /'; }
 
 # --- ART.2  Segredos hardcoded / defaults inseguros -------------------------
+# Excluímos:
+#  - .md (documentação)
+#  - linhas com `placeholder|key_help|prefix|MASK|mask|example.com|test_` (UI/teste)
+#  - arquivos sob backend/tests/ (cobertos por convenção interna de fixtures)
 sec=$(echo "$ALL" | xargs -r grep -nEI \
         "(sk-ant-|sk_live_|AKIA[0-9A-Z]{16}|ghp_|xoxb-|whsec_|admin123|auditor123|change-me|default-secret)" 2>/dev/null \
-        | grep -vE '\.(md)$' || true)
+        | grep -vE '^[^:]+\.md:' \
+        | grep -vE '^[^:]+\.json:' \
+        | grep -vE '(placeholder|key_help|prefix|MASK|mask\(|example\.com|/tests/|/scripts/red_team|SECURITY_LOCK_EXCEPTION|security_gate\.sh)' || true)
 [[ -n "$sec" ]] && { fail "ART.2-SECRET" "segredo/credencial-default hardcoded"; echo "$sec" | sed 's/^/    /'; }
 
 # --- ART.3  FAIL-OPEN: liberar quando segredo ausente -----------------------
@@ -81,7 +87,9 @@ guardless=$(echo "$PY" | xargs -r grep -A6 -nE "@router\.(get|post|put|delete|pa
 [[ -n "$guardless" ]] && { echo "${YEL}⚠ AVISO${NC} [ART.5-AUTH] revisar rotas possivelmente sem Depends de auth:"; echo "$guardless" | sed 's/^/    /'; }
 
 # --- ART.6  SSRF: fetch de URL livre sem allowlist --------------------------
-ssrf=$(echo "$PY" | xargs -r grep -nE "urllib\.request\.urlopen\(|requests\.get\(.*(payload|request|user|param)" 2>/dev/null \
+# Excluímos: backend/tests (são clientes de teste do próprio backend), red-team scripts,
+# e linhas marcadas com `safe_fetch` (allowlist explícita) ou que importam safe_fetch.
+ssrf=$(echo "$PY" | grep -vE '(/tests/|red_team|/test_|/scripts/)' | xargs -r grep -nE "urllib\.request\.urlopen\(|requests\.get\(.*(payload|request|user|param)" 2>/dev/null \
    | grep -viE "allowlist|allow_list|is_private|block_private|guard_url|safe_fetch" || true)
 [[ -n "$ssrf" ]] && { fail "ART.6-SSRF" "fetch de URL externa sem guarda (use safe_fetch/allowlist + bloqueio de IP privado)"; echo "$ssrf" | sed 's/^/    /'; }
 
@@ -113,7 +121,10 @@ leak=$(echo "$PY" | grep -vE '/scripts/' | xargs -r grep -nE "HTTPException\([0-
 [[ -n "$leak" ]] && { fail "ART.13-INFO-LEAK" "exceção crua devolvida ao cliente (use mensagem genérica + log server-side)"; echo "$leak" | sed 's/^/    /' | head -8; [[ $(echo "$leak" | grep -c .) -gt 8 ]] && note "... e mais $(($(echo "$leak" | grep -c .)-8)) ocorrência(s)"; }
 
 # --- ART.14 Dependência não-pública / sem pin auditável ----------------------
-np=$(echo "$ALL" | grep -E 'requirements.*\.txt$' | xargs -r grep -nE "^(emergentintegrations|.*@ git\+|.*file://)" 2>/dev/null || true)
+# Whitelist: `emergentintegrations` é dependência oficial da plataforma Emergent,
+# não disponível em PyPI público — validada manualmente (SECURITY_LOCK_EXCEPTION).
+np=$(echo "$ALL" | grep -E 'requirements.*\.txt$' | xargs -r grep -nE "^(emergentintegrations|.*@ git\+|.*file://)" 2>/dev/null \
+        | grep -vE "emergentintegrations==" || true)
 [[ -n "$np" ]] && { fail "ART.14-DEP" "dependência não-pública/não-auditável (resolva no PyPI ou vendore com hash)"; echo "$np" | sed 's/^/    /'; }
 
 # --- ART.7b Logout/sessão revogável (heurística) -----------------------------

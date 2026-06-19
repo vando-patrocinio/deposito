@@ -1,3 +1,5 @@
+import os, sys; sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from _test_secrets import TEST_ADMIN_PASSWORD, TEST_AUDITOR_PASSWORD  # noqa: E402
 """Iteration 10 — HE budget + threshold alerts no Painel."""
 import os
 import pytest
@@ -9,7 +11,7 @@ COL_DEMO = "col-demo-001"
 
 @pytest.fixture(scope="module")
 def admin_token():
-    r = requests.post(f"{BASE_URL}/api/auth/login", json={"email": "admin@example.com", "password": "admin123"})
+    r = requests.post(f"{BASE_URL}/api/auth/login", json={"email": "admin@example.com", "password": TEST_ADMIN_PASSWORD})
     assert r.status_code == 200, r.text
     return r.json()["access_token"]
 
@@ -148,7 +150,7 @@ def test_trend_projection_jump_alert():
 # ---------- Regressão ----------
 
 def test_login_admin_auditor_vando():
-    for email, pwd in [("admin@example.com", "admin123"), ("auditor@example.com", "auditor123"), ("vando@example.com", "123456")]:
+    for email, pwd in [("admin@example.com", TEST_ADMIN_PASSWORD), ("auditor@example.com", TEST_AUDITOR_PASSWORD), ("vando@example.com", "123456")]:
         r = requests.post(f"{BASE_URL}/api/auth/login", json={"email": email, "password": pwd})
         assert r.status_code == 200, f"{email} falhou: {r.text}"
         assert r.json().get("access_token")

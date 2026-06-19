@@ -26,7 +26,7 @@ import pytest
 import requests
 
 BASE_URL = os.environ.get("REACT_APP_BACKEND_URL", "https://dual-combine-3.preview.emergentagent.com").rstrip("/")
-CEO_TOKEN = os.environ.get("CEO_BRIEFING_TOKEN", "mAYeaEOabYEPzrea3fIQfZMemMRaVAMoCCASoRekgs0")
+CEO_TOKEN = os.environ.get("CEO_BRIEFING_TOKEN", "")  # SECURITY_LOCK ART.3: fail-closed
 
 ADMIN_EMAIL = "admin@empresa.com"
 ADMIN_PASS = "123456"

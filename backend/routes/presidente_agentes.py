@@ -9,6 +9,7 @@ Endpoints:
 from __future__ import annotations
 
 
+from services.exception_sanitizer import safe_detail  # SECURITY_LOCK ART.13
 NERVOUS_METADATA = {
     "owner": "ai-team",
     "domain": "presidente",
@@ -64,7 +65,7 @@ async def detalhar_agente(
     try:
         return await reg.snapshot_agent(cid, agent_id)
     except ValueError as e:
-        raise HTTPException(404, str(e))
+        raise HTTPException(404, safe_detail(404, e))
 
 
 @router.post("/equipe/scan")

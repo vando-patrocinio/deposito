@@ -5,6 +5,7 @@ Tudo em `/api/universo-ligo/*` e `/api/experience/*`.
 from __future__ import annotations
 
 
+from services.exception_sanitizer import safe_detail  # SECURITY_LOCK ART.13
 NERVOUS_METADATA = {
     "owner": "vendas-team",
     "domain": "comercial",
@@ -78,7 +79,7 @@ async def score(subscriber_id: str, request: Request,
     try:
         return await ul.get_or_compute(company, subscriber_id, force=force)
     except ValueError as e:
-        raise HTTPException(404, str(e))
+        raise HTTPException(404, safe_detail(404, e))
 
 
 @router.get("/api/universo-ligo/levels")
@@ -171,9 +172,9 @@ async def campaign_approve(campaign_id: str, request: Request,
             campaign_id=campaign_id, company_id=company,
             actor=_actor(user), actor_role=_role(user), notes=notes)
     except PermissionError as e:
-        raise HTTPException(403, str(e))
+        raise HTTPException(403, safe_detail(403, e))
     except ValueError as e:
-        raise HTTPException(400, str(e))
+        raise HTTPException(400, safe_detail(400, e))
 
 
 @router.post("/api/experience/campaigns/{campaign_id}/cancel")
@@ -190,7 +191,7 @@ async def campaign_cancel(campaign_id: str, request: Request,
             campaign_id=campaign_id, company_id=company,
             actor=_actor(user), reason=reason)
     except ValueError as e:
-        raise HTTPException(404, str(e))
+        raise HTTPException(404, safe_detail(404, e))
 
 
 @router.post("/api/experience/campaigns/{campaign_id}/execute")
@@ -206,9 +207,9 @@ async def campaign_execute(campaign_id: str, request: Request,
             campaign_id=campaign_id, company_id=company,
             actor=_actor(user))
     except PermissionError as e:
-        raise HTTPException(403, str(e))
+        raise HTTPException(403, safe_detail(403, e))
     except ValueError as e:
-        raise HTTPException(400, str(e))
+        raise HTTPException(400, safe_detail(400, e))
 
 
 @router.post("/api/experience/campaigns/{campaign_id}/council-review")
@@ -222,7 +223,7 @@ async def campaign_council(campaign_id: str, request: Request,
     try:
         return await exp.council_review(campaign_id, company)
     except ValueError as e:
-        raise HTTPException(404, str(e))
+        raise HTTPException(404, safe_detail(404, e))
 
 
 @router.get("/api/experience/audit/{campaign_id}")

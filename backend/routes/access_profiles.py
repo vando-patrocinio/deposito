@@ -15,6 +15,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
 from core import DEMO_COMPANY_ID, is_super_admin, require_role
+from services.exception_sanitizer import safe_detail  # SECURITY_LOCK ART.13
 from services.access_profiles import (
     create_profile,
     delete_profile,
@@ -62,7 +63,7 @@ async def create_(payload: ProfileIn,
             created_by=user.get("email") or "?",
         )
     except ValueError as e:
-        raise HTTPException(400, str(e))
+        raise HTTPException(400, safe_detail(400, e))
 
 
 @router.get("/{profile_id}")
@@ -93,7 +94,7 @@ async def update_(profile_id: str, payload: ProfileUpdate,
             updated_by=user.get("email") or "?",
         )
     except ValueError as e:
-        raise HTTPException(400, str(e))
+        raise HTTPException(400, safe_detail(400, e))
 
 
 @router.delete("/{profile_id}")
@@ -103,7 +104,7 @@ async def delete_(profile_id: str,
     try:
         return await delete_profile(profile_id, cid)
     except ValueError as e:
-        raise HTTPException(400, str(e))
+        raise HTTPException(400, safe_detail(400, e))
 
 
 @router.post("/seed")

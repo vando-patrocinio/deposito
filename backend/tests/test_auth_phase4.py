@@ -1,3 +1,5 @@
+import os, sys; sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from _test_secrets import TEST_ADMIN_PASSWORD, TEST_AUDITOR_PASSWORD  # noqa: E402
 """Phase 4 Auth tests: login, /auth/me, users CRUD, role gating, lockout, legacy."""
 import os
 import time
@@ -9,9 +11,9 @@ BASE_URL = os.environ.get("REACT_APP_BACKEND_URL", "https://selfie-attendance-7.
 API = f"{BASE_URL}/api"
 
 ADMIN_EMAIL = "admin@example.com"
-ADMIN_PASS = "admin123"
+ADMIN_PASS = TEST_ADMIN_PASSWORD
 AUDITOR_EMAIL = "auditor@example.com"
-AUDITOR_PASS = "auditor123"
+AUDITOR_PASS = TEST_AUDITOR_PASSWORD
 
 
 def _login(email, pw):

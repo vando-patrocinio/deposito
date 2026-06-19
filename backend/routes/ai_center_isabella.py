@@ -1,6 +1,7 @@
 """ai_center_isabella.py — FASE 6 endpoints REST."""
 from __future__ import annotations
 
+from services.exception_sanitizer import safe_detail  # SECURITY_LOCK ART.13
 NERVOUS_METADATA = {
     "owner": "ai-team",
     "domain": "isabella",
@@ -40,7 +41,7 @@ async def get_top(
     try:
         items = await isa.top(_co(user), score_field, limit)
     except ValueError as e:
-        raise HTTPException(400, str(e))
+        raise HTTPException(400, safe_detail(400, e))
     return {"items": items}
 
 

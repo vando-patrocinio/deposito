@@ -18,6 +18,7 @@ Webhook público (chamado pelo Asaas):
 from __future__ import annotations
 
 
+from services.exception_sanitizer import safe_detail  # SECURITY_LOCK ART.13
 NERVOUS_METADATA = {
     "owner": "billing-team",
     "domain": "financeiro",
@@ -127,7 +128,7 @@ async def sync_customer(
             raise HTTPException(400, "Assinante sem CPF/CNPJ")
         gateway_customer_id = await gw.create_customer(customer)
     except GatewayError as e:
-        raise HTTPException(502, f"Gateway error: {e}")
+        raise HTTPException(502, safe_detail(502, e, "Gateway error:"))
 
     await db.subscribers.update_one(
         {"id": subscriber_id},
@@ -215,7 +216,7 @@ async def create_charge(
             except Exception:
                 pass
         except GatewayError as e:
-            raise HTTPException(502, f"Gateway error (sync customer): {e}")
+            raise HTTPException(502, safe_detail(502, e, "Gateway error (sync customer):"))
 
     # Cria a cobrança
     try:
@@ -232,7 +233,7 @@ async def create_charge(
         )
         charge_out = await gw.create_charge(charge_in)
     except GatewayError as e:
-        raise HTTPException(502, f"Gateway error: {e}")
+        raise HTTPException(502, safe_detail(502, e, "Gateway error:"))
 
     # Persiste
     doc = {
@@ -321,7 +322,7 @@ async def cancel_charge(
         gw = get_gateway(doc["gateway"])
         r = await gw.cancel_charge(doc["gateway_charge_id"])
     except GatewayError as e:
-        raise HTTPException(502, f"Gateway error: {e}")
+        raise HTTPException(502, safe_detail(502, e, "Gateway error:"))
     new_status = r.get("status") or "CANCELED"
     await db.payment_charges.update_one(
         {"id": charge_id},
@@ -348,7 +349,7 @@ async def refund_charge(
         gw = get_gateway(doc["gateway"])
         r = await gw.refund_charge(doc["gateway_charge_id"], value)
     except GatewayError as e:
-        raise HTTPException(502, f"Gateway error: {e}")
+        raise HTTPException(502, safe_detail(502, e, "Gateway error:"))
     new_status = r.get("status") or "REFUNDED"
     await db.payment_charges.update_one(
         {"id": charge_id},
@@ -381,7 +382,7 @@ async def webhook_asaas(request: Request):
     try:
         ev = gw.parse_webhook(payload)
     except GatewayError as e:
-        raise HTTPException(400, str(e))
+        raise HTTPException(400, safe_detail(400, e))
 
     # Atualiza a cobrança local pelo gateway_charge_id
     doc = await db.payment_charges.find_one(

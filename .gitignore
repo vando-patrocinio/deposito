@@ -1012,3 +1012,12 @@ backups/
 *.dump
 *.bak
 *.zip
+
+# SECURITY_LOCK ART.1 - PII / dados de cliente NÃO devem ser versionados
+backend/uploads/
+backend/data_imports/*.xlsx
+backend/data_imports/*.csv
+backend/data_imports/*.ofx
+
+# SECURITY_LOCK ART.1 - holerites (folhas de pagamento)
+data/holerites/

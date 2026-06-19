@@ -1,3 +1,5 @@
+import os, sys; sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from _test_secrets import TEST_ADMIN_PASSWORD, TEST_AUDITOR_PASSWORD  # noqa: E402
 """Tests iter129 — sales_outreach worker + plans premium toggle/auto-mark.
 
 Cobertura:
@@ -46,7 +48,7 @@ def gestor_token():
 def auditor_token():
     r = requests.post(f"{BASE_URL}/api/auth/login",
                        json={"email": "auditor@example.com",
-                             "password": "auditor123"}, timeout=10)
+                             "password": TEST_AUDITOR_PASSWORD}, timeout=10)
     assert r.status_code == 200, r.text
     return r.json()["access_token"]
 

@@ -1,3 +1,4 @@
+from __future__ import annotations
 """Iteration 25 tests:
 - Tenant fixes em dashboard + push (não vazam entre empresas)
 - Plano FREE com 3 colaboradores ilimitado no tempo
@@ -5,8 +6,9 @@
 - Super admin login vando.patrocinio@gmail.com
 - Smoke regression: trial signup
 """
-from __future__ import annotations
 
+import os, sys; sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from _test_secrets import TEST_ADMIN_PASSWORD, TEST_AUDITOR_PASSWORD  # noqa: E402
 import os
 import time
 import uuid
@@ -73,7 +75,7 @@ class TestTenantDashboard:
         assert body.get("top_debit") in ([], None)
 
     def test_demo_overtime_trend_returns_data(self):
-        tok = _login("admin@example.com", "admin123")
+        tok = _login("admin@example.com", TEST_ADMIN_PASSWORD)
         r = requests.get(
             f"{BASE_URL}/api/dashboard/overtime/trend?months=3",
             headers=_auth(tok),
@@ -99,7 +101,7 @@ class TestTenantDashboard:
         assert body["total_minutes"] == 0
 
     def test_demo_dwell_heatmap_isolated(self):
-        tok = _login("admin@example.com", "admin123")
+        tok = _login("admin@example.com", TEST_ADMIN_PASSWORD)
         r = requests.get(
             f"{BASE_URL}/api/dashboard/dwell-heatmap?year=2026&month=2",
             headers=_auth(tok),
@@ -266,7 +268,7 @@ class TestSuperAdmin:
         assert m["total_companies"] >= 1
 
     def test_metrics_forbidden_for_non_super(self):
-        tok = _login("admin@example.com", "admin123")
+        tok = _login("admin@example.com", TEST_ADMIN_PASSWORD)
         r = requests.get(f"{BASE_URL}/api/saas/admin/metrics", headers=_auth(tok), timeout=TIMEOUT)
         assert r.status_code == 403, f"esperado 403, recebeu {r.status_code}"
 

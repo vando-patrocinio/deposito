@@ -12,6 +12,7 @@ Endpoints:
 from __future__ import annotations
 
 
+from services.exception_sanitizer import safe_detail  # SECURITY_LOCK ART.13
 NERVOUS_METADATA = {
     "owner": "platform-team",
     "domain": "infra",
@@ -93,7 +94,7 @@ async def create_backup(user: dict = Depends(get_current_user)) -> Dict[str, Any
     try:
         info = await asyncio.to_thread(_run_mongodump_sync)
     except RuntimeError as e:
-        raise HTTPException(503, str(e))
+        raise HTTPException(503, safe_detail(503, e))
     except subprocess.TimeoutExpired:
         raise HTTPException(504, "mongodump excedeu o tempo limite (15min).")
     except Exception as e:
@@ -172,7 +173,7 @@ async def upload_to_drive_now(filename: str,
         await _upload_to_drive(filename)
     except RuntimeError as e:
         # Drive não conectado
-        raise HTTPException(503, str(e))
+        raise HTTPException(503, safe_detail(503, e))
     except Exception as e:
         logger.exception("[backup] upload-drive falhou")
         raise HTTPException(500, f"Falha no upload: {e!s}")

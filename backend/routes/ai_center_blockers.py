@@ -1,6 +1,7 @@
 """ai_center_blockers.py — V6.0 Bloco 2"""
 from __future__ import annotations
 
+from services.exception_sanitizer import safe_detail  # SECURITY_LOCK ART.13
 NERVOUS_METADATA = {
     "owner": "ai-team",
     "domain": "isabella",
@@ -44,7 +45,7 @@ async def post_heal(blocker_key: str,
     try:
         return await self_healing.apply_correction(_co(user), blocker_key)
     except ValueError as e:
-        raise HTTPException(400, str(e))
+        raise HTTPException(400, safe_detail(400, e))
 
 
 @router.get("/healing-score")

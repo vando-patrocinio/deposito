@@ -1,3 +1,5 @@
+import os, sys; sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from _test_secrets import TEST_ADMIN_PASSWORD, TEST_AUDITOR_PASSWORD  # noqa: E402
 """Iteration 24 — validates the 3 changes:
 1) POST /api/saas/signup still works end-to-end (creates company, returns token)
 2) Welcome email is fired in background and does NOT block signup when RESEND_API_KEY empty
@@ -87,7 +89,7 @@ class TestSmokeRegression:
     def test_demo_admin_login(self, session):
         r = session.post(
             f"{BASE_URL}/api/auth/login",
-            json={"email": "admin@example.com", "password": "admin123"},
+            json={"email": "admin@example.com", "password": TEST_ADMIN_PASSWORD},
             timeout=10,
         )
         assert r.status_code == 200, r.text

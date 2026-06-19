@@ -1,3 +1,5 @@
+import os, sys; sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from _test_secrets import TEST_ADMIN_PASSWORD, TEST_AUDITOR_PASSWORD  # noqa: E402
 """Tests iter138 — Módulo 1: Billing Engine (substituição do Atlaz).
 
 Cobertura:
@@ -42,7 +44,7 @@ def admin_token():
 def auditor_token():
     r = requests.post(f"{BASE_URL}/api/auth/login",
                        json={"email": "auditor@example.com",
-                             "password": "auditor123"}, timeout=10)
+                             "password": TEST_AUDITOR_PASSWORD}, timeout=10)
     if r.status_code != 200:
         pytest.skip("auditor@example.com não disponível neste ambiente")
     return r.json()["access_token"]

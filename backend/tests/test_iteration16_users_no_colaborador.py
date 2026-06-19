@@ -1,3 +1,5 @@
+import os, sys; sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from _test_secrets import TEST_ADMIN_PASSWORD, TEST_AUDITOR_PASSWORD  # noqa: E402
 """
 Iteration 16 — Conceptual separation between Cadastro (employees) and Users (system access).
 Backend validations:
@@ -16,7 +18,7 @@ API = f"{BASE_URL}/api"
 AUDITOR_EMAIL = "vando@example.com"
 AUDITOR_PASS = "123456"
 GESTOR_EMAIL = "admin@example.com"
-GESTOR_PASS = "admin123"
+GESTOR_PASS = TEST_ADMIN_PASSWORD
 
 
 @pytest.fixture(scope="module")

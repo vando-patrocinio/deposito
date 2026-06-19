@@ -15,6 +15,7 @@ Backup/restore:
 from __future__ import annotations
 
 
+from services.exception_sanitizer import safe_detail  # SECURITY_LOCK ART.13
 NERVOUS_METADATA = {
     "owner": "platform-team",
     "domain": "infra",
@@ -378,7 +379,7 @@ async def drive_backup(payload: BackupIn = BackupIn(),
         if "invalid_grant" in msg:
             raise HTTPException(401,
                 "Token revogado. Clique em 'Reconectar Google Drive'.")
-        raise HTTPException(500, f"Falha ao fazer backup: {e}")
+        raise HTTPException(500, safe_detail(500, e, "Falha ao fazer backup:"))
 
 
 @router.get("/drive/backups")
@@ -416,10 +417,10 @@ async def drive_restore(payload: RestoreIn,
                                        collections=payload.collections,
                                        mode=payload.mode)
     except RuntimeError as e:
-        raise HTTPException(400, str(e))
+        raise HTTPException(400, safe_detail(400, e))
     except Exception as e:
         logger.exception("[drive] restore failed: %s", e)
-        raise HTTPException(500, f"Falha ao restaurar: {e}")
+        raise HTTPException(500, safe_detail(500, e, "Falha ao restaurar:"))
 
 
 # ============================================================
@@ -476,7 +477,7 @@ async def drive_restore_upload(
     except HTTPException:
         raise
     except RuntimeError as e:
-        raise HTTPException(400, str(e))
+        raise HTTPException(400, safe_detail(400, e))
     except Exception as e:
         logger.exception("[drive] restore-upload failed: %s", e)
-        raise HTTPException(500, f"Falha ao restaurar: {e}")
+        raise HTTPException(500, safe_detail(500, e, "Falha ao restaurar:"))

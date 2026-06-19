@@ -1,5 +1,7 @@
-"""SaaS multi-tenant tests (iteration 22): signup, /me, tenant isolation, billing, super admin."""
 from __future__ import annotations
+import os, sys; sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from _test_secrets import TEST_ADMIN_PASSWORD, TEST_AUDITOR_PASSWORD  # noqa: E402
+"""SaaS multi-tenant tests (iteration 22): signup, /me, tenant isolation, billing, super admin."""
 
 import os
 import time
@@ -143,7 +145,7 @@ def test_collaborator_stamped_with_company_id(company_a):
 # ------------------------------------------------------------------ Demo login
 def test_demo_login_company_id():
     r = requests.post(f"{API}/auth/login", json={
-        "email": "admin@example.com", "password": "admin123"
+        "email": "admin@example.com", "password": TEST_ADMIN_PASSWORD
     }, timeout=20)
     assert r.status_code == 200, r.text
     token = r.json().get("access_token")
@@ -156,7 +158,7 @@ def test_demo_login_company_id():
 def test_demo_does_not_see_new_company_collabs(company_a):
     # login as demo gestor
     r = requests.post(f"{API}/auth/login", json={
-        "email": "admin@example.com", "password": "admin123"
+        "email": "admin@example.com", "password": TEST_ADMIN_PASSWORD
     }, timeout=20)
     assert r.status_code == 200
     token = r.json()["access_token"]
@@ -197,7 +199,7 @@ def test_billing_status_unpaid(company_a):
 # ------------------------------------------------------------------ Super admin
 def test_super_admin_companies_forbidden_for_regular():
     r = requests.post(f"{API}/auth/login", json={
-        "email": "admin@example.com", "password": "admin123"
+        "email": "admin@example.com", "password": TEST_ADMIN_PASSWORD
     }, timeout=20)
     token = r.json()["access_token"]
     r = requests.get(f"{API}/saas/admin/companies", headers=_h(token), timeout=20)
@@ -234,7 +236,7 @@ def test_super_admin_companies_lists_all(company_a, company_b):
 def test_brasilapi_holidays_no_attr_error():
     # login as auditor (full access)
     r = requests.post(f"{API}/auth/login", json={
-        "email": "auditor@example.com", "password": "auditor123"
+        "email": "auditor@example.com", "password": TEST_AUDITOR_PASSWORD
     }, timeout=20)
     assert r.status_code == 200
     token = r.json()["access_token"]

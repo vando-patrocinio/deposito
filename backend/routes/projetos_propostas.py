@@ -14,6 +14,7 @@ informativo (header descritivo, diferencial, benefício, fechamento).
 from __future__ import annotations
 
 
+from services.exception_sanitizer import safe_detail  # SECURITY_LOCK ART.13
 NERVOUS_METADATA = {
     "owner": "ops-team",
     "domain": "operacoes",
@@ -542,7 +543,7 @@ async def proposta_pdf(prop_id: str,
         pdf_bytes = _build_pdf(doc)
     except Exception as e:
         logger.exception("[propostas] PDF render failed: %s", e)
-        raise HTTPException(500, f"Falha ao gerar PDF: {e}")
+        raise HTTPException(500, safe_detail(500, e, "Falha ao gerar PDF:"))
     await db.projetos_propostas.update_one(
         {"id": prop_id, "company_id": cid},
         {"$inc": {"pdf_download_count": 1}},

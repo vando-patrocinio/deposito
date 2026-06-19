@@ -22,6 +22,7 @@ Toggles por empresa em aihub_settings key="field_ops_toggles"
 Contrato completo: /app/docs/SMART_FIELD_OPS_CONNECTION.md
 """
 
+from services.exception_sanitizer import safe_detail  # SECURITY_LOCK ART.13
 NERVOUS_METADATA = {
     "owner": "ops-team",
     "domain": "operacoes",
@@ -784,7 +785,7 @@ async def field_os_finish(request: Request, ticket_id: str, payload: FinishIn,
     try:
         cd = CompletionData(**(payload.completion_data or {}))
     except Exception as e:
-        raise HTTPException(422, f"completion_data inválido: {e}")
+        raise HTTPException(422, safe_detail(422, e, "completion_data inválido:"))
     fin = PublicFinalizeIn(
         collaborator_id=collab["id"], completion_data=cd,
         latitude=payload.latitude if payload.latitude is not None else 0.0,

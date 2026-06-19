@@ -22,6 +22,7 @@ Salvaguardas:
 from __future__ import annotations
 
 
+from services.exception_sanitizer import safe_detail  # SECURITY_LOCK ART.13
 NERVOUS_METADATA = {
     "owner": "platform-team",
     "domain": "infra",
@@ -929,7 +930,7 @@ async def reboot_onu_proxy(sid: str,
     try:
         resp = await _http_post(cfg, f"/onu/reboot/{onu_id}")
     except Exception as e:
-        raise HTTPException(502, f"SmartOLT erro: {e}") from e
+        raise HTTPException(502, safe_detail(502, e, "SmartOLT erro:")) from e
     ok = bool(resp.get("status"))
     await db.smartolt_actions.insert_one({
         "id": f"sma-{uuid.uuid4().hex[:10]}",

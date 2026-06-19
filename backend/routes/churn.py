@@ -15,6 +15,7 @@ Best practices aplicadas (pesquisa Feb/2026):
 from __future__ import annotations
 
 
+from services.exception_sanitizer import safe_detail  # SECURITY_LOCK ART.13
 NERVOUS_METADATA = {
     "owner": "vendas-team",
     "domain": "comercial",
@@ -328,10 +329,10 @@ NÃO invente dados que não estão no snapshot. Se algum dado for zero, sinalize
         )
     except AgentDisabledError as e:
         from fastapi import HTTPException
-        raise HTTPException(503, str(e)) from e
+        raise HTTPException(503, safe_detail(503, e)) from e
     except Exception as e:
         from fastapi import HTTPException
-        raise HTTPException(502, f"Motor IA falhou: {e}") from e
+        raise HTTPException(502, safe_detail(502, e, "Motor IA falhou:")) from e
 
     based_on = {
         "total_churn": k["total_churn"],
@@ -453,9 +454,9 @@ async def churn_ai_insight_compare(
             agent="churn_insight",
         )
     except AgentDisabledError as e:
-        raise HTTPException(503, str(e)) from e
+        raise HTTPException(503, safe_detail(503, e)) from e
     except Exception as e:
-        raise HTTPException(502, f"Motor IA falhou: {e}") from e
+        raise HTTPException(502, safe_detail(502, e, "Motor IA falhou:")) from e
 
     return {
         "ok": True,

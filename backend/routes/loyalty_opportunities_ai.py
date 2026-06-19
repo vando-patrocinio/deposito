@@ -18,6 +18,7 @@ iter215m — não usa Emergent LLM Key; usa motor_ia.chat_completion (OpenRouter
 from __future__ import annotations
 
 
+from services.exception_sanitizer import safe_detail  # SECURITY_LOCK ART.13
 NERVOUS_METADATA = {
     "owner": "platform-team",
     "domain": "infra",
@@ -297,7 +298,7 @@ async def scan_opportunities(
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(502, f"Falha geocoding: {e}")
+        raise HTTPException(502, safe_detail(502, e, "Falha geocoding:"))
 
     # 2) Overpass — pode demorar até 1min
     try:
@@ -305,7 +306,7 @@ async def scan_opportunities(
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(502, f"Falha Overpass: {e}")
+        raise HTTPException(502, safe_detail(502, e, "Falha Overpass:"))
 
     # 3) Normaliza prospects
     origin = (lat, lon)
@@ -346,7 +347,7 @@ async def scan_opportunities(
         )
     except Exception as e:
         logger.exception("[opp-ai] Falha chamando Claude")
-        raise HTTPException(502, f"Falha LLM: {e}")
+        raise HTTPException(502, safe_detail(502, e, "Falha LLM:"))
 
     text = result.get("content") or ""
     insights = _parse_json_response(text)

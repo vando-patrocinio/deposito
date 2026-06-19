@@ -75,3 +75,38 @@ async def sanitized_unhandled_exception_handler(
         status_code=500,
         content={"detail": "Internal server error", "error_id": error_id},
     )
+
+
+# --------------------------------------------------------------------- #
+# Helper utilizado nas rotas para substituir `HTTPException(NNN, str(e))`
+# por mensagem genérica + log server-side (SECURITY_LOCK ART.13).
+# --------------------------------------------------------------------- #
+_GENERIC_DETAIL = {
+    400: "Bad request",
+    401: "Authentication required",
+    403: "Forbidden",
+    404: "Not found",
+    409: "Conflict",
+    422: "Unprocessable entity",
+    500: "Internal server error",
+    502: "Upstream service error",
+    503: "Service unavailable",
+}
+
+
+def safe_detail(status_code: int, exc: Exception, context: str = "") -> str:
+    """ART.13 helper: registra a exceção no logger e devolve mensagem genérica
+    curta para o cliente.
+
+    Uso:
+        try:
+            ...
+        except Exception as e:
+            raise HTTPException(500, safe_detail(500, e, "endpoint_x"))
+    """
+    error_id = uuid.uuid4().hex[:8]
+    logger.warning(
+        "[security.detail] error_id=%s ctx=%s status=%s exc=%s: %s",
+        error_id, context or "-", status_code, type(exc).__name__, str(exc)[:300],
+    )
+    return _GENERIC_DETAIL.get(status_code, "Request rejected")

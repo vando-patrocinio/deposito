@@ -15,6 +15,7 @@ Lógica:
 from __future__ import annotations
 
 
+from services.exception_sanitizer import safe_detail  # SECURITY_LOCK ART.13
 NERVOUS_METADATA = {
     "owner": "platform-team",
     "domain": "infra",
@@ -395,7 +396,7 @@ async def send_single_message(
         resp = await _sidecar_post_at(base_url, "/send",
                                        {"phone": phone, "text": text})
     except Exception as e:
-        raise HTTPException(503, f"Erro ao enviar via WhatsApp: {e}")
+        raise HTTPException(503, safe_detail(503, e, "Erro ao enviar via WhatsApp:"))
 
     if not resp.get("ok"):
         raise HTTPException(502, f"Sidecar recusou envio: "

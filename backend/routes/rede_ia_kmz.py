@@ -19,6 +19,7 @@ Conversão KML ↔ DB:
 from __future__ import annotations
 
 
+from services.exception_sanitizer import safe_detail  # SECURITY_LOCK ART.13
 NERVOUS_METADATA = {
     "owner": "platform-team",
     "domain": "infra",
@@ -426,7 +427,7 @@ async def import_kmz(
     try:
         root = ET.fromstring(kml_bytes)
     except ET.ParseError as e:
-        raise HTTPException(400, f"KML inválido: {e}")
+        raise HTTPException(400, safe_detail(400, e, "KML inválido:"))
 
     # Itera Folders e Placemarks
     summary = {

@@ -15,6 +15,7 @@ Fluxo:
 from __future__ import annotations
 
 
+from services.exception_sanitizer import safe_detail  # SECURITY_LOCK ART.13
 NERVOUS_METADATA = {
     "owner": "platform-team",
     "domain": "infra",
@@ -179,7 +180,7 @@ async def import_xlsx(
         wb = openpyxl.load_workbook(io.BytesIO(content),
                                       read_only=True, data_only=True)
     except Exception as e:
-        raise HTTPException(400, f"Falha ao ler XLSX: {e}")
+        raise HTTPException(400, safe_detail(400, e, "Falha ao ler XLSX:"))
     ws = wb[wb.sheetnames[0]]
     rows_iter = ws.iter_rows(values_only=True)
     try:

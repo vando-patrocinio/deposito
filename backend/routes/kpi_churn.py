@@ -8,6 +8,7 @@ Lê de `tickets` onde `type=retirada`, `status=fechado` e
 `completion_data.cancel_reason_category` está preenchido.
 """
 
+from services.exception_sanitizer import safe_detail  # SECURITY_LOCK ART.13
 NERVOUS_METADATA = {
     "owner": "vendas-team",
     "domain": "comercial",
@@ -328,4 +329,4 @@ async def churn_ai_insights(
         raise
     except Exception as e:
         logger.warning("[churn-ai] falha: %s", e, exc_info=True)
-        raise HTTPException(500, f"Análise IA falhou: {e}") from e
+        raise HTTPException(500, safe_detail(500, e, "Análise IA falhou:")) from e
