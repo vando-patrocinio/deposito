@@ -2265,7 +2265,9 @@ async def create_ticket(payload: TicketIn, user: dict = Depends(require_role("ge
          "status": {"$in": ["pendente", "aberta", "aguardando_atendimento"]}},
         {"_id": 0, "position": 1},
     ).sort("position", -1).to_list(1)
-    next_pos = (last[0]["position"] + 1) if last else 0
+    # ART.13/bug-fix 19/06/2026 — tickets legados podem não ter `position`.
+    # Cai pra 0 em vez de KeyError → mantém o fluxo de criação funcionando.
+    next_pos = (last[0].get("position", -1) + 1) if last else 0
 
     doc = {
         "id": f"tkt-{uuid.uuid4().hex[:10]}",

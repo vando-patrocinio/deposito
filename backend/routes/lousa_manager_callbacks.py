@@ -478,7 +478,8 @@ async def create_new_ticket_from_callback(
          "status": {"$in": ["pendente", "aberta", "aguardando_atendimento"]}},
         {"_id": 0, "position": 1},
     ).sort("position", -1).to_list(1)
-    next_pos = (last[0]["position"] + 1) if last else 0
+    # bug-fix 19/06/2026 — tickets legados sem `position` cairiam em KeyError.
+    next_pos = (last[0].get("position", -1) + 1) if last else 0
 
     parent_ticket_id = req["ticket_id"]
     now = now_iso()
