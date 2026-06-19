@@ -30,6 +30,7 @@ A análise forense provou que o block rate de 62,5 % é dado de teste. A operaç
 | **A7** | Auditoria por amostragem: gestor seleciona 5 OS reais finalizadas/dia, verifica se `onda3_validation_diag` está populado. Se não estiver, identificou bypass não previsto. | Gestor de Operação | contínuo | bypass detectados em 30d | qualifica a Sprint 5 |
 | **A8** | **Marco 15 dias (04/07/2026)**: reexecutar este forensic. Se base ≥ 30 OS reais, calcular block rate REAL. | CTO + Gestor | dia 15 | nova baseline honesta | decisão data-driven |
 | **A9** | **Marco 30 dias (19/07/2026)**: análise final. Se block rate ≥ 30 %, identificar top motivos com base estatística e propor intervenção operacional (não código). | CTO + CEO | dia 30 | block rate < 30 % | meta cumprida |
+| **A10** | **Auditoria Diária de Volume Operacional** (ordem CEO 19/06). Coletar diariamente: (a) OS reais finalizadas, (b) quantas passaram pela Onda 3, (c) quantas tiveram missing[] não vazio, (d) quantas usaram override. Promovido a KPI #1. | Gestor de Operação | contínuo (dia 1 → 30) | ≥ 50 OS reais cumulativas + Cobertura Real Onda 3 ≥ 80 % | habilita reclassificação do block rate |
 
 ---
 
@@ -128,4 +129,36 @@ SEMANA 4 (dias 23-30)
 
 ---
 
-**Status do plano:** Aprovado pelo CTO. Aguardando assinatura do CEO para iniciar.
+**Status do plano:** Aprovado pelo CTO. **Assinado pelo CEO em 19/06/2026.**
+
+---
+
+## CLASSIFICAÇÃO OFICIAL DO INDICADOR (CEO 19/06/2026)
+
+```
+BLOCK RATE ONDA 3 = 62,5 %
+
+CLASSIFICAÇÃO:   BASELINE SINTÉTICO
+STATUS:          NÃO REPRESENTA OPERAÇÃO REAL
+AMOSTRA:         70 % test data
+COBERTURA REAL:  0 %
+
+POLÍTICA:
+  ✅ Manter métrica visível no gauge Phase D
+  ❌ Sem ajustes na fórmula
+  ❌ Sem reclassificações automáticas
+  ❌ Sem masking
+
+KPI #1 PROMOVIDO PARA A JANELA:
+  COBERTURA REAL DA ONDA 3
+    Hoje:          0 %
+    Meta 15 dias:  ≥ 50 OS reais passando pelo gate
+    Meta 30 dias:  ≥ 90 % das finalizações reais
+
+CRITÉRIO DE SAÍDA DO BASELINE SINTÉTICO:
+  ≥ 50 OS reais cumulativas no caminho oficial
+  E
+  Cobertura Real Onda 3 ≥ 80 %
+
+REAVALIAÇÃO: 04/07/2026 (15 dias)
+```
