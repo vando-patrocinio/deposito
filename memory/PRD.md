@@ -2,6 +2,31 @@
 
 > Documento vivo. Atualizado a cada sprint.
 
+## 🟡 P1 UX FIX · Chat Atendimento IA mostrando QR mesmo com canal conectado — 19/06/2026
+
+**Sintoma:** Mesmo com Canal 3 (multi-canal Baileys) conectado, a aba "Ligo/WhatsApp" mostrava tela "Conectar WhatsApp por QR Code · DESCONECTADO" + QR Code expirado. Usuário interpretava como "atendimento não funcionando".
+
+**Causa raiz:** `WhatsAppQRPanel` (e indicador verde do `AIHubPanel`) consultavam APENAS o endpoint legado `/api/whatsapp-baileys/qr` (sidecar single-instance, deprecated). Em ambientes que usam o multi-canal (channel-1..4 com sidecars dedicados), o legado fica permanentemente "disconnected" mesmo quando 1+ canal está up.
+
+**Fix (frontend only):**
+- `WhatsAppQRPanel.fetchState()`: além do `api.waBaileysQR()`, chama `GET /api/whatsapp-channels`. Se `live_connected=true` OU `last_status==="connected"` em qualquer canal → status="connected" → renderiza `<WhatsAppChatLayout />` em vez do painel QR.
+- `AIHubPanel`: bolinha verde do tab WhatsApp considera legado OR multi-canal.
+- Catch path do `fetchState` também faz fallback para multi-canal antes de marcar disconnected.
+
+**Comportamento esperado pós-fix:**
+- 1+ canal conectado → chat abre normal (sem QR), conversas listadas
+- 0 canais conectados → mantém tela atual (QR + instruções)
+- DutyGate continua independente: gateando por ponto quem é gestor/administrador/vendedor (não bloqueia o render, apenas grayscale + pointer-events:none)
+
+**Arquivos alterados:**
+- `frontend/src/WhatsAppQRPanel.js` (3 edits)
+- `frontend/src/AIHubPanel.js` (1 edit no useEffect de fetchInfo)
+
+**Ação pendente do CEO:** Redeploy para subir o fix em Produção.
+
+---
+
+
 ## 🔴 P0 PROD FIX · Deferred Startup (502 Bad Gateway) — 19/06/2026
 
 **Sintoma:** Pós-deploy Preview→Produção, `universoligo.com/api/*` retornava HTTP 502 ("connect refused 127.0.0.1:8001"). Frontend OK.

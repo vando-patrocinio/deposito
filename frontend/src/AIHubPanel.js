@@ -41,18 +41,26 @@ export default function AIHubPanel({ initialTab = "whatsapp_qr" }) {
     }
   }, [initialTab]);
 
-  // Carrega nome customizado da instância + status de conexão
+  // Carrega nome customizado da instância + status de conexão.
+  // CTO 19/06/2026 — Multi-canal awareness: o indicador verde da
+  // aba WhatsApp considera tanto o sidecar legado quanto os 4
+  // canais multi (channel-1..4). Conecta se QUALQUER um estiver up.
   useEffect(() => {
     let alive = true;
     const fetchInfo = async () => {
       try {
-        const [inst, qr] = await Promise.all([
+        const [inst, qr, channelsResp] = await Promise.all([
           api.waBaileysGetInstance().catch(() => ({})),
           api.waBaileysQR().catch(() => ({})),
+          api._client.get("/whatsapp-channels").catch(() => ({ data: {} })),
         ]);
         if (!alive) return;
         if (inst?.display_name) setInstanceName(inst.display_name);
-        setWaConnected((qr?.status || "") === "connected");
+        const legacyConnected = (qr?.status || "") === "connected";
+        const list = channelsResp?.data?.channels || [];
+        const multiConnected = list.some((c) =>
+          c?.live_connected === true || c?.last_status === "connected");
+        setWaConnected(legacyConnected || multiConnected);
       } catch { /* ignore */ }
     };
     fetchInfo();

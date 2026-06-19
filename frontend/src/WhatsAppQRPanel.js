@@ -68,10 +68,32 @@ export default function WhatsAppQRPanel() {
     } catch { /* ignore */ }
   };
 
+  // CTO 19/06/2026 — Multi-canal awareness:
+  // O endpoint legado /qr aponta pro sidecar single-instance.
+  // Quando o usuário usa o sistema multi-canal (channel-1..4), o
+  // legado fica "disconnected" mesmo com Canal 3 conectado. Aqui
+  // verificamos AMBOS: legado E multi-canal. Se QUALQUER um estiver
+  // conectado, renderiza o chat — não mostra QR de reconexão (que
+  // confunde o usuário a achar que o atendimento parou).
+  const _anyMultiChannelConnected = async () => {
+    try {
+      const r = await api._client.get("/whatsapp-channels");
+      const list = r?.data?.channels || [];
+      return list.some((c) => c?.live_connected === true
+        || c?.last_status === "connected");
+    } catch { return false; }
+  };
+
   const fetchState = useCallback(async () => {
     try {
       const r = await api.waBaileysQR();
-      const st = r.status || "disconnected";
+      let st = r.status || "disconnected";
+      // Se legado disser disconnected, checa multi-canal antes de
+      // decidir mostrar QR. Multi-canal connected ⇒ trata como connected.
+      if (st !== "connected") {
+        const multi = await _anyMultiChannelConnected();
+        if (multi) st = "connected";
+      }
       setStatus(st);
       setErr(null);
       if (st === "connected") {
@@ -89,6 +111,19 @@ export default function WhatsAppQRPanel() {
         }
       }
     } catch (e) {
+      // Antes de marcar disconnected, valida se algum canal multi
+      // está conectado (legado fora do ar não deve quebrar a UX).
+      try {
+        const multi = await _anyMultiChannelConnected();
+        if (multi) {
+          setStatus("connected");
+          setStickyConnected(true);
+          wasConnectedRef.current = true;
+          failsRef.current = 0;
+          setErr(null);
+          return;
+        }
+      } catch { /* ignore */ }
       setErr(e?.response?.data?.detail || e.message);
       failsRef.current += 1;
       if (failsRef.current >= FAIL_THRESHOLD) {
