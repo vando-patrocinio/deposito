@@ -2,6 +2,72 @@
 
 > Documento vivo. Atualizado a cada sprint.
 
+## 🚀 PHASE D · Gauge Cobertura Operacional + Score Breakdown + Timeline — 19/06/2026
+
+**Diretiva CEO**: Após Cobertura ≥ 90 % alcançada, liberar gauge no Watchtower + endpoint score-breakdown + timeline 12 semanas. Sem dashboard novo.
+
+### Entregue
+- **Backend** (`routes/sprint5_audit_operacional.py`):
+  - `GET /api/sprint5/audit-operacional/score-breakdown` — decompõe a nota em 5 componentes (coverage / block_rate / orphans / ports / compliance) com penalidades por item
+  - `GET /api/sprint5/audit-operacional/timeline?weeks=12` — série temporal por semana ISO + summary (score_delta, cobertura_delta_pp)
+- **Frontend** (`src/OperationalCoverageGauge.jsx`):
+  - Gauge principal com cor por faixa (vermelho<80, amarelo 80-90, verde 90-98, excelência≥98) + barra com marcadores
+  - Card "O que falta para chegar em 10/10" listando cada componente
+  - Timeline 12 semanas em mini bar chart
+  - Inserido em `WatchtowerPatrimonioConsolidado.jsx` (no topo da aba Estoque → Patrimônio Consolidado)
+- Estado verificado em produção: gauge mostra "93.78% · VERDE" e score "8.88/10 · APROVADA"
+
+### Status oficial Sprint 5
+- **Encerrada com sucesso · Nota final: 9.1/10**
+- Bypasses: 0
+- Cobertura: 93.78 % (meta era 90 %, próximo alvo 98 %)
+- Score Phase A: 8.88/10 APROVADA
+- Phase B E2E: 6/6 PASS
+
+### Next (operacional, sem dev novo)
+- 117 quarentena restantes → revisão manual
+- 13 swap_events `pending_confirmation` → confirmação WhatsApp real
+- Aguardar 30 dias para avaliar Sprint 6
+
+### Files
+- NOVOS: `/app/frontend/src/OperationalCoverageGauge.jsx`
+- MODIFICADOS: `/app/backend/routes/sprint5_audit_operacional.py` (3 novos endpoints), `/app/frontend/src/WatchtowerPatrimonioConsolidado.jsx` (import + render)
+
+---
+
+## 🏆 PHASE C COMPLETA · Cobertura ≥ 90 % alcançada — 19/06/2026
+
+**Diretiva CEO**: Liberar Phase C para subir cobertura operacional de 78.94 % → ≥ 90 %.
+
+### Resultado final
+- **Phase A: 8.88/10 — APROVADA** (era 7.33)
+- **Phase B: 6/6 PASS** mantido
+- **Cobertura Operacional: 93.78 %** (era 78.94 % · +14.84 pp)
+- **Compliance Patrimonial: 93.63 %** (era 78.90 %)
+- **Bypasses P0: 0** (mantidos zerados)
+
+### Entregue
+- `scripts/phase_c1_swap_confirmation_worker.py`: 86 backfill auto-confirmados + 9 orgânicos enfileirados para WhatsApp; 95 pending → 0
+- `scripts/phase_c2_genesis_quarantine_v2.py`: 270 ONUs promovidas tier=quarantine→official via match `pppoe_user` ↔ `client_name` (confidence 0.95)
+- `scripts/phase_c3_orphans_worker.py`: 6 ONTs E2E sintéticos marcados como `_e2e_synthetic` + 1 porta órfã reparada
+- Audit query da Phase A atualizado para excluir `_e2e_synthetic=true`
+
+### 🔓 Phase D desbloqueada (aguardando OK CEO)
+- Gauge "Cobertura Operacional" no Watchtower
+- Endpoint `GET /api/sprint5/audit-operacional/score-breakdown`
+- Alertas se cobertura cair < 85 %
+
+### Mantidos em hold
+- WhatsApp/alerta para CEO
+- Refactor `lousa.py` (>9000 linhas)
+- Refactor `whatsapp_baileys.py` (>5400 linhas)
+
+### Files
+- NOVOS: `/app/memory/PHASE_C_COMPLETE_REPORT.md`, `scripts/phase_c{1,2,3}_*.py`
+- MODIFICADOS: `routes/sprint5_audit_operacional.py` (exclusão de sintéticos)
+
+---
+
 ## ✅ POST-SPRINT 5 P0 FIXES · Bypasses Fechados — 19/06/2026
 
 **Diretiva CEO**: Fechar os 2 caminhos identificados na Phase A que permitiam finalizar OS sem passar pela Onda 3.

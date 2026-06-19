@@ -10,6 +10,7 @@
  */
 import React, { useEffect, useState, useCallback } from "react";
 import { client } from "./api";
+import OperationalCoverageGauge from "./OperationalCoverageGauge";
 
 const fmtInt = (v) => (v == null ? "—" : Number(v).toLocaleString("pt-BR"));
 const fmtBRL = (v) => v == null ? "—" : `R$ ${Number(v).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -56,6 +57,9 @@ export default function WatchtowerPatrimonioConsolidado() {
 
   return (
     <div className="space-y-6" data-testid="patcons-root">
+      {/* Phase D · CEO 19/06/2026 — Cobertura Operacional */}
+      <OperationalCoverageGauge />
+
       {/* KPI PRIMÁRIO — Cobertura Patrimonial (Ajuste 2 · gate Sprint 5.1) */}
       <div className={`rounded-2xl border p-6 ${tierColor(cobertura.tier)}`} data-testid="patcons-card-cobertura">
         <div className="flex items-end justify-between gap-4 flex-wrap">

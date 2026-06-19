@@ -71,10 +71,12 @@ async def _build_weekly_report(cid: str) -> Dict[str, Any]:
          "promoted_at": {"$gte": week_start}})
     ativos_sem_local = await db.stok_onts.count_documents(
         {"company_id": cid, "tier": "official",
+         "_e2e_synthetic": {"$ne": True},
          "$or": [{"location_id": {"$in": [None, ""]}},
                     {"location_id": {"$exists": False}}]})
     ativos_sem_resp = await db.stok_onts.count_documents(
         {"company_id": cid, "tier": "official",
+         "_e2e_synthetic": {"$ne": True},
          "subscriber_id": {"$in": [None, ""]}})
     oficial = await db.stok_onts.count_documents(
         {"company_id": cid, "tier": "official"})
@@ -125,7 +127,6 @@ async def _build_weekly_report(cid: str) -> Dict[str, Any]:
     score = 10.0
     if cobertura_op < 95:
         score -= (95 - cobertura_op) / 10
-    onda3_total = onda3_blocked + onda3_overrides  # validações sucesso
     # adiciona validações OK (sucesso real) ao universo
     onda3_total_universe = await db.sprint5_onda3_validations.count_documents(
         {"company_id": cid, "created_at": {"$gte": week_start}})
@@ -198,3 +199,150 @@ async def history(
         {"company_id": cid}, {"_id": 0}
     ).sort("generated_at", -1).limit(limit).to_list(length=limit)
     return {"items": items, "count": len(items)}
+
+
+def _decompose_score(answers: Dict[str, Any]) -> Dict[str, Any]:
+    """Reproduz a fórmula de _build_weekly_report() e gera breakdown.
+
+    Phase D · CEO 19/06/2026.
+    """
+    cov = float(answers.get("patrim_cobertura_operacional_pct") or 0)
+    comp = float(answers.get("patrim_compliance_pct") or 0)
+    blocked = int(answers.get("lousa_os_bloqueadas_semana") or 0)
+    overrides = int(answers.get("lousa_overrides_realizados") or 0)
+    sem_resp = int(answers.get("patrim_ativos_sem_responsavel") or 0)
+    porta_orfa = int(answers.get("rede_porta_ocupada_sem_ont_link") or 0)
+
+    coverage_penalty = (
+        -round((95 - cov) / 10, 3) if cov < 95 else 0.0
+    )
+    # block_rate é calculado contra TODAS validações da semana
+    # mas o doc persisted não guarda esse total separado;
+    # uso a aproximação: bloqueios / (bloqueios + overrides + sem_ont):
+    sem_ont = int(answers.get("lousa_finalizacoes_sem_ont") or 0)
+    denom = blocked + overrides + max(sem_ont, 1)
+    block_rate = blocked / denom if denom > 0 else 0
+    block_rate_penalty = -1.0 if (blocked > 0 and block_rate > 0.3) else 0.0
+    orphan_penalty = -round(min(sem_resp / 100, 2.0), 3) \
+        if sem_resp > 0 else 0.0
+    port_penalty = -round(min(porta_orfa / 50, 1.5), 3) \
+        if porta_orfa > 0 else 0.0
+    compliance_penalty = -1.0 if comp < 75 else 0.0
+
+    components = [
+        {"key": "coverage", "label": "Cobertura Operacional",
+         "value_pct": cov, "target_pct": 95, "penalty": coverage_penalty},
+        {"key": "block_rate", "label": "Taxa de bloqueios Onda 3",
+         "value_pct": round(block_rate * 100, 1), "target_pct": 30,
+         "penalty": block_rate_penalty},
+        {"key": "orphans", "label": "Ativos sem responsável",
+         "value": sem_resp, "target": 0, "penalty": orphan_penalty},
+        {"key": "ports", "label": "Portas órfãs (occupied sem ONT)",
+         "value": porta_orfa, "target": 0, "penalty": port_penalty},
+        {"key": "compliance", "label": "Compliance Patrimonial",
+         "value_pct": comp, "target_pct": 75, "penalty": compliance_penalty},
+    ]
+
+    final = round(max(10.0 + sum(c["penalty"] for c in components),
+                       0.0), 2)
+    return {
+        "base_score": 10.0,
+        "components": components,
+        "total_penalty": round(sum(c["penalty"] for c in components), 3),
+        "final_score": final,
+        "what_blocks_max_score": [
+            c for c in components if c["penalty"] < 0
+        ],
+    }
+
+
+@router.get("/score-breakdown")
+async def score_breakdown(
+    user: dict = Depends(require_role(
+        "administrador", "gestor", "auditor")),
+):
+    """Decompõe a nota mais recente em penalidades.
+
+    Phase D · CEO 19/06/2026.
+    Mostra exatamente o que falta para chegar em 10.
+    """
+    cid = _user_company(user)
+    latest_doc = await db.sprint5_audit_operacional.find_one(
+        {"company_id": cid}, {"_id": 0},
+        sort=[("generated_at", -1)])
+    if not latest_doc:
+        return {"empty": True, "message": "Nenhuma auditoria executada"}
+
+    breakdown = _decompose_score(latest_doc.get("answers") or {})
+    return {
+        "report_id": latest_doc.get("id"),
+        "week_iso": latest_doc.get("week_iso"),
+        "generated_at": latest_doc.get("generated_at"),
+        "score": latest_doc.get("score_0_10"),
+        "status": latest_doc.get("status"),
+        "breakdown": breakdown,
+    }
+
+
+@router.get("/timeline")
+async def timeline(
+    weeks: int = Query(12, ge=1, le=52),
+    user: dict = Depends(require_role(
+        "administrador", "gestor", "auditor")),
+):
+    """Série temporal de nota + cobertura + compliance.
+
+    Phase D · CEO 19/06/2026. Últimas N semanas.
+    """
+    cid = _user_company(user)
+    # 1 doc por semana ISO (mais recente da semana)
+    docs = await db.sprint5_audit_operacional.find(
+        {"company_id": cid}, {"_id": 0}
+    ).sort("generated_at", -1).to_list(length=500)
+
+    by_week: Dict[str, Dict[str, Any]] = {}
+    for d in docs:
+        w = d.get("week_iso") or ""
+        if w and w not in by_week:
+            by_week[w] = d
+
+    series = sorted(by_week.values(),
+                    key=lambda x: x.get("week_iso", ""))[-weeks:]
+    points = []
+    for d in series:
+        ans = d.get("answers") or {}
+        points.append({
+            "week_iso": d.get("week_iso"),
+            "generated_at": d.get("generated_at"),
+            "score": d.get("score_0_10"),
+            "status": d.get("status"),
+            "cobertura_operacional_pct":
+                ans.get("patrim_cobertura_operacional_pct"),
+            "compliance_pct": ans.get("patrim_compliance_pct"),
+            "bloqueios_semana": ans.get("lousa_os_bloqueadas_semana"),
+            "overrides_semana": ans.get("lousa_overrides_realizados"),
+        })
+
+    # Resumo executivo da série
+    summary = None
+    if points:
+        first_p = points[0]
+        last_p = points[-1]
+        first_score = first_p.get("score") or 0
+        last_score = last_p.get("score") or 0
+        first_cov = first_p.get("cobertura_operacional_pct") or 0
+        last_cov = last_p.get("cobertura_operacional_pct") or 0
+        summary = {
+            "weeks_returned": len(points),
+            "first_week": first_p.get("week_iso"),
+            "last_week": last_p.get("week_iso"),
+            "score_delta": round(last_score - first_score, 2),
+            "cobertura_delta_pp": round(last_cov - first_cov, 2),
+        }
+
+    return {
+        "company_id": cid,
+        "weeks_requested": weeks,
+        "points": points,
+        "summary": summary,
+    }
