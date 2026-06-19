@@ -712,6 +712,19 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 @app.on_event("startup")
 async def _startup() -> None:
+    # CTO 19/06/2026 — Deployment fix:
+    # K8s readiness probe (5s) era estourado em Produção com Atlas MongoDB
+    # porque o boot bloqueava em 15+ awaits sequenciais (ensure_indexes,
+    # migrations, seed, prompt_loader). Com RTT Atlas 50-200ms vs <1ms local,
+    # o uvicorn nunca conseguia bindar 0.0.0.0:8001 antes do pod ser killed,
+    # resultando em "connect() failed (111: Connection refused)" no nginx.
+    # Solução: porta abre imediato; toda inicialização pesada vai pra
+    # background. Endpoints autenticados são idempotentes e tolerantes a
+    # indexes ainda sendo criados (MongoDB faz collection scan).
+    asyncio.create_task(_deferred_startup(), name="deferred-startup")
+
+
+async def _deferred_startup() -> None:
     await ensure_indexes()
     await ensure_auth_indexes(db)
     await ensure_push_indexes(db)

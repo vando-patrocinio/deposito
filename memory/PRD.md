@@ -2,6 +2,26 @@
 
 > Documento vivo. Atualizado a cada sprint.
 
+## 🔴 P0 PROD FIX · Deferred Startup (502 Bad Gateway) — 19/06/2026
+
+**Sintoma:** Pós-deploy Preview→Produção, `universoligo.com/api/*` retornava HTTP 502 ("connect refused 127.0.0.1:8001"). Frontend OK.
+
+**Causa raiz:** `@app.on_event("startup")` em `server.py` executava 15+ awaits sequenciais (ensure_indexes, migrations, seed, prompt_loader) ANTES do uvicorn bindar 8001. Com Atlas Mongo (RTT 50-200ms vs <1ms local) o boot estourava o readiness probe do K8s → pod killed em CrashLoopBackOff.
+
+**Fix (code-only, sem Dockerfile/supervisor):** `backend/server.py` linhas 713-731 — `_startup()` agora apenas dispara `asyncio.create_task(_deferred_startup())`. Porta 8001 abre em ~3s (antes >30s). Toda inicialização pesada continua em background sem afetar request handling.
+
+**Validação Preview pós-fix:**
+- `GET /api/server-time` → 401 em 227ms ✅
+- `POST /api/auth/login` (admin@empresa.com) → 200 com JWT em 387ms ✅
+- Schedulers/workers carregados sem erro em background
+
+**Ação pendente do CEO:** Acionar Redeploy no dashboard Emergent para subir este fix em Produção.
+
+**Detalhes técnicos:** `/app/memory/PROD_502_FIX_DEFERRED_STARTUP.md`
+
+---
+
+
 ## 📅 WEEKLY EXECUTIVE HEALTHCHECK · Automação CEO — 19/06/2026
 
 **Diretiva CEO**: Único item operacional aprovado pós-encerramento Sprint 5. Sem feature, sem dashboard — apenas um arquivo `.md` gerado toda sexta 06:00 UTC com o snapshot dos KPIs.
