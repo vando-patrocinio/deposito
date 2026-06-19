@@ -72,6 +72,13 @@ def _load_navigation_kb() -> str:
 _NAV_KB: str = _load_navigation_kb()
 
 
+def _refresh_nav_kb() -> int:
+    """Recarrega o KB do disco. Retorna tamanho (chars) carregado."""
+    global _NAV_KB
+    _NAV_KB = _load_navigation_kb()
+    return len(_NAV_KB)
+
+
 # ---------------------------------------------------------------------------
 # Models
 # ---------------------------------------------------------------------------
@@ -279,7 +286,7 @@ TOOLS: Dict[str, Any] = {
 }
 
 
-TOOL_CATALOG_PROMPT = """
+TOOL_CATALOG_PROMPT_TEMPLATE = """
 Você é o NEO — assistente executivo da operação SmartProv (ISP). Sua função é
 responder perguntas do gestor consultando dados consolidados dos agentes IA da
 empresa (Isabella, Álvaro, Pâmela e Secretaria) e dos relatórios agendados.
@@ -319,7 +326,15 @@ Regras:
 - Se a pergunta for de NAVEGAÇÃO, use freeform com resposta baseada no KB.
 - Se NÃO houver mapeamento no KB, responda "Não tenho mapeamento exato. Verifique em <sugestão>".
 - Apenas UM JSON, sem markdown.
-""".replace("{NAV_KB}", _NAV_KB or "(KB de navegação indisponível neste ambiente)")
+"""
+
+
+def _get_route_prompt() -> str:
+    """Renderiza o prompt do roteador com o KB mais recente."""
+    return TOOL_CATALOG_PROMPT_TEMPLATE.replace(
+        "{NAV_KB}",
+        _NAV_KB or "(KB de navegação indisponível neste ambiente)",
+    )
 
 
 SUMMARIZE_PROMPT = """
@@ -390,7 +405,7 @@ async def ask_neo(payload: AskIn,
     # 1) LLM escolhe ferramenta
     try:
         from emergentintegrations.llm.chat import UserMessage
-        chat1 = _llm_chat(f"{session_id}-route", TOOL_CATALOG_PROMPT)
+        chat1 = _llm_chat(f"{session_id}-route", _get_route_prompt())
         raw1 = await chat1.send_message(UserMessage(text=question))
         decision = _parse_json_loose(raw1)
     except Exception as e:
@@ -523,4 +538,33 @@ async def list_tools(user: dict = Depends(require_role("gestor"))):
             {"name": "list_schedules", "params": {},
              "description": "Agendamentos ativos"},
         ],
+    }
+
+
+
+# ---------------------------------------------------------------------------
+# Admin — recarregar Knowledge Base sem restart de backend
+# ---------------------------------------------------------------------------
+@router.post("/kb/reload")
+async def kb_reload(user: dict = Depends(require_role("administrador"))):
+    """Recarrega `neo_navigation_kb.md` do disco e atualiza prompt do NEO em
+    runtime. Sem restart de backend."""
+    chars = _refresh_nav_kb()
+    return {
+        "ok": True,
+        "kb_chars": chars,
+        "kb_path": os.environ.get(
+            "NEO_KB_PATH", "/app/memory/neo_navigation_kb.md"),
+        "reloaded_at": now_iso(),
+    }
+
+
+@router.get("/kb/status")
+async def kb_status(user: dict = Depends(require_role("administrador"))):
+    """Snapshot do KB atualmente carregado (apenas tamanho/origem)."""
+    return {
+        "loaded": bool(_NAV_KB),
+        "kb_chars": len(_NAV_KB),
+        "kb_path": os.environ.get(
+            "NEO_KB_PATH", "/app/memory/neo_navigation_kb.md"),
     }
