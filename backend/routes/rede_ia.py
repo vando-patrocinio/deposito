@@ -1504,7 +1504,7 @@ async def list_pendencies(
             try:
                 b64 = photo_url.split(",", 1)[1]
                 import base64 as _b64  # noqa: PLC0415
-                sha1 = _hashlib.sha1(_b64.b64decode(b64)).hexdigest()
+                sha1 = _hashlib.sha1(_b64.b64decode(b64), usedforsecurity=False).hexdigest()
                 sent = await db.cto_photo_validations.find_one(
                     {"company_id": cid, "sha1": sha1},
                     {"_id": 0, "score": 1, "action": 1, "vision": 1,

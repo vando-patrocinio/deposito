@@ -781,7 +781,7 @@ async def update_user(uid: str, payload: dict, user: dict = Depends(require_role
             raise HTTPException(400, "E-mail já está em uso por outro usuário")
         update["email"] = new_email
     if "password" in payload and payload["password"]:
-        if len(str(payload["password"])) < 6:
+        if len(str(payload["password"])) < 8:
             raise HTTPException(400, "Senha deve ter no mínimo 6 caracteres")
         update["password_hash"] = hash_password(str(payload["password"]))
     if not update:

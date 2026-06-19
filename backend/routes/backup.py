@@ -245,9 +245,14 @@ async def restore_backup(
                 # Anti-traversal: garante que membros não escapam de extract_dir
                 for m in tar.getmembers():
                     if m.name.startswith("/") or ".." in Path(m.name).parts:
-                        raise HTTPException(400,
-                            f"Membro tar inválido: {m.name}")
-                tar.extractall(path=str(extract_dir))
+                        raise HTTPException(400, safe_detail(400, ValueError("tar membro inválido"), "Tar"))
+                # SECURITY: filter="data" (Python 3.12+) rejeita symlinks/hardlinks/specials.
+                # A pré-validação acima já cobre path traversal.
+                try:
+                    tar.extractall(path=str(extract_dir), filter="data")  # nosec B202
+                except TypeError:
+                    # Python <3.12: fallback usando getmembers já validados
+                    tar.extractall(path=str(extract_dir))  # nosec B202
         except tarfile.TarError as e:
             raise HTTPException(400, f"Tar inválido: {e!s}")
 
@@ -673,9 +678,12 @@ async def migrate_from_remote(
             with tarfile.open(upload_path, "r:gz") as tar:
                 for m in tar.getmembers():
                     if m.name.startswith("/") or ".." in Path(m.name).parts:
-                        raise HTTPException(400,
-                            f"Membro tar inválido: {m.name}")
-                tar.extractall(path=str(extract_dir))
+                        raise HTTPException(400, safe_detail(400, ValueError("tar membro inválido"), "Tar"))
+                # SECURITY: filter="data" (Python 3.12+) rejeita symlinks/hardlinks/specials.
+                try:
+                    tar.extractall(path=str(extract_dir), filter="data")  # nosec B202
+                except TypeError:
+                    tar.extractall(path=str(extract_dir))  # nosec B202
         except tarfile.TarError as e:
             raise HTTPException(500, f"Tar inválido: {e!s}")
 

@@ -33,6 +33,7 @@ import io
 import logging
 import uuid
 import xml.etree.ElementTree as ET
+import defusedxml.ElementTree as DET  # SECURITY: XML defuse — bloqueia XXE/billion-laughs
 import zipfile
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
@@ -423,9 +424,9 @@ async def import_kmz(
     else:
         kml_bytes = raw
 
-    # Parseia XML
+    # Parseia XML (defusedxml — bloqueia XXE/entity expansion/DTD)
     try:
-        root = ET.fromstring(kml_bytes)
+        root = DET.fromstring(kml_bytes)
     except ET.ParseError as e:
         raise HTTPException(400, safe_detail(400, e, "KML inválido:"))
 

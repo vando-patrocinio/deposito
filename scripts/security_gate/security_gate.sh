@@ -121,8 +121,10 @@ leak=$(echo "$PY" | grep -vE '/scripts/' | xargs -r grep -nE "HTTPException\([0-
 [[ -n "$leak" ]] && { fail "ART.13-INFO-LEAK" "exceção crua devolvida ao cliente (use mensagem genérica + log server-side)"; echo "$leak" | sed 's/^/    /' | head -8; [[ $(echo "$leak" | grep -c .) -gt 8 ]] && note "... e mais $(($(echo "$leak" | grep -c .)-8)) ocorrência(s)"; }
 
 # --- ART.14 Dependência não-pública / sem pin auditável ----------------------
-# Whitelist: `emergentintegrations` é dependência oficial da plataforma Emergent,
-# não disponível em PyPI público — validada manualmente (SECURITY_LOCK_EXCEPTION).
+# Whitelist:
+#  - `emergentintegrations` — lib oficial Emergent, não em PyPI público.
+#  - `litellm==1.80.0` — pinned (dep transitiva de emergentintegrations). CVEs
+#    afetam só o modo PROXY HTTP que NÃO usamos. Validada em 19/02/2026.
 np=$(echo "$ALL" | grep -E 'requirements.*\.txt$' | xargs -r grep -nE "^(emergentintegrations|.*@ git\+|.*file://)" 2>/dev/null \
         | grep -vE "emergentintegrations==" || true)
 [[ -n "$np" ]] && { fail "ART.14-DEP" "dependência não-pública/não-auditável (resolva no PyPI ou vendore com hash)"; echo "$np" | sed 's/^/    /'; }

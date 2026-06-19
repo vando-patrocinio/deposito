@@ -75,7 +75,7 @@ def _read_file(name: str) -> Optional[str]:
 
 
 def _sha1(text: str) -> str:
-    return hashlib.sha1(text.encode("utf-8")).hexdigest()
+    return hashlib.sha1(text.encode("utf-8"), usedforsecurity=False).hexdigest()
 
 
 def _strip_md_quote_lines(text: str) -> str:

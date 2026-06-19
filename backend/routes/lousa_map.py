@@ -80,7 +80,7 @@ def _color_for(collab_id: Optional[str]) -> str:
     """
     if not collab_id:
         return "#64748b"  # cinza pra não atribuído
-    h = int(hashlib.md5(collab_id.encode("utf-8")).hexdigest(), 16)
+    h = int(hashlib.md5(collab_id.encode("utf-8"), usedforsecurity=False).hexdigest(), 16)
     return COLLAB_COLORS[h % len(COLLAB_COLORS)]
 
 
@@ -413,7 +413,7 @@ async def search_address(
         raise HTTPException(400, "Mínimo 3 caracteres.")
 
     # Cache: chave = sha1(q minúscula)
-    qkey = _hash.sha1(qn.lower().encode("utf-8")).hexdigest()
+    qkey = _hash.sha1(qn.lower().encode("utf-8"), usedforsecurity=False).hexdigest()
     cache_doc = await db.geocode_cache.find_one(
         {"_id": qkey}, {"_id": 0})
     if cache_doc:

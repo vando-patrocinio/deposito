@@ -74,7 +74,7 @@ def decode_token(token: str) -> dict:
 
 class UserIn(BaseModel):
     email: EmailStr
-    password: str = Field(min_length=6)
+    password: str = Field(min_length=8)
     name: str
     role: str = "colaborador"
     collaborator_id: Optional[str] = None
@@ -90,12 +90,12 @@ class LoginIn(BaseModel):
 
 class SetPasswordIn(BaseModel):
     user_id: str
-    new_password: str = Field(min_length=6)
+    new_password: str = Field(min_length=8)
 
 
 class ChangeMyPasswordIn(BaseModel):
     current_password: str
-    new_password: str = Field(min_length=6)
+    new_password: str = Field(min_length=8)
 
 
 def _user_public(u: dict) -> dict:

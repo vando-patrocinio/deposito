@@ -72,7 +72,7 @@ def _data_url_to_bytes_and_mime(data_url: str) -> tuple[bytes, str]:
 
 
 def _sha1(b: bytes) -> str:
-    return hashlib.sha1(b).hexdigest()
+    return hashlib.sha1(b, usedforsecurity=False).hexdigest()
 
 
 async def analyze_cto_photo(data_url: str,

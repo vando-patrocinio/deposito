@@ -6496,3 +6496,29 @@ CEO reportou 3 bugs operacionais na Lousa. Fixes mínimos e defensivos aplicados
 - ✅ Sprint 5 / Genesis / Balance Engine — intactos
 - ⏳ Validação visual final pelo CEO (recarregar Lousa)
 
+
+---
+
+## 🔒 SECURITY AUDIT V2 — BRUTAL — CONCLUÍDO (19/02/2026)
+
+**Ordem CEO:** "AUDITE BRUTALMENTE, CONSERTE TUDO"
+
+### Resultados
+- ✅ **47 CVEs → 5** (todas em `litellm` proxy não usado — exception formal)
+- ✅ **11 Bandit HIGH → 0**
+- ✅ **JWT_SECRET** regenerado: 36 chars dicionário → 96 chars random
+- ✅ **Password policy:** 6 → 8 chars
+- ✅ **XML parsing:** `xml.etree` → `defusedxml` (anti-XXE)
+- ✅ **tarfile extract:** `filter="data"` (Python 3.12 secure mode)
+- ✅ **17/17 testes** (12 V1 + 5 V2)
+- ✅ Endpoints críticos: 200 OK
+
+### Deps bumped (12)
+PyJWT 2.13, aiohttp 3.14.1, urllib3 2.7, cryptography 49, pypdf 6.13.3, python-multipart 0.0.32, idna 3.18, pymongo 4.17, motor 3.7.1, starlette 1.3.1, fastapi 0.137.2, defusedxml 0.7.1
+
+### Deliverable
+- `memory/SECURITY_AUDIT_V2_FINAL_REPORT.md`
+
+### Sprint 5 — intacto
+✅ Nenhuma regra de negócio alterada. Auditoria estritamente horizontal de segurança.
+

@@ -114,7 +114,7 @@ class SignupIn(BaseModel):
     company_name: str = Field(min_length=2, max_length=80)
     admin_name: str = Field(min_length=2, max_length=80)
     email: EmailStr
-    password: str = Field(min_length=6)
+    password: str = Field(min_length=8)
     phone: Optional[str] = None
     plan: str = Field(default="trial", pattern="^(trial|free)$")
 

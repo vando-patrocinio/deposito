@@ -32,7 +32,7 @@ def _now_iso() -> str:
 
 class ResetPasswordIn(BaseModel):
     email: EmailStr
-    new_password: str = Field(..., min_length=6, max_length=128)
+    new_password: str = Field(..., min_length=8, max_length=128)
     token: str = Field(..., min_length=16)
 
 

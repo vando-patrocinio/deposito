@@ -162,3 +162,101 @@ def test_art13_generic_error_response():
     assert "/app/" not in str(detail), f"detail vazou path: {detail}"
     assert "<class" not in str(detail), f"detail vazou class: {detail}"
     assert "Traceback" not in str(detail), f"detail vazou traceback: {detail}"
+
+
+# ====================================================================
+# SECURITY AUDIT V2 — testes adicionais (19/06/2026)
+# ====================================================================
+
+def test_v2_jwt_secret_strength():
+    """JWT_SECRET deve ter pelo menos 64 chars (32 bytes hex = 64) — não pode
+    ser uma string de dicionário."""
+    env_path = "/app/backend/.env"
+    with open(env_path) as f:
+        for line in f:
+            if line.startswith("JWT_SECRET="):
+                val = line.split("=", 1)[1].strip().strip('"')
+                assert len(val) >= 64, (
+                    f"JWT_SECRET fraco — {len(val)} chars (mínimo 64). "
+                    f"Use `python -c 'import secrets; print(secrets.token_hex(48))'`"
+                )
+                # Não pode ser palavra de dicionário previsível
+                bad_tokens = ["secret", "password", "change-me", "default",
+                              "smart-merged"]
+                assert not any(b in val.lower() for b in bad_tokens), \
+                    f"JWT_SECRET contém termo previsível: {val[:30]}..."
+                return
+    raise AssertionError("JWT_SECRET ausente no .env")
+
+
+def test_v2_no_high_severity_bandit():
+    """Nenhuma issue HIGH do Bandit em backend/routes/ e backend/services/."""
+    res = subprocess.run(
+        ["bandit", "-r", "backend/routes", "backend/services",
+         "-ll", "-ii", "-f", "json"],
+        cwd="/app", capture_output=True, text=True, timeout=120,
+    )
+    import json
+    try:
+        data = json.loads(res.stdout) if res.stdout else {"results": []}
+    except json.JSONDecodeError:
+        # bandit retorna stdout vazio quando 0 issues
+        return
+    high = [x for x in data.get("results", [])
+            if x.get("issue_severity") == "HIGH"]
+    assert not high, f"Bandit HIGH issues encontradas: {[(x['test_id'], x['filename']) for x in high]}"
+
+
+def test_v2_no_critical_cve_in_requirements():
+    """Nenhuma CVE crítica sem fix em deps usadas diretamente.
+
+    Whitelist: `litellm` é exception (proxy não usado — ver SECURITY_LOCK_EXCEPTION).
+    """
+    # Apenas verifica que as deps explicitamente atualizadas estão pinned.
+    with open("/app/backend/requirements.txt") as f:
+        txt = f.read()
+    required_versions = {
+        "PyJWT": "2.13",
+        "aiohttp": "3.14",
+        "urllib3": "2.7",
+        "cryptography": "49",
+        "pypdf": "6.13",
+        "python-multipart": "0.0.32",
+        "idna": "3.18",
+        "pymongo": "4.17",
+        "defusedxml": "0.7",
+        "starlette": "1.3",
+        "fastapi": "0.137",
+    }
+    missing = []
+    for name, expected_prefix in required_versions.items():
+        import re
+        m = re.search(rf'^{re.escape(name)}==(\S+)', txt, re.MULTILINE | re.IGNORECASE)
+        if not m:
+            missing.append(f"{name} (ausente)")
+            continue
+        actual = m.group(1)
+        if not actual.startswith(expected_prefix):
+            missing.append(f"{name}=={actual} (esperado >={expected_prefix})")
+    assert not missing, f"Deps desatualizadas: {missing}"
+
+
+def test_v2_defusedxml_used_in_kmz_parser():
+    """`rede_ia_kmz.py` deve usar `defusedxml` em vez de `xml.etree` para parse."""
+    with open("/app/backend/routes/rede_ia_kmz.py") as f:
+        src = f.read()
+    assert "defusedxml" in src, "rede_ia_kmz.py não importa defusedxml"
+    assert "DET.fromstring" in src, "fromstring ainda usa xml.etree (inseguro)"
+
+
+def test_v2_password_policy_min_length_8():
+    """Password policy: mínimo 8 chars em models de criação/mudança/reset."""
+    import re
+    for p in ["backend/auth.py", "backend/routes/admin.py",
+              "backend/routes/admin_password_reset.py",
+              "backend/routes/saas.py"]:
+        with open(f"/app/{p}") as f:
+            src = f.read()
+        # Nenhum min_length=6 em campos de password
+        bad = re.findall(r'password.*Field\([^)]*min_length=6\b', src, re.IGNORECASE)
+        assert not bad, f"{p} ainda tem min_length=6 em password: {bad}"

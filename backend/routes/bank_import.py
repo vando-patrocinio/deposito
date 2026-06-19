@@ -94,7 +94,7 @@ def _extract_doc(text: str) -> Optional[str]:
 
 def _tx_hash(date: str, amount: float, desc: str) -> str:
     h = f"{date}|{amount:.2f}|{(desc or '')[:80]}"
-    return hashlib.sha1(h.encode("utf-8")).hexdigest()[:16]
+    return hashlib.sha1(h.encode("utf-8"), usedforsecurity=False).hexdigest()[:16]
 
 
 def _safe_date(dt: Any) -> str:

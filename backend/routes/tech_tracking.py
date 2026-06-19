@@ -411,9 +411,9 @@ async def _snap_to_road(points: List[Dict[str, Any]]) -> Optional[List[List[floa
     # Hash determinístico dos coords (4 casas decimais ~ 10m de precisão).
     # Pequenas mudanças em GPS (ex: 5ª casa) NÃO invalidam o cache.
     import hashlib
-    sig = hashlib.md5(
+    sig = hashlib.md5(  # usedforsecurity=False (fingerprint, não-cripto)
         ";".join(f"{p['lat']:.4f},{p['lng']:.4f}" for p in points).encode()
-    ).hexdigest()
+    , usedforsecurity=False).hexdigest()
     cached = _SNAP_CACHE.get(sig)
     now = time.time()
     if cached and (now - cached[0]) < _SNAP_TTL:

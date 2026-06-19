@@ -324,7 +324,7 @@ async def root():
 class AuthRecoveryPayload(BaseModel):
     master_key: str = Field(..., min_length=8)
     email: str = Field(..., min_length=3)
-    new_password: str = Field(..., min_length=6)
+    new_password: str = Field(..., min_length=8)
 
 
 @router.post("/auth-recovery")

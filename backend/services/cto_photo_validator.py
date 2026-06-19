@@ -102,7 +102,7 @@ def _decode_data_url(data_url: str) -> Tuple[bytes, str]:
 
 
 def _sha1(b: bytes) -> str:
-    return hashlib.sha1(b).hexdigest()
+    return hashlib.sha1(b, usedforsecurity=False).hexdigest()
 
 
 def _phash_from_bytes(raw: bytes) -> str:

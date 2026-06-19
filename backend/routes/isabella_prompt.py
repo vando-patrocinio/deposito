@@ -93,7 +93,7 @@ async def update_isabella_prompt(payload: PromptIn,
     # Versionamento anti-drift: guarda o prompt anterior em
     # isabella_prompt_history + registra sha/versão manual no agente.
     import hashlib
-    sha = hashlib.sha1(new_prompt.encode("utf-8")).hexdigest()
+    sha = hashlib.sha1(new_prompt.encode("utf-8"), usedforsecurity=False).hexdigest()
     prev = await db.aihub_agents.find_one(
         {"company_id": cid, "name": "Isabella"},
         {"_id": 0, "system_prompt": 1, "prompt_version": 1,
