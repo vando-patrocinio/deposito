@@ -330,6 +330,44 @@ async def rompimento_finalize(ticket_id: str, payload: RompimentoFinalizeIn,
         shortages = await _decrement_praca_stock(
             company_id, praca_id, items, ticket_id)
 
+    # ════════════════════════════════════════════════════════════════════
+    # CTO 19/06/2026 — Onda 3 Hook (P0 bypass fechamento rompimento)
+    # Bloqueia fechamento sem ticket + colaborador + praça + report.
+    # Sem try/except silencioso: se o validador falhar com erro, derruba
+    # a finalização (CEO ordem zero-leniência).
+    # ════════════════════════════════════════════════════════════════════
+    from services.os_finalization_validator import (
+        validate_finalization, record_validation,
+    )
+    ok_o3, diag_o3 = await validate_finalization(
+        db,
+        company_id=company_id,
+        service_type="rompimento",
+        ticket_id=ticket_id,
+        service_id=None,
+        subscriber_id=None,
+        collaborator_id=payload.collaborator_id,
+        completion_data={
+            "praca_id": praca_id,
+            "report_text": text,
+            "onda3_override_reason": (payload.observacoes or "").strip()
+                if len((payload.observacoes or "").strip()) >= 20 else None,
+        },
+    )
+    await record_validation(
+        db, company_id=company_id, ok=ok_o3, diag=diag_o3,
+        ticket_id=ticket_id, service_id=None,
+        actor_user_id=payload.collaborator_id,
+        actor_email=None,
+    )
+    if not ok_o3:
+        raise HTTPException(403, {
+            "error": "onda3_rompimento_bloqueada",
+            "missing": diag_o3.get("missing"),
+            "human_reason": diag_o3.get("reason"),
+            "diag": diag_o3,
+        })
+
     # Fecha o ticket
     closed_at = now_iso()
     rompimento_meta = {
@@ -405,6 +443,40 @@ async def rompimento_finalize(ticket_id: str, payload: RompimentoFinalizeIn,
             linked_results.append({"id": linked_id, "ok": False,
                                        "reason": "already_closed"})
             continue
+        # ════════════════════════════════════════════════════════════
+        # CTO 19/06/2026 — Onda 3 hook nos linked tickets.
+        # Override automático ≥20 chars: "Fechada em lote pelo Rompimento
+        # {x}". Mantém audit trail mesmo em fechamento batch.
+        # ════════════════════════════════════════════════════════════
+        linked_override_reason = (
+            f"Fechada em lote pelo Rompimento {ticket_id[-6:]}. "
+            f"Causa: rede rompida. Resolvido pela equipe de rede; "
+            f"materiais consumidos via OS principal."
+        )
+        ok_o3l, diag_o3l = await validate_finalization(
+            db,
+            company_id=company_id,
+            service_type=(lt.get("type") or "reparo"),
+            ticket_id=linked_id,
+            service_id=None,
+            subscriber_id=(lt.get("client_snapshot") or {}).get("id")
+                or lt.get("subscriber_id"),
+            collaborator_id=payload.collaborator_id,
+            completion_data={
+                "onda3_override_reason": linked_override_reason,
+            },
+        )
+        await record_validation(
+            db, company_id=company_id, ok=ok_o3l, diag=diag_o3l,
+            ticket_id=linked_id, service_id=None,
+            actor_user_id=payload.collaborator_id,
+            actor_email=None,
+        )
+        if not ok_o3l:
+            linked_results.append({"id": linked_id, "ok": False,
+                                       "reason": "onda3_blocked",
+                                       "diag": diag_o3l})
+            continue
         # Fecha a nota individual referenciando o rompimento
         await db.tickets.update_one(
             {"id": linked_id},
@@ -414,6 +486,8 @@ async def rompimento_finalize(ticket_id: str, payload: RompimentoFinalizeIn,
                 "finalized_at": closed_at,
                 "outcome": "rompimento_solucionado",
                 "linked_rompimento_id": ticket_id,
+                "onda3_validation_id": diag_o3l.get("override_reason")
+                    and f"override:{linked_override_reason[:60]}",
                 "completion_data": {
                     "observacoes": (
                         f"Fechada pelo Rompimento {ticket_id[-6:]}. "

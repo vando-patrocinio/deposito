@@ -146,6 +146,67 @@ async def resolve_manager_callback(
         outcome = payload.get("close_outcome") or "informada"
         if outcome not in ("informada", "sucesso", "cancelada"):
             outcome = "informada"
+        # ════════════════════════════════════════════════════════════
+        # CTO 19/06/2026 — Onda 3 hook (P0 bypass manager_callback)
+        # Gestor finaliza remotamente. Exige motivo ≥20 chars.
+        # outcome="sucesso" → enforcement completa (ONT/CTO/Porta ou
+        # override). outcome=informada|cancelada → audit non-operational.
+        # ════════════════════════════════════════════════════════════
+        from services.os_finalization_validator import (
+            validate_finalization, record_validation,
+        )
+        sub_id = (
+            t.get("subscriber_id")
+            or (t.get("client_snapshot") or {}).get("id")
+        )
+        collab_for_ticket = (
+            t.get("assigned_collaborator_id")
+            or user.get("id") or "manager"
+        )
+        # Para outcome="sucesso", precisa ONT/CTO/Porta OU override pelo gestor
+        cd_validate = {
+            "outcome": outcome,
+            "manager_close_reason": (obs or "").strip(),
+            "onda3_override_reason": (obs or "").strip()
+                if outcome == "sucesso" and len((obs or "").strip()) >= 20
+                else None,
+        }
+        # Para sucesso, copia ONT/CTO/Porta de completion_data ou client_snapshot
+        if outcome == "sucesso":
+            existing_cd = t.get("completion_data") or {}
+            cd_validate["ont"] = existing_cd.get("ont")
+            cd_validate["ont_sn"] = existing_cd.get("ont_sn")
+            cd_validate["ont_mac"] = existing_cd.get("ont_mac")
+            cd_validate["cto_id"] = existing_cd.get("cto_id") or (
+                t.get("client_snapshot") or {}).get("cto_id")
+            cd_validate["port_number"] = existing_cd.get("port_number") or (
+                t.get("client_snapshot") or {}).get("cto_port_number")
+
+        ok_o3, diag_o3 = await validate_finalization(
+            db,
+            company_id=cid,
+            service_type=(t.get("type") or "reparo"),
+            ticket_id=ticket_id,
+            service_id=None,
+            subscriber_id=sub_id,
+            collaborator_id=collab_for_ticket,
+            completion_data=cd_validate,
+        )
+        await record_validation(
+            db, company_id=cid, ok=ok_o3, diag=diag_o3,
+            ticket_id=ticket_id, service_id=None,
+            actor_user_id=user.get("id"),
+            actor_email=user.get("email"),
+        )
+        if not ok_o3:
+            raise HTTPException(403, {
+                "error": "onda3_manager_close_bloqueada",
+                "missing": diag_o3.get("missing"),
+                "human_reason": diag_o3.get("reason"),
+                "outcome": outcome,
+                "diag": diag_o3,
+            })
+
         await db.tickets.update_one(
             {"id": ticket_id},
             {"$set": {
@@ -156,6 +217,7 @@ async def resolve_manager_callback(
                 "manager_close_reason": obs,
                 "manager_callback_resolved": True,
                 "needs_manager_action": False,
+                "onda3_validation_diag": diag_o3,
             }},
         )
         try:

@@ -2,6 +2,30 @@
 
 > Documento vivo. Atualizado a cada sprint.
 
+## ✅ POST-SPRINT 5 P0 FIXES · Bypasses Fechados — 19/06/2026
+
+**Diretiva CEO**: Fechar os 2 caminhos identificados na Phase A que permitiam finalizar OS sem passar pela Onda 3.
+
+### Entregue
+- `services/os_finalization_validator.py` — refatorado: rompimento e outcomes não-operacionais ganham regras próprias com audit trail
+- `routes/lousa_rompimento.py` — hooks em rompimento_finalize (linha 342) + linked tickets (linha 412) com override automático ≥20 chars
+- `routes/lousa_manager_callbacks.py` — hook em resolved_close com bloqueio 403 se motivo < 20 chars
+- `tests/test_post_sprint5_p0_fixes.py` — **10/10 testes PASS** cobrindo todos os caminhos
+- Phase A reexecutada: 7.33/10 (mantém COM RESSALVAS — gap restante é estrutural da cobertura, só fecha com Phase C)
+- Phase B reexecutada: **6/6 PASS** mantido
+
+### Próximo: Phase C — Subir Cobertura Operacional 78.94 % → 90 %
+- Worker WhatsApp para 95 swap_events `pending_confirmation`
+- Pull `pppoe_user` SmartOLT + reprocessar 385 quarentena
+- Cadastrar 4 ativos órfãos
+- Limpar 1 porta occupied sem ONU
+
+### Files
+- NOVOS: `/app/memory/POST_SPRINT5_PHASE_AB_REPORT_V2.md`, `/app/backend/tests/test_post_sprint5_p0_fixes.py`
+- MODIFICADOS: `services/os_finalization_validator.py`, `routes/lousa_rompimento.py`, `routes/lousa_manager_callbacks.py`, `routes/sprint5_audit_operacional.py`
+
+---
+
 ## ✅ POST-SPRINT 5 PHASE A + B · Auditoria Operacional + Validador E2E — 19/06/2026
 
 **Diretiva CEO**: Estabelecer "exame de sangue" operacional semanal + simular ciclo completo de cliente E2E (Install→Repair→Swap→Move Porta→Move CTO→Retirada). Critério Phase C: score ≥ 8.5/10 E E2E ≥ 5/6.

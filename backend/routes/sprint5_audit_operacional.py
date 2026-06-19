@@ -119,11 +119,18 @@ async def _build_weekly_report(cid: str) -> Dict[str, Any]:
     }
 
     # ─────── NOTA 0-10 ───────
+    # Filosofia: a nota mede HIGIENE OPERACIONAL.
+    # - cobertura é fator estrutural (depende de Phase C)
+    # - block_rate é qualidade de execução (universo = todas validações)
     score = 10.0
     if cobertura_op < 95:
         score -= (95 - cobertura_op) / 10
-    if onda3_blocked > 0 and (onda3_blocked + onda3_overrides) > 0:
-        block_rate = (onda3_blocked / (onda3_blocked + onda3_overrides))
+    onda3_total = onda3_blocked + onda3_overrides  # validações sucesso
+    # adiciona validações OK (sucesso real) ao universo
+    onda3_total_universe = await db.sprint5_onda3_validations.count_documents(
+        {"company_id": cid, "created_at": {"$gte": week_start}})
+    if onda3_blocked > 0 and onda3_total_universe > 0:
+        block_rate = onda3_blocked / onda3_total_universe
         if block_rate > 0.3:
             score -= 1.0
     if ativos_sem_resp > 0:

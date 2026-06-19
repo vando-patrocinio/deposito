@@ -27,12 +27,20 @@ ENFORCED_SERVICE_TYPES = {
     "reparo", "swap",
     "troca", "replacement",
     "retirada", "removal",
-    "rompimento",
 }
 
 EXEMPT_SERVICE_TYPES = {
     "preventiva", "vistoria", "auditoria",
 }
+
+# CTO 19/06/2026 — Rompimento é fechamento a nível de REDE (não cliente).
+# Não exige ONT/CTO/Porta/subscriber. Exige ticket + colaborador + praça
+# + report_text (auditável).
+ROMPIMENTO_TYPES = {"rompimento"}
+
+# Outcomes que NÃO representam trabalho operacional executado
+# (gestor finaliza remotamente após contato). Auditados mas não bloqueiam.
+NON_OPERATIONAL_OUTCOMES = {"informada", "cancelada", "improdutiva"}
 
 
 def is_enforcement_active() -> bool:
@@ -72,6 +80,23 @@ async def validate_finalization(
     }
 
     st_norm = (service_type or "").lower().strip()
+
+    # CTO 19/06/2026 — Rompimento: regra própria (rede, sem cliente/ONT)
+    if st_norm in ROMPIMENTO_TYPES:
+        return await _validate_rompimento(
+            db, company_id=company_id, ticket_id=ticket_id,
+            collaborator_id=collaborator_id, completion_data=cd, diag=diag,
+        )
+
+    # CTO 19/06/2026 — Outcome não-operacional (gestor "informada"/"cancelada"):
+    # ainda exige ticket + collaborator (quem fechou) + reason ≥20 chars,
+    # mas NÃO exige ONT/CTO/Porta. Audita.
+    outcome = (cd.get("outcome") or "").lower().strip()
+    if outcome in NON_OPERATIONAL_OUTCOMES:
+        return _validate_non_operational(
+            outcome=outcome, ticket_id=ticket_id,
+            collaborator_id=collaborator_id, completion_data=cd, diag=diag,
+        )
 
     # Exempt types: sempre passam
     if st_norm in EXEMPT_SERVICE_TYPES:
@@ -215,3 +240,83 @@ async def record_validation(
         })
     except Exception as e:
         logger.warning("[onda3.record_validation] %s", e)
+
+
+async def _validate_rompimento(
+    db, *, company_id: str, ticket_id: Optional[str],
+    collaborator_id: Optional[str], completion_data: dict,
+    diag: Dict[str, Any],
+) -> Tuple[bool, Dict[str, Any]]:
+    """Rompimento de rede: exige ticket + colaborador + praça + report.
+
+    Não exige ONT/CTO/Porta/subscriber (rompimento é a nível de rede).
+    Override gestor (≥20 chars) permite fechamento sem report.
+    """
+    diag["service_type_status"] = "rompimento_specific"
+    cd = completion_data or {}
+
+    # Override gestor já tratado upstream — mas se chegou aqui ainda válido
+    override_reason = (cd.get("onda3_override_reason") or "").strip()
+    if override_reason and len(override_reason) >= 20:
+        diag["override_used"] = True
+        diag["override_reason"] = override_reason
+        diag["reason"] = "rompimento_override"
+        return True, diag
+
+    missing: List[str] = []
+    if not ticket_id:
+        missing.append("ticket_id")
+    if not collaborator_id:
+        missing.append("collaborator_id")
+    if not cd.get("praca_id"):
+        missing.append("praca_id")
+    report = (cd.get("report_text") or "").strip()
+    if len(report) < 5:
+        missing.append("report_text")
+
+    if missing:
+        diag["missing"] = missing
+        diag["reason"] = (
+            "Rompimento bloqueado — faltam: " + ", ".join(missing)
+        )
+        return False, diag
+
+    diag["reason"] = "rompimento_validated"
+    diag["report_len"] = len(report)
+    return True, diag
+
+
+def _validate_non_operational(
+    *, outcome: str, ticket_id: Optional[str],
+    collaborator_id: Optional[str], completion_data: dict,
+    diag: Dict[str, Any],
+) -> Tuple[bool, Dict[str, Any]]:
+    """Outcome não-operacional (informada/cancelada/improdutiva).
+
+    Gestor finaliza remotamente. Não há trabalho de campo.
+    Exige: ticket_id, collaborator_id (quem fechou), motivo ≥20 chars.
+    """
+    diag["service_type_status"] = "non_operational"
+    diag["outcome"] = outcome
+    cd = completion_data or {}
+
+    missing: List[str] = []
+    if not ticket_id:
+        missing.append("ticket_id")
+    if not collaborator_id:
+        missing.append("collaborator_id")
+    reason = (cd.get("manager_close_reason")
+              or cd.get("onda3_override_reason") or "").strip()
+    if len(reason) < 20:
+        missing.append("manager_close_reason_min20")
+
+    if missing:
+        diag["missing"] = missing
+        diag["reason"] = (
+            f"OS {outcome} bloqueada — faltam: " + ", ".join(missing)
+        )
+        return False, diag
+
+    diag["reason"] = f"{outcome}_validated_non_operational"
+    diag["close_reason_len"] = len(reason)
+    return True, diag
