@@ -847,6 +847,33 @@ async def _startup() -> None:
             logger.warning(
                 "[startup] onda6 scheduler falhou: %r", e)
 
+        # CEO 19/06/2026 — Weekly Executive Healthcheck (sexta 06:00 UTC)
+        try:
+            async def _weekly_executive_healthcheck():
+                from services.weekly_executive_healthcheck import (
+                    generate_weekly_healthcheck)
+                from database import db as _db
+                companies = await _db.companies.find(
+                    {}, {"_id": 0, "id": 1}).to_list(length=200)
+                for c in companies:
+                    try:
+                        await generate_weekly_healthcheck(_db, c["id"])
+                    except Exception as ex:
+                        logger.warning(
+                            "[weekly_healthcheck] %s falhou: %s",
+                            c.get("id"), ex)
+            scheduler.add_job(
+                _weekly_executive_healthcheck,
+                CronTrigger(day_of_week="fri", hour=6, minute=0),
+                id="weekly_executive_healthcheck",
+                replace_existing=True)
+            logger.info(
+                "[startup] weekly_executive_healthcheck agendado "
+                "sexta 06:00 UTC")
+        except Exception as e:
+            logger.warning(
+                "[startup] weekly_healthcheck scheduler falhou: %r", e)
+
         # OPERAÇÃO MATURIDADE COMERCIAL — reconciliador 03:00
         try:
             from services import cash_reconciler as _rec

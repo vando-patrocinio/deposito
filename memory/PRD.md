@@ -2,7 +2,51 @@
 
 > Documento vivo. Atualizado a cada sprint.
 
-## 🔧 PHASE D ADD-ON · Mutirão de Quarentena (Botão Promover) — 19/06/2026
+## 📅 WEEKLY EXECUTIVE HEALTHCHECK · Automação CEO — 19/06/2026
+
+**Diretiva CEO**: Único item operacional aprovado pós-encerramento Sprint 5. Sem feature, sem dashboard — apenas um arquivo `.md` gerado toda sexta 06:00 UTC com o snapshot dos KPIs.
+
+### Entregue
+- `services/weekly_executive_healthcheck.py`: gerador do markdown a partir de coleções existentes
+- `server.py`: scheduler `CronTrigger(day_of_week="fri", hour=6, minute=0)` registrado
+- `/app/memory/WEEKLY_EXECUTIVE_HEALTHCHECK.md`: primeiro arquivo gerado (semana 2026-W25)
+- Audit log SHA-256 em `weekly_executive_healthchecks` (não-delete)
+
+### Conteúdo do markdown semanal
+1. KPIs da semana com status colorido (cobertura, compliance, quarentena, swap, score, block rate real)
+2. Δ semana anterior (score + cobertura)
+3. Auditoria Onda 3 últimos 7d com distinção REAL vs SINTÉTICO
+4. Patrimônio
+5. Status geral (verde ou pontos de atenção)
+
+### Status oficial pós-tudo
+- **Sprint 5: CONCLUÍDA** · Nota 9,1/10
+- **Patrimônio: CERTIFICADO**
+- **Rastreabilidade: OPERACIONAL**
+- **Swap events: 0 pendentes** (TODOS reconciliados — 13 sintéticos via Phase D)
+- **Block rate: AGUARDANDO AMOSTRA REAL** (baseline sintético oficialmente classificado)
+- **Cobertura: 93,84 %** (gap -1,16 pp para meta 95 %)
+- **Quarentena: 116** (6 classe B + 109 classe C — decisão gestor)
+
+### MODO ATIVO
+```
+INSTRUMENTED PRODUCTION
+- Sem novo desenvolvimento
+- Sem nova Sprint
+- Sem refactor
+- Sem dashboard
+- Sem feature
+- Apenas: observação + relatório semanal
+```
+
+### Files
+- NOVO: `/app/backend/services/weekly_executive_healthcheck.py`
+- NOVO: `/app/memory/WEEKLY_EXECUTIVE_HEALTHCHECK.md` (regenerado toda sexta)
+- MODIFICADO: `/app/backend/server.py` (scheduler entry)
+
+---
+
+## 🔬 FORENSIC AUDIT V2 (4 fases) — 19/06/2026
 
 **Diretiva CEO**: Único desenvolvimento aprovado pós-Sprint 5. Tela para o gestor aprovar/rejeitar manualmente as 117 ONUs restantes em quarentena. Foco: subir cobertura 93.78 % → 98 % com revisão humana, sem mudar arquitetura.
 
