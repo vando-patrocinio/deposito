@@ -1148,13 +1148,21 @@ async def persist_knowledge_graph(
 # ═══════════════════════════════════════════════════════════
 async def presidente_brief(
     company_id: str, window_hours: int = 24,
+    health: Optional[Dict[str, Any]] = None,
+    incidents: Optional[List[Dict[str, Any]]] = None,
 ) -> Dict[str, Any]:
     """Briefing executivo. Responde:
        O que está falhando? Qual incidente tem maior impacto?
        Qual região? Qual serviço? Qual alerta priorizar?
-       Qual receita em risco?"""
-    health = await observability_health_score(company_id, window_hours)
-    incidents = await correlate(company_id, window_hours=window_hours)
+       Qual receita em risco?
+
+       PERF FIX 19/06/2026 — aceita `health` e `incidents` já calculados
+       para evitar dobra de query quando chamado dentro de
+       `observability_summary` (que já fez essas chamadas)."""
+    if health is None:
+        health = await observability_health_score(company_id, window_hours)
+    if incidents is None:
+        incidents = await correlate(company_id, window_hours=window_hours)
     total_revenue_at_risk = sum(i["revenue_at_risk_BRL"]
                                 for i in incidents)
     top_incident = incidents[0] if incidents else None
@@ -1218,7 +1226,10 @@ async def observability_summary(
     PROBLEMA/CAUSA/IMPACTO/AÇÃO/CONFIANÇA/EVIDÊNCIA."""
     health = await observability_health_score(company_id, window_hours)
     incidents = await correlate(company_id, window_hours=window_hours)
-    pres = await presidente_brief(company_id, window_hours)
+    # PERF FIX 19/06/2026 — reusa `health` e `incidents` ao invés de chamar
+    # presidente_brief() que internamente refazia ambos (-50% de latência).
+    pres = await presidente_brief(
+        company_id, window_hours, health=health, incidents=incidents)
 
     zbx_count = await db.motor_ia_events.count_documents({
         "company_id": company_id, "source": "zabbix",
