@@ -6522,3 +6522,37 @@ PyJWT 2.13, aiohttp 3.14.1, urllib3 2.7, cryptography 49, pypdf 6.13.3, python-m
 ### Sprint 5 — intacto
 ✅ Nenhuma regra de negócio alterada. Auditoria estritamente horizontal de segurança.
 
+
+---
+
+## 📊 OPERAÇÃO 98 — CONCLUÍDA (19/02/2026)
+
+**Ordem Executiva:** "Elevar Cobertura Operacional de 93,84% para 98% sem código novo"  
+**Modo:** READ → ANALYZE → REPORT (sem desenvolvimento, sem refactor)
+
+### Diagnóstico
+- Cobertura atual: **85,97%** (23.096 ativos / 26.863 total) — abaixo da meta declarada (93,84%)
+- Gap para 98%: **3.230 subscribers** a recuperar/reclassificar
+- Quarentena: **16.116 itens** (12.000 ONUs sem status + 3.281 LOS/Power + 3.767 subscribers OFFLINE/INATIVO)
+- Credenciais fracas no `.env`: **4 (2 P0 + 1 P1 + 1 P2)**
+
+### Caminho para 98% (sem dev)
+| Trilha | Quem | Δ Cobertura | Prazo |
+|--------|------|-------------|-------|
+| Sync OLT (12.000 ONUs) | DevOps | +2,00 pp | Sem 1 |
+| Mutirão visitas (3.281) | Lousa | +8,24 pp | Sem 1-4 |
+| Cancelar oficial (3.700) | Admin | +1,66 pp | Sem 2-3 |
+| Higiene quarentena | Auditor | +0,50 pp | Sem 3-4 |
+| **TOTAL** | | **+12,40 pp** | **4 semanas** |
+
+**Cobertura projetada: 98,31% — gate atingível sem reabrir Sprint 6.**
+
+### Deliverables (4)
+- `memory/CREDENTIAL_ROTATION_CERTIFICATE.md`
+- `memory/MUTIRAO_QUARENTENA_REPORT.md`
+- `memory/OPERATIONAL_COVERAGE_98_REPORT.md`
+- `memory/OPERACAO_98_EXECUTIVO_FINAL.md`
+
+### Sprint 5 / Genesis / Balance Engine / Onda 3 / Rastreabilidade / Patrimônio
+✅ **NÃO TOCADOS**. Operação 100% READ-ONLY.
+
