@@ -6470,3 +6470,29 @@ A Sprint 5 transformou a Ligo de "sem identidade patrimonial" para
 ### Critério de regressão impossível
 Nenhum commit poderá entrar em `main` se ART.1, ART.2, ART.3, ART.6, ART.10, ART.11 ou ART.13 falhar.
 
+
+---
+
+## 🐛 BUG FIXES OPERACIONAIS — Lousa (19/06/2026)
+
+CEO reportou 3 bugs operacionais na Lousa. Fixes mínimos e defensivos aplicados (NÃO refactor; NÃO altera regra de negócio Sprint 5):
+
+### Bug 1 — "Internal server error" ao criar nota
+- **Causa raiz:** `KeyError: 'position'` em `lousa.py:2268` e `lousa_manager_callbacks.py:481`. 1864/2109 tickets ativos legados sem o campo `position`.
+- **Fix:** `last[0]["position"]` → `last[0].get("position", -1)` (2 linhas, defensivo).
+- **Validação:** curl POST /api/lousa/tickets → HTTP 200, ticket salvo, position=0.
+
+### Bug 2 — Colaboradores não apareciam no filtro "Todos os técnicos"
+- **Causa raiz:** set `LOUSA_CARGOS` no `LousaAdminPanel.js:3397` não incluía `instalador_reparador` (cargo de DIOGO HENRIQUE e GEAN FERREIRA).
+- **Fix:** adicionado `"instalador_reparador"` ao set.
+
+### Bug 3 — Coluna "REDE" aparecia com badge "SALA · FIXA"
+- **Causa raiz:** flag `isVirtualSala` usava `!!collaborator.is_virtual` (qualquer virtual). REDE (`virtual_kind: rede_cell`) também caía como SALA, duplicando badge e contadores de triagem.
+- **Fix:** `isVirtualSala = virtual_kind === "sala_atendimento"` (exclusivo); criada `isVirtualRede` para REDE com badge próprio "REDE · FIXA" (roxo) e sem contadores `salaTriage`.
+
+### Status
+- ✅ `bash security_gate.sh` → GATE APROVADO
+- ✅ `pytest test_security_lock_v1.py` → 12/12 PASSED
+- ✅ Sprint 5 / Genesis / Balance Engine — intactos
+- ⏳ Validação visual final pelo CEO (recarregar Lousa)
+

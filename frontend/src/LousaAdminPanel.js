@@ -1374,14 +1374,19 @@ export default function LousaAdminPanel({ systemStatus = { offline: false, drift
             || (c.tickets || []).some(matchAg));
         })().map((origCol) => {
           // SALA = coluna virtual fixa. NÃO aplica filtro de "Só Frota" nem agente.
-          const isVirtualSala = !!origCol.collaborator.is_virtual;
+          // bug-fix 19/06/2026 — antes "qualquer virtual" virava SALA (incluindo REDE).
+          // Agora SALA = virtual_kind="sala_atendimento" exclusivamente.
+          const vKind = origCol.collaborator.virtual_kind || "";
+          const isVirtualSala = vKind === "sala_atendimento";
+          const isVirtualRede = vKind === "rede_cell";
+          const isAnyVirtual = isVirtualSala || isVirtualRede;
           // Filtro "Só Frota": esconde bolhas que não são frota_alerta
-          let col = (onlyFleetAlerts && !isVirtualSala)
+          let col = (onlyFleetAlerts && !isAnyVirtual)
             ? { ...origCol, tickets: (origCol.tickets || [])
                 .filter((t) => t.type === "frota_alerta") }
             : origCol;
           // Filtro por agente IA (origin_source ou created_by)
-          if (agentFilter !== "all" && !isVirtualSala) {
+          if (agentFilter !== "all" && !isAnyVirtual) {
             const ISABELLA = new Set(["isabella_ai", "isabella_route_support",
               "isabella_viability", "isabella_vision"]);
             const ALVARO = new Set(["alvaro_diagnose", "alvaro_ai"]);
@@ -1432,14 +1437,33 @@ export default function LousaAdminPanel({ systemStatus = { offline: false, drift
             />
           ) : (
             <div key={col.collaborator.id + tick}
-                  data-testid={isVirtualSala ? "lousa-board-sala-col" : undefined}
-                  style={isVirtualSala ? {
+                  data-testid={isVirtualSala ? "lousa-board-sala-col"
+                              : isVirtualRede ? "lousa-board-rede-col"
+                              : undefined}
+                  style={isAnyVirtual ? {
                     position: "relative",
-                    border: "2px solid #0ea5e9",
+                    // bug-fix 19/06/2026 — REDE com borda própria (cor distinta de SALA)
+                    border: isVirtualSala
+                      ? "2px solid #0ea5e9"     // azul: SALA
+                      : "2px solid #8b5cf6",    // roxo: REDE
                     borderRadius: 14,
-                    background: "linear-gradient(180deg, #f0f9ff 0%, #ffffff 60%)",
+                    background: isVirtualSala
+                      ? "linear-gradient(180deg, #f0f9ff 0%, #ffffff 60%)"
+                      : "linear-gradient(180deg, #faf5ff 0%, #ffffff 60%)",
                     padding: 4,
                   } : { display: "contents" }}>
+              {isVirtualRede && (
+                <div style={{
+                  display: "flex", alignItems: "center", gap: 8,
+                  padding: "8px 10px 4px",
+                }}>
+                  <div style={{
+                    background: "#8b5cf6", color: "white",
+                    padding: "3px 9px", borderRadius: 6,
+                    fontSize: 10, fontWeight: 800, letterSpacing: 0.5,
+                  }}>REDE · FIXA</div>
+                </div>
+              )}
               {isVirtualSala && (() => {
                 const lvl = salaTriage.level || "calm";
                 const hasTriage = (salaTriage.visible_now || salaTriage.total) > 0;
@@ -3394,10 +3418,14 @@ function TechFilterMenu({ columns, allCollaborators = [], focusTechId,
     }));
     // Cargos exibíveis (mesmo critério do backend `LOUSA_CARGOS`). Sem
     // cargo definido também aparece (compatibilidade legada).
+    // bug-fix 19/06/2026 — incluído `instalador_reparador` (técnico de
+    // campo que faz instalação + reparo). Antes ficava de fora se não
+    // tivesse OS hoje.
     const LOUSA_CARGOS = new Set([
       "tecnico", "técnico", "auxiliar", "auxiliar_tecnico",
       "auxiliar_técnico", "auxiliar_de_tecnico",
-      "instalador", "supervisor_campo", "supervisor_de_campo",
+      "instalador", "instalador_reparador",
+      "supervisor_campo", "supervisor_de_campo",
     ]);
     const withoutBubbles = [];
     for (const c of allCollaborators) {
