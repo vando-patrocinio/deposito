@@ -13,7 +13,25 @@ import {
 } from "lucide-react";
 import { api } from "@/lib/apiClient";
 
-const SYSTEM_PUBLIC_IP = "35.225.230.28";
+// IP do nosso sistema — RESOLVIDO em runtime pelo backend (substituiu constante
+// hardcoded de 35.225.230.28). Backend detecta via env SYSTEM_PUBLIC_IP ou
+// discovery via ifconfig.me/ipify (cache 1h, anti-SSRF).
+const useSystemPublicIp = () => {
+  const [ip, setIp] = useState("");
+  const [source, setSource] = useState("");
+  useEffect(() => {
+    let alive = true;
+    api.get("/ai-center/observability/system-public-ip")
+      .then((r) => {
+        if (!alive) return;
+        setIp(r?.data?.ip || "(indisponível)");
+        setSource(r?.data?.source || "");
+      })
+      .catch(() => alive && setIp("(indisponível)"));
+    return () => { alive = false; };
+  }, []);
+  return { ip, source };
+};
 
 const FieldRow = ({ label, value, set }) => (
   <div className="flex items-center justify-between text-xs
@@ -114,6 +132,7 @@ const OltItem = ({ p, onEnable, onDisable, onDelete, onPing, onDiscover }) => {
 };
 
 const AddOltForm = ({ onSaved, existing }) => {
+  const { ip: systemIp } = useSystemPublicIp();
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState({
     profile: "", host: "", port: "161", version: "v2c",
@@ -178,7 +197,7 @@ const AddOltForm = ({ onSaved, existing }) => {
           libere SNMP read-only para nosso IP público:
           <code className="block font-mono mt-1 text-amber-900 bg-white
             px-2 py-1 rounded">
-            snmp-server community {form.community || "public"} ro {SYSTEM_PUBLIC_IP}/32
+            snmp-server community {form.community || "public"} ro {systemIp || "(detectando…)"}/32
           </code>
         </div>
 
@@ -262,6 +281,7 @@ const AddOltForm = ({ onSaved, existing }) => {
 };
 
 const OltSnmpCard = () => {
+  const { ip: systemIp, source: ipSource } = useSystemPublicIp();
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [tick, setTick] = useState(0);
@@ -328,11 +348,21 @@ const OltSnmpCard = () => {
           <Server className="w-4 h-4" />
           IP do nosso sistema (para liberar no lado da OLT):
         </div>
-        <div className="font-mono bg-white px-2 py-1 rounded inline-block">
-          {SYSTEM_PUBLIC_IP}
+        <div className="font-mono bg-white px-2 py-1 rounded inline-block"
+             data-testid="olt-system-public-ip">
+          {systemIp || "(detectando…)"}
+          {ipSource && (
+            <span className="ml-2 text-[10px] uppercase text-slate-500
+              font-sans">({ipSource})</span>
+          )}
         </div>
         <div className="text-[11px] opacity-75 mt-1">
           Adicione esse IP no SNMP ACL da OLT antes de testar. Porta 161/UDP.
+          {ipSource === "discovery" && (
+            <span className="block text-amber-700 mt-0.5">
+              IP detectado em runtime. Para fixar, defina <code>SYSTEM_PUBLIC_IP</code> no backend/.env.
+            </span>
+          )}
         </div>
       </div>
 

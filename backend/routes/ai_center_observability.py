@@ -10,14 +10,80 @@ NERVOUS_METADATA = {
     "company_id_required": True,
 }
 
+import logging
+import os
+import time
 from typing import Any, Dict, List
 from fastapi import APIRouter, Depends, HTTPException, Query
 from database import db
 from core import require_role
 from services import observability_twin as twin
+from services.safe_fetch import safe_fetch_text, SSRFBlocked  # SECURITY: anti-SSRF
 
+logger = logging.getLogger("ponto.obs")
 router = APIRouter(prefix="/api/ai-center/observability",
                    tags=["observability-twin"])
+
+
+# ---------------------------------------------------------------------------
+# System Public IP — detecta IP de SAÍDA real do container (cache 1h)
+# ---------------------------------------------------------------------------
+_SYSTEM_IP_CACHE: Dict[str, Any] = {"ip": None, "at": 0}
+_IP_CACHE_TTL_S = 3600  # 1h
+
+
+def _detect_system_public_ip() -> Dict[str, Any]:
+    """Resolve IP público de saída.
+
+    Ordem de fontes:
+    1. Env var `SYSTEM_PUBLIC_IP` (preferida — útil para multi-IP/LB).
+    2. Cache em memória (TTL 1h).
+    3. STUN-like via serviço público (ifconfig.me/api.ipify.org) com `safe_fetch`.
+
+    Devolve: {"ip": "x.y.z.w", "source": "env"|"cache"|"discovery", "at": ts}
+    """
+    env_ip = os.environ.get("SYSTEM_PUBLIC_IP")
+    if env_ip:
+        return {"ip": env_ip.strip(), "source": "env", "at": int(time.time())}
+
+    now = int(time.time())
+    if _SYSTEM_IP_CACHE.get("ip") and now - _SYSTEM_IP_CACHE.get("at", 0) < _IP_CACHE_TTL_S:
+        return {"ip": _SYSTEM_IP_CACHE["ip"], "source": "cache",
+                "at": _SYSTEM_IP_CACHE["at"]}
+
+    # Discovery via safe_fetch_text (HTTPS only, host público obrigatório)
+    for url in ("https://api.ipify.org?format=json",
+                "https://ifconfig.me/ip"):
+        try:
+            text = (safe_fetch_text(url, timeout=5) or "").strip()
+            if not text:
+                continue
+            if text.startswith("{"):
+                import json as _j
+                ip = (_j.loads(text).get("ip") or "").strip()
+            else:
+                ip = text
+            if ip and all(c.isdigit() or c == "." for c in ip) and 7 <= len(ip) <= 15:
+                _SYSTEM_IP_CACHE["ip"] = ip
+                _SYSTEM_IP_CACHE["at"] = now
+                return {"ip": ip, "source": "discovery", "at": now}
+        except SSRFBlocked as e:
+            logger.warning("[system-ip] bloqueio SSRF %s: %s", url, e)
+        except Exception as e:
+            logger.warning("[system-ip] discovery falhou em %s: %s", url, e)
+
+    return {"ip": None, "source": "unavailable", "at": now}
+
+
+@router.get("/system-public-ip")
+async def system_public_ip(
+    user=Depends(require_role("administrador", "auditor", "gestor")),
+) -> Dict[str, Any]:
+    """Retorna IP público de saída atual (para liberar no ACL da OLT/firewall).
+
+    Substitui o IP hardcoded do frontend — agora dinâmico por container/região.
+    """
+    return _detect_system_public_ip()
 
 
 def _co(user):
