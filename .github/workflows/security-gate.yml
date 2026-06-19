@@ -22,6 +22,26 @@ jobs:
       - name: SECURITY_LOCK gate
         run: bash scripts/security_gate/security_gate.sh all
 
+      # 1b) Testes da suíte SECURITY_LOCK V1 — bloqueante
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install security test deps
+        run: |
+          pip install --upgrade pip
+          pip install pytest pytest-asyncio requests
+
+      - name: SECURITY_LOCK V1 — happy/denied tests
+        env:
+          REACT_APP_BACKEND_URL: ${{ secrets.REACT_APP_BACKEND_URL || 'http://localhost:8001' }}
+        run: |
+          # Testes que NÃO precisam de backend rodando (estáticos)
+          python -m pytest backend/tests/test_security_lock_v1.py \
+            -v --tb=short \
+            -k "test_art1 or test_art2_no or test_art3 or test_art6_safe or test_art11_debug_file or test_art13_safe or test_art13_no_str"
+
       # 2) Varredura de segredos no histórico — bloqueante
       - name: gitleaks (secret scan)
         uses: gitleaks/gitleaks-action@v2

@@ -6445,3 +6445,28 @@ A Sprint 5 transformou a Ligo de "sem identidade patrimonial" para
 - `whatsapp-service` Dockerfile (Issue 3) — aguardando aprovação do CEO
 - Re-audit em 60 dias
 
+
+---
+
+## 🔒 SECURITY LOCK PERMANENTE — ATIVADO (19/02/2026)
+
+**Executive Order:** transformar o lock V1 em proteção contínua (3 camadas).
+
+### Camadas defensivas
+1. **Pre-commit hook (dev local)** — `.pre-commit-config.yaml`
+   - `security-lock-gate`: roda `security_gate.sh --staged` em arquivos staged
+   - `security-lock-v1-tests`: roda subset estático de `test_security_lock_v1.py` (11 testes)
+   - `gitleaks` + `bandit` (já configurados)
+2. **CI/CD GitHub Actions** — `.github/workflows/security-gate.yml`
+   - `security_gate.sh all` + `pytest test_security_lock_v1.py` + `gitleaks` + `bandit` + `pip-audit`
+   - Dispara em PR e push para `main/master/production`
+3. **Branch Protection** (configuração manual do owner)
+   - Required status check: `security-gate`
+   - Approvals + linear history + signed commits + Include admins
+
+### Deliverable
+- `memory/SECURITY_LOCK_CONTINUOUS_PROTECTION.md` — guia completo de operação e auditoria
+
+### Critério de regressão impossível
+Nenhum commit poderá entrar em `main` se ART.1, ART.2, ART.3, ART.6, ART.10, ART.11 ou ART.13 falhar.
+

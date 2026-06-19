@@ -15,6 +15,16 @@ repos:
         always_run: true
         stages: [commit]
 
+      # Testes ESTÁTICOS do SECURITY_LOCK V1 — não exigem backend rodando.
+      # Bloqueia o commit se alguma regressão for introduzida em ART.1/2/3/6/11/13.
+      - id: security-lock-v1-tests
+        name: SECURITY_LOCK V1 — regression tests (static)
+        entry: python3 -m pytest backend/tests/test_security_lock_v1.py -q --tb=line -k "test_art1 or test_art2_no_admin or test_art3 or test_art6_safe or test_art11_debug_file or test_art13_safe or test_art13_no_str"
+        language: system
+        pass_filenames: false
+        always_run: true
+        stages: [commit]
+
   - repo: https://github.com/gitleaks/gitleaks
     rev: v8.21.2
     hooks:
