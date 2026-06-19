@@ -172,6 +172,7 @@ from routes import (
     sprint5_swap_events as routes_sprint5_swap_events,
     sprint5_audit_operacional as routes_sprint5_audit_op,
     sprint5_e2e_validator as routes_sprint5_e2e,
+    sprint5_quarantine_promotion as routes_sprint5_quarantine_promo,
     whatsapp_config as routes_whatsapp_config,
     wa_test_mode as routes_wa_test_mode,
     mass_messaging as routes_mass_messaging,
@@ -1578,6 +1579,7 @@ app.include_router(routes_sprint5_onda6.router)
 app.include_router(routes_sprint5_swap_events.router)
 app.include_router(routes_sprint5_audit_op.router)
 app.include_router(routes_sprint5_e2e.router)
+app.include_router(routes_sprint5_quarantine_promo.router)
 app.include_router(routes_alvaro_os_summary.router)
 app.include_router(routes_gps_vlan_suggest.router)
 app.include_router(routes_smartolt_push_ctos.router)

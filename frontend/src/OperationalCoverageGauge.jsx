@@ -12,6 +12,7 @@
  */
 import React, { useEffect, useState, useCallback } from "react";
 import { client } from "./api";
+import QuarantinePromotion from "./QuarantinePromotion";
 
 const fmtPct = (v) => v == null ? "—" : `${Number(v).toFixed(2)}%`;
 const fmtNum = (v) => v == null ? "—" : Number(v).toFixed(2);
@@ -46,6 +47,7 @@ export default function OperationalCoverageGauge() {
   const [timeline, setTimeline] = useState(null);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState(null);
+  const [showQuarantine, setShowQuarantine] = useState(false);
 
   const fetchAll = useCallback(async () => {
     setLoading(true); setErr(null);
@@ -309,6 +311,36 @@ export default function OperationalCoverageGauge() {
                 </div>
               );
             })}
+          </div>
+        )}
+      </div>
+
+      {/* MUTIRÃO DE QUARENTENA — Phase D add-on */}
+      <div
+        className="rounded-2xl border border-slate-700 bg-slate-900/60 p-4"
+        data-testid="opcov-card-quarantine"
+      >
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <div>
+            <div className="text-xs uppercase tracking-widest font-mono text-slate-400">
+              Mutirão de Quarentena
+            </div>
+            <div className="text-sm text-slate-300 mt-1">
+              Suba a cobertura aprovando/rejeitando manualmente as ONUs que
+              não foram promovidas automaticamente.
+            </div>
+          </div>
+          <button
+            onClick={() => setShowQuarantine((s) => !s)}
+            className="px-4 py-2 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-500/40 text-emerald-200 text-sm font-semibold"
+            data-testid="opcov-toggle-quarantine-btn"
+          >
+            {showQuarantine ? "Ocultar" : "Promover Quarentena →"}
+          </button>
+        </div>
+        {showQuarantine && (
+          <div className="mt-4 pt-4 border-t border-slate-700">
+            <QuarantinePromotion />
           </div>
         )}
       </div>

@@ -2,6 +2,42 @@
 
 > Documento vivo. Atualizado a cada sprint.
 
+## 🔧 PHASE D ADD-ON · Mutirão de Quarentena (Botão Promover) — 19/06/2026
+
+**Diretiva CEO**: Único desenvolvimento aprovado pós-Sprint 5. Tela para o gestor aprovar/rejeitar manualmente as 117 ONUs restantes em quarentena. Foco: subir cobertura 93.78 % → 98 % com revisão humana, sem mudar arquitetura.
+
+### Entregue
+- **Backend** (`routes/sprint5_quarantine_promotion.py`):
+  - `GET /api/sprint5/quarantine/stats` — pending/promoted/rejected
+  - `GET /api/sprint5/quarantine/candidates?limit=&offset=` — paginado com sugestões automáticas (até 3) + confidence + match_evidence
+  - `GET /api/sprint5/quarantine/search-subscribers?q=` — busca livre por nome/PPPoE
+  - `POST /api/sprint5/quarantine/{ont_id}/approve` — promove tier=quarantine→official com subscriber_id, confidence, reason ≥10 chars
+  - `POST /api/sprint5/quarantine/{ont_id}/reject` — marca como permanent_quarantine, reason ≥20 chars
+  - Audit log SHA-256 em `quarantine_promotion_actions` (cada ação rastreável por id+hash)
+- **Frontend** (`src/QuarantinePromotion.jsx`):
+  - Lista paginada (20/pág) com card por ONU contendo SN, modelo, OLT, porta, status
+  - Sugestões automáticas com pill colorido por confidence (verde≥90 · amarelo≥75 · vermelho<75)
+  - Busca livre de subscriber (auto-debounce ≥3 chars)
+  - 3 botões: ✓ Aprovar (com justificativa ≥10) · ✗ Rejeitar (motivo ≥20) · ↻ Procurar outro (busca)
+  - Toggle "Promover Quarentena →" no gauge da Phase D dentro do Watchtower
+- Testado: approve/reject funcionando com validações + idempotência (409 se já processada)
+- Cobertura subiu 93.78 % → 93.84 % após 1 promoção manual + 1 rejeição em produção
+
+### Status
+Sprint 5 oficialmente encerrada. Phase D add-on entregue. Operação assume o volante.
+
+### Next (sem dev novo, conforme ordem CEO)
+- Mutirão Quarentena: 115 restantes → meta < 30
+- Confirmar 13 swap_events pending_confirmation
+- Investigar block_rate Onda 3 (62.5 %) — diagnóstico antes de mudar código
+- Aguardar 30 dias para avaliar Sprint 6
+
+### Files
+- NOVOS: `routes/sprint5_quarantine_promotion.py`, `src/QuarantinePromotion.jsx`
+- MODIFICADOS: `server.py` (router include), `src/OperationalCoverageGauge.jsx` (toggle + import)
+
+---
+
 ## 🚀 PHASE D · Gauge Cobertura Operacional + Score Breakdown + Timeline — 19/06/2026
 
 **Diretiva CEO**: Após Cobertura ≥ 90 % alcançada, liberar gauge no Watchtower + endpoint score-breakdown + timeline 12 semanas. Sem dashboard novo.
