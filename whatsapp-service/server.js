@@ -739,8 +739,11 @@ app.get("/diagnostics", (_req, res) => {
 // Auth middleware — protege todos endpoints quando WA_SIDECAR_TOKEN estiver
 // configurado. O backend FastAPI envia "Authorization: Bearer <token>".
 app.use((req, res, next) => {
-  if (!SIDECAR_TOKEN) return next();          // sem token = modo dev/local
   if (req.path === "/health") return next();   // health sempre liberado
+  if (!SIDECAR_TOKEN) {
+    // ART.3 fail-closed: sem token configurado, recusa tudo (exceto /health).
+    return res.status(503).json({ ok: false, error: "service not configured" });
+  }
   const auth = req.headers.authorization || "";
   if (!auth.startsWith("Bearer ") || auth.slice(7) !== SIDECAR_TOKEN) {
     return res.status(401).json({ ok: false, error: "unauthorized" });

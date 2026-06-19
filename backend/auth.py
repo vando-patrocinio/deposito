@@ -54,6 +54,7 @@ def create_access_token(user_id: str, email: str, role: str,
         "is_super_admin": bool(is_super_admin),
         "exp": datetime.now(timezone.utc) + timedelta(minutes=ACCESS_TOKEN_TTL_MIN),
         "iat": datetime.now(timezone.utc),
+        "jti": uuid.uuid4().hex,   # ART.7b — necessário para denylist
         "type": "access",
     }
     if impersonator:
@@ -149,8 +150,8 @@ async def seed_default_users(db) -> None:
         ("gestorrede@empresa.com", "123456", "gestor_rede", "Gestor de Rede"),
         ("colaborador@empresa.com", "123456", "colaborador", "Carlos Almeida"),
         # Compat com smart2 demo
-        ("admin@example.com", os.environ.get("ADMIN_PASSWORD", "admin123"), "gestor", "Gestor padrão"),
-        ("auditor@example.com", os.environ.get("AUDITOR_PASSWORD", "auditor123"), "auditor", "Auditor padrão"),
+        ("admin@example.com", os.environ.get("ADMIN_PASSWORD", ""), "gestor", "Gestor padrão"),
+        ("auditor@example.com", os.environ.get("AUDITOR_PASSWORD", ""), "auditor", "Auditor padrão"),
         # iter180 — conta corporativa do super-admin (Vando · Ligo Telecom).
         # Senha vem do .env (OWNER_PASSWORD) — deploy readiness fix.
         (OWNER_EMAIL, OWNER_PASSWORD, "auditor", "Vando · Ligo Telecom"),
@@ -219,10 +220,8 @@ def make_dependencies(get_db_callable):
             token = request.cookies.get("access_token")
 
         # ---- PUBLIC ACCESS TOKEN (sem login) ----
-        # Permite criar links públicos com poder admin pra abas específicas.
-        # Token vem via header `X-Public-Token` ou query `?ptoken=xxx`.
-        ptoken = (request.headers.get("X-Public-Token")
-                  or request.query_params.get("ptoken") or "").strip()
+        # ART.4 — só via header. Query string removida (vazava em logs/Referer).
+        ptoken = (request.headers.get("X-Public-Token") or "").strip()
         if not token and ptoken:
             db = get_db_callable()
             pdoc = await db.public_access_tokens.find_one(
@@ -267,6 +266,15 @@ def make_dependencies(get_db_callable):
         if payload.get("type") != "access":
             raise HTTPException(401, "Tipo de token inválido")
         db = get_db_callable()
+        # ART.7b — denylist server-side de jti revogados (logout/troca senha)
+        try:
+            from services.session_denylist import is_jti_revoked
+            if await is_jti_revoked(db, payload.get("jti")):
+                raise HTTPException(401, "Session revoked")
+        except HTTPException:
+            raise
+        except Exception:
+            pass  # denylist indisponível ≠ acesso liberado em outro lugar
         user = await db.users.find_one({"id": payload["sub"]}, {"_id": 0, "password_hash": 0})
         if not user or not user.get("active", True):
             raise HTTPException(401, "Usuário inativo ou inexistente")

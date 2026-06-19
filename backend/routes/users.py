@@ -57,7 +57,9 @@ class AdminLogin(BaseModel):
 @router.post("/auth/admin-login")
 async def admin_login(payload: AdminLogin):
     """LEGADO: aceita só senha do .env. Mantido para retrocompatibilidade."""
-    expected = os.environ.get("ADMIN_PASSWORD", "admin123")
+    expected = os.environ.get("ADMIN_PASSWORD", "")
+    if not expected:
+        raise HTTPException(503, "Service not configured")
     if payload.password != expected:
         raise HTTPException(401, "Senha inválida")
     user = await db.users.find_one({"email": "admin@example.com"}, {"_id": 0, "password_hash": 0})

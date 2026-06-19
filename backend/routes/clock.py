@@ -2057,9 +2057,13 @@ def _logo_flowable(logo_src: str | None, max_w_cm: float = 2.4, max_h_cm: float 
             raw = base64.b64decode(b64)
             buf = io.BytesIO(raw)
         elif logo_src.startswith("http://") or logo_src.startswith("https://"):
-            import urllib.request
-            with urllib.request.urlopen(logo_src, timeout=3) as resp:
-                buf = io.BytesIO(resp.read())
+            # ART.6 — usa safe_fetch (bloqueia IP privado/metadata/loopback)
+            from services.safe_fetch import safe_fetch, SSRFBlocked
+            try:
+                data = safe_fetch(logo_src, timeout=3)
+            except SSRFBlocked:
+                return None
+            buf = io.BytesIO(data)
         else:
             return None
         img = Image(buf, width=max_w_cm * cm, height=max_h_cm * cm, kind="proportional")

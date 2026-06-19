@@ -1,0 +1,44 @@
+name: security-gate
+
+# Portão de segurança obrigatório. Reprova o PR se qualquer trava do
+# governance/SECURITY_LOCK.md for violada. Marque este check como
+# "Required" em Settings → Branches → Branch protection rules.
+
+on:
+  pull_request:
+    branches: [main, master, production]
+  push:
+    branches: [main, master, production]
+
+jobs:
+  security-gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # histórico completo p/ varredura de segredos
+
+      # 1) Trava constitucional (SECURITY_LOCK) — bloqueante
+      - name: SECURITY_LOCK gate
+        run: bash scripts/security_gate/security_gate.sh all
+
+      # 2) Varredura de segredos no histórico — bloqueante
+      - name: gitleaks (secret scan)
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITLEAKS_ENABLE_UPLOAD_ARTIFACT: "false"
+
+      # 3) SAST Python — bloqueante em severidade alta
+      - name: bandit (SAST)
+        run: |
+          pip install bandit==1.9.4
+          bandit -r backend -ll -ii \
+            -x backend/tests,backend/scripts \
+            -f screen
+
+      # 4) Dependências com CVE conhecida — bloqueante em alta
+      - name: pip-audit
+        run: |
+          pip install pip-audit
+          pip-audit -r backend/requirements.txt --strict || \
+            (echo "::error::Dependência com CVE — atualize antes de mergear" && exit 1)

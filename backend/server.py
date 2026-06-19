@@ -443,7 +443,25 @@ async def _seed_demo_tickets() -> None:
 # -------------------------------------------------------------------------
 # FastAPI app + Lifecycle
 # -------------------------------------------------------------------------
-app = FastAPI(title="Ponto do Colaborador")
+# ART.9 — Superfície mínima em produção: docs/redoc/openapi off.
+_IS_PROD = os.environ.get("ENV", "development") == "production"
+app = FastAPI(
+    title="Ponto do Colaborador",
+    docs_url=None if _IS_PROD else "/docs",
+    redoc_url=None if _IS_PROD else "/redoc",
+    openapi_url=None if _IS_PROD else "/openapi.json",
+)
+
+# ART.13 — Exception sanitizer global: nunca devolve str(e) ao cliente.
+from starlette.exceptions import HTTPException as _StarletteHTTPException  # noqa: E402
+from services.exception_sanitizer import (  # noqa: E402
+    sanitized_http_exception_handler,
+    sanitized_unhandled_exception_handler,
+)
+app.add_exception_handler(
+    _StarletteHTTPException, sanitized_http_exception_handler)
+app.add_exception_handler(
+    Exception, sanitized_unhandled_exception_handler)
 
 # ── Fingerprint de propriedade (não remover — Lei 9.609/98, 9.610/98) ──
 # Adiciona endpoint /api/about + header X-Powered-By + marca o DB.
@@ -1372,7 +1390,8 @@ from routes import admin_wa_sidecar as routes_admin_wa_sidecar  # noqa: E402
 app.include_router(routes_admin_wa_sidecar.router)
 
 from routes import auth_debug as routes_auth_debug  # noqa: E402
-app.include_router(routes_auth_debug.router)
+if os.environ.get("ENV", "development") != "production":
+    app.include_router(routes_auth_debug.router)
 # ─── Integration Credentials (Grafana/Zabbix via Vault) ──────
 from routes import admin_integrations as routes_admin_int  # noqa: E402
 app.include_router(routes_admin_int.router)

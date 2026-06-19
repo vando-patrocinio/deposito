@@ -19,7 +19,12 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 
-QR_SECRET = os.environ.get("REDE_IA_QR_SECRET") or "smartprov-rede-ia-2026-default-secret-change-me"
+QR_SECRET = os.environ.get("REDE_IA_QR_SECRET", "")
+if not QR_SECRET:
+    # ART.2/ART.3 fail-closed: sem segredo configurado, módulo nega operação.
+    import logging as _qrlog
+    _qrlog.getLogger(__name__).warning(
+        "[rede_ia_qr] REDE_IA_QR_SECRET ausente — endpoints retornarão 503")
 QR_VERSION = "v1"
 QR_PREFIX = "SPCTO"  # SmartProv CTO
 

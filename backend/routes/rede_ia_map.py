@@ -1406,8 +1406,13 @@ async def auto_generate_ces(radius_m: float = Query(200.0, ge=50, le=2000),
 # ---------------------------------------------------------------------------
 # Public shareable map (read-only)  — token HMAC
 # ---------------------------------------------------------------------------
-PUBLIC_SECRET = os.environ.get("REDE_IA_PUBLIC_SECRET") or \
-    os.environ.get("REDE_IA_QR_SECRET") or "smartprov-rede-ia-public-default-secret"
+PUBLIC_SECRET = (
+    os.environ.get("REDE_IA_PUBLIC_SECRET")
+    or os.environ.get("REDE_IA_QR_SECRET")
+    or ""
+)
+# ART.2/ART.3 fail-closed: sem segredo configurado, funções públicas
+# negam (assinatura inválida garante 401 ao verificar).
 PUBLIC_PREFIX = "SPMAP"
 PUBLIC_VERSION = "v1"
 

@@ -1,0 +1,28 @@
+# Hooks locais — rodam ANTES de cada commit, barrando a violação na origem.
+# Instalar uma vez:  pip install pre-commit && pre-commit install
+#
+# Assim a regra do SECURITY_LOCK é aplicada na máquina do dev (e do agente),
+# não só no CI. "Não poder fugir" começa aqui: o commit nem chega ao push.
+
+repos:
+  - repo: local
+    hooks:
+      - id: security-lock-gate
+        name: SECURITY_LOCK gate (staged)
+        entry: bash scripts/security_gate/security_gate.sh --staged
+        language: system
+        pass_filenames: false
+        always_run: true
+        stages: [commit]
+
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.21.2
+    hooks:
+      - id: gitleaks
+
+  - repo: https://github.com/PyCQA/bandit
+    rev: 1.9.4
+    hooks:
+      - id: bandit
+        args: ["-ll", "-ii", "-x", "backend/tests,backend/scripts"]
+        files: ^backend/.*\.py$

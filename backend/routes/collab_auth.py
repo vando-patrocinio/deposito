@@ -211,10 +211,10 @@ async def process_session(
         "user_agent": request.headers.get("user-agent", ""),
     })
 
-    # 6. Set cookie httpOnly
+    # 6. Set cookie httpOnly — ART.12: SameSite=Lax (era "none")
     response.set_cookie(
         key=COOKIE_NAME, value=session_token, httponly=True, secure=True,
-        samesite="none", path="/", max_age=SESSION_TTL_DAYS * 24 * 3600,
+        samesite="lax", path="/", max_age=SESSION_TTL_DAYS * 24 * 3600,
     )
 
     coll_pub = {**coll, **update}
