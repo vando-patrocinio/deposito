@@ -2,6 +2,32 @@
 
 > Documento vivo. Atualizado a cada sprint.
 
+## 🟡 P1 UX FIX · Copy do "Esqueci a senha" mentia sobre envio por WhatsApp — 27/07/2026
+
+**Sintoma reportado pelo CEO:** "Fui trocar a senha e o sistema não me enviou o cod" — usuário aguardando código no WhatsApp que nunca chegava.
+
+**Causa raiz:** Frontend `LoginPage.js` exibia mensagens desatualizadas prometendo "Receba uma nova senha por WhatsApp" e "uma nova senha será enviada para o WhatsApp dele". Backend `password_recovery.py` (opção A autorizada pelo CTO em 13/06/2026) **NÃO envia nada por WhatsApp** — reseta a senha diretamente para `123456` e devolve mensagem na tela. Mismatch entre UI e backend = usuário achou que era bug.
+
+**Fix (frontend only, 3 edits em `LoginPage.js`):**
+- Linha 272 (subtítulo): removida menção a WhatsApp → "Sua senha será redefinida para 123456. Faça login e escolha uma nova."
+- Linhas 294-298 (parágrafo do modal): reformulado para explicar que a senha vira 123456 e será obrigatório trocar no próximo login
+- Linhas 110/116 (fallbacks de `submitForgot`): removidas menções a WhatsApp
+
+**Validação (testing_agent iteration 254 · 100% aprovado):**
+- ✅ Modal abre com título "🔐 Recuperar senha" e paragrafo correto
+- ✅ POST /api/auth/forgot-password retorna 200 com msg "*123456*"
+- ✅ Feedback verde renderiza a msg do backend
+- ✅ Subtítulo NÃO menciona WhatsApp em lugar nenhum
+- ✅ Anti-enumeração funciona (email inexistente também recebe msg genérica de 123456)
+- ✅ grep confirmou 0 ocorrências de "WhatsApp" em LoginPage.js
+
+**Ação pendente do CEO:** Redeploy para aplicar em Produção.
+
+**Nota:** Backend `password_recovery.py` NÃO foi tocado (comportamento CTO-authorized permanece intacto).
+
+---
+
+
 ## 🟡 P1 UX FIX · Chat Atendimento IA mostrando QR mesmo com canal conectado — 19/06/2026
 
 **Sintoma:** Mesmo com Canal 3 (multi-canal Baileys) conectado, a aba "Ligo/WhatsApp" mostrava tela "Conectar WhatsApp por QR Code · DESCONECTADO" + QR Code expirado. Usuário interpretava como "atendimento não funcionando".
