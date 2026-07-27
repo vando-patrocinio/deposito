@@ -107,13 +107,13 @@ export default function LoginPage({ onBack }) {
     setForgotBusy(true); setForgotMsg("");
     try {
       const r = await api.forgotPassword(forgotEmail.trim().toLowerCase());
-      setForgotMsg(r?.message || "Se a conta existir, uma nova senha será enviada por WhatsApp em instantes.");
+      setForgotMsg(r?.message || "Se a conta existir, a senha foi redefinida para 123456. Faça login e troque a senha na tela seguinte.");
     } catch (err) {
       if (err?.response?.status === 429) {
         const detail = err?.response?.data?.detail;
         setForgotMsg("⚠ " + (typeof detail === "string" ? detail : "Muitas tentativas. Aguarde 1 hora."));
       } else {
-        setForgotMsg("Se a conta existir, uma nova senha será enviada por WhatsApp em instantes.");
+        setForgotMsg("Se a conta existir, a senha foi redefinida para 123456. Faça login e troque a senha na tela seguinte.");
       }
     } finally {
       setForgotBusy(false);
@@ -269,7 +269,7 @@ export default function LoginPage({ onBack }) {
                 color: "#7c3aed", fontWeight: 600, fontSize: 11.5,
                 textDecoration: "underline",
               }}
-            >Esqueceu a senha?</button> Receba uma nova senha por WhatsApp.<br />
+            >Esqueceu a senha?</button> Sua senha será redefinida para <strong>123456</strong>. Faça login e escolha uma nova.<br />
             O Google deve usar o mesmo e-mail cadastrado no sistema.
           </p>
           {forgotOpen && (
@@ -292,9 +292,10 @@ export default function LoginPage({ onBack }) {
                   🔐 Recuperar senha
                 </h3>
                 <p style={{ margin: "0 0 16px 0", fontSize: 13, color: "#475569", lineHeight: 1.5 }}>
-                  Digite seu email. Se houver um colaborador vinculado com
-                  telefone cadastrado, uma nova senha será enviada para o
-                  WhatsApp dele.
+                  Digite seu e-mail. Se a conta existir, a senha será
+                  redefinida para <strong>123456</strong>. Faça login com
+                  ela e o sistema vai te forçar a escolher uma nova
+                  senha na tela seguinte.
                 </p>
                 <form onSubmit={submitForgot}>
                   <input
