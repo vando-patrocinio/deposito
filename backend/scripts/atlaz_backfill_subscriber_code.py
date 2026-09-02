@@ -215,6 +215,7 @@ async def backfill_company(company_id: str,
     }
     if not dry_run:
         await db.atlaz_sync_logs.insert_one(log_doc)
+        log_doc.pop("_id", None)
 
     return log_doc
 

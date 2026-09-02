@@ -188,7 +188,7 @@ def test_snapshot_info_collections_count_82(admin_token):
 
 def test_restore_upload_accepts_tarball_field(admin_token, db):
     """Endpoint aceita um files_tarball opcional + JSON principal."""
-    import tarfile, io
+    import tarfile
     test_id = f"test-iter140-{uuid.uuid4().hex[:8]}"
     payload = {
         "_meta": {"company_id": COMPANY_ID, "exported_at": "2026-01-01",
@@ -249,7 +249,6 @@ def test_restore_upload_rejects_bad_tarball(admin_token):
 # ======================================================================
 def test_backup_local_returns_zip(admin_token):
     """POST /api/drive/backup-local devolve um ZIP válido com snapshot+files."""
-    import io
     import zipfile
     r = requests.post(f"{BASE_URL}/api/drive/backup-local?include_files=true",
                       headers={"Authorization": f"Bearer {admin_token}"},

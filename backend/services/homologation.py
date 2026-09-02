@@ -141,9 +141,15 @@ def _now_iso() -> str:
 
 
 def _norm_phone(raw: str) -> str:
-    """Normaliza para apenas dígitos com prefixo país."""
+    """Normaliza para apenas dígitos com prefixo país.
+
+    JIDs completos (`<lid>@lid`, `<id>@g.us`) são preservados como estão —
+    contatos com número oculto no WhatsApp só podem ser respondidos pelo JID.
+    """
     if not raw:
         return ""
+    if "@" in str(raw):
+        return str(raw).strip()
     digits = re.sub(r"\D", "", str(raw))
     if digits.startswith("0"):
         digits = digits.lstrip("0")

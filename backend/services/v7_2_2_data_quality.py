@@ -22,7 +22,7 @@ NERVOUS_METADATA = {
 import re
 import logging
 from datetime import datetime, timezone, timedelta
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 from database import db
 
 logger = logging.getLogger("v7_2_2")

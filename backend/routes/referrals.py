@@ -281,7 +281,7 @@ async def _send_isabella_to_friend(cid: str, owner_first_name: str,
             from services.event_bus import emit_event
             await emit_event(
                 "wa.message.persisted",
-                company_id=(exists_col or {}).get("company_id"),
+                company_id=cid,
                 source="referrals",
                 payload={},
             )

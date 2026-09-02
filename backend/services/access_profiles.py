@@ -190,6 +190,7 @@ async def create_profile(
         "user_count_cache": 0,
     }
     await db.access_profiles.insert_one(doc)
+    doc.pop("_id", None)
     return doc
 
 

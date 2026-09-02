@@ -197,14 +197,18 @@ async def save_upload(
     if ext not in {"jpg", "jpeg", "png", "webp", "heic"}:
         ext = "jpg"
     save_path = UPLOAD_BASE / sid / f"{file_kind}.{ext}"
-    save_path.write_bytes(file_bytes)
+    from services.objstore import content_type_for, put_object
+    storage_ref = await put_object(
+        f"smartprov/onboarding/{sid}/{file_kind}.{ext}",
+        file_bytes, content_type or content_type_for(ext))
 
     now = datetime.now(timezone.utc).isoformat()
     update = {
         f"uploaded.{file_kind}": True,
         f"files.{file_kind}": {
             "filename": filename,
-            "path": str(save_path),
+            "path": storage_ref,
+            "legacy_path": str(save_path),
             "size": len(file_bytes),
             "content_type": content_type,
             "uploaded_at": now,
@@ -272,12 +276,12 @@ async def liveness_check(
     cid = payload["cid"]
     now = datetime.now(timezone.utc).isoformat()
 
-    # Salva os 3 frames
+    # Salva os 3 frames no object storage (disco do pod é volátil)
+    from services.objstore import put_object
     saved_paths = {}
     for label, fb in frames:
-        p = UPLOAD_BASE / sid / f"selfie_{label}.jpg"
-        p.write_bytes(fb)
-        saved_paths[label] = str(p)
+        saved_paths[label] = await put_object(
+            f"smartprov/onboarding/{sid}/selfie_{label}.jpg", fb, "image/jpeg")
 
     # Roda LLM vision
     result = await _run_liveness_llm(frames)
@@ -355,7 +359,7 @@ async def _run_liveness_llm(frames: list) -> Dict[str, Any]:
             "Você é especialista em verificação antifraude. Responda APENAS "
             "o JSON pedido, sem texto extra, sem markdown."
         ),
-    ).with_model("openai", "gpt-5-mini").with_max_tokens(500)
+    ).with_model("openai", "gpt-5-mini").with_params(max_tokens=500)
 
     image_contents = [
         ImageContent(image_base64=base64.b64encode(fb).decode())
@@ -436,7 +440,7 @@ async def _run_ocr(
             "Você é um OCR de documentos. Responda APENAS o JSON pedido, "
             "sem texto extra, sem markdown. Use null para campos ilegíveis."
         ),
-    ).with_model("openai", "gpt-5-mini").with_max_tokens(800)
+    ).with_model("openai", "gpt-5-mini").with_params(max_tokens=800)
 
     image_b64 = base64.b64encode(file_bytes).decode()
     msg = UserMessage(

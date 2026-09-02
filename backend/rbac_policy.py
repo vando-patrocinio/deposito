@@ -59,7 +59,8 @@ PUBLIC_PATHS: List[str] = [
     "/api/public/smartprov-ai-center",  # FASE 9 — landing pública V5.0
     "/api/public/os-validation-toggles/",  # CTO 13/06/2026 — Lousa Mobile lê toggles sem auth
     "/api/lousa/public/",  # CTO 13/06/2026 — Lousa Mobile (open/finalize/leaderboard/etc) usa collaborator_id no body como auth
-    "/api/holerite/public/",  # PWA do colaborador lista holerites com collab_id na URL
+    "/api/holerites/public/",  # PWA do colaborador lista holerites com collab_id na URL
+    "/api/holerite/public/",  # legado (prefixo singular)
     "/api/collab-assets/public",  # PWA do colaborador lista pertences
     "/api/stok/public/",  # PWA lê estoque do técnico via collab_id na URL
     "/api/onboarding/public/",  # Magic links de onboarding

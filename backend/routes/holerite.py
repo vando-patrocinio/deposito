@@ -49,7 +49,7 @@ from typing import Any, Dict, List, Optional
 import httpx
 from fastapi import (APIRouter, Depends, File, Form, HTTPException, Request,
                        UploadFile)
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel, Field
 
 from core import DEMO_COMPANY_ID, now_iso, require_role
@@ -247,10 +247,9 @@ async def upload_holerite(
     # Nome físico aleatório, fora de pasta pública.
     file_uuid = uuid.uuid4().hex
     physical_name = f"{file_uuid}.pdf"
-    cdir = STORAGE_DIR / cid
-    cdir.mkdir(parents=True, exist_ok=True)
-    file_path = cdir / physical_name
-    file_path.write_bytes(data)
+    from services.objstore import put_object
+    storage_ref = await put_object(
+        f"smartprov/holerites/{cid}/{physical_name}", data, "application/pdf")
 
     doc_id = f"hol-{uuid.uuid4().hex[:14]}"
     doc = {
@@ -265,7 +264,7 @@ async def upload_holerite(
         "gross": float(gross or 0),
         "net": float(net or 0),
         "file_uuid": file_uuid,
-        "file_path": str(file_path),
+        "file_path": storage_ref,
         "file_size_bytes": len(data),
         "file_hash": _sha256_bytes(data),
         "status": "available",
@@ -657,15 +656,20 @@ async def stream_holerite(session_token: str, request: Request):
     if not doc or doc.get("status") != "available":
         raise HTTPException(404, "Holerite indisponível.")
     fp = doc.get("file_path")
-    if not fp or not Path(fp).exists():
+    from services.objstore import read_ref
+    pdf = await read_ref(fp or "")
+    if pdf is None:
         raise HTTPException(404, "Arquivo físico não encontrado.")
     await _audit(doc["id"], doc["company_id"], "view_pdf",
                     sess.get("employee_id"), "collaborator", request)
-    return FileResponse(
-        fp,
+    return Response(
+        content=pdf,
         media_type="application/pdf",
-        filename=f"holerite-{doc['competence_year']}-{doc['competence_month']:02d}.pdf",
         headers={
+            "Content-Disposition": (
+                'inline; filename="holerite-'
+                f"{doc['competence_year']}-{doc['competence_month']:02d}.pdf\""
+            ),
             # Evita cache do PDF em proxies/cdn
             "Cache-Control": "private, no-store, max-age=0",
             "X-Content-Type-Options": "nosniff",
@@ -734,10 +738,16 @@ async def ai_parse_holerite(
     })
 
     # Salva o PDF cru temporariamente (mesma pasta, prefixo "drafts/")
-    cdir = STORAGE_DIR / cid / "drafts"
-    cdir.mkdir(parents=True, exist_ok=True)
-    draft_path = cdir / f"{parse_id}.pdf"
-    draft_path.write_bytes(data)
+    from services.objstore import put_object
+    draft_ref = await put_object(
+        f"smartprov/holerites/{cid}/drafts/{parse_id}.pdf",
+        data, "application/pdf")
+    await db.payroll_ai_drafts.update_one(
+        {"parse_id": parse_id},
+        {"$set": {"parse_id": parse_id, "company_id": cid,
+                   "storage_ref": draft_ref, "created_at": now_iso()}},
+        upsert=True,
+    )
 
     await _audit(parse_id, cid, "ai_parse", user.get("id"), "rh", request,
                     extra={
@@ -789,9 +799,13 @@ async def ai_import_holerite(
 
     # Localiza arquivo cru
     draft_path = STORAGE_DIR / cid / "drafts" / f"{payload.parse_id}.pdf"
-    if not draft_path.exists():
+    draft_rec = await db.payroll_ai_drafts.find_one(
+        {"parse_id": payload.parse_id, "company_id": cid}, {"_id": 0})
+    from services.objstore import read_ref
+    pdf_bytes = await read_ref((draft_rec or {}).get("storage_ref") or "",
+                                draft_path)
+    if pdf_bytes is None:
         raise HTTPException(404, "Arquivo do draft expirou ou foi removido.")
-    pdf_bytes = draft_path.read_bytes()
 
     imported: List[Dict[str, Any]] = []
     skipped = 0
@@ -822,10 +836,10 @@ async def ai_import_holerite(
         # Cada funcionário ganha uma cópia do mesmo PDF (caminho único)
         file_uuid = uuid.uuid4().hex
         physical_name = f"{file_uuid}.pdf"
-        cdir = STORAGE_DIR / cid
-        cdir.mkdir(parents=True, exist_ok=True)
-        file_path = cdir / physical_name
-        file_path.write_bytes(pdf_bytes)
+        from services.objstore import put_object
+        storage_ref = await put_object(
+            f"smartprov/holerites/{cid}/{physical_name}",
+            pdf_bytes, "application/pdf")
 
         doc_id = f"hol-{uuid.uuid4().hex[:14]}"
         doc = {
@@ -855,7 +869,7 @@ async def ai_import_holerite(
             "ai_match_score": match_item.get("match_score"),
             "ai_match_status": match_item.get("match_status"),
             "file_uuid": file_uuid,
-            "file_path": str(file_path),
+            "file_path": storage_ref,
             "file_size_bytes": len(pdf_bytes),
             "status": "available",
             "created_at": now_iso(),
@@ -1094,8 +1108,9 @@ async def collab_get_file_public(cid: str, doc_id: str, request: Request):
     )
     if not doc:
         raise HTTPException(404, "Holerite não encontrado.")
-    fp = Path(doc.get("file_path") or "")
-    if not fp.exists():
+    from services.objstore import read_ref
+    pdf = await read_ref(doc.get("file_path") or "")
+    if pdf is None:
         raise HTTPException(404, "Arquivo do holerite indisponível.")
     if not doc.get("viewed_at"):
         await db.payroll_documents.update_one(
@@ -1104,13 +1119,9 @@ async def collab_get_file_public(cid: str, doc_id: str, request: Request):
         )
     await _audit(doc_id, company_id, "view_collab_public",
                     cid, "collaborator", request)
-    return FileResponse(
-        path=str(fp),
+    return Response(
+        content=pdf,
         media_type="application/pdf",
-        filename=(
-            f"holerite-{doc['competence_year']}-"
-            f"{doc['competence_month']:02d}.pdf"
-        ),
         headers={
             "Cache-Control": "private, no-store, max-age=0",
             "X-Content-Type-Options": "nosniff",
@@ -1157,11 +1168,11 @@ async def collab_upload_signed(
     sig_detected = _has_pdf_signature(data)
     hash_signed = _sha256_bytes(data)
 
-    cdir = STORAGE_DIR / company_id / "signed"
-    cdir.mkdir(parents=True, exist_ok=True)
     fname = f"{doc_id}_signed_{uuid.uuid4().hex[:8]}.pdf"
-    fpath = cdir / fname
-    fpath.write_bytes(data)
+    from services.objstore import put_object
+    signed_ref = await put_object(
+        f"smartprov/holerites/{company_id}/signed/{fname}",
+        data, "application/pdf")
 
     col = await db.collaborators.find_one(
         {"id": cid}, {"_id": 0, "name": 1},
@@ -1171,7 +1182,7 @@ async def collab_upload_signed(
         "signed_method": "govbr_manual_upload",
         "signed_by": cid,
         "signed_by_name": (col or {}).get("name") or "—",
-        "signed_file_path": str(fpath),
+        "signed_file_path": signed_ref,
         "signed_file_size_bytes": len(data),
         "signature_hash": hash_signed,
         "signature_valid": bool(sig_detected),
@@ -1212,22 +1223,24 @@ async def collab_get_signed_file(cid: str, doc_id: str, request: Request):
     )
     if not doc:
         raise HTTPException(404, "Holerite não encontrado.")
-    fp = doc.get("signed_file_path")
-    if not fp or not Path(fp).exists():
+    from services.objstore import read_ref
+    pdf = await read_ref(doc.get("signed_file_path") or "")
+    if pdf is None:
         raise HTTPException(404, "Holerite ainda não foi assinado.")
     await _audit(
         doc_id, company_id, "view_signed", cid, "collaborator", request,
     )
-    return FileResponse(
-        path=fp,
+    return Response(
+        content=pdf,
         media_type="application/pdf",
-        filename=(
-            f"holerite-assinado-{doc['competence_year']}-"
-            f"{doc['competence_month']:02d}.pdf"
-        ),
         headers={
             "Cache-Control": "private, no-store, max-age=0",
             "X-Content-Type-Options": "nosniff",
+            "Content-Disposition": (
+                f'inline; filename="holerite-assinado-'
+                f'{doc["competence_year"]}-'
+                f'{doc["competence_month"]:02d}.pdf"'
+            ),
         },
     )
 

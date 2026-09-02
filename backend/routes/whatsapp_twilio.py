@@ -421,17 +421,7 @@ async def webhook(request: Request):
         from services.event_bus import emit_event
         await emit_event(
             "wa.message.persisted",
-            company_id=(sub or {}).get("company_id"),
-            source="whatsapp_twilio",
-            payload={},
-        )
-    except Exception:
-        pass
-    try:
-        from services.event_bus import emit_event
-        await emit_event(
-            "wa.message.persisted",
-            company_id=company_id,
+            company_id=(sub or {}).get("company_id") or cid,
             source="whatsapp_twilio",
             payload={},
         )
@@ -774,17 +764,7 @@ async def _generate_and_send_twilio_reply(
             from services.event_bus import emit_event
             await emit_event(
                 "wa.message.persisted",
-                company_id=company_id,
-                source="whatsapp_twilio",
-                payload={},
-            )
-        except Exception:
-            pass
-        try:
-            from services.event_bus import emit_event
-            await emit_event(
-                "wa.message.persisted",
-                company_id=company_id,
+                company_id=cid,
                 source="whatsapp_twilio",
                 payload={},
             )

@@ -234,7 +234,8 @@ async def main():
     try:
         requests.delete(f"{BASE}/api/lousa/tickets/{tid}", headers=H, timeout=10)
         await db.tickets.delete_one({"id": tid})  # safety
-    except: pass
+    except Exception:
+        pass
 
     # ─── Relatório ──────────────────────────────────────────────────────
     print(f"\n{'═'*80}")

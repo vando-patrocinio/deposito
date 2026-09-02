@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="2" skipped="0" tests="18" time="9.545" timestamp="2026-09-02T15:22:45.180637+00:00" hostname="agent-env-43695c10-da5b-4d81-a958-3ab98d1b85d6"><testcase classname="test_iter256_objstore.TestRegression" name="test_root_api_alive" time="0.611" /><testcase classname="test_iter256_objstore.TestRegression" name="test_objstore_module_importable" time="0.187" /><testcase classname="test_iter256_objstore.TestHoleriteObjstore" name="test_upload_writes_objstore_ref" time="0.455" /><testcase classname="test_iter256_objstore.TestHoleriteObjstore" name="test_public_download_without_jwt_is_public" time="0.152"><failure message="AssertionError: endpoint 'public' exige JWT — rbac_policy.PUBLIC_PATHS tem '/api/holerite/public/' mas o router é '/api/holerites'&#10;assert 401 != 401&#10; +  where 401 = &lt;Response [401]&gt;.status_code">self = &lt;test_iter256_objstore.TestHoleriteObjstore object at 0xfe74431a3e50&gt;
+uploaded_holerite = {'id': 'hol-9c5d326922c44d', 'raw': {'_id': ObjectId('6a983f468d81f21c49b4c7ab'), 'company_id': 'co-demo', 'competence_month': 1, 'competence_year': 2025, ...}}
+
+    def test_public_download_without_jwt_is_public(self, uploaded_holerite):
+        """PWA do colaborador abre o PDF via window.open (sem header)."""
+        doc_id = uploaded_holerite["id"]
+        r = requests.get(
+            f"{BASE_URL}/api/holerites/public/{COLLAB}/{doc_id}/file",
+            timeout=120)
+&gt;       assert r.status_code != 401, (
+            "endpoint 'public' exige JWT — rbac_policy.PUBLIC_PATHS tem "
+            "'/api/holerite/public/' mas o router é '/api/holerites'")
+E       AssertionError: endpoint 'public' exige JWT — rbac_policy.PUBLIC_PATHS tem '/api/holerite/public/' mas o router é '/api/holerites'
+E       assert 401 != 401
+E        +  where 401 = &lt;Response [401]&gt;.status_code
+
+tests/test_iter256_objstore.py:155: AssertionError</failure></testcase><testcase classname="test_iter256_objstore.TestHoleriteObjstore" name="test_public_download_same_pdf" time="0.256" /><testcase classname="test_iter256_objstore.TestHoleriteObjstore" name="test_sign_upload_and_signed_download" time="0.569" /><testcase classname="test_iter256_objstore.TestHoleriteLegacyFallback" name="test_legacy_disk_read_ok" time="0.143" /><testcase classname="test_iter256_objstore.TestHoleriteLegacyFallback" name="test_legacy_missing_file_returns_404" time="0.188" /><testcase classname="test_iter256_objstore.TestHoleriteAiDraftImport" name="test_import_reads_draft_from_objstore" time="0.727" /><testcase classname="test_iter256_objstore.TestOnboardingUpload" name="test_public_upload_goes_to_objstore" time="1.517" /><testcase classname="test_iter256_objstore.TestOnboardingUpload" name="test_liveness_frames_go_to_objstore" time="1.620"><failure message="AssertionError: liveness 500: {&quot;detail&quot;:&quot;Falha na verificação de vivacidade&quot;}&#10;assert 500 != 500&#10; +  where 500 = &lt;Response [500]&gt;.status_code">self = &lt;test_iter256_objstore.TestOnboardingUpload object at 0xfe74431bb2d0&gt;
+H = {'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ1c3ItMjEwMDU0ODU4NyIsImVtYWlsIjoiYWRtaW5AZW1...5cGUiOiJhY2Nlc3MiLCJzaWQiOiJkZWFhZjNiZWM4MGI0YjNjODgxNGUxODFkOTQxMzFmZiJ9.qceBvMCjz-DbQRUbu-LZi6t1mwUExTXaGNzEb6C1xyo'}
+mdb = Database(MongoClient(host=['localhost:27017'], document_class=dict, tz_aware=False, connect=True), 'test_database')
+
+    def test_liveness_frames_go_to_objstore(self, H, mdb):
+        r = requests.post(f"{BASE_URL}/api/onboarding/sessions", headers=H,
+                          json={"phone": "5551999990257",
+                                "suggested_name": f"{TAG} Live"},
+                          timeout=60)
+        assert r.status_code == 200, f"{r.status_code} {r.text[:300]}"
+        token = r.json()["token"]
+        fs = {f"frame_{k}": (f"{TAG}_{k}.jpg", PNG_BIG, "image/jpeg")
+              for k in ("left", "right", "smile")}
+        up = requests.post(
+            f"{BASE_URL}/api/onboarding/public/{token}/liveness",
+            files=fs, timeout=180)
+        # BUG conhecido: services/onboarding.py usa LlmChat.with_max_tokens(),
+        # método inexistente na emergentintegrations instalada → AttributeError
+        # não tratado → HTTP 500.
+&gt;       assert up.status_code != 500, f"liveness 500: {up.text[:300]}"
+E       AssertionError: liveness 500: {"detail":"Falha na verificação de vivacidade"}
+E       assert 500 != 500
+E        +  where 500 = &lt;Response [500]&gt;.status_code
+
+tests/test_iter256_objstore.py:326: AssertionError</failure></testcase><testcase classname="test_iter256_objstore.TestPreAttendanceImages" name="test_upload_and_read_objstore" time="0.698" /><testcase classname="test_iter256_objstore.TestPreAttendanceImages" name="test_legacy_disk_image_still_readable" time="0.164" /><testcase classname="test_iter256_objstore.TestWaQuickImages" name="test_full_cycle_and_send_handled" time="1.105" /><testcase classname="test_iter256_objstore.TestWaQuickImages" name="test_legacy_disk_quick_image" time="0.332" /><testcase classname="test_iter256_objstore.TestBackupRestore" name="test_missing_confirm_returns_400" time="0.311" /><testcase classname="test_iter256_objstore.TestBackupRestore" name="test_invalid_targz_returns_400" time="0.142" /><testcase classname="test_iter256_objstore.TestBackupRestore" name="test_valid_small_dump_restores" time="0.203" /></testsuite></testsuites>

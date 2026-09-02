@@ -2551,6 +2551,7 @@ async def public_photo_open_ticket(collab_id: str, body: dict):
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
     await db.network_tickets.insert_one(ticket)
+    ticket.pop("_id", None)
     return {"ok": True, "ticket_id": ticket["id"], "ticket": ticket}
 
 

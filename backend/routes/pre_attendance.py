@@ -32,6 +32,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import Response
 from pydantic import BaseModel, Field
 
 from core import DEMO_COMPANY_ID, get_current_user
@@ -180,8 +181,17 @@ async def upload_image(payload: ImageUploadIn,
         else:
             ext = "jpg"
         fname = f"{cid}_{uuid.uuid4().hex[:14]}.{ext}"
-        path = UPLOAD_DIR / fname
-        path.write_bytes(data)
+        from services.objstore import content_type_for, put_object
+        storage_ref = await put_object(
+            f"smartprov/pre_attendance/{fname}", data, content_type_for(ext))
+        await db.pre_attendance_images.update_one(
+            {"filename": fname},
+            {"$set": {"filename": fname, "company_id": cid,
+                       "storage_ref": storage_ref, "ext": ext,
+                       "size_bytes": len(data),
+                       "created_at": datetime.now(timezone.utc).isoformat()}},
+            upsert=True,
+        )
         url = f"/api/pre-attendance/image/{fname}"
         return {"ok": True, "url": url, "filename": fname,
                  "size_bytes": len(data)}
@@ -208,10 +218,15 @@ async def get_image(filename: str,
         # Bloqueia leitura cross-company
         raise HTTPException(403,
             "Você não tem permissão para acessar este recurso.")
-    path = UPLOAD_DIR / filename
-    if not path.exists():
+    rec = await db.pre_attendance_images.find_one({"filename": filename},
+                                                    {"_id": 0})
+    from services.objstore import content_type_for, read_ref
+    data = await read_ref((rec or {}).get("storage_ref") or "",
+                           UPLOAD_DIR / filename)
+    if data is None:
         raise HTTPException(404, "imagem não encontrada")
-    return FileResponse(str(path))
+    ext = filename.rsplit(".", 1)[-1] if "." in filename else "jpg"
+    return Response(content=data, media_type=content_type_for(ext))
 
 
 # ─────────────────── Histórico + stats ───────────────────

@@ -691,6 +691,18 @@ const app = express();
 app.use(cors());
 app.use(express.json({ limit: "2mb" }));
 
+/**
+ * Resolve o JID de destino. Preserva JIDs completos (`<lid>@lid`,
+ * `<id>@g.us`) — contatos com número oculto no WhatsApp só recebem
+ * mensagem pelo JID, nunca por `<numero>@s.whatsapp.net`.
+ */
+function toJid(raw) {
+  const s = String(raw || "").trim();
+  if (s.includes("@")) return s;
+  const digits = s.replace(/\D/g, "");
+  return digits ? `${digits}@s.whatsapp.net` : "";
+}
+
 // Healthcheck público (sem auth) — necessário pra Railway/Render verificarem o status
 app.get("/health", (_req, res) => res.json({
   ok: true,
@@ -783,14 +795,15 @@ app.post("/send", async (req, res) => {
   if (!phone || !text) {
     return res.status(400).json({ ok: false, error: "phone e text obrigatórios" });
   }
-  phone = String(phone).replace(/\D/g, "");
-  if (!phone) {
+  const sendJid = toJid(phone);
+  if (!sendJid) {
     return res.status(400).json({ ok: false, error: "phone inválido" });
   }
+  phone = sendJid.split("@")[0];
   // Não enviar para o próprio número (Baileys aceita silenciosamente)
   try {
     const mePhone = String(me?.id || "").split(":")[0].split("@")[0].replace(/\D/g, "");
-    if (mePhone && mePhone === phone) {
+    if (mePhone && mePhone === phone && sendJid.endsWith("@s.whatsapp.net")) {
       return res.status(400).json({
         ok: false,
         error: "Não é possível enviar mensagem para o próprio número conectado.",
@@ -799,7 +812,7 @@ app.post("/send", async (req, res) => {
   } catch (e) { /* ignore */ }
 
   await applyRateLimit();
-  const jid = phone.includes("@") ? phone : `${phone}@s.whatsapp.net`;
+  const jid = sendJid;
   try {
     // Indicador "digitando..." — humaniza a resposta.
     // Calcula tempo de digitação proporcional ao tamanho do texto:
@@ -836,8 +849,11 @@ app.post("/send-audio", async (req, res) => {
   if (!phone || !audio_b64) {
     return res.status(400).json({ ok: false, error: "phone e audio_b64 obrigatórios" });
   }
-  phone = String(phone).replace(/\D/g, "");
-  const jid = `${phone}@s.whatsapp.net`;
+  const jid = toJid(phone);
+  if (!jid) {
+    return res.status(400).json({ ok: false, error: "phone inválido" });
+  }
+  phone = jid.split("@")[0];
   await applyRateLimit();
   try {
     const buffer = Buffer.from(String(audio_b64), "base64");
@@ -869,8 +885,11 @@ app.post("/send-document", async (req, res) => {
   if (!phone || !document_b64) {
     return res.status(400).json({ ok: false, error: "phone e document_b64 obrigatórios" });
   }
-  phone = String(phone).replace(/\D/g, "");
-  const jid = `${phone}@s.whatsapp.net`;
+  const jid = toJid(phone);
+  if (!jid) {
+    return res.status(400).json({ ok: false, error: "phone inválido" });
+  }
+  phone = jid.split("@")[0];
   await applyRateLimit();
   try {
     const buffer = Buffer.from(String(document_b64), "base64");
@@ -914,11 +933,11 @@ app.post("/send-image", async (req, res) => {
   if (!phone || !image_b64) {
     return res.status(400).json({ ok: false, error: "phone e image_b64 obrigatórios" });
   }
-  phone = String(phone).replace(/\D/g, "");
-  if (!phone) {
+  const jid = toJid(phone);
+  if (!jid) {
     return res.status(400).json({ ok: false, error: "phone inválido" });
   }
-  const jid = phone.includes("@") ? phone : `${phone}@s.whatsapp.net`;
+  phone = jid.split("@")[0];
   await applyRateLimit();
   try {
     const buffer = Buffer.from(String(image_b64), "base64");

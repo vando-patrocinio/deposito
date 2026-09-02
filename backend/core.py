@@ -7,6 +7,7 @@ Importa de `database.py` o objeto `db` para evitar import circular com server.py
 """
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import math
@@ -280,21 +281,57 @@ class GeocodeResult(BaseModel):
     display_name: str
 
 
+# Throttle global do Nominatim (política: máx 1 req/s por aplicação)
+_GEOCODE_LOCK = asyncio.Lock()
+_GEOCODE_MIN_INTERVAL = 1.1
+_GEOCODE_COOLDOWN_SEC = 300.0
+_GEOCODE_LAST_AT = 0.0
+_GEOCODE_COOLDOWN_UNTIL = 0.0
+
+
 async def geocode_address(address: str) -> GeocodeResult:
     """Geocode com viés pra Brasil e detalhes de endereço (rua/bairro/cidade).
     Usar `countrycodes=br` melhora muito a precisão pra endereços daqui.
+
+    Nominatim exige no máximo 1 req/s por aplicação. Aplicamos throttle
+    global (todos os callers passam por aqui), backoff em 429 e cooldown
+    curto quando o servidor nos rejeita — sem isso o worker da Lousa
+    queima 60 endereços por ciclo recebendo 429.
     """
-    async with httpx.AsyncClient(timeout=10.0, headers={"User-Agent": USER_AGENT}) as c:
-        r = await c.get(GEOCODE_URL, params={
-            "q": address,
-            "format": "json",
-            "limit": 1,
-            "addressdetails": 1,
-            "countrycodes": "br",
-            "accept-language": "pt-BR",
-        })
-        r.raise_for_status()
-        data = r.json()
+    global _GEOCODE_COOLDOWN_UNTIL
+    loop = asyncio.get_running_loop()
+    if loop.time() < _GEOCODE_COOLDOWN_UNTIL:
+        raise HTTPException(status_code=429,
+                            detail="Geocoder em cooldown (rate limit Nominatim)")
+    async with _GEOCODE_LOCK:
+        global _GEOCODE_LAST_AT
+        wait = _GEOCODE_MIN_INTERVAL - (loop.time() - _GEOCODE_LAST_AT)
+        if wait > 0:
+            await asyncio.sleep(wait)
+        async with httpx.AsyncClient(timeout=10.0,
+                                        headers={"User-Agent": USER_AGENT}) as c:
+            data = None
+            for attempt in range(3):
+                r = await c.get(GEOCODE_URL, params={
+                    "q": address,
+                    "format": "json",
+                    "limit": 1,
+                    "addressdetails": 1,
+                    "countrycodes": "br",
+                    "accept-language": "pt-BR",
+                })
+                _GEOCODE_LAST_AT = loop.time()
+                if r.status_code == 429:
+                    if attempt == 2:
+                        _GEOCODE_COOLDOWN_UNTIL = loop.time() + _GEOCODE_COOLDOWN_SEC
+                        raise HTTPException(
+                            status_code=429,
+                            detail="Nominatim rate limit — geocoder pausado")
+                    await asyncio.sleep(2.0 * (attempt + 1))
+                    continue
+                r.raise_for_status()
+                data = r.json()
+                break
         if not data:
             raise HTTPException(status_code=400, detail=f"Endereço não localizado: {address}")
         first = data[0]

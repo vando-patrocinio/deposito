@@ -148,7 +148,7 @@ async def _do_review(inspection_id: str) -> None:
             session_id=f"fleet-ai-{inspection_id}",
             system_message=SYSTEM_PROMPT,
         ).with_model("anthropic", "claude-sonnet-4-5-20250929") \
-         .with_max_tokens(1500)
+         .with_params(max_tokens=1500)
         # UserMessage aceita lista de partes (texto + image_url)
         msg = UserMessage(text="Avalie a vistoria.", file_contents=img_payload)
         raw = await asyncio.wait_for(chat.send_message(msg), timeout=90)
@@ -287,7 +287,7 @@ async def ocr_fuel_receipt(receipt_data_url: str) -> dict:
                 "Retorne SOMENTE o JSON, sem markdown."
             ),
         ).with_model("anthropic", "claude-sonnet-4-5-20250929") \
-         .with_max_tokens(400)
+         .with_params(max_tokens=400)
         msg = UserMessage(text="Extraia os dados da NF.",
                            file_contents=[{
                                "type": "image_url",

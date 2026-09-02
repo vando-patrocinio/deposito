@@ -56,6 +56,7 @@ from services.wa.sidecar import (  # noqa: E402
     _sidecar_headers, _sidecar_get, _sidecar_post, _sidecar_post_silent,
 )
 from services.wa.text_utils import _split_ai_reply  # noqa: E402
+from services.wa.lid import resolve_send_target  # noqa: E402
 
 # Diretório onde áudios outbound enviados pela atendente são persistidos
 # (servidos via /api/whatsapp-baileys/audio/{msg_id})
@@ -83,7 +84,9 @@ async def _deliver_boleto_with_pdf(cid: str, phone: str,
     is_request = bool(boleto_full.get("is_request"))
 
     # Sempre envia o texto primeiro
-    sent_text = await _sidecar_post_silent("/send", {"phone": phone, "text": text})
+    send_target = await resolve_send_target(cid, phone)
+    sent_text = await _sidecar_post_silent("/send", {"phone": send_target,
+                                                       "text": text})
     await db.aihub_wa_messages.insert_one({
         "company_id": cid, "phone": phone, "jid": f"{phone}@s.whatsapp.net",
         "direction": "outbound", "text": text,
@@ -122,7 +125,7 @@ async def _deliver_boleto_with_pdf(cid: str, phone: str,
             due_short = str(due)[:10]
             fname = f"Boleto Ligo Fibra {due_short}.pdf"
             sent_doc = await _sidecar_post_silent("/send-document", {
-                "phone": phone,
+                "phone": send_target,
                 "document_b64": b64,
                 "filename": fname,
                 "mimetype": "application/pdf",
@@ -145,7 +148,7 @@ async def _deliver_boleto_with_pdf(cid: str, phone: str,
                 from services.event_bus import emit_event
                 await emit_event(
                     "wa.message.persisted",
-                    company_id=company_id,
+                    company_id=cid,
                     source="whatsapp_baileys",
                     payload={},
                 )
@@ -252,7 +255,7 @@ async def send_audio(payload: SendAudioIn,
         # P0.4 A1 — Roteado via gateway (HOMOLOG + Kill Switch + Audit)
         from services.wa.sidecar import _sidecar_post_silent
         out = await _sidecar_post_silent("/send-audio", {
-            "phone": payload.phone,
+            "phone": await resolve_send_target(cid, payload.phone),
             "audio_b64": payload.audio_b64,
             "mimetype": payload.mimetype,
             "company_id": cid,
@@ -447,7 +450,9 @@ async def send_message(payload: SendIn,
     try:
         async with httpx.AsyncClient(headers=_sidecar_headers(), timeout=20.0) as cli:
             r = await cli.post(f"{SIDECAR_BASE}/send",
-                                json={"phone": payload.phone, "text": text_to_send})
+                                json={"phone": await resolve_send_target(
+                                          cid, payload.phone),
+                                       "text": text_to_send})
             try:
                 out = r.json()
             except Exception:
@@ -582,7 +587,7 @@ async def send_image(payload: SendImageIn,
         # P0.4 A2 — Roteado via gateway (HOMOLOG + Kill Switch + Audit)
         from services.wa.sidecar import _sidecar_post_silent
         out = await _sidecar_post_silent("/send-image", {
-            "phone": payload.phone,
+            "phone": await resolve_send_target(cid, payload.phone),
             "image_data_url": payload.image_data_url,
             "caption": payload.caption,
             "company_id": cid,
@@ -860,7 +865,9 @@ async def inbound_call(payload: InboundCallIn,
         "Pode me contar o que está precisando? 💙"
     )
     try:
-        await _sidecar_post("/send", {"phone": phone, "text": response_text})
+        await _sidecar_post("/send", {
+            "phone": await resolve_send_target(cid, phone),
+            "text": response_text})
         await db.aihub_wa_messages.insert_one({
             "id": f"auto-call-reply-{uuid.uuid4().hex[:8]}",
             "company_id": cid,
@@ -876,7 +883,7 @@ async def inbound_call(payload: InboundCallIn,
             from services.event_bus import emit_event
             await emit_event(
                 "wa.message.persisted",
-                company_id=company_id,
+                company_id=cid,
                 source="whatsapp_baileys",
                 payload={},
             )
@@ -1837,6 +1844,11 @@ async def _maybe_auto_reply(cid: str, phone: str, user_text: str,
     conv = await db.wa_conversations.find_one(
         {"company_id": cid, "phone": phone}, {"_id": 0}
     )
+    # LID (número oculto do WhatsApp): o único destino de envio válido é
+    # `<lid>@lid` — `<lid>@s.whatsapp.net` não existe e a resposta não chega.
+    from services.wa.lid import lid_jid
+    contact_is_lid = bool(conv and conv.get("phone_is_lid") and conv.get("lid"))
+    send_target = lid_jid(conv["lid"]) if contact_is_lid else phone
     # iter183 — Se um técnico (PWA) está conversando com o cliente,
     # PAUSA a IA. Janela: 4h desde a última msg do técnico. Quando o
     # técnico envia algo novo, a janela é renovada via upsert no
@@ -2253,12 +2265,8 @@ async def _maybe_auto_reply(cid: str, phone: str, user_text: str,
                      "tudo, use só o que for relevante para a dúvida atual.")
     else:
         # CLIENTE NÃO IDENTIFICADO POR TELEFONE — aciona fluxo CPF
-        # Detecta LID anônimo (telefone começa com 169/197/15+ dígitos sem 55)
-        is_lid_phone = (
-            len(phone) >= 14 and not phone.startswith("55")
-            and (phone.startswith("169") or phone.startswith("197")
-                  or phone.startswith("198"))
-        )
+        # LID anônimo: flag persistida no inbound (WhatsApp com privacidade).
+        is_lid_phone = contact_is_lid
         if is_lid_phone:
             extra.append(
                 "=== CLIENTE COM WHATSAPP LID ANÔNIMO ===\n"
@@ -2572,6 +2580,9 @@ async def _maybe_auto_reply(cid: str, phone: str, user_text: str,
         )
         if orchestrated:
             extra.append(orchestrated)
+    except (ImportError, SyntaxError) as e:
+        # Falha estrutural do módulo (não é dado faltando) — nunca silenciar.
+        logger.error("[wa-baileys] orchestrator INDISPONÍVEL: %s", e)
     except Exception as e:
         logger.info("[wa-baileys] orchestrator skip: %s", e)
 
@@ -2959,7 +2970,7 @@ async def _maybe_auto_reply(cid: str, phone: str, user_text: str,
         try:
             async with httpx.AsyncClient(headers=_sidecar_headers(), timeout=15.0) as cli:
                 send_r = await cli.post(f"{SIDECAR_BASE}/send",
-                                         json={"phone": phone, "text": chunk})
+                                         json={"phone": send_target, "text": chunk})
                 try:
                     send_body = send_r.json()
                 except Exception:
@@ -3012,7 +3023,7 @@ async def _maybe_auto_reply(cid: str, phone: str, user_text: str,
             # P0.4 A1 — Roteado via gateway (TTS auto-resposta)
             from services.wa.sidecar import _sidecar_post_silent
             tts_body = await _sidecar_post_silent("/send-audio", {
-                "phone": phone,
+                "phone": send_target,
                 "audio_b64": tts_audio_b64,
                 "mimetype": "audio/ogg; codecs=opus",
                 "ptt": True,
@@ -3182,7 +3193,7 @@ async def _maybe_auto_reply(cid: str, phone: str, user_text: str,
             # Envia saudação direta sem chamar LLM de novo (economia de tokens
             # + saudação fica idêntica à inicial cadastrada no agente).
             sent = await _sidecar_post_silent(
-                "/send", {"phone": phone, "text": greeting},
+                "/send", {"phone": send_target, "text": greeting},
             )
             if sent.get("ok") is not False:
                 await db.aihub_wa_messages.insert_one({
@@ -5314,7 +5325,9 @@ async def public_tech_send(collab_id: str, phone: str,
     try:
         async with httpx.AsyncClient(headers=_sidecar_headers(), timeout=20.0) as cli:
             r = await cli.post(f"{SIDECAR_BASE}/send",
-                                json={"phone": phone_norm, "text": text_to_send})
+                                json={"phone": await resolve_send_target(
+                                          cid, phone_norm),
+                                       "text": text_to_send})
             try:
                 out = r.json()
             except Exception:

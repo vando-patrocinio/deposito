@@ -552,7 +552,47 @@ async def _truck_roll_guard_context(company_id: str, phone: str,
         if sub.get("cto_id"):
             off = await db.subscribers.count_documents({
                 "company_id": company_id, "cto_id": sub["cto_id"],
+                "status": "OFFLINE"})
+            tot = await db.subscribers.count_documents({
+                "company_id": company_id, "cto_id": sub["cto_id"]})
+            if tot:
+                cto_off_pct = off * 100.0 / tot
+    except Exception:
+        pass
 
+    if onu_online is None and cto_off_pct is None:
+        return ""
+
+    lines = ["=== TRUCK ROLL GUARD (evidência técnica) ==="]
+    if cto_off_pct is not None and cto_off_pct > 30:
+        lines.append(
+            f"{cto_off_pct:.0f}% dos vizinhos da mesma CTO estão offline → "
+            "provável CORTE COLETIVO.")
+        lines.append("AÇÃO: NÃO abra reparo individual — trate como queda "
+                      "coletiva, informe a falha na região e escale para o "
+                      "time de rede.")
+    elif onu_online is True and (onu_signal is None or onu_signal >= -25):
+        sig = ("%.1f dBm" % onu_signal) if onu_signal is not None else "OK"
+        lines = ["=== TRUCK ROLL GUARD: NÃO ABRA REPARO ==="]
+        lines.append(f"ONU ONLINE · sinal {sig}.")
+        lines.append(
+            "AÇÃO: oriente o cliente a reiniciar o modem (cabo de força 30s). "
+            "NÃO abra OS — investigue antes. Se persistir, peça uma foto do "
+            "modem e da luz da fibra.")
+    elif onu_online is False:
+        lines = ["=== TRUCK ROLL GUARD: SUSPEITO DE PROBLEMA REAL ==="]
+        lines.append("ONU OFFLINE e CTO saudável → provável problema "
+                      "individual (fibra/conector no cliente).")
+        lines.append("AÇÃO: abra OS com prioridade alta. Confirme endereço e "
+                      "melhor horário.")
+    elif onu_signal is not None and onu_signal < -27:
+        lines = ["=== TRUCK ROLL GUARD: SUSPEITO DE PROBLEMA REAL ==="]
+        lines.append(f"Sinal degradado: {onu_signal:.1f} dBm.")
+        lines.append("AÇÃO: preventiva técnica antes da pane. Ofereça "
+                      "agendamento e explique que é manutenção preventiva.")
+    else:
+        return ""
+    return "\n".join(lines)
 
 async def _premium_repair_context(company_id: str, phone: str,
                                     subscriber_id: Optional[str]) -> str:
@@ -631,35 +671,6 @@ async def _premium_repair_context(company_id: str, phone: str,
         "  • Encerre SEMPRE com PLANO_DE_ACAO completo (Objetivo · Responsável · Prazo · Confirmação).\n"
     )
 
-
-                "status": "OFFLINE"})
-            tot = await db.subscribers.count_documents({
-                "company_id": company_id, "cto_id": sub["cto_id"]})
-            if tot:
-                cto_off_pct = off * 100 / tot
-    except Exception:
-        pass
-
-    # Decisão de truck roll
-    if onu_online is True and (onu_signal is None or onu_signal >= -25):
-        return (
-            "=== TRUCK ROLL GUARD: NÃO ABRA REPARO ===\n"
-            f"ONU ONLINE · sinal {('%.1f dBm' % onu_signal) if onu_signal is not None else 'OK'}"
-            + (f" · CTO {cto_off_pct:.0f}% offline" if cto_off_pct else "")
-            + ".\n"
-            "AÇÃO: oriente o cliente a reiniciar o modem (cabo de força 30s). "
-            "NÃO abra OS — investigue antes. Se persistir, peça uma foto do "
-            "modem e da luz da fibra."
-        )
-    if onu_online is False or (onu_signal is not None and onu_signal < -27):
-        return (
-            "=== TRUCK ROLL GUARD: SUSPEITO DE PROBLEMA REAL ===\n"
-            f"ONU offline ou sinal degradado (sig={onu_signal}). "
-            f"{('CTO ' + str(round(cto_off_pct)) + '%% offline → possível corte coletivo') if cto_off_pct and cto_off_pct > 30 else ''}\n"
-            "AÇÃO: se >30% da CTO offline, NÃO abra reparo individual — "
-            "trate como queda coletiva. Senão, abra OS com prioridade alta."
-        )
-    return ""
 
 
 async def _coach_ia_context(company_id: str, user_text: str) -> str:

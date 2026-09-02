@@ -1208,7 +1208,7 @@ async def clients_per_district_ai_review(
                 "merges: bairros que deveriam ser unificados mas não foram. "
                 "splits: bairros agrupados erroneamente."
             ),
-        ).with_model("openai", "gpt-4o-mini").with_max_tokens(2048)
+        ).with_model("openai", "gpt-4o-mini").with_params(max_tokens=2048)
         msg = UserMessage(text=json.dumps(compact, ensure_ascii=False))
         raw = await asyncio.wait_for(chat.send_message(msg), timeout=45)
         # Tenta parsear JSON puro

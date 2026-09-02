@@ -38,7 +38,7 @@ from typing import Any, Dict, List, Optional
 
 import httpx
 from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, UploadFile
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel, Field
 
 from core import DEMO_COMPANY_ID, now_iso, require_role
@@ -204,11 +204,13 @@ async def upload_quick_image(
     if len(data) > 5 * 1024 * 1024:
         raise HTTPException(400, "Imagem maior que 5MB")
     img_id = f"wqi-{uuid.uuid4().hex[:10]}"
-    out_path = WA_QUICKIMG_DIR / f"{img_id}.{ext}"
-    out_path.write_bytes(data)
+    from services.objstore import content_type_for, put_object
+    storage_ref = await put_object(
+        f"smartprov/wa_quickimages/{img_id}.{ext}", data, content_type_for(ext))
     doc = {
         "id": img_id, "company_id": cid,
         "label": label[:80], "file_ext": ext,
+        "storage_ref": storage_ref,
         "size_bytes": len(data),
         "sort_order": count,
         "created_at": now_iso(),
@@ -262,12 +264,14 @@ async def get_quick_image_file(
     if not doc:
         raise HTTPException(404, "Imagem não encontrada")
     ext = doc.get("file_ext", "png")
-    path = WA_QUICKIMG_DIR / f"{img_id}.{ext}"
-    if not path.exists():
-        raise HTTPException(404, "Arquivo não encontrado em disco")
+    from services.objstore import read_ref
+    data = await read_ref(doc.get("storage_ref") or "",
+                           WA_QUICKIMG_DIR / f"{img_id}.{ext}")
+    if data is None:
+        raise HTTPException(404, "Arquivo não encontrado")
     mime = {"png": "image/png", "jpg": "image/jpeg", "jpeg": "image/jpeg",
             "webp": "image/webp", "gif": "image/gif"}.get(ext, "image/png")
-    return FileResponse(path, media_type=mime)
+    return Response(content=data, media_type=mime)
 
 
 class QuickSendPayload(BaseModel):
@@ -289,10 +293,12 @@ async def send_quick_image(
     if not doc:
         raise HTTPException(404, "Imagem não encontrada")
     ext = doc.get("file_ext", "png")
-    path = WA_QUICKIMG_DIR / f"{img_id}.{ext}"
-    if not path.exists():
+    from services.objstore import read_ref
+    raw = await read_ref(doc.get("storage_ref") or "",
+                          WA_QUICKIMG_DIR / f"{img_id}.{ext}")
+    if raw is None:
         raise HTTPException(404, "Arquivo não encontrado")
-    image_b64 = base64.b64encode(path.read_bytes()).decode("ascii")
+    image_b64 = base64.b64encode(raw).decode("ascii")
 
     # Envia via sidecar
     try:

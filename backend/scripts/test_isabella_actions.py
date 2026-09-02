@@ -58,7 +58,7 @@ async def test_agendar_visita():
         from services.event_bus import emit_event
         await emit_event(
             "ticket.closed",
-            company_id=company_id,
+            company_id=cid,
             source="test_isabella_actions",
             payload={},
         )
@@ -88,13 +88,13 @@ async def test_abrir_chamado():
         from services.event_bus import emit_event
         await emit_event(
             "ticket.closed",
-            company_id=company_id,
+            company_id=cid,
             source="test_isabella_actions",
             payload={},
         )
     except Exception:
         pass
-    print(f"  ✅ chamado_tecnico persistido")
+    print("  ✅ chamado_tecnico persistido")
 
 
 async def test_no_marker_passthrough():

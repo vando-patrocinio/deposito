@@ -1,0 +1,44 @@
+{
+  "summary": "Regression testing of the 4 post-audit fixes (P0-2 LID send target, P0-3 phone_is_lid flag, P2 geocoding throttle, duplicate /api/motor-ia/budget route). New pytest suite /app/backend/tests/test_iter255_audit_fixes.py: 16/17 passed. All 4 fixes VERIFIED working. One CRITICAL pre-existing/unrelated defect found: /app/backend/services/ai_orchestrator.py has a SyntaxError (truncated function at line 553-556) so the whole AI orchestrator module fails to import on EVERY inbound WhatsApp message ('[wa-baileys] orchestrator skip: invalid syntax'). Frontend WhatsApp panel loads without white screen and renders the 'LID' badge + 'LID anonimo' thread badge + 'Vincular telefone' button correctly.",
+  "backend_issues": {
+    "critical": [
+      {"endpoint": "services/ai_orchestrator.py (used by /api/whatsapp-baileys/inbound -> _maybe_auto_reply)", "issue": "SyntaxError: file is TRUNCATED mid-statement inside _truck_roll_guard_context (lines 553-555: 'off = await db.subscribers.count_documents({ \"company_id\": company_id, \"cto_id\": sub[\"cto_id\"],' never closed, followed directly by 'async def _premium_repair_context'). ast.parse fails at line 557. Consequence: `from services.ai_orchestrator import build_orchestrated_context` raises on every inbound msg and is swallowed by the except at whatsapp_baileys.py:2584 -> log '[wa-baileys] orchestrator skip: invalid syntax'. Truck Roll Guard, Reparo Premium, recurrence context and all orchestrated context are 100% DISABLED in production. Not fixed by me: the missing lines are business logic (CTO offline % computation) and must be restored by the dev agent.", "priority": "CRITICAL"}
+    ],
+    "minor": [
+      {"endpoint": "POST /api/whatsapp-baileys/send", "issue": "Backend correctly returns 502 {'detail':'WhatsApp nao confirmou entrega: WhatsApp nao conectado.'} on localhost:8001, but through the public ingress the 502 is replaced by a Cloudflare HTML error page (content-type text/html). Frontend error handlers that read e.response.data.detail will get HTML instead of the message. Consider returning 200/409 with delivery_status='failed' in the JSON body instead of a 5xx for handled delivery failures."},
+      {"endpoint": "tests/test_whatsapp_lid.py", "issue": "4/8 legacy tests fail due to test-data pollution (wa_lid_map keeps lid 999999999999999 -> 5521977770000 from a previous run, so the 'pure LID' inbound now resolves to the real phone). Product behaviour is correct; the test fixture only deletes conversations, not wa_lid_map. Not a regression."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [
+      {"flow": "Atendimento IA -> painel de conversas", "issue": "The chat layout is gated behind sidecar connection (WhatsAppQRPanel returns <WhatsAppChatLayout/> only when status=connected/sticky). With the Baileys sidecar logged out (expected in preview) the operator only sees the QR screen and cannot read conversation history. To verify the UI I stubbed only GET /api/whatsapp-baileys/qr -> {status:'connected'} in Playwright; with that, wa-chat-layout rendered, 173 conversation nodes, 6 LID badges, no page errors.", "affected_selectors": ["[data-testid=\"wa-chat-layout\"]", "[data-testid^=\"wa-conv-lid-\"]"]}
+    ],
+    "design_issues": [
+      {"screen": "Atendimento IA / thread de numero oculto", "issues": ["LID conversations display the LID as if it were a phone number ('+197272210022596') in the list and header; the LID badge mitigates it but prefixing with 'LID' instead of '+' would be clearer", "GET /api/ai-center/homologation/status/public returns 401 in the browser console on every page load (endpoint named 'public' but requires auth) - console noise"]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter255_audit_fixes.py",
+    "/app/test_reports/pytest/iter255.xml"
+  ],
+  "action_items": [
+    "CRITICAL: restore the truncated block in /app/backend/services/ai_orchestrator.py (_truck_roll_guard_context, lines ~550-556) so the module imports again; then re-check backend logs for '[wa-baileys] orchestrator skip'",
+    "Consider not using HTTP 5xx for handled WhatsApp delivery failures (Cloudflare rewrites 502 to HTML at the edge, hiding the JSON detail from the UI)",
+    "Optional: clean wa_lid_map in tests/test_whatsapp_lid.py fixture (or use fresh LIDs per run) to stop the 4 stale-state failures",
+    "Optional: /api/ai-center/homologation/status/public returns 401 - either make it truly public or stop calling it unauthenticated"
+  ],
+  "critical_code_review_comments": [
+    "whatsapp_baileys.py:2577-2584 swallows ANY exception from the orchestrator import with logger.info (not warning/exception) - a SyntaxError in a core AI module has been silently degrading production. Escalate to logger.error + health metric.",
+    "resolve_send_target() does one extra Mongo read per outbound message; fine now, but on the AI chunk loop (~2965) the target is resolved once and reused - good. Keep it that way.",
+    "P0-2 verified in DB: resolve_send_target('co-demo','197272210022596') -> '197272210022596@lid'; sidecar toJid() preserves full JIDs. P0-3 verified: no 169/197/198 prefix heuristic remains; contact_is_lid comes from conv.phone_is_lid (whatsapp_baileys.py:1850)."
+  ],
+  "updated_files": ["/app/backend/tests/test_iter255_audit_fixes.py"],
+  "success_rate": {"backend": "94% (16/17)", "frontend": "100% of tested flows (with qr status stubbed)"},
+  "seed_data_creation": "3 outbound test messages 'TEST_iter255...' persisted in conv 197272210022596 with delivery_status=failed/Nao entregue (sidecar offline, nothing was delivered to any real client). Budget values were changed during tests and RESTORED at the end: monthly_limit_usd=200, daily_limit_usd=2.0, daily_service_limits={vision:0.5, stt:0.5, tts:0.5, text:1.0} (verified via GET).",
+  "should_call_test_agent_after_fix": false,
+  "should_main_agent_self_test": true,
+  "test_credentials": "admin@empresa.com / 123456 (worked; /api/auth/login returns access_token, /api/auth/me OK)",
+  "context_for_next_testing_agent": "New suite: /app/backend/tests/test_iter255_audit_fixes.py (auth smoke, motor-ia budget GET/PUT daily+monthly with restore, WA send/send-audio/send-image no-500, resolve_send_target -> <lid>@lid, /api/lousa/map/services, /api/geocode + /api/geocode/search, ai_orchestrator syntax check). NOTE: geocode routes are /api/geocode and /api/geocode/search (router prefix is /api, NOT /api/admin). WA send payload schemas: SendAudioIn{phone,audio_b64,mimetype,duration_sec}, SendImageIn{phone,image_data_url,caption}. The WhatsApp chat UI is only reachable when GET /api/whatsapp-baileys/qr reports connected - stub that route in Playwright to test the panel while the sidecar is offline. Frontend dev-server cold start can take ~85s (public URL returned 502 on the first hit, then 200) - warm it with curl before Playwright. OpenRouter 402 (no credits) still floods logs - expected, not a bug.",
+  "rca_of_the_issue": "ai_orchestrator.py: a previous edit truncated _truck_roll_guard_context, leaving an unclosed dict literal in the count_documents call at line 553; Python cannot compile the module, so the lazy import inside _maybe_auto_reply raises SyntaxError which is caught and logged at INFO level, silently disabling all orchestrated AI context. Reproduce: python -c \"import ast;ast.parse(open('/app/backend/services/ai_orchestrator.py').read())\" -> SyntaxError line 557; or POST /api/whatsapp-baileys/inbound and grep backend log for 'orchestrator skip'. Mitigation: restore the missing statements and add a startup import check for services/ai_orchestrator.py."
+}

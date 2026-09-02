@@ -185,7 +185,7 @@ async def _ingest_inbound(phone: str, text: str) -> None:
         from services.event_bus import emit_event
         await emit_event(
             "wa.message.persisted",
-            company_id=(sub or {}).get("company_id"),
+            company_id=COMPANY_ID,
             source="validate_isabella_evolucao_final",
             payload={},
         )

@@ -702,7 +702,7 @@ async def mark_invoice_paid(
                         from services.event_bus import emit_event
                         await emit_event(
                             "invoice.updated",
-                            company_id=company_id,
+                            company_id=cid,
                             source="atlaz_financeiro",
                             payload={},
                         )
@@ -720,7 +720,7 @@ async def mark_invoice_paid(
                         from services.event_bus import emit_event
                         await emit_event(
                             "invoice.updated",
-                            company_id=company_id,
+                            company_id=cid,
                             source="atlaz_financeiro",
                             payload={},
                         )
@@ -958,7 +958,7 @@ async def cleanup_orphans(user: dict = Depends(require_role("administrador"))):
 async def auto_sync_atlaz_financeiro() -> Dict[str, Any]:
     """Sync automática (todas as empresas com token configurado)."""
     out: Dict[str, Any] = {"companies": 0, "errors": []}
-    async for cfg in db.atlaz_config.find({"api_key": {"$ne": None, "$ne": ""}},
+    async for cfg in db.atlaz_config.find({"api_key": {"$nin": [None, ""]}},
                                             {"_id": 0, "company_id": 1,
                                              "api_key": 1}):
         cid = cfg["company_id"]

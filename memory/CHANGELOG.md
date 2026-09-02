@@ -8577,3 +8577,69 @@ Relatório: `/app/docs/RELATORIO_RELACIONAMENTO_360.md`
 - Endpoint JWT `finalize_ticket` (linha 5170 lousa.py) ainda tem try/except silencioso — recomendado aplicar mesmo padrão.
 - Botão "Reconciliar agora" — Onda C ou logo após.
 - **Onda C**: Bug #4 (validar consumíveis mobile) + Bug #5 (praça/técnico) + Bug #6 (auto-detect troca ONT).
+
+## 2026-06-19 — AUDITORIA DE SISTEMA + 5 correções (iter255)
+Relatório: `memory/AUDITORIA_SISTEMA_2026-06-19.md` · Teste: `test_reports/iteration_255.json`
+
+### P0 corrigidos
+1. **ai_orchestrator.py estava com SyntaxError** (arquivo truncado no meio de
+   `_truck_roll_guard_context`) → `build_orchestrated_context` falhava em TODA
+   mensagem inbound e o erro era engolido com `logger.info`. Truck Roll Guard,
+   Reparo Premium, recorrência e todo o contexto orquestrado estavam **100%
+   desativados** — causa-raiz mais provável da Isabella "respondendo fora de
+   contexto". Bloco restaurado + log escalado para `logger.error`.
+2. **Resposta não chegava em número oculto (@lid)**: backend enviava
+   `<lid>@s.whatsapp.net`. Novo `services/wa/lid.py::resolve_send_target` +
+   `send_target` no `_maybe_auto_reply` + `toJid()` no sidecar (`/send`,
+   `/send-audio`, `/send-image`, `/send-document`) + `_norm_phone` da
+   homologação preservando JIDs. 7 conversas LID afetadas.
+3. **Heurística de LID errada no prompt** (prefixo 169/197/198 pegava 2 de 7)
+   → trocada pela flag `phone_is_lid` persistida na conversa.
+
+### P1/P2 corrigidos
+4. **Rota `/api/motor-ia/budget` duplicada** — a versão morta era a que aceitava
+   limites diários, então "Salvar limites diários" dava 422 e os campos eram
+   descartados. Bloco duplicado removido; `BudgetIn` ativo agora aceita
+   `daily_limit_usd` + `daily_service_limits`.
+5. **Geocoding da Lousa (0/60, 429 do Nominatim)** — `core.geocode_address`
+   com lock global, throttle 1.1s, backoff em 429 e cooldown de 300s.
+6. 39 erros de lint bloqueantes (F821 `company_id` em blocos `emit_event`
+   injetados, F811 duplicados, `$ne` duplicado → `$nin`, imports faltando,
+   ObjectId vazando em 4 retornos).
+
+### Não corrigido (decisão do CEO)
+- **OpenRouter sem saldo (402, 500 ocorrências)** → CEO recarrega o saldo; sem
+  fallback automático em código (autorizado opção "a").
+- **Loop de QR do sidecar** → manter reconectando (sem circuit breaker).
+- **universoligo.com** → Cloudflare TLS handshake failure (552): infra/DNS.
+
+## 2026-06-19 (cont.) — Persistência de arquivos + 2 bugs achados no teste (iter256)
+### Migração disco → Emergent Object Storage (`services/objstore.py`)
+Arquivos gravados no disco do pod eram **perdidos a cada deploy**. Migrados os
+7 pontos, com **fallback de leitura no disco** para registros antigos:
+- `routes/holerite.py` — PDF do holerite, draft da IA e PDF assinado
+  (`file_path`/`signed_file_path` agora guardam `objstore://...`)
+- `services/onboarding.py` — documentos e frames de liveness
+- `routes/pre_attendance.py` — imagens de propaganda (+ coleção
+  `pre_attendance_images`)
+- `routes/whatsapp_config.py` — imagens rápidas do WhatsApp (`storage_ref`)
+- `routes/backup.py` — restore agora extrai o tar.gz em memória, temporários
+  em `/tmp` (nunca no disco da app)
+Validado: 35/35 testes (`tests/test_iter256_objstore.py`,
+`tests/test_iter255_audit_fixes.py`).
+
+### Bugs achados pelo agente de testes e corrigidos
+- **CRÍTICO — colaborador não conseguia baixar holerite**: `rbac_policy.PUBLIC_PATHS`
+  tinha `/api/holerite/public/` (singular) mas o router é `/api/holerites`
+  → 401 no `window.open` do PWA. Adicionado o prefixo plural.
+- **`LlmChat.with_max_tokens()` não existe** na emergentintegrations instalada →
+  500 no liveness do onboarding e falha silenciosa do OCR. Trocado por
+  `with_params(max_tokens=...)` em `services/onboarding.py`,
+  `services/fleet_ai_worker.py` e `routes/ai_dashboard.py`.
+
+### Pendências conhecidas (não corrigidas)
+- Object storage não tem API de delete → objetos órfãos em deletes
+  (quick-images, holerite). Precisa política de soft-delete/limpeza.
+- `objstore.read_ref` devolve 404 tanto para arquivo inexistente quanto para
+  falha de infra (ideal 502/503).
+- `vando@ligotelecom.com`: senha do preview divergente da documentada (401).

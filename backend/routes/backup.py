@@ -22,6 +22,7 @@ NERVOUS_METADATA = {
     "company_id_required": True,
 }
 
+import io
 import logging
 import os
 import re
@@ -231,17 +232,17 @@ async def restore_backup(
         raise HTTPException(413, "Arquivo > 2 GB — restaure manualmente.")
 
     op_id = f"_restore_{datetime.now(timezone.utc).strftime('%Y%m%d-%H%M%S')}"
-    upload_path = BACKUP_DIR / f"{op_id}.tar.gz"
-    extract_dir = Path(tempfile.mkdtemp(prefix=op_id, dir=str(BACKUP_DIR)))
+    # Artefato transitório: /tmp (o disco da app é volátil e não é storage)
+    work_dir = Path(tempfile.mkdtemp(prefix=f"{op_id}_work_"))
+    extract_dir = Path(tempfile.mkdtemp(prefix=op_id, dir=str(work_dir)))
     try:
-        upload_path.write_bytes(raw)
         logger.warning("[restore] iniciando %s drop=%s by=%s file=%s size=%dMB",
                        op_id, drop_flag, user.get("email"), file.filename,
                        len(raw) // (1024 * 1024))
 
-        # 1) Extrai tar.gz com tarfile (nativo, anti-traversal)
+        # 1) Extrai tar.gz com tarfile (nativo, anti-traversal), em memória
         try:
-            with tarfile.open(upload_path, "r:gz") as tar:
+            with tarfile.open(fileobj=io.BytesIO(raw), mode="r:gz") as tar:
                 # Anti-traversal: garante que membros não escapam de extract_dir
                 for m in tar.getmembers():
                     if m.name.startswith("/") or ".." in Path(m.name).parts:
@@ -288,9 +289,7 @@ async def restore_backup(
         raise HTTPException(500, f"Erro: {e!s}")
     finally:
         try:
-            if upload_path.exists():
-                upload_path.unlink()
-            shutil.rmtree(extract_dir, ignore_errors=True)
+            shutil.rmtree(work_dir, ignore_errors=True)
         except OSError:
             pass
 

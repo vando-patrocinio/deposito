@@ -283,6 +283,7 @@ async def compute_monthly_balance(
     doc["hash_sha256"] = _sign_balance(doc)
 
     await db[BALANCE_COLLECTION].insert_one(doc)
+    doc.pop("_id", None)
     return doc
 
 

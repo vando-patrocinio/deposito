@@ -60,7 +60,6 @@ def _run(coro_factory):
 def test_synchronizer_emits_invoice_created():
     async def go(db, ns, nc):
         # Checkpoint=now() para isolar do produção
-        from datetime import datetime, timezone
         now = datetime.now(timezone.utc).isoformat()
         for plan in ns.SYNC_PLAN:
             await ns._set_checkpoint(plan["collection"],
@@ -138,7 +137,6 @@ def test_top_events_descending_count():
 
 def test_synchronizer_skips_no_company_id():
     async def go(db, ns, nc):
-        from datetime import datetime, timezone
         # Checkpoint=now() para zerar histórico de produção
         now = datetime.now(timezone.utc).isoformat()
         for plan in ns.SYNC_PLAN:

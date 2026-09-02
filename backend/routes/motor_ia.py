@@ -114,30 +114,53 @@ async def read_budget(user: dict = Depends(require_role("gestor"))):
         "used_pct": round((spent / limit * 100), 1) if limit else 0,
         "warn_threshold_pct": int(b.get("warn_threshold_pct") or 80),
         "enabled": bool(b.get("enabled", True)),
+        "daily_limit_usd": float(b.get("daily_limit_usd") or 0),
+        "daily_service_limits": b.get("daily_service_limits") or {
+            "vision": 0.0, "stt": 0.0, "tts": 0.0, "text": 0.0,
+        },
     }
 
 
+class DailyServiceLimits(BaseModel):
+    vision: Optional[float] = Field(None, ge=0, le=1000)
+    stt:    Optional[float] = Field(None, ge=0, le=1000)
+    tts:    Optional[float] = Field(None, ge=0, le=1000)
+    text:   Optional[float] = Field(None, ge=0, le=1000)
+
+
 class BudgetIn(BaseModel):
-    monthly_limit_usd: float = Field(..., ge=0, le=100000)
+    monthly_limit_usd: Optional[float] = Field(None, ge=0, le=100000)
     warn_threshold_pct: Optional[int] = Field(80, ge=10, le=99)
+    # Limites diários (USD). 0 = desativado para aquele serviço.
+    daily_limit_usd: Optional[float] = Field(None, ge=0, le=1000)
+    daily_service_limits: Optional[DailyServiceLimits] = None
 
 
 @router.put("/budget")
 async def update_budget(payload: BudgetIn,
                           user: dict = Depends(require_role("administrador"))):
-    """Atualiza limite mensal de gasto do Motor IA (US$)."""
+    """Atualiza limites de gasto do Motor IA (mensal e/ou diários, em US$)."""
     from datetime import datetime, timezone
     cid = user.get("company_id") or DEMO_COMPANY_ID
     now = datetime.now(timezone.utc).isoformat()
+    sets: Dict[str, Any] = {
+        "company_id": cid,
+        "enabled": True,
+        "updated_at": now,
+        "updated_by": user.get("email") or user.get("id"),
+    }
+    if payload.monthly_limit_usd is not None:
+        sets["monthly_limit_usd"] = float(payload.monthly_limit_usd)
+        sets["warn_threshold_pct"] = int(payload.warn_threshold_pct or 80)
+    if payload.daily_limit_usd is not None:
+        sets["daily_limit_usd"] = float(payload.daily_limit_usd)
+    if payload.daily_service_limits is not None:
+        sets["daily_service_limits"] = {
+            k: float(v or 0) for k, v in
+            payload.daily_service_limits.model_dump().items()
+        }
     await db.motor_ia_budget.update_one(
-        {"company_id": cid},
-        {"$set": {"company_id": cid,
-                    "monthly_limit_usd": float(payload.monthly_limit_usd),
-                    "warn_threshold_pct": int(payload.warn_threshold_pct or 80),
-                    "enabled": True,
-                    "updated_at": now,
-                    "updated_by": user.get("email") or user.get("id")}},
-        upsert=True)
+        {"company_id": cid}, {"$set": sets}, upsert=True)
     return await read_budget(user=user)
 
 
@@ -396,15 +419,6 @@ class ServiceLimits(BaseModel):
     text:   Optional[float] = Field(None, ge=0, le=1000)
 
 
-class BudgetIn(BaseModel):
-    monthly_limit_usd: Optional[float] = Field(None, ge=0, le=10000)
-    warn_threshold_pct: Optional[int] = Field(None, ge=1, le=100)
-    enabled: Optional[bool] = None
-    # Limites diários (USD). Se 0 ou None, desativado para aquele serviço.
-    daily_limit_usd: Optional[float] = Field(None, ge=0, le=1000)
-    daily_service_limits: Optional[ServiceLimits] = None
-
-
 async def _get_budget(cid: str) -> Dict[str, Any]:
     doc = await db.motor_ia_budget.find_one({"company_id": cid}, {"_id": 0})
     if not doc:
@@ -423,32 +437,6 @@ async def _get_budget(cid: str) -> Dict[str, Any]:
     doc.setdefault("daily_service_limits",
                     {"vision": 0.0, "stt": 0.0, "tts": 0.0, "text": 0.0})
     return doc
-
-
-@router.get("/budget")
-async def read_budget(user: dict = Depends(require_role("gestor"))):
-    """Retorna config de orçamento mensal (default 50 USD / 80% threshold)."""
-    cid = user.get("company_id") or DEMO_COMPANY_ID
-    return await _get_budget(cid)
-
-
-@router.put("/budget")
-async def update_budget(payload: BudgetIn,
-                          user: dict = Depends(require_role("administrador"))):
-    """Atualiza orçamento. Apenas administrador."""
-    cid = user.get("company_id") or DEMO_COMPANY_ID
-    data = payload.model_dump(exclude_none=True)
-    if not data:
-        raise HTTPException(400, "Nada para atualizar.")
-    data["updated_at"] = datetime.now(timezone.utc).isoformat()
-    await db.motor_ia_budget.update_one(
-        {"company_id": cid},
-        {"$set": data,
-         "$setOnInsert": {"company_id": cid,
-                           "created_at": datetime.now(timezone.utc).isoformat()}},
-        upsert=True,
-    )
-    return await _get_budget(cid)
 
 
 @router.get("/budget/status")
